@@ -4,6 +4,7 @@ import { api, ModelOption, Recording, SummaryOptions, Theme } from '../api/clien
 import { errorText } from '../lib/errors';
 import { languageName } from '../lib/recordings';
 import { useThemeText } from '../lib/themes';
+import { SlidersIcon } from './Icons';
 
 type View = 'main' | 'language' | 'model' | 'theme';
 
@@ -159,8 +160,16 @@ export function SummaryDetails({ rec, onRegenerate }: { rec: Recording; onRegene
 
   return (
     <div className="summary-details" ref={root}>
-      <button type="button" className="details-trigger" aria-expanded={open} aria-haspopup="dialog" onClick={toggle}>
-        {themeLabel(current.themeId)} <span className={`chevron${open ? ' up' : ''}`}>›</span>
+      <button
+        type="button"
+        className={`icon-button details-trigger${open ? ' active' : ''}`}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        aria-label={t('details.title')}
+        title={`${t('details.title')}: ${themeLabel(current.themeId)}`}
+        onClick={toggle}
+      >
+        <SlidersIcon />
       </button>
       {open && (
         <>

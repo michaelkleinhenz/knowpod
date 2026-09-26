@@ -24,6 +24,9 @@
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+  /* Always reserve the scrollbar's space, so the layout doesn't shift when a page (or a
+     note switching tabs) becomes long enough to scroll. */
+  scrollbar-gutter: stable;
 }
 
 body {
@@ -755,12 +758,6 @@ a {
   font-size: 0.9rem;
 }
 
-.conversation-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-
 .segmented {
   display: inline-flex;
   background: #e2e7ee;
@@ -972,6 +969,10 @@ a {
 
   .segmented button {
     flex: 1;
+  }
+
+  .note-bar .segmented {
+    flex: 1 1 100%;
   }
 }
 
@@ -1204,49 +1205,69 @@ a {
   pointer-events: none;
 }
 
-/* --- Summary header and details menu --- */
+/* --- Note toolbar and details menu --- */
 
-.summary-head {
+/* The row with the view pill (left) and the note's icon actions (right). */
+.note-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 0.5rem 1rem;
-  margin: -0.5rem 0 0.75rem;
+  margin-bottom: 1.25rem;
 }
 
-.summary-head h2 {
-  margin: 0;
-  font-size: 1.1rem;
+.note-bar .segmented {
+  margin-bottom: 0;
 }
 
-.summary-tools {
+.note-tools {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.15rem;
+  margin-left: auto;
 }
 
-.ghost-button,
-.details-trigger {
-  font: inherit;
-  font-size: 0.88rem;
-  font-weight: 500;
-  color: var(--color-text);
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  color: var(--color-muted);
   background: none;
   border: none;
-  border-radius: 999px;
-  padding: 0.35rem 0.7rem;
+  border-radius: 8px;
   cursor: pointer;
 }
 
-.details-trigger {
-  background: var(--color-bg);
-  color: var(--color-muted);
+.icon-button:hover:not(:disabled),
+.icon-button.active {
+  color: var(--color-text);
+  background: #eef1f5;
 }
 
-.ghost-button:hover,
-.details-trigger:hover {
-  background: #e2e7ee;
+.icon-button.danger:hover:not(:disabled) {
+  color: var(--color-error);
+  background: #fdecea;
+}
+
+.icon-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.icon-button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.tool-divider {
+  width: 1px;
+  height: 1.3rem;
+  margin: 0 0.3rem;
+  background: var(--color-border);
 }
 
 .chevron {
@@ -1254,10 +1275,6 @@ a {
   transform: rotate(90deg);
   margin-left: 0.2rem;
   transition: transform 0.15s;
-}
-
-.chevron.up {
-  transform: rotate(-90deg);
 }
 
 .summary-details {
@@ -1404,6 +1421,7 @@ a {
   padding: 0;
   max-height: 18rem;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .option-text {
@@ -1454,6 +1472,7 @@ a {
     padding: 0.75rem 0.75rem calc(0.75rem + env(safe-area-inset-bottom));
     max-height: 85vh;
     overflow-y: auto;
+    scrollbar-gutter: stable;
   }
 
   .details-list ul {
@@ -1887,6 +1906,7 @@ a {
   max-width: calc(100vw - 16px);
   max-height: min(22rem, 60vh);
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: 0.3rem;
   background: #fff;
   border: 1px solid #e3e7ed;
@@ -2022,9 +2042,15 @@ a {
   top: calc(3.5rem + env(safe-area-inset-top));
   height: calc(100vh - 3.5rem - env(safe-area-inset-top));
   overflow-y: auto;
+  scrollbar-gutter: stable;
   padding: 1rem 0.75rem 1rem 1rem;
   background: var(--color-bg);
   border-right: 1px solid #dde2e9;
+}
+
+/* The scrollbar gutter next to the white note page is white, too. */
+html:has(.notes-layout) {
+  background: #fff;
 }
 
 /* The open note is a plain white page, like a word processor. */
@@ -2158,11 +2184,6 @@ a {
 
 .time-link:hover {
   background: #d5e1ee;
-}
-
-a.ghost-button {
-  text-decoration: none;
-  display: inline-block;
 }
 
 .highlights {

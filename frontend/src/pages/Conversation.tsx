@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, Recording } from '../api/client';
 import { CopyButton } from '../components/CopyButton';
+import { CopyIcon, DownloadIcon, RetranscribeIcon, TrashIcon } from '../components/Icons';
 import { inline, Markdown } from '../components/Markdown';
 import { SummaryDetails } from '../components/SummaryDetails';
 import { useNotes } from '../context/NotesContext';
@@ -196,6 +197,22 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload }: BodyProps) {
     }
   }
 
+  // The toolbar's download and copy act on the shown tab.
+  const download =
+    tab === 'summary' && summary?.markdown
+      ? { href: api.downloadURL(rec.id, 'summary'), label: t('conversation.downloadSummary') }
+      : tab === 'transcript' && rec.transcript?.text
+        ? { href: api.downloadURL(rec.id, 'transcript'), label: t('conversation.downloadTranscript') }
+        : tab === 'source' && rec.audio
+          ? { href: api.audioURL(rec.id, true), label: t('conversation.downloadAudio') }
+          : null;
+  const copy =
+    tab === 'summary' && summary?.markdown
+      ? { text: `# ${autosave.title}\n\n${summary.markdown}`, label: t('conversation.copySummary') }
+      : tab === 'transcript' && rec.transcript?.text
+        ? { text: rec.transcript.text, label: t('conversation.copyTranscript') }
+        : null;
+
   const state = statusLabel(rec, aiReady);
   const d = when(rec);
   const pending = (empty: string) =>
@@ -237,21 +254,33 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload }: BodyProps) {
           </p>
           {editable && <SyncState sync={autosave.sync} error={autosave.error} onRetry={() => void autosave.save()} />}
         </div>
-        <div className="conversation-actions">
+      </div>
+      {error && <p className="error">{error}</p>}
+
+      <div className="note-bar">
+        <div className="segmented" role="tablist" aria-label={t('conversation.viewLabel')}>
+          {TABS.map((id) => (
+            <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}>
+              {t(`conversation.tabs.${id}`)}
+            </button>
+          ))}
+        </div>
+        {/* Actions for the shown tab (details, download, copy), then for the whole note. */}
+        <div className="note-tools">
+          {tab === 'summary' && rec.transcript && <SummaryDetails rec={rec} onRegenerate={(fn) => regenerate(fn)} />}
+          {download && (
+            <a className="icon-button" href={download.href} download title={download.label} aria-label={download.label}>
+              <DownloadIcon />
+            </a>
+          )}
+          {copy && <CopyButton className="icon-button" icon={<CopyIcon />} text={copy.text} label={copy.label} />}
+          <span className="tool-divider" aria-hidden="true" />
           <button
             type="button"
-            className="small-button"
-            disabled={busy || !rec.transcript}
-            title={rec.transcript ? undefined : t('conversation.needsTranscript')}
-            onClick={() => regenerate(() => api.resummarize(rec.id))}
-          >
-            {t('conversation.resummarize')}
-          </button>
-          <button
-            type="button"
-            className="small-button"
+            className="icon-button"
             disabled={busy || !rec.audio}
             title={rec.audio ? t('conversation.retranscribeTitle') : t('conversation.notArchived')}
+            aria-label={t('conversation.retranscribe')}
             onClick={() =>
               act(async () => {
                 autosave.discard();
@@ -259,43 +288,17 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload }: BodyProps) {
               }, t('conversation.retranscribeConfirm'))
             }
           >
-            {t('conversation.retranscribe')}
+            <RetranscribeIcon />
           </button>
-          <button type="button" className="small-button danger" disabled={busy} onClick={handleDelete}>
-            {t('common.delete')}
+          <button type="button" className="icon-button danger" disabled={busy} title={t('common.delete')} aria-label={t('common.delete')} onClick={handleDelete}>
+            <TrashIcon />
           </button>
         </div>
-      </div>
-      {error && <p className="error">{error}</p>}
-
-      <div className="segmented" role="tablist" aria-label={t('conversation.viewLabel')}>
-        {TABS.map((id) => (
-          <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}>
-            {t(`conversation.tabs.${id}`)}
-          </button>
-        ))}
       </div>
 
       <div className="conversation-body" role="tabpanel">
         {/* The summary stays mounted on other tabs so unsaved edits and the undo history survive. */}
         <div hidden={tab !== 'summary'}>
-          <div className="summary-head">
-            <div className="summary-tools">
-              {rec.transcript && <SummaryDetails rec={rec} onRegenerate={(fn) => regenerate(fn)} />}
-              {summary?.markdown && (
-                <a className="ghost-button" href={api.downloadURL(rec.id, 'summary')} download title={t('conversation.downloadSummary')}>
-                  {t('conversation.download')}
-                </a>
-              )}
-              {summary?.markdown && (
-                <CopyButton
-                  className="ghost-button"
-                  text={`# ${autosave.title}\n\n${summary.markdown}`}
-                  label={t('conversation.copySummary')}
-                />
-              )}
-            </div>
-          </div>
           {summary ? (
             <>
               <Suspense
@@ -335,12 +338,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload }: BodyProps) {
               ) : (
                 <p className="muted">{t('conversation.noSpeech')}</p>
               )}
-              <p className="model-note">
-                {t('conversation.transcribedWith', { model: rec.transcript.model })} ·{' '}
-                <a href={api.downloadURL(rec.id, 'transcript')} download title={t('conversation.downloadTranscript')}>
-                  {t('conversation.download')}
-                </a>
-              </p>
+              <p className="model-note">{t('conversation.transcribedWith', { model: rec.transcript.model })}</p>
             </>
           ) : (
             pending(t('conversation.noTranscript'))
@@ -369,10 +367,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload }: BodyProps) {
               <dl className="facts">
                 <dt>{t('conversation.file')}</dt>
                 <dd>
-                  {rec.audio.contentType} · {formatBytes(rec.audio.size)}{' '}
-                  <a className="small-button" href={api.audioURL(rec.id, true)} download>
-                    {t('conversation.download')}
-                  </a>
+                  {rec.audio.contentType} · {formatBytes(rec.audio.size)}
                 </dd>
                 {rec.format && (
                   <>

@@ -201,7 +201,12 @@ Dictation Notes, Key Points and Lecture Notes. Under **Settings → Themes** eac
 
 Customized and own themes are private to the user and deleted with the user.
 
-On a note, **Summary details** (next to the summary heading) sets:
+A note's actions are icons at the right of the Summary / Transcript / Source switcher:
+**Summary details** (sliders; summary tab only), **Download** and **Copy** (for the shown
+tab: the summary as Markdown, the transcript as text, or the audio file), **Re-transcribe**
+and **Delete**.
+
+**Summary details** sets:
 
 - **Language**: auto-detect (the transcript's language; default) or one of 23 languages.
 - **Model**: the default summary model from the admin settings, or any OpenRouter text model.
@@ -234,7 +239,7 @@ changes saved*, *Unsaved changes*, *Saving…*, or *Not saved* / *Offline* with 
 link. Failed saves are retried every 10 seconds and as soon as the browser is online again;
 leaving the note saves what's left, and closing the tab with unsaved changes asks first.
 
-**Regenerating asks first.** Re-summarize, Regenerate summary and Re-transcribe always ask
+**Regenerating asks first.** Regenerate summary and Re-transcribe always ask
 for confirmation (with an explicit warning when the summary was edited or has unsaved
 changes). After confirming, pending changes are dropped rather than saved over the new
 summary.
@@ -262,8 +267,8 @@ there), and passed to the summarizer, which adds a "Highlights" section describi
 said at each moment. Transcripts carry `[m:ss]` time stamps per speaker turn for this; in
 the web app they are clickable and play the audio from that point.
 
-**Downloads.** The web app has **Download** links for the summary (Markdown) and the
-transcript (text). Through the API (session or `ADMIN_TOKEN`):
+**Downloads.** In the web app, the **Download** icon saves the summary (Markdown), the
+transcript (text) or the audio, depending on the shown tab. Through the API (session or `ADMIN_TOKEN`):
 
 ```bash
 curl -H "Authorization: Bearer $ADMIN_TOKEN" -OJ $API/recordings/<id>/summary      # "<title> - summary.md"
@@ -319,7 +324,7 @@ read it; protect database backups accordingly, and remove the key in Settings if
 
 **When a step fails**, it is retried like the other stages and the recording ends in
 `failed` after `WORKER_MAX_ATTEMPTS`, with the reason shown on the note's page. Fix the
-cause (credit, model choice) and use **Re-transcribe** or **Re-summarize** there.
+cause (credit, model choice) and use **Re-transcribe** or **Summary details → Regenerate summary** there.
 
 Log messages: `recording transcribed` (model, length, duration) and `recording summarized`
 (model, title).

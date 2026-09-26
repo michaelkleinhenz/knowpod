@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 // Small inline icons (stroke uses currentColor).
 
 export function DocIcon() {
@@ -36,5 +38,69 @@ export function UploadIcon() {
       <path d="M12 16V4M7 9l5-5 5 5" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" strokeLinecap="round" />
     </svg>
+  );
+}
+
+// Toolbar icons (18px, 24-unit grid, stroke uses currentColor).
+function ToolIcon({ children }: { children: ReactNode }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {children}
+    </svg>
+  );
+}
+
+export function SlidersIcon() {
+  return (
+    <ToolIcon>
+      <path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1" />
+      <circle cx="15" cy="6" r="2" />
+      <circle cx="9" cy="12" r="2" />
+      <circle cx="17" cy="18" r="2" />
+    </ToolIcon>
+  );
+}
+
+export function DownloadIcon() {
+  return (
+    <ToolIcon>
+      <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
+    </ToolIcon>
+  );
+}
+
+export function CopyIcon() {
+  return (
+    <ToolIcon>
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M5 15V6a2 2 0 0 1 2-2h8" />
+    </ToolIcon>
+  );
+}
+
+export function CheckIcon() {
+  return (
+    <ToolIcon>
+      <path d="m5 12.5 4.5 4.5L19 7.5" />
+    </ToolIcon>
+  );
+}
+
+// RetranscribeIcon: a sound wave with a circular arrow.
+export function RetranscribeIcon() {
+  return (
+    <ToolIcon>
+      <path d="M3 10v4M6.5 7v10M10 9.5v5" />
+      <path d="M20.5 12a6.5 6.5 0 0 1-6.5 6.5M14 5.5a6.5 6.5 0 0 1 6 4" />
+      <path d="M20.8 6.5 20 9.5l-3-.8" />
+    </ToolIcon>
+  );
+}
+
+export function TrashIcon() {
+  return (
+    <ToolIcon>
+      <path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 12.5h9l1-12.5M10 11v5M14 11v5" />
+    </ToolIcon>
   );
 }

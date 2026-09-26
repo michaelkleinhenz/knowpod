@@ -49,7 +49,7 @@ AI worker ─────────────▶ transcript (status: transcr
 - The web UI's **Notes** page (a note per recording) lists your recordings by the title of
   their summary; on desktop the list stays in a sidebar next to the open note;
   each note shows its summary, transcript and audio, and can be re-transcribed,
-  re-summarized or deleted. Summaries are always editable in place, like a document
+  re-summarized (via Summary details) or deleted from icon buttons next to the view switcher. Summaries are always editable in place, like a document
   (type **/** for headings, lists and tasks; select text to format it), and save
   automatically (stored as Markdown). Under **Summary details** each summary's language, model and
   **theme** (its structure, e.g. meeting or call notes) can be changed and regenerated.
