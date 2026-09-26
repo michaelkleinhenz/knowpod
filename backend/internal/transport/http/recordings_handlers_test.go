@@ -201,3 +201,60 @@ func TestManualUploadAndIsolation(t *testing.T) {
 		t.Fatalf("delete own: %d", res.StatusCode)
 	}
 }
+
+func TestTextNotes(t *testing.T) {
+	f := newAPIFixture(t)
+	admin := f.signedIn(adminEmail, adminPassword)
+
+	var e errResponse
+	if res := admin.do("POST", "/api/v1/recordings/text", map[string]string{"title": " ", "markdown": "x"}, nil, &e); res.StatusCode != 400 || e.Code != "invalid_input" {
+		t.Fatalf("empty title: %d %+v", res.StatusCode, e)
+	}
+
+	var note recording.Recording
+	if res := admin.do("POST", "/api/v1/recordings/text", map[string]string{"title": " Shopping ", "markdown": "- milk\r\n- eggs"}, nil, &note); res.StatusCode != 201 ||
+		note.Type != recording.TypeText || note.Status != recording.StatusSummarized || note.Summary == nil ||
+		note.Summary.Title != "Shopping" || note.Summary.Markdown != "- milk\n- eggs" {
+		t.Fatalf("create: %d %+v", res.StatusCode, note)
+	}
+	path := "/api/v1/recordings/" + note.ID
+
+	// Listed with its type; nothing for the worker to do.
+	var list []recording.Recording
+	if res := admin.do("GET", "/api/v1/recordings", nil, nil, &list); res.StatusCode != 200 || len(list) != 1 || list[0].Type != recording.TypeText {
+		t.Fatalf("list: %d %+v", res.StatusCode, list)
+	}
+	if n := f.worker.RunOnce(context.Background()); n != 0 {
+		t.Fatalf("worker processed %d text notes", n)
+	}
+
+	// Edited like a summary.
+	var edited recording.Recording
+	if res := admin.do("PUT", path+"/summary", map[string]string{"title": "Groceries", "markdown": "- bread"}, nil, &edited); res.StatusCode != 200 ||
+		edited.Summary.Title != "Groceries" || edited.Summary.EditedAt == nil {
+		t.Fatalf("edit: %d %+v", res.StatusCode, edited)
+	}
+	res := admin.do("GET", path+"/summary", nil, nil, nil)
+	if res.StatusCode != 200 || !strings.Contains(res.Header.Get("Content-Disposition"), "Groceries - note.md") {
+		t.Fatalf("download: %d %s", res.StatusCode, res.Header.Get("Content-Disposition"))
+	}
+
+	// Audio actions don't apply.
+	for _, p := range []string{"/retranscribe", "/resummarize"} {
+		if res := admin.do("POST", path+p, nil, nil, nil); res.StatusCode != 409 {
+			t.Errorf("%s: %d", p, res.StatusCode)
+		}
+	}
+	for _, p := range []string{"/audio", "/transcript"} {
+		if res := admin.do("GET", path+p, nil, nil, nil); res.StatusCode != 409 {
+			t.Errorf("%s: %d", p, res.StatusCode)
+		}
+	}
+
+	if res := admin.do("DELETE", path, nil, nil, nil); res.StatusCode != 204 {
+		t.Fatalf("delete: %d", res.StatusCode)
+	}
+	if res := admin.do("GET", path, nil, nil, nil); res.StatusCode != 404 {
+		t.Fatalf("get after delete: %d", res.StatusCode)
+	}
+}

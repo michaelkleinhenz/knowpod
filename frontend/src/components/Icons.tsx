@@ -1,15 +1,46 @@
 import type { ReactNode } from 'react';
+import type { NoteType } from '../api/client';
 
 // Small inline icons (stroke uses currentColor).
 
-export function DocIcon() {
+// NoteIcon shows a note as a page; its content says the note's type: a sound wave for audio
+// recordings, lines of text with a heading for text notes.
+export function NoteIcon({ type, label }: { type: NoteType; label?: string }) {
   return (
-    <svg className="doc-icon" width="30" height="38" viewBox="0 0 30 38" aria-hidden="true">
+    <svg
+      className={`doc-icon doc-icon-${type}`}
+      width="30"
+      height="38"
+      viewBox="0 0 30 38"
+      role={label ? 'img' : undefined}
+      aria-label={label}
+      aria-hidden={label ? undefined : true}
+    >
+      {label && <title>{label}</title>}
       <rect x="0.5" y="0.5" width="29" height="37" rx="4" fill="var(--color-surface)" stroke="var(--color-border)" />
-      <rect x="7" y="8" width="8" height="2.2" rx="1.1" fill="var(--color-muted)" opacity="0.55" />
-      <rect x="7" y="15" width="16" height="2.2" rx="1.1" fill="var(--color-muted)" opacity="0.35" />
-      <rect x="7" y="21" width="16" height="2.2" rx="1.1" fill="var(--color-muted)" opacity="0.35" />
-      <rect x="7" y="27" width="16" height="2.2" rx="1.1" fill="var(--color-muted)" opacity="0.35" />
+      {type === 'text' ? (
+        <>
+          <rect x="7" y="8" width="12" height="2.6" rx="1.3" fill="var(--color-primary)" opacity="0.8" />
+          <rect x="7" y="15" width="16" height="2.2" rx="1.1" fill="var(--color-muted)" opacity="0.4" />
+          <rect x="7" y="20.5" width="16" height="2.2" rx="1.1" fill="var(--color-muted)" opacity="0.4" />
+          <rect x="7" y="26" width="10" height="2.2" rx="1.1" fill="var(--color-muted)" opacity="0.4" />
+        </>
+      ) : (
+        <>
+          <rect x="7" y="8" width="8" height="2.2" rx="1.1" fill="var(--color-muted)" opacity="0.55" />
+          <g stroke="var(--color-primary)" strokeWidth="2" strokeLinecap="round" opacity="0.8">
+            <path d="M8 21v2M11.5 18v8M15 16v12M18.5 19v6M22 20.5v3" />
+          </g>
+        </>
+      )}
+    </svg>
+  );
+}
+
+export function NewNoteIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="M12 5v14M5 12h14" strokeLinecap="round" />
     </svg>
   );
 }

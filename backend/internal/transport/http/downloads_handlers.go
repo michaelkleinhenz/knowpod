@@ -46,7 +46,11 @@ func (s *Server) handleDownloadSummary(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, rec.Summary)
 		return
 	}
-	sendFile(w, "text/markdown; charset=utf-8", fileName(rec, "summary", "md"), "# "+rec.Summary.Title+"\n\n"+rec.Summary.Markdown+"\n")
+	kind := "summary"
+	if rec.IsText() {
+		kind = "note"
+	}
+	sendFile(w, "text/markdown; charset=utf-8", fileName(rec, kind, "md"), "# "+rec.Summary.Title+"\n\n"+rec.Summary.Markdown+"\n")
 }
 
 func sendFile(w http.ResponseWriter, contentType, name, body string) {

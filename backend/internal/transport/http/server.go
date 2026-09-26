@@ -138,6 +138,7 @@ func (s *Server) Router() http.Handler {
 
 			u.Get("/recordings", s.handleListRecordings)
 			u.Post("/recordings", s.handleUploadRecording)
+			u.Post("/recordings/text", s.handleCreateTextNote)
 			u.Get("/recordings/{id}", s.handleGetRecording)
 			u.Delete("/recordings/{id}", s.handleDeleteRecording)
 			u.Get("/recordings/{id}/audio", s.handleRecordingAudio)

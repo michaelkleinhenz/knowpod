@@ -1,6 +1,6 @@
 import { lazy, ReactNode, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api, Recording } from '../api/client';
 import { CopyButton } from '../components/CopyButton';
 import { CopyIcon, DownloadIcon, RetranscribeIcon, TrashIcon } from '../components/Icons';
@@ -10,7 +10,7 @@ import { useNotes } from '../context/NotesContext';
 import { Sync, useAutosave } from '../hooks/useAutosave';
 import { locale } from '../i18n';
 import { errorText } from '../lib/errors';
-import { formatBytes, formatClock, formatDate, formatDuration, processing, statusLabel, title as titleOf, when } from '../lib/recordings';
+import { formatBytes, formatClock, formatDate, formatDuration, noteType, processing, statusLabel, title as titleOf, when } from '../lib/recordings';
 
 // The rich text editor is downloaded on first use; the summary is shown read-only meanwhile.
 const SummaryEditor = lazy(() => import('../components/SummaryEditor'));
@@ -128,11 +128,14 @@ interface BodyProps {
   setTab: (t: Tab) => void;
   setRec: (r: Recording) => void;
   reload: () => Promise<void>;
+  // created is set for a note that was just made; its title is selected for typing.
+  created: boolean;
 }
 
 // NoteBody is a note's page below the back link. It is re-created when a new summary
 // arrives (see the key in Conversation), so the editor always starts from the stored text.
-function NoteBody({ rec, aiReady, tab, setTab, setRec, reload }: BodyProps) {
+// Text notes show only their text (kept as the summary): no transcript, source or AI actions.
+function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const notes = useNotes();
@@ -144,6 +147,11 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload }: BodyProps) {
   const [seek, setSeek] = useState<number | null>(null);
   const [durationMs, setDurationMs] = useState(rec.format?.durationMs ?? 0);
   const highlights = rec.highlights ?? [];
+  const isText = noteType(rec) === 'text';
+  const titleInput = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (created) titleInput.current?.select();
+  }, [created]);
 
   // Play from a moment: switch to the audio and start there once it is on the page.
   const seekTo = (ms: number) => {
@@ -184,7 +192,8 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload }: BodyProps) {
   };
 
   async function handleDelete() {
-    if (!window.confirm(t('conversation.deleteConfirm', { title: autosave.title || titleOf(rec) }))) return;
+    const confirmKey = isText ? 'conversation.deleteTextConfirm' : 'conversation.deleteConfirm';
+    if (!window.confirm(t(confirmKey, { title: autosave.title || titleOf(rec) }))) return;
     setBusy(true);
     try {
       autosave.discard();
@@ -200,7 +209,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload }: BodyProps) {
   // The toolbar's download and copy act on the shown tab.
   const download =
     tab === 'summary' && summary?.markdown
-      ? { href: api.downloadURL(rec.id, 'summary'), label: t('conversation.downloadSummary') }
+      ? { href: api.downloadURL(rec.id, 'summary'), label: t(isText ? 'conversation.downloadText' : 'conversation.downloadSummary') }
       : tab === 'transcript' && rec.transcript?.text
         ? { href: api.downloadURL(rec.id, 'transcript'), label: t('conversation.downloadTranscript') }
         : tab === 'source' && rec.audio
@@ -208,7 +217,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload }: BodyProps) {
           : null;
   const copy =
     tab === 'summary' && summary?.markdown
-      ? { text: `# ${autosave.title}\n\n${summary.markdown}`, label: t('conversation.copySummary') }
+      ? { text: `# ${autosave.title}\n\n${summary.markdown}`, label: t(isText ? 'conversation.copyText' : 'conversation.copySummary') }
       : tab === 'transcript' && rec.transcript?.text
         ? { text: rec.transcript.text, label: t('conversation.copyTranscript') }
         : null;
@@ -225,7 +234,13 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload }: BodyProps) {
     ) : (
       <p className="muted">{state ?? empty}</p>
     );
-  const sourceBadge = rec.source === 'pocket' ? t('conversation.sourcePocket') : rec.source === 'upload' ? t('conversation.sourceUpload') : '';
+  const sourceBadge = isText
+    ? t('conversations.types.text')
+    : rec.source === 'pocket'
+      ? t('conversation.sourcePocket')
+      : rec.source === 'upload'
+        ? t('conversation.sourceUpload')
+        : '';
 
   return (
     <>
@@ -233,6 +248,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload }: BodyProps) {
         <div className="title-block">
           {editable ? (
             <input
+              ref={titleInput}
               className="title-input"
               aria-label={t('editor.title')}
               maxLength={200}
@@ -258,13 +274,15 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload }: BodyProps) {
       {error && <p className="error">{error}</p>}
 
       <div className="note-bar">
-        <div className="segmented" role="tablist" aria-label={t('conversation.viewLabel')}>
-          {TABS.map((id) => (
-            <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}>
-              {t(`conversation.tabs.${id}`)}
-            </button>
-          ))}
-        </div>
+        {!isText && (
+          <div className="segmented" role="tablist" aria-label={t('conversation.viewLabel')}>
+            {TABS.map((id) => (
+              <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}>
+                {t(`conversation.tabs.${id}`)}
+              </button>
+            ))}
+          </div>
+        )}
         {/* Actions for the shown tab (details, download, copy), then for the whole note. */}
         <div className="note-tools">
           {tab === 'summary' && rec.transcript && <SummaryDetails rec={rec} onRegenerate={(fn) => regenerate(fn)} />}
@@ -275,28 +293,30 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload }: BodyProps) {
           )}
           {copy && <CopyButton className="icon-button" icon={<CopyIcon />} text={copy.text} label={copy.label} />}
           <span className="tool-divider" aria-hidden="true" />
-          <button
-            type="button"
-            className="icon-button"
-            disabled={busy || !rec.audio}
-            title={rec.audio ? t('conversation.retranscribeTitle') : t('conversation.notArchived')}
-            aria-label={t('conversation.retranscribe')}
-            onClick={() =>
-              act(async () => {
-                autosave.discard();
-                await api.retranscribe(rec.id);
-              }, t('conversation.retranscribeConfirm'))
-            }
-          >
-            <RetranscribeIcon />
-          </button>
+          {!isText && (
+            <button
+              type="button"
+              className="icon-button"
+              disabled={busy || !rec.audio}
+              title={rec.audio ? t('conversation.retranscribeTitle') : t('conversation.notArchived')}
+              aria-label={t('conversation.retranscribe')}
+              onClick={() =>
+                act(async () => {
+                  autosave.discard();
+                  await api.retranscribe(rec.id);
+                }, t('conversation.retranscribeConfirm'))
+              }
+            >
+              <RetranscribeIcon />
+            </button>
+          )}
           <button type="button" className="icon-button danger" disabled={busy} title={t('common.delete')} aria-label={t('common.delete')} onClick={handleDelete}>
             <TrashIcon />
           </button>
         </div>
       </div>
 
-      <div className="conversation-body" role="tabpanel">
+      <div className="conversation-body" role={isText ? undefined : 'tabpanel'}>
         {/* The summary stays mounted on other tabs so unsaved edits and the undo history survive. */}
         <div hidden={tab !== 'summary'}>
           {summary ? (
@@ -414,6 +434,7 @@ export function Conversation() {
   const [aiReady, setAIReady] = useState(true);
   const [tab, setTab] = useState<Tab>('summary');
   const [error, setError] = useState<string | null>(null);
+  const created = !!(useLocation().state as { created?: boolean } | null)?.created;
 
   // The note that is open now; answers for a note opened earlier are ignored.
   const openId = useRef(id);
@@ -462,6 +483,7 @@ export function Conversation() {
           setTab={setTab}
           setRec={setRec}
           reload={load}
+          created={created}
         />
       ) : error ? (
         <p className="error">{error}</p>

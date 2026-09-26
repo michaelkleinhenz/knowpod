@@ -1,5 +1,6 @@
-// Package recording models an audio recording pushed by a device, from the first uploaded
-// byte to the archived FLAC file in object storage.
+// Package recording models the user's notes. Most notes are audio recordings pushed by a
+// device (from the first uploaded byte to the archived FLAC file in object storage); text
+// notes are written in the web UI and hold only a title and Markdown text.
 package recording
 
 import "time"
@@ -23,6 +24,18 @@ const (
 	StatusSummarized Status = "summarized"
 	// StatusFailed: the recording was rejected or processing gave up after retries.
 	StatusFailed Status = "failed"
+)
+
+// Type is the kind of note.
+type Type string
+
+const (
+	// TypeAudio: an audio recording that is archived, transcribed and summarized (the
+	// default; stored as empty).
+	TypeAudio Type = ""
+	// TypeText: a Markdown note written by the user. It has no audio, transcript or source;
+	// its title and text are kept in Summary, so it is edited like a summary.
+	TypeText Type = "text"
 )
 
 // Source says where a recording came from.
@@ -64,6 +77,7 @@ type Recording struct {
 	// OwnerID is the user the recording belongs to.
 	OwnerID  string `bson:"ownerId" json:"ownerId"`
 	DeviceID string `bson:"deviceId" json:"deviceId"`
+	Type     Type   `bson:"type,omitempty" json:"type,omitempty"`
 	Source   Source `bson:"source,omitempty" json:"source,omitempty"`
 	Title    string `bson:"title,omitempty" json:"title,omitempty"`
 	// ClientID is the recording ID assigned by the device. It is unique per device and makes
@@ -97,6 +111,12 @@ type Recording struct {
 	ReceivedAt *time.Time `bson:"receivedAt,omitempty" json:"receivedAt,omitempty"`
 	StoredAt   *time.Time `bson:"storedAt,omitempty" json:"storedAt,omitempty"`
 }
+
+// IsText reports whether the note is a text note.
+func (r *Recording) IsText() bool { return r.Type == TypeText }
+
+// TextDeviceID returns the DeviceID of a user's text notes. Their ClientID is the note ID.
+func TextDeviceID(userID string) string { return "text:" + userID }
 
 // Highlight is a moment the user marked while recording (e.g. with a button on the device).
 type Highlight struct {

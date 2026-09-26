@@ -22,6 +22,9 @@ info:
     whose audio is then downloaded with the user's Pocket API key and archived like device
     uploads. WAV and MP3 files can also be uploaded from the browser (`POST /recordings`).
 
+    **Text notes** — besides audio recordings, notes can be plain Markdown text written in the
+    web UI (`POST /recordings/text`, `type: text`). They skip transcription and summaries.
+
     **AI processing** — every archived recording is transcribed and then summarized through
     OpenRouter, with the API key and models set by an administrator
     (`PUT /admin/settings/openrouter`). Recordings wait in `stored` until that is configured.
@@ -619,6 +622,32 @@ paths:
           description: A WAV file that isn't integer PCM
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
+  /recordings/text:
+    post:
+      tags: ["Recordings"]
+      summary: Create a text note
+      description: |
+        Creates a note of type `text`: a title and Markdown text written by you, without audio,
+        transcript or processing. The text is kept in `summary`, so the note is read, edited
+        (`PUT /recordings/{recordingId}/summary`), downloaded and deleted like a recording's summary.
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, markdown]
+              properties:
+                title: { type: string, maxLength: 200 }
+                markdown: { type: string, maxLength: 100000 }
+      responses:
+        "201":
+          description: Created
+          content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+
   /recordings/{recordingId}:
     delete:
       tags: ["Recordings"]
@@ -684,7 +713,7 @@ paths:
           content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
         "404": { $ref: "#/components/responses/Error" }
         "409":
-          description: The audio has not been archived yet
+          description: The audio has not been archived yet, or the note is a text note
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
   /recordings/{recordingId}/resummarize:
@@ -706,7 +735,7 @@ paths:
           content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
         "404": { $ref: "#/components/responses/Error" }
         "409":
-          description: The recording has no transcript yet
+          description: The recording has no transcript yet, or the note is a text note
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
   /recordings/{recordingId}/transcript:
@@ -1005,7 +1034,8 @@ components:
       properties:
         id: { type: string }
         ownerId: { type: string, description: The user the recording belongs to }
-        deviceId: { type: string, description: '"pocket:<userId>" for Pocket, "upload:<userId>" for browser uploads' }
+        deviceId: { type: string, description: '"pocket:<userId>" for Pocket, "upload:<userId>" for browser uploads, "text:<userId>" for text notes' }
+        type: { type: string, enum: [text], description: 'The kind of note: absent for audio recordings, "text" for Markdown notes (title and text in `summary`)' }
         source: { type: string, enum: [pocket, upload], description: Absent for device uploads }
         title: { type: string, description: Title from the source (Pocket) }
         recordingId: { type: string, description: Device-assigned ID, or the Pocket recording ID }

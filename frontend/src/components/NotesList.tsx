@@ -1,12 +1,12 @@
 import { ChangeEvent, DragEvent, useMemo, useRef, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api, Recording } from '../api/client';
 import { useNotes } from '../context/NotesContext';
 import { useAuth } from '../auth';
-import { DocIcon, RefreshIcon, SearchIcon, UploadIcon } from './Icons';
+import { NewNoteIcon, NoteIcon, RefreshIcon, SearchIcon, UploadIcon } from './Icons';
 import { errorText } from '../lib/errors';
-import { dayKey, dayLabel, formatTime, statusLabel, title, when } from '../lib/recordings';
+import { dayKey, dayLabel, formatTime, noteType, statusLabel, title, when } from '../lib/recordings';
 
 const ACCEPT = '.wav,.mp3,audio/wav,audio/x-wav,audio/wave,audio/mpeg';
 
@@ -18,13 +18,16 @@ interface UploadState {
   done?: boolean;
 }
 
-// NotesList lists the user's notes, newest first, grouped by day, and accepts WAV/MP3
-// uploads (button or drag and drop). On desktop it is the sidebar next to the open note;
+// NotesList lists the user's notes, newest first, grouped by day, with an icon for each
+// note's type. It creates text notes and accepts WAV/MP3 uploads (button or drag and drop). On desktop it is the sidebar next to the open note;
 // on phones it is the start page.
 export function NotesList({ activeId }: { activeId?: string }) {
   const { t } = useTranslation();
   const { account } = useAuth();
-  const { recordings, aiReady, error, refreshing, reload: load } = useNotes();
+  const navigate = useNavigate();
+  const { recordings, aiReady, error, refreshing, reload: load, upsert } = useNotes();
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [uploads, setUploads] = useState<UploadState[]>([]);
   const [dragging, setDragging] = useState(false);
@@ -43,6 +46,21 @@ export function NotesList({ activeId }: { activeId?: string }) {
       } catch (err) {
         update({ error: errorText(err, t) });
       }
+    }
+  }
+
+  // createText makes an empty text note and opens it, ready to type its title.
+  async function createText() {
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const rec = await api.createTextNote(t('conversations.untitled'), '');
+      upsert(rec);
+      navigate(`/conversations/${rec.id}`, { state: { created: true } });
+    } catch (err) {
+      setCreateError(errorText(err, t));
+    } finally {
+      setCreating(false);
     }
   }
 
@@ -88,6 +106,9 @@ export function NotesList({ activeId }: { activeId?: string }) {
       <div className="conversations-head">
         <h1>{t('conversations.title')}</h1>
         <div className="head-actions">
+          <button type="button" className="pill-button icon-only-mobile" onClick={createText} disabled={creating} aria-label={t('conversations.newNote')}>
+            <NewNoteIcon /> <span>{t('conversations.newNote')}</span>
+          </button>
           <button type="button" className="pill-button icon-only-mobile" onClick={() => fileInput.current?.click()} aria-label={t('conversations.uploadAudio')}>
             <UploadIcon /> <span>{t('conversations.upload')}</span>
           </button>
@@ -142,6 +163,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
         </p>
       )}
       {error && <p className="error">{error}</p>}
+      {createError && <p className="error">{createError}</p>}
       {!recordings && !error && <p className="muted">{t('common.loading')}</p>}
       {recordings && recordings.length === 0 && (
         <div className="empty">
@@ -149,9 +171,14 @@ export function NotesList({ activeId }: { activeId?: string }) {
           <p className="muted">
             <Trans i18nKey="conversations.emptyHint" components={{ 1: <Link to="/devices" />, 3: <Link to="/account" /> }} />
           </p>
-          <button type="button" onClick={() => fileInput.current?.click()}>
-            {t('conversations.uploadAudio')}
-          </button>
+          <div className="empty-actions">
+            <button type="button" onClick={createText} disabled={creating}>
+              {t('conversations.newNote')}
+            </button>
+            <button type="button" className="secondary-button" onClick={() => fileInput.current?.click()}>
+              {t('conversations.uploadAudio')}
+            </button>
+          </div>
         </div>
       )}
       {recordings && recordings.length > 0 && groups.length === 0 && (
@@ -175,7 +202,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
                       className={`conversation-item${r.id === activeId ? ' active' : ''}`}
                       aria-current={r.id === activeId ? 'page' : undefined}
                     >
-                      <DocIcon />
+                      <NoteIcon type={noteType(r)} label={t(`conversations.types.${noteType(r)}`)} />
                       <span className="conversation-title">
                         {title(r)}
                         {state && <span className={`state-pill${r.status === 'failed' ? ' bad' : ''}`}>{state}</span>}

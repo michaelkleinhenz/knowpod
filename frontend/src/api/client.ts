@@ -112,9 +112,15 @@ export type RecordingStatus =
   | 'summarized'
   | 'failed';
 
+// NoteType is the kind of note: an audio recording (transcribed and summarized) or a text
+// note written in the editor, whose title and text live in summary.
+export type NoteType = 'audio' | 'text';
+
 export interface Recording {
   id: string;
   deviceId: string;
+  // Absent for audio recordings.
+  type?: 'text';
   source?: 'pocket' | 'upload';
   title?: string;
   recordingId: string;
@@ -227,6 +233,7 @@ export const api = {
   retranscribe: (id: string) => request<Recording>('POST', `/recordings/${encodeURIComponent(id)}/retranscribe`),
   resummarize: (id: string, opts?: SummaryOptions) =>
     request<Recording>('POST', `/recordings/${encodeURIComponent(id)}/resummarize`, opts),
+  createTextNote: (title: string, markdown: string) => request<Recording>('POST', '/recordings/text', { title, markdown }),
   editSummary: (id: string, title: string, markdown: string) =>
     request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/summary`, { title, markdown }),
   downloadURL: (id: string, kind: 'summary' | 'transcript') => `/api/v1/recordings/${encodeURIComponent(id)}/${kind}`,

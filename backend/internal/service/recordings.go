@@ -14,8 +14,8 @@ import (
 // ErrNotReady is returned for actions that need a processing step that hasn't happened.
 var ErrNotReady = errors.New("recording is not ready for this")
 
-// RecordingService implements the user actions on recordings: delete, re-transcribe and
-// re-summarize.
+// RecordingService implements the user actions on notes: create text notes, edit, delete,
+// re-transcribe and re-summarize.
 type RecordingService struct {
 	themes  *ThemeService
 	recs    ports.RecordingRepository
@@ -79,6 +79,9 @@ func (s *RecordingService) Retranscribe(ctx context.Context, acc *Account, id st
 	if err != nil {
 		return nil, err
 	}
+	if rec.IsText() {
+		return nil, errors.Join(ErrNotReady, errors.New("text notes have no audio"))
+	}
 	if rec.Audio == nil {
 		return nil, errors.Join(ErrNotReady, errors.New("the audio has not been archived yet"))
 	}
@@ -92,6 +95,9 @@ func (s *RecordingService) Resummarize(ctx context.Context, acc *Account, id str
 	rec, err := s.Get(ctx, acc, id)
 	if err != nil {
 		return nil, err
+	}
+	if rec.IsText() {
+		return nil, errors.Join(ErrNotReady, errors.New("text notes have no transcript to summarize"))
 	}
 	if rec.Transcript == nil {
 		return nil, errors.Join(ErrNotReady, errors.New("the recording has no transcript yet"))
@@ -115,6 +121,44 @@ type SummaryEdit struct {
 // maxSummaryMarkdown bounds an edited summary (a long summary is a few thousand characters).
 const maxSummaryMarkdown = 100_000
 
+// clean normalizes the edit and checks its limits.
+func (in SummaryEdit) clean() (title, markdown string, err error) {
+	title = strings.TrimSpace(in.Title)
+	markdown = strings.TrimSpace(strings.ReplaceAll(in.Markdown, "\r\n", "\n"))
+	switch {
+	case title == "" || utf8.RuneCountInString(title) > 200:
+		return "", "", invalid("title must be 1-200 characters")
+	case len(markdown) > maxSummaryMarkdown:
+		return "", "", invalid("text must be at most %d characters", maxSummaryMarkdown)
+	}
+	return title, markdown, nil
+}
+
+// CreateText creates a text note for the account's user. The title and Markdown text are
+// kept as the note's summary, so the note is shown, edited, copied and downloaded like the
+// summary of a recording. It needs no processing and is stored as summarized.
+func (s *RecordingService) CreateText(ctx context.Context, acc *Account, in SummaryEdit) (*recording.Recording, error) {
+	if acc.ID == "" {
+		return nil, errors.Join(ErrForbidden, errors.New("notes belong to a user; sign in"))
+	}
+	title, markdown, err := in.clean()
+	if err != nil {
+		return nil, err
+	}
+	id := newID()
+	now := s.clock().UTC()
+	rec := &recording.Recording{
+		ID: id, OwnerID: acc.ID, DeviceID: recording.TextDeviceID(acc.ID), ClientID: id,
+		Type: recording.TypeText, Status: recording.StatusSummarized,
+		Summary:   &recording.Summary{Title: title, Markdown: markdown, CreatedAt: now},
+		NotBefore: now, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := s.recs.Create(ctx, rec); err != nil {
+		return nil, err
+	}
+	return rec, nil
+}
+
 // EditSummary replaces the summary's title and Markdown text with the user's version. The
 // model, theme and language it was made with are kept for reference.
 func (s *RecordingService) EditSummary(ctx context.Context, acc *Account, id string, in SummaryEdit) (*recording.Recording, error) {
@@ -125,13 +169,9 @@ func (s *RecordingService) EditSummary(ctx context.Context, acc *Account, id str
 	if rec.Summary == nil {
 		return nil, errors.Join(ErrNotReady, errors.New("the recording has no summary yet"))
 	}
-	title := strings.TrimSpace(in.Title)
-	markdown := strings.TrimSpace(strings.ReplaceAll(in.Markdown, "\r\n", "\n"))
-	switch {
-	case title == "" || utf8.RuneCountInString(title) > 200:
-		return nil, invalid("title must be 1-200 characters")
-	case len(markdown) > maxSummaryMarkdown:
-		return nil, invalid("summary must be at most %d characters", maxSummaryMarkdown)
+	title, markdown, err := in.clean()
+	if err != nil {
+		return nil, err
 	}
 	now := s.clock().UTC()
 	rec.Summary.Title, rec.Summary.Markdown, rec.Summary.EditedAt = title, markdown, &now
