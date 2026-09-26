@@ -6,7 +6,8 @@ A Go backend with an embedded React web UI, built and shipped as a single binary
 
 | Layer | Technology |
 |---|---|
-| Backend | Go 1.24, chi router |
+| Backend | Go 1.24, chi router, official MongoDB driver |
+| Database | MongoDB 7 as a single-node replica set (for multi-document transactions) |
 | Frontend | React 18 + TypeScript, Vite, react-router |
 | Deploy | One binary (frontend embedded in the backend), Docker / docker-compose |
 
@@ -24,20 +25,23 @@ docker compose up --build
 ```
 
 - App (UI + API): <http://localhost:8080> — API under `/api/v1`, health check at `/healthz`
+  (also checks database connectivity)
+- MongoDB: `localhost:27017`
 
 ## Build the binary without Docker
 
 ```bash
 make build
-./backend/bin/server
+./backend/bin/server      # requires a running MongoDB
 ```
 
 ## Local development
 
 The Vite dev server gives hot reload and proxies `/api` to the backend, so no re-embedding
-is needed.
+is needed. Start only the database from compose:
 
 ```bash
+docker compose up -d mongo
 cd backend && go run ./cmd/server     # :8080, serves the placeholder UI
 cd frontend && npm install && npm run dev   # http://localhost:5173, proxies /api to :8080
 ```
@@ -49,6 +53,8 @@ Environment variables only:
 | Variable | Default | Purpose |
 |---|---|---|
 | `PORT` | `8080` | HTTP listen port |
+| `MONGO_URI` | `mongodb://localhost:27017/?replicaSet=rs0` | MongoDB connection string |
+| `MONGO_DB` | `knowpod` | Database name |
 | `FRONTEND_URL` | `http://localhost:5173` | Allowed CORS origin |
 
 ## Layout
@@ -59,6 +65,7 @@ backend/
   cmd/server/          entrypoint
   internal/
     config/            environment-based configuration
+    repository/mongo/  MongoDB connection, transactions, collection/index setup
     transport/http/    router, middleware, handlers
     web/               embedded frontend (dist/) + SPA handler
 frontend/src/
