@@ -201,3 +201,123 @@ func TestManualUploadAndIsolation(t *testing.T) {
 		t.Fatalf("delete own: %d", res.StatusCode)
 	}
 }
+
+func TestTextNotes(t *testing.T) {
+	f := newAPIFixture(t)
+	admin := f.signedIn(adminEmail, adminPassword)
+
+	var e errResponse
+	if res := admin.do("POST", "/api/v1/recordings/text", map[string]string{"title": " ", "markdown": "x"}, nil, &e); res.StatusCode != 400 || e.Code != "invalid_input" {
+		t.Fatalf("empty title: %d %+v", res.StatusCode, e)
+	}
+
+	var note recording.Recording
+	if res := admin.do("POST", "/api/v1/recordings/text", map[string]string{"title": " Shopping ", "markdown": "- milk\r\n- eggs"}, nil, &note); res.StatusCode != 201 ||
+		note.Type != recording.TypeText || note.Status != recording.StatusSummarized || note.Summary == nil ||
+		note.Summary.Title != "Shopping" || note.Summary.Markdown != "- milk\n- eggs" {
+		t.Fatalf("create: %d %+v", res.StatusCode, note)
+	}
+	path := "/api/v1/recordings/" + note.ID
+
+	// Listed with its type; nothing for the worker to do.
+	var list []recording.Recording
+	if res := admin.do("GET", "/api/v1/recordings", nil, nil, &list); res.StatusCode != 200 || len(list) != 1 || list[0].Type != recording.TypeText {
+		t.Fatalf("list: %d %+v", res.StatusCode, list)
+	}
+	if n := f.worker.RunOnce(context.Background()); n != 0 {
+		t.Fatalf("worker processed %d text notes", n)
+	}
+
+	// Edited like a summary.
+	var edited recording.Recording
+	if res := admin.do("PUT", path+"/summary", map[string]string{"title": "Groceries", "markdown": "- bread"}, nil, &edited); res.StatusCode != 200 ||
+		edited.Summary.Title != "Groceries" || edited.Summary.EditedAt == nil {
+		t.Fatalf("edit: %d %+v", res.StatusCode, edited)
+	}
+	res := admin.do("GET", path+"/summary", nil, nil, nil)
+	if res.StatusCode != 200 || !strings.Contains(res.Header.Get("Content-Disposition"), "Groceries - note.md") {
+		t.Fatalf("download: %d %s", res.StatusCode, res.Header.Get("Content-Disposition"))
+	}
+
+	// Audio actions don't apply.
+	for _, p := range []string{"/retranscribe", "/resummarize"} {
+		if res := admin.do("POST", path+p, nil, nil, nil); res.StatusCode != 409 {
+			t.Errorf("%s: %d", p, res.StatusCode)
+		}
+	}
+	for _, p := range []string{"/audio", "/transcript"} {
+		if res := admin.do("GET", path+p, nil, nil, nil); res.StatusCode != 409 {
+			t.Errorf("%s: %d", p, res.StatusCode)
+		}
+	}
+
+	if res := admin.do("DELETE", path, nil, nil, nil); res.StatusCode != 204 {
+		t.Fatalf("delete: %d", res.StatusCode)
+	}
+	if res := admin.do("GET", path, nil, nil, nil); res.StatusCode != 404 {
+		t.Fatalf("get after delete: %d", res.StatusCode)
+	}
+}
+
+func TestLabels(t *testing.T) {
+	f := newAPIFixture(t)
+	admin := f.signedIn(adminEmail, adminPassword)
+
+	var list []service.LabelView
+	if res := admin.do("GET", "/api/v1/labels", nil, nil, &list); res.StatusCode != 200 || len(list) != 1 || list[0].ID != "task" || !list[0].BuiltIn {
+		t.Fatalf("list: %d %+v", res.StatusCode, list)
+	}
+	var e errResponse
+	for _, in := range []service.LabelInput{{Name: "work", Color: "red"}, {Name: "TASK", Color: "#aabbcc"}, {Name: "", Color: "#aabbcc"}} {
+		if res := admin.do("POST", "/api/v1/labels", in, nil, &e); res.StatusCode != 400 {
+			t.Errorf("create %+v: %d", in, res.StatusCode)
+		}
+	}
+	var work service.LabelView
+	if res := admin.do("POST", "/api/v1/labels", service.LabelInput{Name: " Work ", Color: "#AA0000"}, nil, &work); res.StatusCode != 201 || work.Name != "Work" || work.Color != "#aa0000" {
+		t.Fatalf("create: %d %+v", res.StatusCode, work)
+	}
+	if res := admin.do("POST", "/api/v1/labels", service.LabelInput{Name: "work", Color: "#aa0000"}, nil, nil); res.StatusCode != 400 {
+		t.Fatalf("duplicate name: %d", res.StatusCode)
+	}
+	if res := admin.do("PUT", "/api/v1/labels/task", service.LabelInput{Name: "Todo", Color: "#aa0000"}, nil, nil); res.StatusCode != 403 {
+		t.Fatalf("change built-in: %d", res.StatusCode)
+	}
+	if res := admin.do("PUT", "/api/v1/labels/"+work.ID, service.LabelInput{Name: "Job", Color: "#00aa00"}, nil, &work); res.StatusCode != 200 || work.Name != "Job" {
+		t.Fatalf("update: %d %+v", res.StatusCode, work)
+	}
+
+	var note recording.Recording
+	admin.do("POST", "/api/v1/recordings/text", map[string]string{"title": "Call Bob", "markdown": ""}, nil, &note)
+	path := "/api/v1/recordings/" + note.ID
+	if res := admin.do("PUT", path+"/done", map[string]bool{"done": true}, nil, nil); res.StatusCode != 400 {
+		t.Fatalf("done without task label: %d", res.StatusCode)
+	}
+	for _, bad := range [][]string{{"nope"}, {"task", "task"}} {
+		if res := admin.do("PUT", path+"/labels", map[string][]string{"labels": bad}, nil, nil); res.StatusCode != 400 {
+			t.Errorf("labels %v: %d", bad, res.StatusCode)
+		}
+	}
+	if res := admin.do("PUT", path+"/labels", map[string][]string{"labels": {"task", work.ID}}, nil, &note); res.StatusCode != 200 || len(note.Labels) != 2 {
+		t.Fatalf("set labels: %d %+v", res.StatusCode, note.Labels)
+	}
+	if res := admin.do("PUT", path+"/done", map[string]bool{"done": true}, nil, &note); res.StatusCode != 200 || !note.Done {
+		t.Fatalf("done: %d %+v", res.StatusCode, note)
+	}
+	var got recording.Recording
+	if admin.do("GET", path, nil, nil, &got); !got.Done {
+		t.Fatal("check mark not stored")
+	}
+
+	// Deleting a label takes it off the note; removing the task label clears the check mark.
+	if res := admin.do("DELETE", "/api/v1/labels/"+work.ID, nil, nil, nil); res.StatusCode != 204 {
+		t.Fatalf("delete label: %d", res.StatusCode)
+	}
+	if admin.do("GET", path, nil, nil, &got); len(got.Labels) != 1 || got.Labels[0] != "task" {
+		t.Fatalf("labels after delete: %v", got.Labels)
+	}
+	var cleared recording.Recording
+	if res := admin.do("PUT", path+"/labels", map[string][]string{"labels": {}}, nil, &cleared); res.StatusCode != 200 || cleared.Done || len(cleared.Labels) != 0 {
+		t.Fatalf("clear labels: %d %+v", res.StatusCode, cleared)
+	}
+}

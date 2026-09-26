@@ -1,6 +1,6 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api, Recording } from '../api/client';
+import { api, Label, Recording } from '../api/client';
 import { errorText } from '../lib/errors';
 import { processing } from '../lib/recordings';
 
@@ -8,6 +8,9 @@ const POLL_MS = 10_000;
 
 interface NotesState {
   recordings: Recording[] | null;
+  // labels are the user's labels (built-in first), shared by the list and the open note.
+  labels: Label[] | null;
+  reloadLabels: () => Promise<void>;
   aiReady: boolean;
   error: string | null;
   refreshing: boolean;
@@ -24,6 +27,7 @@ const NotesContext = createContext<NotesState | null>(null);
 export function NotesProvider({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
   const [recordings, setRecordings] = useState<Recording[] | null>(null);
+  const [labels, setLabels] = useState<Label[] | null>(null);
   const [aiReady, setAIReady] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -42,9 +46,18 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     }
   }, [t]);
 
+  const reloadLabels = useCallback(async () => {
+    try {
+      setLabels(await api.labels());
+    } catch (err) {
+      setError(errorText(err, t));
+    }
+  }, [t]);
+
   useEffect(() => {
     void reload();
-  }, [reload]);
+    void reloadLabels();
+  }, [reload, reloadLabels]);
 
   const busy = recordings?.some(processing) ?? false;
   useEffect(() => {
@@ -69,7 +82,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <NotesContext.Provider value={{ recordings, aiReady, error, refreshing, reload, upsert, remove }}>{children}</NotesContext.Provider>
+    <NotesContext.Provider value={{ recordings, labels, reloadLabels, aiReady, error, refreshing, reload, upsert, remove }}>{children}</NotesContext.Provider>
   );
 }
 

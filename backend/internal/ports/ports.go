@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/device"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/label"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/settings"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/theme"
@@ -33,6 +34,8 @@ type RecordingRepository interface {
 	ListStale(ctx context.Context, status recording.Status, before time.Time, limit int) ([]*recording.Recording, error)
 	// AssignOwnerless gives recordings without an owner to ownerID (data from before users).
 	AssignOwnerless(ctx context.Context, ownerID string) (int, error)
+	// RemoveLabel takes the label off all of ownerID's recordings.
+	RemoveLabel(ctx context.Context, ownerID, labelID string) error
 }
 
 // DeviceRepository persists devices. Lookups of missing documents return domain.ErrNotFound.
@@ -83,6 +86,17 @@ type ThemeRepository interface {
 	Get(ctx context.Context, id string) (*theme.Theme, error)
 	List(ctx context.Context, ownerID string) ([]*theme.Theme, error)
 	Update(ctx context.Context, t *theme.Theme) error
+	Delete(ctx context.Context, id string) error
+	DeleteByOwner(ctx context.Context, ownerID string) error
+}
+
+// LabelRepository persists users' own labels. Get of a missing label returns
+// domain.ErrNotFound.
+type LabelRepository interface {
+	Create(ctx context.Context, l *label.Label) error
+	Get(ctx context.Context, id string) (*label.Label, error)
+	List(ctx context.Context, ownerID string) ([]*label.Label, error)
+	Update(ctx context.Context, l *label.Label) error
 	Delete(ctx context.Context, id string) error
 	DeleteByOwner(ctx context.Context, ownerID string) error
 }

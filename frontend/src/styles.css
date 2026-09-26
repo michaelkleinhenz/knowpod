@@ -1187,6 +1187,13 @@ a {
   margin-top: 0.5rem;
 }
 
+.empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
 .conversations {
   position: relative;
 }
@@ -2247,4 +2254,247 @@ html:has(.notes-layout) {
   display: inline-flex;
   align-items: center;
   font-size: 0.88rem;
+}
+
+/* --- Labels --- */
+
+.label-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--color-text);
+  background: color-mix(in srgb, var(--label) 12%, var(--color-surface));
+  border: 1px solid color-mix(in srgb, var(--label) 40%, transparent);
+  border-radius: 999px;
+  padding: 0.05rem 0.6rem;
+  white-space: nowrap;
+}
+
+.label-dot {
+  flex: none;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--label);
+}
+
+.label-remove {
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--color-muted);
+  background: none;
+  border: 0;
+  padding: 0 0 0 0.1rem;
+  cursor: pointer;
+}
+
+.label-remove:hover {
+  color: var(--color-text);
+}
+
+.note-labels {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.5rem 0 0.35rem;
+}
+
+.note-labels > .error {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.label-add {
+  position: relative;
+}
+
+.label-add-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--color-muted);
+  background: none;
+  border: 1px dashed var(--color-border);
+  border-radius: 999px;
+  padding: 0.1rem 0.6rem;
+  cursor: pointer;
+}
+
+.label-add-button:hover,
+.label-add-button[aria-expanded='true'] {
+  color: var(--color-text);
+  border-color: var(--color-muted);
+}
+
+.label-popover {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  width: min(290px, calc(100vw - 32px));
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
+  padding: 0.4rem;
+}
+
+.label-options {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 14rem;
+  overflow-y: auto;
+}
+
+.label-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  color: var(--color-text);
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  padding: 0.4rem 0.5rem;
+  cursor: pointer;
+}
+
+.label-option:hover {
+  background: var(--color-bg);
+}
+
+.label-option-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.label-new {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  border-top: 1px solid var(--color-border);
+  margin-top: 0.3rem;
+  padding: 0.5rem 0.25rem 0.25rem;
+}
+
+.label-new input:not([type='color']) {
+  flex: 1 1 100%;
+  font: inherit;
+  font-size: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.35rem 0.5rem;
+}
+
+.label-popover .error {
+  margin: 0.3rem 0.25rem;
+  font-size: 0.85rem;
+}
+
+.label-manage {
+  display: block;
+  font-size: 0.85rem;
+  padding: 0.35rem 0.5rem 0.2rem;
+}
+
+.color-picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.color-swatch {
+  width: 1.3rem;
+  height: 1.3rem;
+  border-radius: 50%;
+  border: 2px solid var(--color-surface);
+  box-shadow: 0 0 0 1px var(--color-border);
+  padding: 0;
+  cursor: pointer;
+}
+
+.color-swatch.selected {
+  box-shadow: 0 0 0 2px var(--color-text);
+}
+
+.color-custom {
+  width: 1.6rem;
+  height: 1.5rem;
+  border: 0;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.label-form-color {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.task-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-primary-dark);
+  cursor: pointer;
+}
+
+.task-toggle.done {
+  color: var(--color-success);
+}
+
+.task-toggle input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: var(--color-success);
+}
+
+/* The check box of a task sits on the note's icon in the list. */
+.conversation-list li {
+  position: relative;
+}
+
+.task-check {
+  --icon-w: 30px;
+  position: absolute;
+  top: 50%;
+  left: calc(0.5rem + (var(--icon-w) - 18px) / 2);
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  transform: translateY(-50%);
+  accent-color: var(--color-success);
+  cursor: pointer;
+}
+
+.notes-sidebar .task-check {
+  --icon-w: 22px;
+}
+
+.task-item .doc-icon > :not(rect:first-child) {
+  opacity: 0.15;
+}
+
+.task-item.done .conversation-title {
+  color: var(--color-muted);
+  text-decoration: line-through;
 }

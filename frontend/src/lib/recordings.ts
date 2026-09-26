@@ -1,11 +1,16 @@
 import i18n from 'i18next';
-import { Recording } from '../api/client';
+import { NoteType, Recording } from '../api/client';
 import { locale } from '../i18n';
 
 // title is what a conversation is called in the UI: the AI summary's title, else the
 // source's title (Pocket, file name), else a placeholder.
 export function title(r: Recording): string {
   return r.summary?.title || r.title || i18n.t('conversations.untitled');
+}
+
+// noteType says what kind of note a recording is; notes from before types are audio.
+export function noteType(r: Recording): NoteType {
+  return r.type === 'text' ? 'text' : 'audio';
 }
 
 // when is the moment a conversation happened.

@@ -259,6 +259,24 @@ validates, converts `at` using `recordedAt`, sorts and removes duplicates). When
 has highlights, `summarySystemPrompt` lists their times and asks for a final "Highlights"
 section that describes each moment using the transcript's stamps.
 
+**Text notes.** Besides audio recordings, a note can be a Markdown text written in the web
+app (`recording.type: "text"`). `POST /recordings/text` (`RecordingService.CreateText`)
+stores its title and text as the note's `summary` with status `summarized`, so the worker
+never picks it up, and the summary machinery serves it as it is: it is edited with
+`PUT /recordings/{id}/summary`, downloaded from `GET /recordings/{id}/summary` (as
+"… - note.md") and deleted like any note. Retranscribe and resummarize answer 409 for it,
+and it has no audio or transcript. Future note types get their own `type` value.
+
+**Labels** (`service/labels.go`). `GET /labels` lists the built-in labels (only `task`,
+named by the UI in its language) and the user's own; `POST`/`PUT`/`DELETE /labels/{id}`
+manage their own (built-in ones can't be changed). `PUT /recordings/{id}/labels` replaces a
+note's label IDs (`RecordingService.SetLabels` checks each is built-in or the note owner's);
+`PUT /recordings/{id}/done` sets the check mark, which only notes labeled `task` have, and
+taking `task` off clears it. Deleting a label pulls it off the owner's notes
+(`RecordingRepository.RemoveLabel`). Since labels change at any time, also while a note is
+being processed, the worker copies `labels` and `done` from the stored document before
+saving a stage's result (`Recording.KeepUserFields`), so a long transcription can't undo them.
+
 `GET /recordings/{id}/summary` and `/transcript` return the texts as `.md` / `.txt`
 downloads (`transport/http/downloads_handlers.go`), or JSON with `?format=json`.
 
@@ -354,7 +372,9 @@ implements the work.
 |---|---|
 | `_id` | Random 24-hex ID; the device's `uploadId` |
 | `ownerId` | The user it belongs to (indexed with `createdAt` for lists) |
-| `deviceId`, `clientId` | Device (or `pocket:<userId>` / `upload:<userId>`) and its `recordingId` (unique together) |
+| `deviceId`, `clientId` | Device (or `pocket:<userId>` / `upload:<userId>` / `text:<userId>`) and its `recordingId` (unique together) |
+| `type` | The kind of note: absent for audio recordings, `text` for text notes (see below) |
+| `labels`, `done` | IDs of the note's labels (see below) and the check mark of a `task` note |
 | `status` | `uploading`, `received`, `stored` or `failed` |
 | `size`, `sha256` | Declared by the device at create |
 | `recordedAt` | Optional, from the device |
@@ -395,6 +415,9 @@ Indexes: `(deviceId, clientId)` unique; `(status, notBefore)` for claiming;
 `description`, `instructions`, `builtInId` (set for a user's version of a built-in theme),
 `createdAt`, `updatedAt`.
 
+**`labels`**: users' own note labels: `_id`, `ownerId` (indexed with `name`), `name`
+(unique per user, ignoring case), `color` (`#rrggbb`), `createdAt`, `updatedAt`.
+
 **`settings`**: one document per settings group. `_id: "openrouter"` holds `apiKey`,
 `transcriptionModel`, `summaryModel` and `updatedAt`.
 
@@ -429,6 +452,20 @@ a renamed title after an autosave) and removes itself when deleted. Below 900 px
 shows one pane at a time with CSS only: the list at `/`, the note (with a back link) when
 one is open. Responses for a note that is no longer open are ignored, so switching notes
 quickly can't show the wrong one.
+
+Each list entry shows an icon for the note's type (`NoteIcon` in `components/Icons.tsx`: a
+sound wave for audio, lines of text for text notes). The list's **+** button creates an
+empty text note and opens it with its title selected; a text note's page has only the
+editor, with download, copy and delete (no view switcher, transcript, source or AI actions).
+
+Labels (`components/Labels.tsx`) show as colored chips under the note's title; a popover
+toggles them and creates new ones, and **Settings → Labels** renames, recolors and deletes
+them. `NotesContext` loads the labels once for the list and the open note. A note labeled
+Task gets a check box over its icon in the list (outside the link, so checking doesn't open
+the note; the change shows at once and is undone if saving fails) and a Done/To do box in
+its header; the open note takes over check marks and labels changed in the list. Saves that
+answer after their note was left (e.g. the autosave on leaving) only update the list, never
+the note now open.
 
 ## Errors
 

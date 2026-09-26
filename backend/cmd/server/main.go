@@ -51,6 +51,7 @@ func main() {
 	sessions := repo.NewSessionRepo(store)
 	settingsRepo := repo.NewSettingsRepo(store)
 	themeRepo := repo.NewThemeRepo(store)
+	labelRepo := repo.NewLabelRepo(store)
 
 	// Object storage.
 	objects, err := s3store.New(ctx, s3store.Options{
@@ -104,6 +105,9 @@ func main() {
 	aiSvc.OnSettingsChanged = aiPipeline.Wake
 	actions := service.NewRecordingService(recordings, objects, spool, themeSvc)
 	userSvc := service.NewUserService(users, sessions, devices, recordings, themeRepo, authSvc, actions)
+	labelSvc := service.NewLabelService(labelRepo, recordings)
+	actions.Labels = labelSvc
+	userSvc.Labels = labelRepo
 	actions.OnRequeued = aiPipeline.Wake
 	wakeAI = aiPipeline.Wake // archived recordings move on to transcription right away
 
@@ -118,6 +122,7 @@ func main() {
 	srv := httpx.NewServer(httpx.Deps{
 		Cfg: cfg, Log: log, DB: store, Auth: authSvc, Users: userSvc, Devices: deviceSvc, Uploads: uploadSvc,
 		Manual: manualSvc, Actions: actions, Objects: objects, Pocket: pocketSvc, AI: aiSvc, Themes: themeSvc,
+		Labels: labelSvc,
 	})
 	httpServer := &http.Server{
 		Addr:              ":" + cfg.Port,

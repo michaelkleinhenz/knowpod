@@ -50,7 +50,9 @@ type UserService struct {
 	themes     ports.ThemeRepository
 	auth       *AuthService
 	recordings *RecordingService
-	clock      func() time.Time
+	// Labels holds users' labels, removed with the user. Optional.
+	Labels ports.LabelRepository
+	clock  func() time.Time
 }
 
 // NewUserService builds the service.
@@ -210,6 +212,11 @@ func (s *UserService) Delete(ctx context.Context, actor *Account, id string) err
 	}
 	if s.themes != nil {
 		if err := s.themes.DeleteByOwner(ctx, u.ID); err != nil {
+			return err
+		}
+	}
+	if s.Labels != nil {
+		if err := s.Labels.DeleteByOwner(ctx, u.ID); err != nil {
 			return err
 		}
 	}

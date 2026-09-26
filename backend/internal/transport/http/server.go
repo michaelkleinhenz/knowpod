@@ -42,6 +42,7 @@ type Server struct {
 	pocket  *service.PocketService
 	ai      *service.AIService
 	themes  *service.ThemeService
+	labels  *service.LabelService
 	now     func() time.Time
 }
 
@@ -61,6 +62,7 @@ type Deps struct {
 	Pocket  *service.PocketService
 	AI      *service.AIService
 	Themes  *service.ThemeService
+	Labels  *service.LabelService
 }
 
 // NewServer builds the server.
@@ -71,7 +73,8 @@ func NewServer(d Deps) *Server {
 	}
 	return &Server{
 		cfg: d.Cfg, log: log, db: d.DB, auth: d.Auth, users: d.Users, devices: d.Devices, uploads: d.Uploads,
-		manual: d.Manual, actions: d.Actions, objects: d.Objects, pocket: d.Pocket, ai: d.AI, themes: d.Themes, now: time.Now,
+		manual: d.Manual, actions: d.Actions, objects: d.Objects, pocket: d.Pocket, ai: d.AI, themes: d.Themes,
+		labels: d.Labels, now: time.Now,
 	}
 }
 
@@ -131,6 +134,11 @@ func (s *Server) Router() http.Handler {
 			u.Put("/themes/{id}", s.handleUpdateTheme)
 			u.Delete("/themes/{id}", s.handleDeleteTheme)
 
+			u.Get("/labels", s.handleListLabels)
+			u.Post("/labels", s.handleCreateLabel)
+			u.Put("/labels/{id}", s.handleUpdateLabel)
+			u.Delete("/labels/{id}", s.handleDeleteLabel)
+
 			u.Get("/devices", s.handleListDevices)
 			u.Post("/devices", s.handleRegisterDevice)
 			u.Delete("/devices/{id}", s.handleRevokeDevice)
@@ -138,12 +146,15 @@ func (s *Server) Router() http.Handler {
 
 			u.Get("/recordings", s.handleListRecordings)
 			u.Post("/recordings", s.handleUploadRecording)
+			u.Post("/recordings/text", s.handleCreateTextNote)
 			u.Get("/recordings/{id}", s.handleGetRecording)
 			u.Delete("/recordings/{id}", s.handleDeleteRecording)
 			u.Get("/recordings/{id}/audio", s.handleRecordingAudio)
 			u.Post("/recordings/{id}/retranscribe", s.handleRetranscribe)
 			u.Post("/recordings/{id}/resummarize", s.handleResummarize)
 			u.Put("/recordings/{id}/summary", s.handleEditSummary)
+			u.Put("/recordings/{id}/labels", s.handleSetNoteLabels)
+			u.Put("/recordings/{id}/done", s.handleSetNoteDone)
 			u.Get("/recordings/{id}/summary", s.handleDownloadSummary)
 			u.Get("/recordings/{id}/transcript", s.handleDownloadTranscript)
 		})

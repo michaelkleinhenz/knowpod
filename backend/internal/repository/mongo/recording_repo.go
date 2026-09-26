@@ -96,6 +96,11 @@ func (r *RecordingRepo) AssignOwnerless(ctx context.Context, ownerID string) (in
 	return assignOwnerless(ctx, r.c, ownerID)
 }
 
+func (r *RecordingRepo) RemoveLabel(ctx context.Context, ownerID, labelID string) error {
+	_, err := r.c.UpdateMany(ctx, bson.M{"ownerId": ownerID, "labels": labelID}, bson.M{"$pull": bson.M{"labels": labelID}})
+	return err
+}
+
 func (r *RecordingRepo) findOne(ctx context.Context, filter bson.M) (*recording.Recording, error) {
 	var rec recording.Recording
 	if err := r.c.FindOne(ctx, filter).Decode(&rec); err != nil {
