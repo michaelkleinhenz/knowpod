@@ -3,12 +3,14 @@ package memory
 
 import (
 	"context"
+	"slices"
 	"sort"
 	"sync"
 	"time"
 
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/device"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/label"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/settings"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/theme"
@@ -55,6 +57,19 @@ func (m *Recordings) GetByClientID(_ context.Context, deviceID, clientID string)
 		}
 	}
 	return nil, domain.ErrNotFound
+}
+
+func (m *Recordings) RemoveLabel(_ context.Context, ownerID, labelID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, r := range m.recs {
+		if r.OwnerID != ownerID || !slices.Contains(r.Labels, labelID) {
+			continue
+		}
+		r.Labels = slices.DeleteFunc(slices.Clone(r.Labels), func(l string) bool { return l == labelID })
+		m.recs[id] = r
+	}
+	return nil
 }
 
 func (m *Recordings) Update(_ context.Context, r *recording.Recording) error {
@@ -479,6 +494,80 @@ func (m *Themes) DeleteByOwner(_ context.Context, ownerID string) error {
 	for id, t := range m.themes {
 		if t.OwnerID == ownerID {
 			delete(m.themes, id)
+		}
+	}
+	return nil
+}
+
+// Labels is an in-memory ports.LabelRepository.
+type Labels struct {
+	mu     sync.Mutex
+	labels map[string]label.Label
+}
+
+// NewLabels builds an empty repository.
+func NewLabels() *Labels { return &Labels{labels: map[string]label.Label{}} }
+
+func (m *Labels) Create(_ context.Context, t *label.Label) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.labels[t.ID]; ok {
+		return domain.ErrDuplicate
+	}
+	m.labels[t.ID] = *t
+	return nil
+}
+
+func (m *Labels) Get(_ context.Context, id string) (*label.Label, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	t, ok := m.labels[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	return &t, nil
+}
+
+func (m *Labels) List(_ context.Context, ownerID string) ([]*label.Label, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := []*label.Label{}
+	for _, t := range m.labels {
+		t := t
+		if t.OwnerID == ownerID {
+			out = append(out, &t)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+func (m *Labels) Update(_ context.Context, t *label.Label) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.labels[t.ID]; !ok {
+		return domain.ErrNotFound
+	}
+	m.labels[t.ID] = *t
+	return nil
+}
+
+func (m *Labels) Delete(_ context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.labels[id]; !ok {
+		return domain.ErrNotFound
+	}
+	delete(m.labels, id)
+	return nil
+}
+
+func (m *Labels) DeleteByOwner(_ context.Context, ownerID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, t := range m.labels {
+		if t.OwnerID == ownerID {
+			delete(m.labels, id)
 		}
 	}
 	return nil

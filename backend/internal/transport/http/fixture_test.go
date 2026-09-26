@@ -52,6 +52,11 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	}
 	themes := service.NewThemeService(memory.NewThemes())
 	actions := service.NewRecordingService(recs, objects, spool, themes)
+	labelRepo := memory.NewLabels()
+	labels := service.NewLabelService(labelRepo, recs)
+	actions.Labels = labels
+	userSvc := service.NewUserService(users, sessions, devs, recs, memory.NewThemes(), auth, actions)
+	userSvc.Labels = labelRepo
 	archiver := service.NewArchiver(spool, objects, false, log)
 	w := worker.New(recs, []worker.Stage{{
 		Name: "archive", From: recording.StatusReceived, To: recording.StatusStored, Run: archiver.Run, Cleanup: archiver.Cleanup,
@@ -59,12 +64,12 @@ func newAPIFixture(t *testing.T) *apiFixture {
 
 	s := NewServer(Deps{
 		Cfg: config.Config{AdminToken: adminToken}, Log: log, Auth: auth,
-		Users:   service.NewUserService(users, sessions, devs, recs, memory.NewThemes(), auth, actions),
+		Users:   userSvc,
 		Devices: service.NewDeviceService(devs), Uploads: service.NewUploadService(recs, spool, 1<<30),
 		Manual: service.NewManualUploadService(recs, spool, 1<<30), Actions: actions, Objects: objects,
 		Pocket: service.NewPocketService(recs, users, nil, spool, 1<<20, log),
 		AI:     service.NewAIService(memory.NewSettings(), themes, objects, nil, t.TempDir(), log),
-		Themes: themes,
+		Themes: themes, Labels: labels,
 	})
 	srv := httptest.NewServer(s.Router())
 	t.Cleanup(srv.Close)

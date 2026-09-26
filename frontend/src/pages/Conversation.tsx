@@ -5,6 +5,7 @@ import { api, Recording } from '../api/client';
 import { CopyButton } from '../components/CopyButton';
 import { CopyIcon, DownloadIcon, RetranscribeIcon, TrashIcon } from '../components/Icons';
 import { inline, Markdown } from '../components/Markdown';
+import { NoteLabels } from '../components/Labels';
 import { SummaryDetails } from '../components/SummaryDetails';
 import { useNotes } from '../context/NotesContext';
 import { Sync, useAutosave } from '../hooks/useAutosave';
@@ -268,6 +269,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
             {sourceBadge && ` · ${sourceBadge}`}
             {state && <span className={`state-pill${rec.status === 'failed' ? ' bad' : ''}`}>{state}</span>}
           </p>
+          <NoteLabels rec={rec} setRec={setRec} />
           {editable && <SyncState sync={autosave.sync} error={autosave.error} onRetry={() => void autosave.save()} />}
         </div>
       </div>
@@ -421,12 +423,16 @@ export function Conversation() {
   const { t } = useTranslation();
   const { id = '' } = useParams();
   const notes = useNotes();
+  // The note that is open now; answers for a note opened earlier are ignored.
+  const openId = useRef(id);
+  openId.current = id;
   const [rec, setRecState] = useState<Recording | null>(null);
-  // Changes to the open note (saves, processing progress) also update the sidebar.
+  // Changes to the open note (saves, processing progress) also update the sidebar. A save
+  // of a note left meanwhile (autosave on leaving it) only updates the sidebar.
   const { upsert } = notes;
   const setRec = useCallback(
     (r: Recording) => {
-      setRecState(r);
+      if (r.id === openId.current) setRecState(r);
       upsert(r);
     },
     [upsert],
@@ -436,9 +442,6 @@ export function Conversation() {
   const [error, setError] = useState<string | null>(null);
   const created = !!(useLocation().state as { created?: boolean } | null)?.created;
 
-  // The note that is open now; answers for a note opened earlier are ignored.
-  const openId = useRef(id);
-  openId.current = id;
 
   const load = useCallback(async () => {
     try {
@@ -461,6 +464,19 @@ export function Conversation() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // The check mark and labels can also change in the sidebar; take them over.
+  const listed = notes.recordings?.find((r) => r.id === id);
+  const listedLabels = listed?.labels?.join(',') ?? '';
+  const listedDone = listed?.done ?? false;
+  useEffect(() => {
+    if (!listed) return;
+    setRecState((r) =>
+      r && r.id === listed.id && (r.done !== listed.done || (r.labels?.join(',') ?? '') !== listedLabels)
+        ? { ...r, done: listed.done, labels: listed.labels }
+        : r,
+    );
+  }, [listedLabels, listedDone]);
 
   const inProgress = rec ? processing(rec) : false;
   useEffect(() => {

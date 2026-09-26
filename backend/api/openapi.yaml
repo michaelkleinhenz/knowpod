@@ -56,6 +56,8 @@ tags:
     description: Webhooks from external recorders.
   - name: Themes
     description: Summary themes that define how summaries are structured. Built-in ones plus your own.
+  - name: Labels
+    description: Labels for notes, with colors. The built-in "task" label plus your own.
   - name: "Admin: users"
     description: Create, change and delete users. Administrators only.
   - name: "Admin: AI settings"
@@ -347,6 +349,60 @@ paths:
           description: Saved
           content: { application/json: { schema: { $ref: "#/components/schemas/Account" } } }
         "400": { $ref: "#/components/responses/Error" }
+
+  /labels:
+    get:
+      tags: ["Labels"]
+      summary: List labels
+      description: The built-in labels (`task`) followed by your own, by name.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      responses:
+        "200":
+          description: Labels
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Label" } }
+    post:
+      tags: ["Labels"]
+      summary: Create a label
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/LabelInput" } } }
+      responses:
+        "201":
+          description: Created
+          content: { application/json: { schema: { $ref: "#/components/schemas/Label" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+
+  /labels/{labelId}:
+    parameters:
+      - { name: labelId, in: path, required: true, schema: { type: string } }
+    put:
+      tags: ["Labels"]
+      summary: Rename or recolor a label
+      description: Built-in labels can't be changed.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/LabelInput" } } }
+      responses:
+        "200":
+          description: Saved
+          content: { application/json: { schema: { $ref: "#/components/schemas/Label" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: ["Labels"]
+      summary: Delete a label
+      description: Takes the label off all your notes. Built-in labels can't be deleted.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      responses:
+        "204": { description: Deleted }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
 
   /themes:
     get:
@@ -823,6 +879,56 @@ paths:
           description: The recording has no summary yet
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
+  /recordings/{recordingId}/labels:
+    put:
+      tags: ["Recordings", "Labels"]
+      summary: Set the note's labels
+      description: Replaces the note's labels with the given label IDs, in order. Taking off the `task` label also clears `done`.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [labels]
+              properties:
+                labels: { type: array, maxItems: 20, items: { type: string }, example: [task] }
+      responses:
+        "200":
+          description: Saved
+          content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /recordings/{recordingId}/done:
+    put:
+      tags: ["Recordings", "Labels"]
+      summary: Check off a task
+      description: Sets the check mark of a note labeled `task`.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [done]
+              properties:
+                done: { type: boolean }
+      responses:
+        "200":
+          description: Saved
+          content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
+        "400":
+          description: The note isn't labeled as a task
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "404": { $ref: "#/components/responses/Error" }
+
   /admin/users:
     get:
       tags: ["Admin: users"]
@@ -1056,6 +1162,8 @@ components:
         original: { $ref: "#/components/schemas/Object" }
         summaryOptions: { $ref: "#/components/schemas/SummaryOptions" }
         highlights: { type: array, items: { $ref: "#/components/schemas/Highlight" } }
+        labels: { type: array, items: { type: string }, description: IDs of the note's labels (see GET /labels) }
+        done: { type: boolean, description: Check mark of a note labeled `task` }
         transcript:
           type: object
           properties:
@@ -1124,6 +1232,21 @@ components:
         instructions: { type: string }
         builtIn: { type: boolean }
         customized: { type: boolean, description: A built-in theme you changed }
+
+    Label:
+      type: object
+      properties:
+        id: { type: string, example: task }
+        name: { type: string, description: Built-in labels are named by the UI in its language }
+        color: { type: string, example: "#3b5f86" }
+        builtIn: { type: boolean }
+
+    LabelInput:
+      type: object
+      required: [name, color]
+      properties:
+        name: { type: string, maxLength: 40, description: Unique among your labels, ignoring case }
+        color: { type: string, pattern: "^#[0-9a-fA-F]{6}$", example: "#2f6f5e" }
 
     ThemeInput:
       type: object

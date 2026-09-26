@@ -249,3 +249,31 @@ func TestDisabledStageWaits(t *testing.T) {
 		t.Fatalf("enabled stage processed %d", n)
 	}
 }
+func TestStageKeepsLabelsSetMeanwhile(t *testing.T) {
+	ctx := context.Background()
+	recs := memory.NewRecordings()
+	now := time.Now().UTC()
+	if err := recs.Create(ctx, &recording.Recording{ID: "r1", DeviceID: "d", ClientID: "c", Status: recording.StatusStored, NotBefore: now}); err != nil {
+		t.Fatal(err)
+	}
+	w := worker.New(recs, []worker.Stage{{
+		Name: "slow", From: recording.StatusStored, To: recording.StatusTranscribed,
+		Run: func(ctx context.Context, rec *recording.Recording) error {
+			// The user labels the note while the stage works on its own copy.
+			stored, _ := recs.Get(ctx, rec.ID)
+			stored.Labels, stored.Done = []string{"task"}, true
+			if err := recs.Update(ctx, stored); err != nil {
+				return err
+			}
+			rec.Transcript = &recording.Transcript{Text: "hi"}
+			return nil
+		},
+	}}, worker.Options{MaxAttempts: 2}, quiet)
+	if n := w.RunOnce(ctx); n != 1 {
+		t.Fatalf("processed %d", n)
+	}
+	got, _ := recs.Get(ctx, "r1")
+	if got.Status != recording.StatusTranscribed || got.Transcript == nil || len(got.Labels) != 1 || !got.Done {
+		t.Fatalf("got %+v", got)
+	}
+}

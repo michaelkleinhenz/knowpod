@@ -40,6 +40,9 @@ AI worker ─────────────▶ transcript (status: transcr
   **text** notes, plain Markdown documents written in the browser (**+** on **Notes**). The
   notes list shows each note's type as an icon; text notes are edited, copied, downloaded
   and deleted like summaries.
+- Notes can carry **labels**: colored chips in the note's header, with your own labels
+  defined on the spot or under **Settings → Labels**. The built-in **Task** label adds a
+  check box to the note's icon in the list; the check mark is saved.
 - Recorders can send **highlights** (moments marked with a button while recording); they
   are shown on the note's timeline and described in the summary.
 - Summaries and transcripts can be downloaded as Markdown and text files, in the web app and

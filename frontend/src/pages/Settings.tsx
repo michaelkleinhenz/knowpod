@@ -3,12 +3,13 @@ import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../auth';
+import { LabelSettings } from '../components/LabelSettings';
 import { OpenRouterSettings } from '../components/OpenRouterSettings';
 import { ThemeSettings } from '../components/ThemeSettings';
 import { LANGUAGES } from '../i18n';
 import { errorText } from '../lib/errors';
 
-type Tab = 'general' | 'themes' | 'ai';
+type Tab = 'general' | 'themes' | 'labels' | 'ai';
 
 // LanguageSettings changes the app language; it is saved with the user.
 function LanguageSettings() {
@@ -53,7 +54,7 @@ export function Settings() {
   const { t } = useTranslation();
   const { account } = useAuth();
   const [params, setParams] = useSearchParams();
-  const tabs: Tab[] = account?.role === 'admin' ? ['general', 'themes', 'ai'] : ['general', 'themes'];
+  const tabs: Tab[] = account?.role === 'admin' ? ['general', 'themes', 'labels', 'ai'] : ['general', 'themes', 'labels'];
   const requested = params.get('tab') as Tab | null;
   const tab: Tab = requested && tabs.includes(requested) ? requested : 'general';
 
@@ -82,6 +83,12 @@ export function Settings() {
           <>
             <h2 className="card-title">{t('settings.themes.title')}</h2>
             <ThemeSettings />
+          </>
+        )}
+        {tab === 'labels' && (
+          <>
+            <h2 className="card-title">{t('labels.title')}</h2>
+            <LabelSettings />
           </>
         )}
         {tab === 'ai' && (

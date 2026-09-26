@@ -6,6 +6,7 @@ import { useNotes } from '../context/NotesContext';
 import { useAuth } from '../auth';
 import { NewNoteIcon, NoteIcon, RefreshIcon, SearchIcon, UploadIcon } from './Icons';
 import { errorText } from '../lib/errors';
+import { isTask } from '../lib/labels';
 import { dayKey, dayLabel, formatTime, noteType, statusLabel, title, when } from '../lib/recordings';
 
 const ACCEPT = '.wav,.mp3,audio/wav,audio/x-wav,audio/wave,audio/mpeg';
@@ -46,6 +47,18 @@ export function NotesList({ activeId }: { activeId?: string }) {
       } catch (err) {
         update({ error: errorText(err, t) });
       }
+    }
+  }
+
+  // setDone checks a task off right away and stores it; a failure undoes the check mark.
+  async function setDone(r: Recording, done: boolean) {
+    setCreateError(null);
+    upsert({ ...r, done });
+    try {
+      upsert(await api.setNoteDone(r.id, done));
+    } catch (err) {
+      upsert(r);
+      setCreateError(errorText(err, t));
     }
   }
 
@@ -195,8 +208,9 @@ export function NotesList({ activeId }: { activeId?: string }) {
             <ul className="conversation-list">
               {g.items.map((r) => {
                 const state = statusLabel(r, aiReady);
+                const task = isTask(r);
                 return (
-                  <li key={r.id}>
+                  <li key={r.id} className={task ? `task-item${r.done ? ' done' : ''}` : undefined}>
                     <Link
                       to={`/conversations/${r.id}`}
                       className={`conversation-item${r.id === activeId ? ' active' : ''}`}
@@ -209,6 +223,16 @@ export function NotesList({ activeId }: { activeId?: string }) {
                       </span>
                       <span className="conversation-time">{formatTime(when(r))}</span>
                     </Link>
+                    {/* Over the note's icon; outside the link so checking doesn't open the note. */}
+                    {task && (
+                      <input
+                        type="checkbox"
+                        className="task-check"
+                        checked={!!r.done}
+                        onChange={(e) => void setDone(r, e.target.checked)}
+                        aria-label={t('labels.doneLabel', { title: title(r) })}
+                      />
+                    )}
                   </li>
                 );
               })}

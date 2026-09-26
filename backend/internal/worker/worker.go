@@ -127,6 +127,10 @@ func (w *Worker) RunOnce(ctx context.Context) int {
 
 func (w *Worker) process(ctx context.Context, st Stage, rec *recording.Recording) {
 	err := st.Run(ctx, rec)
+	// A stage can take minutes; keep what the user changed meanwhile (labels, check mark).
+	if stored, gerr := w.recs.Get(ctx, rec.ID); gerr == nil {
+		rec.KeepUserFields(stored)
+	}
 	now := w.clock().UTC()
 	rec.UpdatedAt = now
 	if err == nil {

@@ -65,6 +65,19 @@ export interface ThemeInput {
   instructions: string;
 }
 
+// Label is a label for notes. Built-in labels (e.g. "task") are named by the UI.
+export interface Label {
+  id: string;
+  name: string;
+  color: string;
+  builtIn: boolean;
+}
+
+export interface LabelInput {
+  name: string;
+  color: string;
+}
+
 export interface SummaryOptions {
   language?: string;
   model?: string;
@@ -143,6 +156,9 @@ export interface Recording {
   };
   summaryOptions?: SummaryOptions;
   highlights?: { offsetMs: number; at?: string }[];
+  // IDs of the note's labels; done is the check mark of a note labeled "task".
+  labels?: string[];
+  done?: boolean;
   lastError?: string;
 }
 
@@ -236,6 +252,12 @@ export const api = {
   createTextNote: (title: string, markdown: string) => request<Recording>('POST', '/recordings/text', { title, markdown }),
   editSummary: (id: string, title: string, markdown: string) =>
     request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/summary`, { title, markdown }),
+  setNoteLabels: (id: string, labels: string[]) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/labels`, { labels }),
+  setNoteDone: (id: string, done: boolean) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/done`, { done }),
+  labels: () => request<Label[]>('GET', '/labels'),
+  createLabel: (l: LabelInput) => request<Label>('POST', '/labels', l),
+  updateLabel: (id: string, l: LabelInput) => request<Label>('PUT', `/labels/${encodeURIComponent(id)}`, l),
+  deleteLabel: (id: string) => request<void>('DELETE', `/labels/${encodeURIComponent(id)}`),
   downloadURL: (id: string, kind: 'summary' | 'transcript') => `/api/v1/recordings/${encodeURIComponent(id)}/${kind}`,
   audioURL: (id: string, download = false) => `/api/v1/recordings/${encodeURIComponent(id)}/audio${download ? '?download=1' : ''}`,
   uploadRecording,

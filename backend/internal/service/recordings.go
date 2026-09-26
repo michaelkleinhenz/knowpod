@@ -3,10 +3,12 @@ package service
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
 
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/label"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/ports"
 )
@@ -22,6 +24,9 @@ type RecordingService struct {
 	objects ports.ObjectStore
 	spool   *Spool
 	clock   func() time.Time
+	// Labels checks the labels put on notes. Optional; without it only the built-in labels
+	// can be used.
+	Labels *LabelService
 	// OnRequeued is called when a recording was sent back into processing. Optional.
 	OnRequeued func()
 }
@@ -180,6 +185,51 @@ func (s *RecordingService) EditSummary(ctx context.Context, acc *Account, id str
 		return nil, err
 	}
 	return rec, nil
+}
+
+// SetLabels replaces the note's labels. Unknown and duplicate IDs are refused. Taking the
+// task label off clears the note's check mark.
+func (s *RecordingService) SetLabels(ctx context.Context, acc *Account, id string, labels []string) (*recording.Recording, error) {
+	rec, err := s.Get(ctx, acc, id)
+	if err != nil {
+		return nil, err
+	}
+	if len(labels) > maxLabelsPerNote {
+		return nil, invalid("a note can have at most %d labels", maxLabelsPerNote)
+	}
+	out := make([]string, 0, len(labels))
+	for _, l := range labels {
+		if slices.Contains(out, l) {
+			return nil, invalid("label %q is given twice", l)
+		}
+		if !s.Labels.Usable(ctx, rec.OwnerID, l) {
+			return nil, invalid("unknown label %q", l)
+		}
+		out = append(out, l)
+	}
+	rec.Labels = out
+	if !slices.Contains(out, label.Task) {
+		rec.Done = false
+	}
+	return rec, s.save(ctx, rec)
+}
+
+// SetDone checks or unchecks a note labeled as a task.
+func (s *RecordingService) SetDone(ctx context.Context, acc *Account, id string, done bool) (*recording.Recording, error) {
+	rec, err := s.Get(ctx, acc, id)
+	if err != nil {
+		return nil, err
+	}
+	if !slices.Contains(rec.Labels, label.Task) {
+		return nil, invalid("only notes labeled as a task can be checked off")
+	}
+	rec.Done = done
+	return rec, s.save(ctx, rec)
+}
+
+func (s *RecordingService) save(ctx context.Context, rec *recording.Recording) error {
+	rec.UpdatedAt = s.clock().UTC()
+	return s.recs.Update(ctx, rec)
 }
 
 func (s *RecordingService) validOptions(ctx context.Context, acc *Account, o *recording.SummaryOptions) error {

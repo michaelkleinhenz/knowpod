@@ -94,6 +94,11 @@ type Recording struct {
 	Audio             *Object    `bson:"audio,omitempty" json:"audio,omitempty"`       // archived FLAC
 	Original          *Object    `bson:"original,omitempty" json:"original,omitempty"` // archived WAV, if kept
 
+	// Labels are the IDs of the labels the user put on the note, in the order they were added.
+	Labels []string `bson:"labels,omitempty" json:"labels,omitempty"`
+	// Done is the check mark of a note labeled as a task.
+	Done bool `bson:"done,omitempty" json:"done,omitempty"`
+
 	// Highlights are moments the user marked on the device while recording.
 	Highlights     []Highlight    `bson:"highlights,omitempty" json:"highlights,omitempty"`
 	Transcript     *Transcript    `bson:"transcript,omitempty" json:"transcript,omitempty"`
@@ -114,6 +119,12 @@ type Recording struct {
 
 // IsText reports whether the note is a text note.
 func (r *Recording) IsText() bool { return r.Type == TypeText }
+
+// KeepUserFields copies the fields a person changes at any time (labels, done) from the
+// stored version, so that a processing step saving its long-held copy doesn't undo them.
+func (r *Recording) KeepUserFields(stored *Recording) {
+	r.Labels, r.Done = stored.Labels, stored.Done
+}
 
 // TextDeviceID returns the DeviceID of a user's text notes. Their ClientID is the note ID.
 func TextDeviceID(userID string) string { return "text:" + userID }
