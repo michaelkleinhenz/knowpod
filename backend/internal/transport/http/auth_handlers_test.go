@@ -1,80 +1,23 @@
 package http
 
 import (
-	"bytes"
-	"encoding/json"
-	"io"
-	"log/slog"
 	"net/http"
-	"net/http/cookiejar"
-	"net/http/httptest"
 	"testing"
-	"time"
 
-	"github.com/michaelkleinhenz/knowpod-service/backend/internal/config"
-	"github.com/michaelkleinhenz/knowpod-service/backend/internal/repository/memory"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/service"
 )
 
-// browser is an HTTP client with a cookie jar, talking to a server with auth wired up.
-type browser struct {
-	t      *testing.T
-	base   string
-	client *http.Client
-}
-
-func newBrowser(t *testing.T, srv *httptest.Server) *browser {
-	jar, _ := cookiejar.New(nil)
-	return &browser{t: t, base: srv.URL, client: &http.Client{Jar: jar}}
-}
-
-func newAuthServer(t *testing.T) *httptest.Server {
-	t.Helper()
-	s := NewServer(Deps{
-		Cfg:        config.Config{AdminToken: adminToken},
-		Log:        slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Auth:       service.NewAuthService(memory.NewUsers(), memory.NewSessions(), "admin@example.com", "env-secret", time.Hour),
-		Devices:    service.NewDeviceService(memory.NewDevices()),
-		Recordings: memory.NewRecordings(),
-	})
-	srv := httptest.NewServer(s.Router())
-	t.Cleanup(srv.Close)
-	return srv
-}
-
-func (b *browser) do(method, path string, body any) *http.Response {
-	b.t.Helper()
-	var r io.Reader
-	if body != nil {
-		data, _ := json.Marshal(body)
-		r = bytes.NewReader(data)
-	}
-	req, _ := http.NewRequest(method, b.base+path, r)
-	req.Header.Set("Content-Type", "application/json")
-	res, err := b.client.Do(req)
-	if err != nil {
-		b.t.Fatal(err)
-	}
-	_, _ = io.Copy(io.Discard, res.Body)
-	res.Body.Close()
-	return res
-}
-
 func TestWebLoginFlow(t *testing.T) {
-	srv := newAuthServer(t)
-	b := newBrowser(t, srv)
+	f := newAPIFixture(t)
+	b := f.browser()
 
-	if res := b.do("GET", "/api/v1/auth/me", nil); res.StatusCode != 401 {
+	if res := b.do("GET", "/api/v1/auth/me", nil, nil, nil); res.StatusCode != 401 {
 		t.Fatalf("me before login: %d", res.StatusCode)
 	}
-	if res := b.do("GET", "/api/v1/admin/devices", nil); res.StatusCode != 401 {
-		t.Fatalf("admin API before login: %d", res.StatusCode)
-	}
-	if res := b.do("POST", "/api/v1/auth/login", loginRequest{"admin@example.com", "nope"}); res.StatusCode != 401 {
+	if res := b.do("POST", "/api/v1/auth/login", loginRequest{adminEmail, "nope"}, nil, nil); res.StatusCode != 401 {
 		t.Fatalf("bad login: %d", res.StatusCode)
 	}
-
-	res := b.do("POST", "/api/v1/auth/login", loginRequest{"admin@example.com", "env-secret"})
+	res := b.do("POST", "/api/v1/auth/login", loginRequest{adminEmail, adminPassword}, nil, nil)
 	if res.StatusCode != 200 {
 		t.Fatalf("login: %d", res.StatusCode)
 	}
@@ -88,47 +31,70 @@ func TestWebLoginFlow(t *testing.T) {
 		t.Fatalf("session cookie = %+v", cookie)
 	}
 
-	if res := b.do("GET", "/api/v1/auth/me", nil); res.StatusCode != 200 {
-		t.Fatalf("me: %d", res.StatusCode)
+	var me service.Account
+	if res := b.do("GET", "/api/v1/auth/me", nil, nil, &me); res.StatusCode != 200 || me.Email != adminEmail || me.Role != "admin" || me.ID == "" {
+		t.Fatalf("me: %d %+v", res.StatusCode, me)
 	}
-	// A signed-in user can use the admin API.
-	if res := b.do("GET", "/api/v1/admin/devices", nil); res.StatusCode != 200 {
-		t.Fatalf("admin API with session: %d", res.StatusCode)
-	}
-
-	if res := b.do("PUT", "/api/v1/auth/password", changePasswordRequest{"wrong", "new-password"}); res.StatusCode != 403 {
+	if res := b.do("PUT", "/api/v1/auth/password", changePasswordRequest{"wrong", "new-password"}, nil, nil); res.StatusCode != 403 {
 		t.Fatalf("change with wrong current: %d", res.StatusCode)
 	}
-	if res := b.do("PUT", "/api/v1/auth/password", changePasswordRequest{"env-secret", "short"}); res.StatusCode != 400 {
+	if res := b.do("PUT", "/api/v1/auth/password", changePasswordRequest{adminPassword, "short"}, nil, nil); res.StatusCode != 400 {
 		t.Fatalf("change to weak: %d", res.StatusCode)
 	}
-	if res := b.do("PUT", "/api/v1/auth/password", changePasswordRequest{"env-secret", "new-password"}); res.StatusCode != 204 {
+	if res := b.do("PUT", "/api/v1/auth/password", changePasswordRequest{adminPassword, "new-password"}, nil, nil); res.StatusCode != 204 {
 		t.Fatalf("change: %d", res.StatusCode)
 	}
-
-	if res := b.do("POST", "/api/v1/auth/logout", nil); res.StatusCode != 204 {
+	if res := b.do("POST", "/api/v1/auth/logout", nil, nil, nil); res.StatusCode != 204 {
 		t.Fatalf("logout: %d", res.StatusCode)
 	}
-	if res := b.do("GET", "/api/v1/auth/me", nil); res.StatusCode != 401 {
+	if res := b.do("GET", "/api/v1/auth/me", nil, nil, nil); res.StatusCode != 401 {
 		t.Fatalf("me after logout: %d", res.StatusCode)
 	}
-
-	// The environment password no longer works; the new one does.
-	if res := b.do("POST", "/api/v1/auth/login", loginRequest{"admin@example.com", "env-secret"}); res.StatusCode != 401 {
-		t.Fatalf("login with env password after change: %d", res.StatusCode)
+	if res := b.do("POST", "/api/v1/auth/login", loginRequest{adminEmail, adminPassword}, nil, nil); res.StatusCode != 401 {
+		t.Fatalf("env password after change: %d", res.StatusCode)
 	}
-	if res := b.do("POST", "/api/v1/auth/login", loginRequest{"admin@example.com", "new-password"}); res.StatusCode != 200 {
-		t.Fatalf("login with new password: %d", res.StatusCode)
-	}
+	f.signedIn(adminEmail, "new-password")
 }
 
 func TestLoginIsRateLimited(t *testing.T) {
-	b := newBrowser(t, newAuthServer(t))
+	b := newAPIFixture(t).browser()
 	var last int
 	for i := 0; i < 11; i++ {
-		last = b.do("POST", "/api/v1/auth/login", loginRequest{"admin@example.com", "nope"}).StatusCode
+		last = b.do("POST", "/api/v1/auth/login", loginRequest{adminEmail, "nope"}, nil, nil).StatusCode
 	}
 	if last != http.StatusTooManyRequests {
 		t.Fatalf("11th attempt = %d, want 429", last)
+	}
+}
+
+func TestAccessControl(t *testing.T) {
+	f := newAPIFixture(t)
+	admin := f.signedIn(adminEmail, adminPassword)
+	if res := admin.do("POST", "/api/v1/admin/users", map[string]string{"email": "bob@example.com", "password": "bob-password"}, nil, nil); res.StatusCode != 201 {
+		t.Fatalf("create bob: %d", res.StatusCode)
+	}
+	bob := f.signedIn("bob@example.com", "bob-password")
+
+	for _, tc := range []struct {
+		name   string
+		c      *client
+		method string
+		path   string
+		want   int
+	}{
+		{"anonymous devices", f.browser(), "GET", "/api/v1/devices", 401},
+		{"bad token", f.script("wrong"), "GET", "/api/v1/devices", 401},
+		{"device token isn't an admin token", f.script("kpd_x"), "GET", "/api/v1/admin/users", 401},
+		{"user devices", bob, "GET", "/api/v1/devices", 200},
+		{"user may not list users", bob, "GET", "/api/v1/admin/users", 403},
+		{"user may not read AI settings", bob, "GET", "/api/v1/admin/settings/openrouter", 403},
+		{"user may read AI status", bob, "GET", "/api/v1/ai/status", 200},
+		{"admin lists users", admin, "GET", "/api/v1/admin/users", 200},
+		{"script lists users", f.script(adminToken), "GET", "/api/v1/admin/users", 200},
+		{"anonymous upload", f.browser(), "POST", "/api/v1/uploads", 401},
+	} {
+		if res := tc.c.do(tc.method, tc.path, nil, nil, nil); res.StatusCode != tc.want {
+			t.Errorf("%s: %s %s = %d, want %d", tc.name, tc.method, tc.path, res.StatusCode, tc.want)
+		}
 	}
 }

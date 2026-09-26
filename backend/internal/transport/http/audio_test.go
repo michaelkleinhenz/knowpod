@@ -12,6 +12,7 @@ import (
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/config"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/repository/memory"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/service"
 	memstore "github.com/michaelkleinhenz/knowpod-service/backend/internal/storage/memory"
 )
 
@@ -45,7 +46,7 @@ func TestAudioRangeAndDownload(t *testing.T) {
 	_ = recs.Create(ctx, &recording.Recording{ID: "r1", DeviceID: "d", ClientID: "c",
 		Audio: &recording.Object{Key: "recordings/d/r1.flac", ContentType: "audio/flac", Size: int64(len(data))}})
 	h := NewServer(Deps{Cfg: config.Config{AdminToken: adminToken}, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Recordings: recs, Objects: objects}).Router()
+		Actions: service.NewRecordingService(recs, objects, nil), Objects: objects}).Router()
 
 	get := func(path, rng string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
@@ -58,19 +59,19 @@ func TestAudioRangeAndDownload(t *testing.T) {
 		return rec
 	}
 
-	res := get("/api/v1/admin/recordings/r1/audio", "bytes=5-9")
+	res := get("/api/v1/recordings/r1/audio", "bytes=5-9")
 	if res.Code != 206 || res.Body.String() != "56789" || res.Header().Get("Content-Range") != "bytes 5-9/20" {
 		t.Fatalf("range: %d %q %q", res.Code, res.Body, res.Header().Get("Content-Range"))
 	}
-	res = get("/api/v1/admin/recordings/r1/audio", "")
+	res = get("/api/v1/recordings/r1/audio", "")
 	if res.Code != 200 || res.Body.String() != string(data) || res.Header().Get("Accept-Ranges") != "bytes" ||
 		res.Header().Get("Content-Disposition") != `inline; filename="r1.flac"` {
 		t.Fatalf("full: %d %v", res.Code, res.Header())
 	}
-	if res = get("/api/v1/admin/recordings/r1/audio?download=1", ""); res.Header().Get("Content-Disposition") != `attachment; filename="r1.flac"` {
+	if res = get("/api/v1/recordings/r1/audio?download=1", ""); res.Header().Get("Content-Disposition") != `attachment; filename="r1.flac"` {
 		t.Fatalf("download disposition = %q", res.Header().Get("Content-Disposition"))
 	}
-	if res = get("/api/v1/admin/recordings/r1/audio", "bytes=50-"); res.Code != 416 {
+	if res = get("/api/v1/recordings/r1/audio", "bytes=50-"); res.Code != 416 {
 		t.Fatalf("unsatisfiable range: %d", res.Code)
 	}
 }

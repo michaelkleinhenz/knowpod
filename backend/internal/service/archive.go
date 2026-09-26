@@ -28,9 +28,15 @@ func NewArchiver(spool *Spool, store ports.ObjectStore, keepOriginal bool, log *
 	return &Archiver{spool: spool, store: store, keepOriginal: keepOriginal, log: log, clock: time.Now}
 }
 
-// ObjectKey returns the storage key for a recording's file with the given extension.
+// ObjectKey returns the storage key for a recording's file with the given extension:
+// recordings/<owner>/<recording>.<ext>. (Recordings archived before users existed keep their
+// stored key, which used the device ID.)
 func ObjectKey(rec *recording.Recording, ext string) string {
-	return fmt.Sprintf("recordings/%s/%s.%s", rec.DeviceID, rec.ID, ext)
+	owner := rec.OwnerID
+	if owner == "" {
+		owner = "unowned"
+	}
+	return fmt.Sprintf("recordings/%s/%s.%s", owner, rec.ID, ext)
 }
 
 // Run archives the recording and records the stored objects on rec. The spooled files are

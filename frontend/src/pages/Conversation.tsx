@@ -44,9 +44,9 @@ export function Conversation() {
 
   const load = useCallback(async () => {
     try {
-      const [r, ai] = await Promise.all([api.recording(id), api.openRouterSettings()]);
+      const [r, ai] = await Promise.all([api.recording(id), api.aiStatus()]);
       setRec(r);
-      setAIReady(ai.apiKeyConfigured && !!ai.transcriptionModel && !!ai.summaryModel);
+      setAIReady(ai.transcription && ai.summary);
       setError(null);
     } catch (err) {
       setError((err as Error).message);
@@ -127,7 +127,7 @@ export function Conversation() {
             {d.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })},{' '}
             {d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
             {rec.format?.durationMs ? ` · ${formatDuration(rec.format.durationMs)}` : ''}
-            {rec.source === 'pocket' ? ' · Pocket' : ''}
+            {rec.source === 'pocket' ? ' · Pocket' : rec.source === 'upload' ? ' · Upload' : ''}
             {state && <span className={`state-pill${rec.status === 'failed' ? ' bad' : ''}`}>{state}</span>}
           </p>
         </div>
@@ -217,7 +217,13 @@ export function Conversation() {
                   </>
                 )}
                 <dt>Source</dt>
-                <dd>{rec.source === 'pocket' ? inline(`Pocket recording \`${rec.recordingId}\``) : inline(`Device upload \`${rec.recordingId}\``)}</dd>
+                <dd>
+                  {rec.source === 'pocket'
+                    ? inline(`Pocket recording \`${rec.recordingId}\``)
+                    : rec.source === 'upload'
+                      ? 'Uploaded in the browser'
+                      : inline(`Device upload \`${rec.recordingId}\``)}
+                </dd>
               </dl>
             </div>
           ) : (

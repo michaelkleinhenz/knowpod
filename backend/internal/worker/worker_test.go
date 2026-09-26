@@ -19,6 +19,7 @@ import (
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/audio/audiotest"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/device"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/user"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/pocket"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/repository/memory"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/service"
@@ -57,7 +58,7 @@ func (f *fixture) receive(t *testing.T, wav []byte) string {
 	t.Helper()
 	ctx := context.Background()
 	s := sha256.Sum256(wav)
-	dev := &device.Device{ID: "dev-1"}
+	dev := &device.Device{ID: "dev-1", OwnerID: "user-1"}
 	up, _, err := f.uploads.Create(ctx, dev, service.CreateUploadInput{RecordingID: "r1", Size: int64(len(wav)), SHA256: hex.EncodeToString(s[:])})
 	if err != nil {
 		t.Fatal(err)
@@ -81,7 +82,7 @@ func TestArchiveStage(t *testing.T) {
 	if rec.Status != recording.StatusStored || rec.Audio == nil || rec.Original == nil || rec.StoredAt == nil || rec.Attempts != 0 {
 		t.Fatalf("recording = %+v", rec)
 	}
-	if rec.Audio.Key != "recordings/dev-1/"+id+".flac" || rec.Audio.ContentType != "audio/flac" {
+	if rec.OwnerID != "user-1" || rec.Audio.Key != "recordings/user-1/"+id+".flac" || rec.Audio.ContentType != "audio/flac" {
 		t.Fatalf("audio = %+v", rec.Audio)
 	}
 
@@ -161,7 +162,10 @@ type fakePocket struct {
 	err  error
 }
 
-func (p *fakePocket) AudioURL(context.Context, string) (string, error) {
+func (p *fakePocket) AudioURL(_ context.Context, apiKey, _ string) (string, error) {
+	if apiKey != "pk_owner" {
+		return "", errors.New("wrong API key")
+	}
 	return "https://s3.example.com/audio?sig=1", p.err
 }
 
@@ -177,7 +181,10 @@ func runPocket(t *testing.T, data []byte) (*recording.Recording, *memstore.Store
 	t.Helper()
 	ctx := context.Background()
 	f := newFixture(t, false)
-	svc := service.NewPocketService(f.recs, &fakePocket{data: data}, f.spool, 1<<30, quiet)
+	users := memory.NewUsers()
+	owner := &user.User{ID: "user-1", Email: "a@example.com", Pocket: user.Pocket{WebhookID: "hook", WebhookSecret: "s", APIKey: "pk_owner"}}
+	_ = users.Create(ctx, owner)
+	svc := service.NewPocketService(f.recs, users, &fakePocket{data: data}, f.spool, 1<<30, quiet)
 	archiver := service.NewArchiver(f.spool, f.objects, false, quiet)
 	w := worker.New(f.recs, []worker.Stage{
 		{Name: "pocket-fetch", From: recording.StatusRemote, To: recording.StatusReceived, Run: svc.Fetch},
@@ -186,13 +193,13 @@ func runPocket(t *testing.T, data []byte) (*recording.Recording, *memstore.Store
 
 	ev := &pocket.Event{Event: "recording.created"}
 	ev.Recording.ID = "rec_1"
-	if _, err := svc.HandleWebhook(ctx, ev); err != nil {
+	if _, err := svc.HandleWebhook(ctx, owner, ev); err != nil {
 		t.Fatal(err)
 	}
 	if n := w.RunOnce(ctx); n != 2 {
 		t.Fatalf("processed %d stages, want 2 (fetch + archive)", n)
 	}
-	rec, err := f.recs.GetByClientID(ctx, recording.PocketDeviceID, "rec_1")
+	rec, err := f.recs.GetByClientID(ctx, recording.PocketDeviceID(owner.ID), "rec_1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +213,7 @@ func TestPocketAudioStoredAsIs(t *testing.T) {
 	mp3 := append([]byte("ID3\x04\x00"), make([]byte, 1000)...)
 	rec, objects := runPocket(t, mp3)
 	if rec.Status != recording.StatusStored || rec.Audio == nil || rec.Audio.ContentType != "audio/mpeg" ||
-		rec.Audio.Key != "recordings/pocket/"+rec.ID+".mp3" || rec.Size != int64(len(mp3)) {
+		rec.OwnerID != "user-1" || rec.Audio.Key != "recordings/user-1/"+rec.ID+".mp3" || rec.Size != int64(len(mp3)) {
 		t.Fatalf("recording = %+v audio=%+v", rec, rec.Audio)
 	}
 	if obj, ok := objects.Object(rec.Audio.Key); !ok || !bytes.Equal(obj.Data, mp3) {

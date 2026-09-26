@@ -56,6 +56,9 @@ func (r *RecordingRepo) Delete(ctx context.Context, id string) error {
 
 func (r *RecordingRepo) List(ctx context.Context, f recording.ListFilter) ([]*recording.Recording, error) {
 	filter := bson.M{}
+	if f.OwnerID != "" {
+		filter["ownerId"] = f.OwnerID
+	}
 	if f.DeviceID != "" {
 		filter["deviceId"] = f.DeviceID
 	}
@@ -87,6 +90,10 @@ func (r *RecordingRepo) Claim(ctx context.Context, status recording.Status, now,
 
 func (r *RecordingRepo) ListStale(ctx context.Context, status recording.Status, before time.Time, limit int) ([]*recording.Recording, error) {
 	return r.find(ctx, bson.M{"status": status, "updatedAt": bson.M{"$lt": before}}, options.Find().SetLimit(int64(limit)))
+}
+
+func (r *RecordingRepo) AssignOwnerless(ctx context.Context, ownerID string) (int, error) {
+	return assignOwnerless(ctx, r.c, ownerID)
 }
 
 func (r *RecordingRepo) findOne(ctx context.Context, filter bson.M) (*recording.Recording, error) {

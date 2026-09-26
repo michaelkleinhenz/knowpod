@@ -32,10 +32,9 @@ type Config struct {
 	S3Bucket string
 	S3Prefix string
 
-	// Pocket (heypocketai.com) integration. The webhook is accepted only when both are set.
-	PocketWebhookSecret string // signing secret shown when the webhook is created in Pocket
-	PocketAPIKey        string // Pocket API key ("pk_…") for downloading audio
-	PocketAPIURL        string
+	// PocketAPIURL is the Pocket (heypocketai.com) API; each user sets their own webhook
+	// secret and API key in the web UI.
+	PocketAPIURL string
 
 	// OpenRouterAPIURL is the OpenRouter endpoint (the API key and models are set in the UI).
 	OpenRouterAPIURL string
@@ -54,26 +53,24 @@ type Config struct {
 // Load reads configuration from the environment, applying sensible development defaults.
 func Load() Config {
 	return Config{
-		Port:                env("PORT", "8080"),
-		MongoURI:            env("MONGO_URI", "mongodb://localhost:27017/?replicaSet=rs0"),
-		MongoDB:             env("MONGO_DATABASE", "knowpod"),
-		FrontendURL:         env("FRONTEND_URL", "http://localhost:5173"),
-		AdminEmail:          env("ADMIN_EMAIL", ""),
-		AdminPassword:       env("ADMIN_PASSWORD", ""),
-		SessionTTL:          envDuration("SESSION_TTL", 7*24*time.Hour),
-		AdminToken:          env("ADMIN_TOKEN", ""),
-		S3Bucket:            env("AWS_S3_BUCKET_NAME", ""),
-		S3Prefix:            env("AWS_S3_PREFIX", ""),
-		PocketWebhookSecret: env("POCKET_WEBHOOK_SECRET", ""),
-		PocketAPIKey:        env("POCKET_API_KEY", ""),
-		PocketAPIURL:        env("POCKET_API_URL", "https://public.heypocketai.com/api/v1"),
-		OpenRouterAPIURL:    env("OPENROUTER_API_URL", "https://openrouter.ai/api/v1"),
-		UploadDir:           env("UPLOAD_DIR", "./data/uploads"),
-		MaxUploadBytes:      envInt64("MAX_UPLOAD_BYTES", 4<<30), // WAV's 32-bit sizes cap files at 4 GiB
-		UploadTTL:           envDuration("UPLOAD_TTL", 48*time.Hour),
-		KeepOriginalWAV:     envBool("KEEP_ORIGINAL_WAV", false),
-		WorkerPollInterval:  envDuration("WORKER_POLL_INTERVAL", 10*time.Second),
-		WorkerMaxAttempts:   int(envInt64("WORKER_MAX_ATTEMPTS", 5)),
+		Port:               env("PORT", "8080"),
+		MongoURI:           env("MONGO_URI", "mongodb://localhost:27017/?replicaSet=rs0"),
+		MongoDB:            env("MONGO_DATABASE", "knowpod"),
+		FrontendURL:        env("FRONTEND_URL", "http://localhost:5173"),
+		AdminEmail:         env("ADMIN_EMAIL", ""),
+		AdminPassword:      env("ADMIN_PASSWORD", ""),
+		SessionTTL:         envDuration("SESSION_TTL", 7*24*time.Hour),
+		AdminToken:         env("ADMIN_TOKEN", ""),
+		S3Bucket:           env("AWS_S3_BUCKET_NAME", ""),
+		S3Prefix:           env("AWS_S3_PREFIX", ""),
+		PocketAPIURL:       env("POCKET_API_URL", "https://public.heypocketai.com/api/v1"),
+		OpenRouterAPIURL:   env("OPENROUTER_API_URL", "https://openrouter.ai/api/v1"),
+		UploadDir:          env("UPLOAD_DIR", "./data/uploads"),
+		MaxUploadBytes:     envInt64("MAX_UPLOAD_BYTES", 4<<30), // WAV's 32-bit sizes cap files at 4 GiB
+		UploadTTL:          envDuration("UPLOAD_TTL", 48*time.Hour),
+		KeepOriginalWAV:    envBool("KEEP_ORIGINAL_WAV", false),
+		WorkerPollInterval: envDuration("WORKER_POLL_INTERVAL", 10*time.Second),
+		WorkerMaxAttempts:  int(envInt64("WORKER_MAX_ATTEMPTS", 5)),
 	}
 }
 

@@ -73,7 +73,7 @@ func TestAudioURL(t *testing.T) {
 				_, _ = w.Write([]byte(body))
 			}))
 			defer srv.Close()
-			got, err := NewClient(srv.URL, "pk_test").AudioURL(context.Background(), "rec_1")
+			got, err := NewClient(srv.URL).AudioURL(context.Background(), "pk_test", "rec_1")
 			if err != nil || got != "https://s3.example.com/a.mp3?sig=1" {
 				t.Fatalf("AudioURL = %q, %v", got, err)
 			}
@@ -92,14 +92,14 @@ func TestAudioURLErrors(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	c := NewClient(srv.URL, "pk_test")
-	if _, err := c.AudioURL(context.Background(), "missing"); !errors.Is(err, ErrNotFound) {
+	c := NewClient(srv.URL)
+	if _, err := c.AudioURL(context.Background(), "pk_test", "missing"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing: %v", err)
 	}
-	if _, err := c.AudioURL(context.Background(), "odd"); err == nil || !strings.Contains(err.Error(), "something") {
+	if _, err := c.AudioURL(context.Background(), "pk_test", "odd"); err == nil || !strings.Contains(err.Error(), "something") {
 		t.Fatalf("unrecognised response should be reported with its body: %v", err)
 	}
-	if _, err := NewClient(srv.URL, "").AudioURL(context.Background(), "x"); err == nil {
+	if _, err := c.AudioURL(context.Background(), "", "x"); err == nil {
 		t.Fatal("expected error without API key")
 	}
 }
@@ -119,7 +119,7 @@ func TestDownload(t *testing.T) {
 		_, _ = w.Write(mp3)
 	}))
 	defer srv.Close()
-	c := NewClient("unused", "pk_test")
+	c := NewClient("unused")
 	dst := filepath.Join(t.TempDir(), "a.download")
 
 	d, err := c.Download(context.Background(), srv.URL+"/a.mp3", dst, 1<<20)

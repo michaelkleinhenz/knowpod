@@ -27,22 +27,25 @@ background worker ─────▶ WAV → FLAC, uploaded to S3 (status: store
 AI worker ─────────────▶ transcript (status: transcribed) → title + summary (status: summarized)
 ```
 
+- **Users** sign in with email and password and each see only their own conversations and
+  devices. Admins manage users and the AI settings. The built-in admin is `ADMIN_EMAIL`,
+  whose password is `ADMIN_PASSWORD` until one is set in the UI.
 - Each gadget authenticates with its own revocable token, created on the web UI's
-  **Devices** page (or through the admin API).
-- Recordings made with a [Pocket](https://heypocket.com) recorder arrive by webhook; the
-  service downloads their audio through the Pocket API and archives it the same way.
-- People sign in to the web UI with email and password. The first login uses
-  `ADMIN_EMAIL`/`ADMIN_PASSWORD` from the environment; once the password is changed in the
-  UI, the stored password replaces the one from the environment.
+  **Devices** page.
+- Each user can connect their own [Pocket](https://heypocket.com) recorder on the
+  **Account** page: recordings arrive through the user's personal webhook and their audio is
+  downloaded with the user's Pocket API key.
+- WAV and MP3 files can be uploaded from the browser on **Conversations**.
 - Uploads are idempotent (the gadget names each recording), resumable after dropped
   connections, and checked against a SHA-256 the gadget declares up front.
 - Transcoding and archiving run in a background worker with retries and backoff.
 - Every archived recording is transcribed and summarized through
   [OpenRouter](https://openrouter.ai). The API key and both models are chosen by an admin
   on the web UI's **Settings** page.
-- The web UI's **Conversations** page lists all recordings by the title of their summary;
+- The web UI's **Conversations** page lists your recordings by the title of their summary;
   each conversation shows its summary, transcript and audio, and can be re-transcribed,
   re-summarized or deleted.
+- The web UI works on phones and can be installed as an app (PWA).
 
 Supported input: integer PCM WAV, 8/16/24 bit, 1–8 channels, up to 4 GiB.
 
@@ -52,7 +55,7 @@ Supported input: integer PCM WAV, 8/16/24 bit, 1–8 channels, up to 4 GiB.
 |---|---|
 | [Device upload protocol](docs/device-protocol.md) | Implementing the upload client on the gadget: requests, error handling, retry logic |
 | [Architecture](docs/architecture.md) | Backend developers: components, recording lifecycle, worker, data model, adding processing stages |
-| [Operations](docs/operations.md) | Deploying and running: Railway, AWS/IAM setup, web UI sign-in, provisioning devices, monitoring, recovery, limitations |
+| [Operations](docs/operations.md) | Deploying and running: Railway, AWS/IAM setup, users and sign-in, Pocket, uploads, installing the app, AI settings, devices, monitoring, recovery, limitations |
 | [OpenAPI spec](backend/api/openapi.yaml) | The formal API definition. The service serves it at `/api/v1/openapi.yaml` and `/api/v1/openapi.json`, and the web UI's **Status** page renders it as an API reference. |
 
 ## Quick start (Docker)
@@ -72,8 +75,8 @@ docker compose up --build
 
 ### Try it with curl
 
-Scripts use the admin API with `ADMIN_TOKEN` (set it in `.env`) instead of a browser
-session.
+Scripts use the API with `ADMIN_TOKEN` (set it in `.env`) instead of a browser session;
+they act as the built-in admin.
 
 ```bash
 set -a && . ./.env && set +a       # load ADMIN_TOKEN into the shell
@@ -81,7 +84,7 @@ API=http://localhost:8080/api/v1
 ADMIN="Authorization: Bearer $ADMIN_TOKEN"
 
 # Register a device; keep the token, it is shown only once.
-TOKEN=$(curl -s -X POST -H "$ADMIN" -d '{"name":"test-recorder"}' $API/admin/devices | jq -r .token)
+TOKEN=$(curl -s -X POST -H "$ADMIN" -d '{"name":"test-recorder"}' $API/devices | jq -r .token)
 
 # Upload a WAV file.
 SIZE=$(stat -c %s rec.wav); SHA=$(sha256sum rec.wav | cut -d' ' -f1)
@@ -91,8 +94,8 @@ curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H "Upload-Offset: 0" \
   --data-binary @rec.wav $API/uploads/$ID
 
 # Inspect it and fetch the archived FLAC.
-curl -s -H "$ADMIN" $API/admin/recordings/$ID | jq
-curl -s -H "$ADMIN" -o rec.flac $API/admin/recordings/$ID/audio
+curl -s -H "$ADMIN" $API/recordings/$ID | jq
+curl -s -H "$ADMIN" -o rec.flac $API/recordings/$ID/audio
 ```
 
 ## Deploying
@@ -129,12 +132,10 @@ Environment variables only.
 | `MONGO_URI` | `mongodb://localhost:27017/?replicaSet=rs0` | MongoDB connection string |
 | `MONGO_DATABASE` | `knowpod` | Database name |
 | `FRONTEND_URL` | `http://localhost:5173` | Allowed CORS origin |
-| `ADMIN_EMAIL` | _(empty)_ | Email of the default web UI login |
-| `ADMIN_PASSWORD` | _(empty)_ | Password of the default login, until it is changed in the UI. Empty disables the default login. |
+| `ADMIN_EMAIL` | _(empty)_ | Email of the built-in admin (created at startup) |
+| `ADMIN_PASSWORD` | _(empty)_ | The built-in admin's password until one is set in the UI |
 | `SESSION_TTL` | `168h` | How long a web UI sign-in lasts |
-| `ADMIN_TOKEN` | _(empty: disabled)_ | Bearer token for scripting `/api/v1/admin/*` without signing in |
-| `POCKET_WEBHOOK_SECRET` | _(empty: webhook refused)_ | Signing secret of the Pocket webhook |
-| `POCKET_API_KEY` | _(empty: webhook refused)_ | Pocket API key (`pk_…`) for downloading audio |
+| `ADMIN_TOKEN` | _(empty: disabled)_ | Bearer token for scripts: the whole API (except the device upload API) as the built-in admin, seeing all users' data |
 | `POCKET_API_URL` | `https://public.heypocketai.com/api/v1` | Pocket API base URL |
 | `AWS_S3_BUCKET_NAME` | _(required)_ | Existing bucket for the audio files |
 | `AWS_S3_PREFIX` | _(empty)_ | Key prefix inside the bucket |
@@ -147,9 +148,10 @@ Environment variables only.
 | `WORKER_POLL_INTERVAL` | `10s` | How often the worker checks for due work |
 | `WORKER_MAX_ATTEMPTS` | `5` | Attempts per processing stage before `failed` |
 
-Objects are stored at `recordings/<deviceId>/<id>.flac` (and `.wav` when kept), where
-`<id>` is the server-assigned recording ID. Pocket recordings are stored at
-`recordings/pocket/<id>.<ext>` in their original format (FLAC if Pocket delivers WAV). For the required IAM permissions, see
+Objects are stored at `recordings/<userId>/<id>.flac` (and `.wav` when kept), where `<id>`
+is the server-assigned recording ID. Audio kept in its original format (MP3 or M4A from
+Pocket or browser uploads) is stored as `recordings/<userId>/<id>.<ext>`. Recordings
+archived before users existed keep their earlier keys. For the required IAM permissions, see
 [Operations](docs/operations.md#s3).
 
 ## Layout
@@ -161,24 +163,27 @@ backend/
   internal/
     audio/             WAV parsing, WAV → FLAC, format sniffing, speech chunks for transcription
     config/            environment-based configuration
-    domain/            models: recording (lifecycle), device, user + session
+    domain/            models: recording (lifecycle, owner), device, user (role, Pocket) + session
     openrouter/        OpenRouter API client (chat completions with audio, model list)
     pocket/            Pocket webhook signatures and API client
     ports/             repository and object store interfaces
     repository/mongo/  MongoDB connection, repositories, collection/index setup
     repository/memory/ in-memory repositories for tests
-    service/           web UI sign-in, device auth, uploads + spool, Pocket, archive,
-                       transcription and summary stages, recording actions
+    service/           sign-in and users, device auth, uploads + spool, browser uploads,
+                       Pocket, archive, transcription and summary stages, recording actions
     storage/s3/        S3 object store (storage/memory for tests)
     transport/http/    router, middleware, handlers
     web/               embedded frontend (dist/) + SPA handler
     worker/            background pipeline: claim, run stages, retry/backoff
 docs/                  device protocol, architecture, operations
+frontend/
+  public/              app icons (favicon.svg, PWA and Apple touch icons)
+  vite.config.ts       build, dev proxy, PWA manifest and service worker (vite-plugin-pwa)
 frontend/src/
   api/client.ts        API client
   auth.tsx             sign-in state (AuthProvider, useAuth)
   components/          reusable UI components
-  pages/               Conversations (list + detail), Devices, Settings, Status, Account, Login
+  pages/               Conversations (list + detail), Devices, Users, Settings, Status, Account, Login
   lib/recordings.ts    display helpers for recordings (titles, states, dates)
 ```
 

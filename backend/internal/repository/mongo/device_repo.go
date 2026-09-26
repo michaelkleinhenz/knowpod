@@ -29,8 +29,12 @@ func (r *DeviceRepo) GetByTokenHash(ctx context.Context, hash string) (*device.D
 	return r.findOne(ctx, bson.M{"tokenHash": hash})
 }
 
-func (r *DeviceRepo) List(ctx context.Context) ([]*device.Device, error) {
-	cur, err := r.c.Find(ctx, bson.M{}, options.Find().SetSort(bson.D{{Key: "createdAt", Value: 1}}))
+func (r *DeviceRepo) List(ctx context.Context, ownerID string) ([]*device.Device, error) {
+	filter := bson.M{}
+	if ownerID != "" {
+		filter["ownerId"] = ownerID
+	}
+	cur, err := r.c.Find(ctx, filter, options.Find().SetSort(bson.D{{Key: "createdAt", Value: 1}}))
 	if err != nil {
 		return nil, err
 	}
@@ -47,6 +51,21 @@ func (r *DeviceRepo) Update(ctx context.Context, d *device.Device) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (r *DeviceRepo) Delete(ctx context.Context, id string) error {
+	res, err := r.c.DeleteOne(ctx, bson.M{"_id": id})
+	if err != nil {
+		return err
+	}
+	if res.DeletedCount == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (r *DeviceRepo) AssignOwnerless(ctx context.Context, ownerID string) (int, error) {
+	return assignOwnerless(ctx, r.c, ownerID)
 }
 
 func (r *DeviceRepo) findOne(ctx context.Context, filter bson.M) (*device.Device, error) {

@@ -7,6 +7,7 @@ import "time"
 // SHA-256 hash is stored.
 type Device struct {
 	ID         string     `bson:"_id" json:"id"`
+	OwnerID    string     `bson:"ownerId" json:"ownerId"` // the user whose recordings it uploads
 	Name       string     `bson:"name" json:"name"`
 	TokenHash  string     `bson:"tokenHash" json:"-"`
 	CreatedAt  time.Time  `bson:"createdAt" json:"createdAt"`

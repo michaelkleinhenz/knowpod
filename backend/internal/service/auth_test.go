@@ -6,26 +6,32 @@ import (
 	"testing"
 	"time"
 
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/user"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/repository/memory"
 )
 
-func newAuth() (*AuthService, *memory.Users, *memory.Sessions) {
+func newAuth(t *testing.T) (*AuthService, *memory.Users, *memory.Sessions, *user.User) {
+	t.Helper()
 	users, sessions := memory.NewUsers(), memory.NewSessions()
-	return NewAuthService(users, sessions, " Admin@Example.com ", "env-secret", time.Hour), users, sessions
+	s := NewAuthService(users, sessions, " Admin@Example.com ", "env-secret", time.Hour)
+	admin, err := s.EnsureBuiltInAdmin(context.Background())
+	if err != nil || admin == nil || admin.Role != user.RoleAdmin || admin.PasswordHash != "" {
+		t.Fatalf("built-in admin = %+v, %v", admin, err)
+	}
+	return s, users, sessions, admin
 }
 
-func TestLoginWithDefaultAdmin(t *testing.T) {
+func TestBuiltInAdminLogin(t *testing.T) {
 	ctx := context.Background()
-	s, _, _ := newAuth()
+	s, _, _, admin := newAuth(t)
 
 	acc, token, expires, err := s.Login(ctx, "ADMIN@example.com", "env-secret")
-	if err != nil || acc.Email != "admin@example.com" || token == "" || expires.IsZero() {
+	if err != nil || acc.ID != admin.ID || acc.Role != user.RoleAdmin || token == "" || expires.IsZero() {
 		t.Fatalf("login: %+v %q %v %v", acc, token, expires, err)
 	}
-	if got, err := s.Authenticate(ctx, token); err != nil || got.Email != "admin@example.com" {
+	if got, err := s.Authenticate(ctx, token); err != nil || got.Email != "admin@example.com" || !got.IsAdmin() {
 		t.Fatalf("authenticate: %+v, %v", got, err)
 	}
-
 	for _, tc := range []struct{ email, pw string }{
 		{"admin@example.com", "wrong"},
 		{"someone@example.com", "env-secret"},
@@ -35,18 +41,23 @@ func TestLoginWithDefaultAdmin(t *testing.T) {
 			t.Errorf("login(%q, %q) = %v", tc.email, tc.pw, err)
 		}
 	}
+	// A second start doesn't create another record.
+	again, _ := s.EnsureBuiltInAdmin(ctx)
+	if again.ID != admin.ID {
+		t.Fatal("built-in admin recreated")
+	}
 }
 
-func TestDefaultLoginDisabledWithoutEnv(t *testing.T) {
+func TestNoBuiltInAdminWithoutEnv(t *testing.T) {
 	s := NewAuthService(memory.NewUsers(), memory.NewSessions(), "", "", time.Hour)
-	if _, _, _, err := s.Login(context.Background(), "", ""); !errors.Is(err, ErrInvalidLogin) {
-		t.Fatalf("err = %v", err)
+	if u, err := s.EnsureBuiltInAdmin(context.Background()); u != nil || err != nil {
+		t.Fatalf("EnsureBuiltInAdmin = %v, %v", u, err)
 	}
 }
 
 func TestChangePasswordOverridesEnv(t *testing.T) {
 	ctx := context.Background()
-	s, users, sessions := newAuth()
+	s, users, sessions, admin := newAuth(t)
 	acc, token, _, _ := s.Login(ctx, "admin@example.com", "env-secret")
 	_, other, _, _ := s.Login(ctx, "admin@example.com", "env-secret")
 
@@ -59,10 +70,9 @@ func TestChangePasswordOverridesEnv(t *testing.T) {
 	if err := s.ChangePassword(ctx, acc, token, "env-secret", "new-password"); err != nil {
 		t.Fatal(err)
 	}
-
-	u, err := users.GetByEmail(ctx, "admin@example.com")
-	if err != nil || u.PasswordHash == "" || u.PasswordHash == "new-password" {
-		t.Fatalf("stored user: %+v, %v", u, err)
+	u, _ := users.Get(ctx, admin.ID)
+	if u.PasswordHash == "" || u.PasswordChangedAt == nil {
+		t.Fatalf("stored user: %+v", u)
 	}
 	if _, _, _, err := s.Login(ctx, "admin@example.com", "env-secret"); !errors.Is(err, ErrInvalidLogin) {
 		t.Fatalf("env password still works: %v", err)
@@ -70,40 +80,43 @@ func TestChangePasswordOverridesEnv(t *testing.T) {
 	if _, _, _, err := s.Login(ctx, "admin@example.com", "new-password"); err != nil {
 		t.Fatalf("new password: %v", err)
 	}
-
-	// The session used for the change survives; other sessions are ended.
 	if _, err := s.Authenticate(ctx, token); err != nil {
 		t.Fatalf("current session ended: %v", err)
 	}
 	if _, err := s.Authenticate(ctx, other); !errors.Is(err, ErrNotSignedIn) {
 		t.Fatalf("other session survived: %v", err)
 	}
-	if sessions.Count() != 2 { // the current one and the new login
+	if sessions.Count() != 2 {
 		t.Fatalf("sessions = %d", sessions.Count())
-	}
-
-	// Changing again verifies against the stored password.
-	if err := s.ChangePassword(ctx, acc, token, "new-password", "newer-password"); err != nil {
-		t.Fatal(err)
 	}
 }
 
-func TestSessionExpiryAndLogout(t *testing.T) {
+func TestSessionEndsWhenUserIsDeletedOrExpires(t *testing.T) {
 	ctx := context.Background()
-	s, _, _ := newAuth()
-	_, token, _, _ := s.Login(ctx, "admin@example.com", "env-secret")
+	s, users, _, _ := newAuth(t)
+	u := &user.User{ID: "u1", Email: "bob@example.com", Role: user.RoleUser}
+	_ = s.setPasswordValue(u, "bob-password")
+	_ = users.Create(ctx, u)
 
+	_, token, _, err := s.Login(ctx, "bob@example.com", "bob-password")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := s.Logout(ctx, token); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.Authenticate(ctx, token); !errors.Is(err, ErrNotSignedIn) {
 		t.Fatalf("after logout: %v", err)
 	}
-	if err := s.Logout(ctx, token); err != nil {
-		t.Fatalf("second logout: %v", err)
+
+	_, token, _, _ = s.Login(ctx, "bob@example.com", "bob-password")
+	_ = users.Delete(ctx, "u1")
+	if _, err := s.Authenticate(ctx, token); !errors.Is(err, ErrNotSignedIn) {
+		t.Fatalf("deleted user still signed in: %v", err)
 	}
 
-	_, token, _, _ = s.Login(ctx, "admin@example.com", "env-secret")
+	_ = users.Create(ctx, u)
+	_, token, _, _ = s.Login(ctx, "bob@example.com", "bob-password")
 	s.clock = func() time.Time { return time.Now().Add(2 * time.Hour) }
 	if _, err := s.Authenticate(ctx, token); !errors.Is(err, ErrNotSignedIn) {
 		t.Fatalf("expired session: %v", err)

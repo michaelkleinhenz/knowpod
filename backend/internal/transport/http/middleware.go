@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/device"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/user"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/service"
 )
 
@@ -56,11 +57,11 @@ func (s *Server) requireDevice(next http.Handler) http.Handler {
 	})
 }
 
-// requireUser admits requests with a valid web UI session and puts the account in the
-// context.
+// requireUser admits signed-in web UI users and scripts bearing ADMIN_TOKEN, and puts the
+// account in the context.
 func (s *Server) requireUser(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		acc, err := s.sessionAccount(r)
+		acc, err := s.account(r)
 		if err != nil {
 			s.writeErr(w, err)
 			return
@@ -69,29 +70,37 @@ func (s *Server) requireUser(next http.Handler) http.Handler {
 	})
 }
 
-// requireAdmin admits signed-in web UI users and requests bearing ADMIN_TOKEN (for scripts).
+// requireAdmin is requireUser restricted to administrators.
 func (s *Server) requireAdmin(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if tok := bearer(r); tok != "" {
-			if s.cfg.AdminToken == "" || subtle.ConstantTimeCompare([]byte(tok), []byte(s.cfg.AdminToken)) != 1 {
-				writeJSON(w, http.StatusUnauthorized, errResponse{Error: "invalid admin token"})
-				return
-			}
-			next.ServeHTTP(w, r)
+	return s.requireUser(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !accountFrom(r.Context()).IsAdmin() {
+			writeJSON(w, http.StatusForbidden, errResponse{Error: "administrators only"})
 			return
 		}
-		s.requireUser(next).ServeHTTP(w, r)
-	})
+		next.ServeHTTP(w, r)
+	}))
 }
 
-// sessionAccount resolves the session cookie.
-func (s *Server) sessionAccount(r *http.Request) (*service.Account, error) {
+// account authenticates the request: a bearer token must be ADMIN_TOKEN; otherwise the
+// session cookie decides.
+func (s *Server) account(r *http.Request) (*service.Account, error) {
+	if tok := bearer(r); tok != "" {
+		if s.cfg.AdminToken == "" || subtle.ConstantTimeCompare([]byte(tok), []byte(s.cfg.AdminToken)) != 1 {
+			return nil, errInvalidAdminToken
+		}
+		if s.auth == nil {
+			return &service.Account{Role: user.RoleAdmin, All: true}, nil
+		}
+		return s.auth.ScriptAccount(r.Context())
+	}
 	c, err := r.Cookie(sessionCookie)
 	if err != nil || s.auth == nil {
 		return nil, service.ErrNotSignedIn
 	}
 	return s.auth.Authenticate(r.Context(), c.Value)
 }
+
+var errInvalidAdminToken = errors.New("invalid admin token")
 
 func bearer(r *http.Request) string {
 	h := r.Header.Get("Authorization")

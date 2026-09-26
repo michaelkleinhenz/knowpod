@@ -7,9 +7,20 @@ package web
 import (
 	"embed"
 	"io/fs"
+	"mime"
 	"net/http"
 	"strings"
 )
+
+func init() {
+	// Not in Go's built-in table; browsers expect it for the PWA manifest.
+	_ = mime.AddExtensionType(".webmanifest", "application/manifest+json")
+}
+
+// noCache lists files that must be revalidated on every load: the service worker and its
+// registration (so app updates reach installed PWAs) and the manifest. Hashed assets under
+// /assets can be cached for good.
+var noCache = map[string]bool{"sw.js": true, "registerSW.js": true, "manifest.webmanifest": true}
 
 // dist holds the compiled SPA assets. The all: prefix ensures dot-prefixed files are embedded
 // too. A placeholder index.html is committed so the backend builds even without a frontend
@@ -47,6 +58,12 @@ func Handler() http.Handler {
 		if name != "index.html" {
 			if f, err := fsys.Open(name); err == nil {
 				_ = f.Close()
+				switch {
+				case noCache[name] || strings.HasPrefix(name, "workbox-"):
+					w.Header().Set("Cache-Control", "no-cache")
+				case strings.HasPrefix(name, "assets/"):
+					w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+				}
 				fileServer.ServeHTTP(w, r)
 				return
 			}

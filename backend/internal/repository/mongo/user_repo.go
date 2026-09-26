@@ -16,17 +16,63 @@ type UserRepo struct{ c *mongo.Collection }
 // NewUserRepo builds the repository.
 func NewUserRepo(s *Store) *UserRepo { return &UserRepo{c: s.DB().Collection(CollUsers)} }
 
+func (r *UserRepo) Create(ctx context.Context, u *user.User) error {
+	_, err := r.c.InsertOne(ctx, u)
+	return mapErr(err)
+}
+
+func (r *UserRepo) Get(ctx context.Context, id string) (*user.User, error) {
+	return r.findOne(ctx, bson.M{"_id": id})
+}
+
 func (r *UserRepo) GetByEmail(ctx context.Context, email string) (*user.User, error) {
+	return r.findOne(ctx, bson.M{"email": email})
+}
+
+func (r *UserRepo) GetByPocketWebhookID(ctx context.Context, webhookID string) (*user.User, error) {
+	if webhookID == "" {
+		return nil, ErrNotFound
+	}
+	return r.findOne(ctx, bson.M{"pocket.webhookId": webhookID})
+}
+
+func (r *UserRepo) List(ctx context.Context) ([]*user.User, error) {
+	cur, err := r.c.Find(ctx, bson.M{}, options.Find().SetSort(bson.D{{Key: "email", Value: 1}}))
+	if err != nil {
+		return nil, err
+	}
+	out := []*user.User{}
+	return out, cur.All(ctx, &out)
+}
+
+func (r *UserRepo) Update(ctx context.Context, u *user.User) error {
+	res, err := r.c.ReplaceOne(ctx, bson.M{"_id": u.ID}, u)
+	if err != nil {
+		return mapErr(err)
+	}
+	if res.MatchedCount == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (r *UserRepo) Delete(ctx context.Context, id string) error {
+	res, err := r.c.DeleteOne(ctx, bson.M{"_id": id})
+	if err != nil {
+		return err
+	}
+	if res.DeletedCount == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (r *UserRepo) findOne(ctx context.Context, filter bson.M) (*user.User, error) {
 	var u user.User
-	if err := r.c.FindOne(ctx, bson.M{"email": email}).Decode(&u); err != nil {
+	if err := r.c.FindOne(ctx, filter).Decode(&u); err != nil {
 		return nil, mapErr(err)
 	}
 	return &u, nil
-}
-
-func (r *UserRepo) Upsert(ctx context.Context, u *user.User) error {
-	_, err := r.c.ReplaceOne(ctx, bson.M{"email": u.Email}, u, options.Replace().SetUpsert(true))
-	return mapErr(err)
 }
 
 // SessionRepo is the MongoDB implementation of ports.SessionRepository.
@@ -59,7 +105,7 @@ func (r *SessionRepo) Delete(ctx context.Context, tokenHash string) error {
 	return nil
 }
 
-func (r *SessionRepo) DeleteByEmail(ctx context.Context, email, keepTokenHash string) error {
-	_, err := r.c.DeleteMany(ctx, bson.M{"email": email, "_id": bson.M{"$ne": keepTokenHash}})
+func (r *SessionRepo) DeleteByUser(ctx context.Context, userID, keepTokenHash string) error {
+	_, err := r.c.DeleteMany(ctx, bson.M{"userId": userID, "_id": bson.M{"$ne": keepTokenHash}})
 	return err
 }

@@ -38,8 +38,30 @@ export interface Info {
   apiVersion: string;
 }
 
+export type Role = 'admin' | 'user';
+
 export interface Account {
+  id: string;
   email: string;
+  role: Role;
+}
+
+export interface User {
+  id: string;
+  email: string;
+  role: Role;
+  builtIn: boolean;
+  usesEnvPassword: boolean;
+  pocketConfigured: boolean;
+  createdAt: string;
+  passwordChangedAt?: string;
+}
+
+export interface PocketSettings {
+  webhookPath: string;
+  webhookSecretConfigured: boolean;
+  apiKeyConfigured: boolean;
+  apiKeyHint?: string;
 }
 
 export interface Device {
@@ -68,7 +90,7 @@ export type RecordingStatus =
 export interface Recording {
   id: string;
   deviceId: string;
-  source?: 'pocket';
+  source?: 'pocket' | 'upload';
   title?: string;
   recordingId: string;
   status: RecordingStatus;
@@ -97,14 +119,6 @@ export interface ModelOption {
   promptPrice: string;
   completionPrice: string;
   audioPrice?: string;
-}
-
-export interface Integrations {
-  pocket: {
-    webhookPath: string;
-    webhookSecretConfigured: boolean;
-    apiKeyConfigured: boolean;
-  };
 }
 
 export interface Health {
@@ -136,26 +150,60 @@ async function health(): Promise<Health> {
   return (await res.json()) as Health;
 }
 
+// uploadRecording sends an audio file as the request body and reports progress (0..1). It
+// uses XMLHttpRequest because fetch can't report upload progress.
+function uploadRecording(file: File, onProgress: (fraction: number) => void): Promise<Recording> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/v1/recordings');
+    xhr.withCredentials = true;
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+    xhr.setRequestHeader('X-Filename', encodeURIComponent(file.name));
+    if (file.lastModified) xhr.setRequestHeader('X-Recorded-At', new Date(file.lastModified).toISOString());
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
+    xhr.onload = () => {
+      let data: unknown = null;
+      try {
+        data = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+      } catch {
+        // fall through
+      }
+      if (xhr.status >= 200 && xhr.status < 300) resolve(data as Recording);
+      else reject(new ApiError(xhr.status, (data as { error?: string } | null)?.error || `Error ${xhr.status}`));
+    };
+    xhr.onerror = () => reject(new ApiError(0, 'Network error during upload'));
+    xhr.send(file);
+  });
+}
+
 export const api = {
   info: () => request<Info>('GET', '/info'),
   health,
   openapi: () => request<OpenAPISpec>('GET', '/openapi.json'),
-  devices: () => request<Device[]>('GET', '/admin/devices'),
-  integrations: () => request<Integrations>('GET', '/admin/integrations'),
-  recordings: () => request<Recording[]>('GET', '/admin/recordings?limit=200'),
-  recording: (id: string) => request<Recording>('GET', `/admin/recordings/${encodeURIComponent(id)}`),
-  deleteRecording: (id: string) => request<void>('DELETE', `/admin/recordings/${encodeURIComponent(id)}`),
-  retranscribe: (id: string) => request<Recording>('POST', `/admin/recordings/${encodeURIComponent(id)}/retranscribe`),
-  resummarize: (id: string) => request<Recording>('POST', `/admin/recordings/${encodeURIComponent(id)}/resummarize`),
-  audioURL: (id: string, download = false) =>
-    `/api/v1/admin/recordings/${encodeURIComponent(id)}/audio${download ? '?download=1' : ''}`,
+  devices: () => request<Device[]>('GET', '/devices'),
+  pocket: () => request<PocketSettings>('GET', '/me/pocket'),
+  savePocket: (u: { webhookSecret?: string; apiKey?: string }) => request<PocketSettings>('PUT', '/me/pocket', u),
+  aiStatus: () => request<{ transcription: boolean; summary: boolean }>('GET', '/ai/status'),
+  recordings: () => request<Recording[]>('GET', '/recordings?limit=200'),
+  recording: (id: string) => request<Recording>('GET', `/recordings/${encodeURIComponent(id)}`),
+  deleteRecording: (id: string) => request<void>('DELETE', `/recordings/${encodeURIComponent(id)}`),
+  retranscribe: (id: string) => request<Recording>('POST', `/recordings/${encodeURIComponent(id)}/retranscribe`),
+  resummarize: (id: string) => request<Recording>('POST', `/recordings/${encodeURIComponent(id)}/resummarize`),
+  audioURL: (id: string, download = false) => `/api/v1/recordings/${encodeURIComponent(id)}/audio${download ? '?download=1' : ''}`,
+  uploadRecording,
+  users: () => request<User[]>('GET', '/admin/users'),
+  createUser: (u: { email: string; password: string; role: Role }) => request<User>('POST', '/admin/users', u),
+  updateUser: (id: string, u: { email?: string; role?: Role }) => request<User>('PUT', `/admin/users/${encodeURIComponent(id)}`, u),
+  setUserPassword: (id: string, password: string) =>
+    request<void>('PUT', `/admin/users/${encodeURIComponent(id)}/password`, { password }),
+  deleteUser: (id: string) => request<void>('DELETE', `/admin/users/${encodeURIComponent(id)}`),
   openRouterSettings: () => request<OpenRouterSettings>('GET', '/admin/settings/openrouter'),
   saveOpenRouterSettings: (u: { apiKey?: string; transcriptionModel?: string; summaryModel?: string }) =>
     request<OpenRouterSettings>('PUT', '/admin/settings/openrouter', u),
   openRouterModels: () => request<{ transcription: ModelOption[]; summary: ModelOption[] }>('GET', '/admin/openrouter/models'),
-  createDevice: (name: string) => request<DeviceWithToken>('POST', '/admin/devices', { name }),
-  rotateDeviceToken: (id: string) => request<DeviceWithToken>('POST', `/admin/devices/${encodeURIComponent(id)}/token`),
-  removeDevice: (id: string) => request<void>('DELETE', `/admin/devices/${encodeURIComponent(id)}`),
+  createDevice: (name: string) => request<DeviceWithToken>('POST', '/devices', { name }),
+  rotateDeviceToken: (id: string) => request<DeviceWithToken>('POST', `/devices/${encodeURIComponent(id)}/token`),
+  removeDevice: (id: string) => request<void>('DELETE', `/devices/${encodeURIComponent(id)}`),
   me: () => request<Account>('GET', '/auth/me'),
   login: (email: string, password: string) => request<Account>('POST', '/auth/login', { email, password }),
   logout: () => request<void>('POST', '/auth/logout'),

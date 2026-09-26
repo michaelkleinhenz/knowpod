@@ -36,13 +36,10 @@ services:
       MONGO_URI: "mongodb://mongo:27017/?replicaSet=rs0"
       MONGO_DATABASE: "knowpod"
       FRONTEND_URL: "${FRONTEND_URL:-http://localhost:8080}"
-      # Default web UI login; a password changed in the UI replaces ADMIN_PASSWORD.
+      # Built-in admin; a password set in the UI replaces ADMIN_PASSWORD.
       ADMIN_EMAIL: "${ADMIN_EMAIL:?set ADMIN_EMAIL}"
       ADMIN_PASSWORD: "${ADMIN_PASSWORD:?set ADMIN_PASSWORD}"
       ADMIN_TOKEN: "${ADMIN_TOKEN:-}"
-      # Optional Pocket (heypocketai.com) integration.
-      POCKET_WEBHOOK_SECRET: "${POCKET_WEBHOOK_SECRET:-}"
-      POCKET_API_KEY: "${POCKET_API_KEY:-}"
       # Amazon S3.
       AWS_S3_BUCKET_NAME: "${AWS_S3_BUCKET_NAME:?set AWS_S3_BUCKET_NAME}"
       AWS_S3_PREFIX: "${AWS_S3_PREFIX:-}"

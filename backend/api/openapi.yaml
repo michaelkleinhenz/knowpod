@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: knowpod-service API
-  version: 0.5.0
+  version: 0.6.0
   description: |
     Backend for the knowpod AI audio recorder.
 
@@ -17,20 +17,22 @@ info:
        becomes `received`. The recording is then transcoded to FLAC and archived in S3 in
        the background (status `stored`).
 
-    **Pocket** — recordings from a Pocket recorder (heypocketai.com) arrive through the
-    `POST /webhooks/pocket` webhook; the audio is then downloaded from the Pocket API and
-    archived like device uploads.
+    **Pocket** — each user connects their own Pocket recorder (heypocketai.com): its webhook
+    (`POST /webhooks/pocket/{webhookId}`, URL from `GET /me/pocket`) announces recordings,
+    whose audio is then downloaded with the user's Pocket API key and archived like device
+    uploads. WAV and MP3 files can also be uploaded from the browser (`POST /recordings`).
 
     **AI processing** — every archived recording is transcribed and then summarized through
     OpenRouter, with the API key and models set by an administrator
     (`PUT /admin/settings/openrouter`). Recordings wait in `stored` until that is configured.
 
-    **Web UI sign-in** — email and password, answered with an HttpOnly session cookie. The
-    default login comes from `ADMIN_EMAIL`/`ADMIN_PASSWORD`; a password changed via
-    `PUT /auth/password` replaces it.
+    **Users** — people sign in with email and password (HttpOnly session cookie). Every
+    recording and device belongs to a user, who only sees their own. Administrators manage
+    users (`/admin/users`) and the AI settings. The built-in admin is `ADMIN_EMAIL`; its
+    password is `ADMIN_PASSWORD` until one is set in the UI.
 
-    **Admin API** — device provisioning and recording access, authenticated with a web UI
-    session or, for scripts, with `ADMIN_TOKEN` as bearer token.
+    **Scripts** can call every endpoint except the device API with `ADMIN_TOKEN` as bearer
+    token; they act as the built-in admin and see all users' data.
 servers:
   - url: /api/v1
 security: []
@@ -41,14 +43,18 @@ tags:
     description: Used by recorder gadgets, authenticated with their device token.
   - name: Web UI sign-in
     description: Email/password sign-in for the web UI, with a session cookie.
-  - name: "Admin: devices"
-    description: Register and revoke recorder gadgets. Web UI session or ADMIN_TOKEN.
-  - name: "Admin: recordings"
-    description: Inspect recordings and download the archived audio. Web UI session or ADMIN_TOKEN.
+  - name: Your account
+    description: The signed-in user's Pocket integration and AI status.
+  - name: Devices
+    description: Your recorder gadgets. ADMIN_TOKEN sees every user's.
+  - name: Recordings
+    description: Your conversations, their audio, and uploads from the browser. ADMIN_TOKEN sees every user's.
   - name: Integrations
-    description: Webhooks from external recorders and their configuration.
+    description: Webhooks from external recorders.
+  - name: "Admin: users"
+    description: Create, change and delete users. Administrators only.
   - name: "Admin: AI settings"
-    description: OpenRouter API key and the models used to transcribe and summarize recordings.
+    description: OpenRouter API key and the models used to transcribe and summarize recordings. Administrators only.
 paths:
   /info:
     get:
@@ -239,20 +245,68 @@ paths:
             supported WAV (the recording is marked `failed`).
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
-  /webhooks/pocket:
+  /me/pocket:
+    get:
+      tags: ["Your account"]
+      summary: Your Pocket integration
+      description: Your webhook path and whether the secret and API key are set (their values are never returned).
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: Settings
+          content: { application/json: { schema: { $ref: "#/components/schemas/PocketSettings" } } }
+        "401": { $ref: "#/components/responses/Error" }
+    put:
+      tags: ["Your account"]
+      summary: Change your Pocket integration
+      description: Fields left out stay unchanged; empty strings remove the value.
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                webhookSecret: { type: string, description: Signing secret shown by Pocket when the webhook is created }
+                apiKey: { type: string, example: pk_… }
+      responses:
+        "200":
+          description: Saved
+          content: { application/json: { schema: { $ref: "#/components/schemas/PocketSettings" } } }
+
+  /ai/status:
+    get:
+      tags: ["Your account"]
+      summary: Whether AI processing is configured
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      responses:
+        "200":
+          description: Status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transcription: { type: boolean }
+                  summary: { type: boolean }
+
+  /webhooks/pocket/{webhookId}:
     post:
       tags: ["Integrations"]
       summary: Webhook for Pocket (heypocketai.com)
       description: |
-        Configure this URL as a webhook in the Pocket app. Requests are authenticated by
-        their signature: `X-HeyPocket-Signature` must be the hex HMAC-SHA256 of
-        `<X-HeyPocket-Timestamp>.<raw body>`, keyed with `POCKET_WEBHOOK_SECRET`, and the
-        timestamp (Unix milliseconds) must be within 5 minutes of the server clock.
+        Each user has their own webhook URL (see `GET /me/pocket`) to configure in their
+        Pocket app. Requests are authenticated by their signature: `X-HeyPocket-Signature`
+        must be the hex HMAC-SHA256 of `<X-HeyPocket-Timestamp>.<raw body>`, keyed with that
+        user's webhook signing secret, and the timestamp (Unix milliseconds) must be within
+        5 minutes of the server clock.
 
-        Every event that names a recording queues it once (repeated deliveries are ignored);
-        `recording.deleted` is ignored. The audio is then downloaded in the background via
-        the Pocket API (`POCKET_API_KEY`) and archived in S3.
+        Every event that names a recording queues it once for the user (repeated deliveries
+        are ignored); `recording.deleted` is ignored. The audio is then downloaded in the
+        background with the user's Pocket API key and archived in S3.
       parameters:
+        - { name: webhookId, in: path, required: true, schema: { type: string } }
         - { name: X-HeyPocket-Signature, in: header, required: true, schema: { type: string } }
         - { name: X-HeyPocket-Timestamp, in: header, required: true, schema: { type: string } }
       requestBody:
@@ -285,36 +339,17 @@ paths:
           description: Missing, wrong or expired signature
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
         "413": { $ref: "#/components/responses/Error" }
+        "404":
+          description: Unknown webhook URL
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
         "503":
-          description: POCKET_WEBHOOK_SECRET or POCKET_API_KEY is not set
+          description: The user hasn't set both the webhook secret and the API key
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
-  /admin/integrations:
-    get:
-      tags: ["Integrations"]
-      summary: Integration settings
-      description: The webhook path and whether the required secrets are configured (their values are never returned).
-      security: [{ sessionCookie: [] }, { adminToken: [] }]
-      responses:
-        "200":
-          description: Integration settings
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  pocket:
-                    type: object
-                    properties:
-                      webhookPath: { type: string, example: /api/v1/webhooks/pocket }
-                      webhookSecretConfigured: { type: boolean }
-                      apiKeyConfigured: { type: boolean }
-        "401": { $ref: "#/components/responses/Error" }
-
-  /admin/devices:
+  /devices:
     post:
-      tags: ["Admin: devices"]
-      summary: Register a device
+      tags: ["Devices"]
+      summary: Register a device for the signed-in user
       security: [{ sessionCookie: [] }, { adminToken: [] }]
       requestBody:
         required: true
@@ -338,8 +373,8 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
     get:
-      tags: ["Admin: devices"]
-      summary: List devices
+      tags: ["Devices"]
+      summary: List your devices
       security: [{ sessionCookie: [] }, { adminToken: [] }]
       responses:
         "200":
@@ -348,9 +383,9 @@ paths:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/Device" } }
 
-  /admin/devices/{deviceId}/token:
+  /devices/{deviceId}/token:
     post:
-      tags: ["Admin: devices"]
+      tags: ["Devices"]
       summary: Issue a new device token
       description: |
         Replaces the device's token, e.g. when the old one was lost. The old token stops
@@ -374,9 +409,9 @@ paths:
           description: Unknown or removed device
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
-  /admin/devices/{deviceId}:
+  /devices/{deviceId}:
     delete:
-      tags: ["Admin: devices"]
+      tags: ["Devices"]
       summary: Remove (revoke) a device
       description: The device's token stops working permanently. Its recordings are kept.
       security: [{ sessionCookie: [] }, { adminToken: [] }]
@@ -386,10 +421,10 @@ paths:
         "204": { description: Revoked }
         "404": { $ref: "#/components/responses/Error" }
 
-  /admin/recordings:
+  /recordings:
     get:
-      tags: ["Admin: recordings"]
-      summary: List recordings, newest first
+      tags: ["Recordings"]
+      summary: List your recordings, newest first
       security: [{ sessionCookie: [] }, { adminToken: [] }]
       parameters:
         - { name: deviceId, in: query, schema: { type: string } }
@@ -406,10 +441,95 @@ paths:
           content:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/Recording" } }
-
-  /admin/recordings/{recordingId}/retranscribe:
     post:
-      tags: ["Admin: recordings"]
+      tags: ["Recordings"]
+      summary: Upload an audio file
+      description: |
+        Uploads a WAV (integer PCM) or MP3 file as the raw request body. It is processed like
+        other recordings: WAV is archived as FLAC, MP3 as it is, and both are transcribed
+        and summarized. The format is detected from the content, not the file name.
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - name: X-Filename
+          in: header
+          description: URL-encoded original file name; becomes the title until the summary has one
+          schema: { type: string }
+        - name: X-Recorded-At
+          in: header
+          description: When the audio was recorded (RFC 3339), e.g. the file's modification time
+          schema: { type: string, format: date-time }
+      requestBody:
+        required: true
+        content:
+          audio/wav: { schema: { type: string, format: binary } }
+          audio/mpeg: { schema: { type: string, format: binary } }
+      responses:
+        "201":
+          description: Stored; processing starts
+          content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "415":
+          description: Not a WAV or MP3 file
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "422":
+          description: A WAV file that isn't integer PCM
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /recordings/{recordingId}:
+    delete:
+      tags: ["Recordings"]
+      summary: Delete a recording
+      description: Removes the recording, its transcript and summary, and its audio from storage.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/Error" }
+    get:
+      tags: ["Recordings"]
+      summary: Get a recording
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Recording
+          content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /recordings/{recordingId}/audio:
+    get:
+      tags: ["Recordings"]
+      summary: Stream or download the archived audio
+      description: |
+        FLAC for uploaded WAV recordings; the original format (e.g. MP3, M4A) for recordings
+        fetched from Pocket. Supports a single `Range` for seeking; `?download=1` sends it as
+        an attachment.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+        - { name: download, in: query, schema: { type: boolean } }
+        - { name: Range, in: header, schema: { type: string, example: bytes=0-1023 } }
+      responses:
+        "206": { description: Partial content for a Range request }
+        "416": { description: Range outside the file }
+        "200":
+          description: Audio
+          content:
+            audio/flac:
+              schema: { type: string, format: binary }
+            audio/*:
+              schema: { type: string, format: binary }
+        "404": { $ref: "#/components/responses/Error" }
+        "409":
+          description: Not archived yet
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /recordings/{recordingId}/retranscribe:
+    post:
+      tags: ["Recordings"]
       summary: Transcribe again
       description: Discards the transcript and summary; the recording is transcribed and summarized anew.
       security: [{ sessionCookie: [] }, { adminToken: [] }]
@@ -424,9 +544,9 @@ paths:
           description: The audio has not been archived yet
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
-  /admin/recordings/{recordingId}/resummarize:
+  /recordings/{recordingId}/resummarize:
     post:
-      tags: ["Admin: recordings"]
+      tags: ["Recordings"]
       summary: Summarize again
       description: Discards the summary and summarizes the existing transcript anew.
       security: [{ sessionCookie: [] }, { adminToken: [] }]
@@ -440,6 +560,101 @@ paths:
         "409":
           description: The recording has no transcript yet
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /admin/users:
+    get:
+      tags: ["Admin: users"]
+      summary: List users
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      responses:
+        "200":
+          description: All users
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/User" } }
+        "403": { $ref: "#/components/responses/Error" }
+    post:
+      tags: ["Admin: users"]
+      summary: Create a user
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password, minLength: 8, maxLength: 72 }
+                role: { type: string, enum: [user, admin], default: user }
+      responses:
+        "201":
+          description: Created
+          content: { application/json: { schema: { $ref: "#/components/schemas/User" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "409":
+          description: Email already in use
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /admin/users/{userId}:
+    parameters:
+      - { name: userId, in: path, required: true, schema: { type: string } }
+    put:
+      tags: ["Admin: users"]
+      summary: Change a user's email or role
+      description: The built-in admin (ADMIN_EMAIL) keeps its email and role; the last admin can't be demoted.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, format: email }
+                role: { type: string, enum: [user, admin] }
+      responses:
+        "200":
+          description: Saved
+          content: { application/json: { schema: { $ref: "#/components/schemas/User" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: ["Admin: users"]
+      summary: Delete a user and their data
+      description: |
+        Removes the user with their devices, recordings (including the audio in storage)
+        and sessions. You can't delete yourself, the built-in admin or the last admin.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      responses:
+        "204": { description: Deleted }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /admin/users/{userId}/password:
+    put:
+      tags: ["Admin: users"]
+      summary: Set a user's password
+      description: The user is signed out everywhere. For the built-in admin this replaces ADMIN_PASSWORD.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: userId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: { type: string, format: password, minLength: 8, maxLength: 72 }
+      responses:
+        "204": { description: Password set }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
 
   /admin/settings/openrouter:
     get:
@@ -492,57 +707,6 @@ paths:
           description: OpenRouter could not be reached
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
-  /admin/recordings/{recordingId}:
-    delete:
-      tags: ["Admin: recordings"]
-      summary: Delete a recording
-      description: Removes the recording, its transcript and summary, and its audio from storage.
-      security: [{ sessionCookie: [] }, { adminToken: [] }]
-      parameters:
-        - { name: recordingId, in: path, required: true, schema: { type: string } }
-      responses:
-        "204": { description: Deleted }
-        "404": { $ref: "#/components/responses/Error" }
-    get:
-      tags: ["Admin: recordings"]
-      summary: Get a recording
-      security: [{ sessionCookie: [] }, { adminToken: [] }]
-      parameters:
-        - { name: recordingId, in: path, required: true, schema: { type: string } }
-      responses:
-        "200":
-          description: Recording
-          content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
-        "404": { $ref: "#/components/responses/Error" }
-
-  /admin/recordings/{recordingId}/audio:
-    get:
-      tags: ["Admin: recordings"]
-      summary: Stream or download the archived audio
-      description: |
-        FLAC for uploaded WAV recordings; the original format (e.g. MP3, M4A) for recordings
-        fetched from Pocket. Supports a single `Range` for seeking; `?download=1` sends it as
-        an attachment.
-      security: [{ sessionCookie: [] }, { adminToken: [] }]
-      parameters:
-        - { name: recordingId, in: path, required: true, schema: { type: string } }
-        - { name: download, in: query, schema: { type: boolean } }
-        - { name: Range, in: header, schema: { type: string, example: bytes=0-1023 } }
-      responses:
-        "206": { description: Partial content for a Range request }
-        "416": { description: Range outside the file }
-        "200":
-          description: Audio
-          content:
-            audio/flac:
-              schema: { type: string, format: binary }
-            audio/*:
-              schema: { type: string, format: binary }
-        "404": { $ref: "#/components/responses/Error" }
-        "409":
-          description: Not archived yet
-          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
-
 components:
   securitySchemes:
     deviceToken:
@@ -570,11 +734,6 @@ components:
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
   schemas:
-    Account:
-      type: object
-      properties:
-        email: { type: string, format: email }
-
     Status:
       type: string
       enum: [remote, uploading, received, stored, transcribed, summarized, failed]
@@ -614,8 +773,9 @@ components:
       type: object
       properties:
         id: { type: string }
-        deviceId: { type: string, description: '"pocket" for recordings from Pocket' }
-        source: { type: string, enum: [pocket], description: Absent for device uploads }
+        ownerId: { type: string, description: The user the recording belongs to }
+        deviceId: { type: string, description: '"pocket:<userId>" for Pocket, "upload:<userId>" for browser uploads' }
+        source: { type: string, enum: [pocket, upload], description: Absent for device uploads }
         title: { type: string, description: Title from the source (Pocket) }
         recordingId: { type: string, description: Device-assigned ID, or the Pocket recording ID }
         status: { $ref: "#/components/schemas/Status" }
@@ -652,6 +812,33 @@ components:
         updatedAt: { type: string, format: date-time }
         receivedAt: { type: string, format: date-time }
         storedAt: { type: string, format: date-time }
+
+    Account:
+      type: object
+      properties:
+        id: { type: string }
+        email: { type: string, format: email }
+        role: { type: string, enum: [user, admin] }
+
+    User:
+      type: object
+      properties:
+        id: { type: string }
+        email: { type: string, format: email }
+        role: { type: string, enum: [user, admin] }
+        builtIn: { type: boolean, description: The ADMIN_EMAIL account }
+        usesEnvPassword: { type: boolean, description: Built-in admin still signing in with ADMIN_PASSWORD }
+        pocketConfigured: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        passwordChangedAt: { type: string, format: date-time }
+
+    PocketSettings:
+      type: object
+      properties:
+        webhookPath: { type: string, example: /api/v1/webhooks/pocket/3f9a… }
+        webhookSecretConfigured: { type: boolean }
+        apiKeyConfigured: { type: boolean }
+        apiKeyHint: { type: string, example: …a1b2 }
 
     OpenRouterSettings:
       type: object

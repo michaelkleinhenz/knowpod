@@ -29,33 +29,36 @@ type Pinger interface {
 
 // Server bundles the services and configuration the handlers need.
 type Server struct {
-	cfg        config.Config
-	log        *slog.Logger
-	db         Pinger
-	auth       *service.AuthService
-	devices    *service.DeviceService
-	uploads    *service.UploadService
-	recordings ports.RecordingRepository
-	objects    ports.ObjectStore
-	pocket     *service.PocketService
-	ai         *service.AIService
-	actions    *service.RecordingService
-	now        func() time.Time
+	cfg     config.Config
+	log     *slog.Logger
+	db      Pinger
+	auth    *service.AuthService
+	users   *service.UserService
+	devices *service.DeviceService
+	uploads *service.UploadService
+	manual  *service.ManualUploadService
+	actions *service.RecordingService
+	objects ports.ObjectStore
+	pocket  *service.PocketService
+	ai      *service.AIService
+	now     func() time.Time
 }
 
-// Deps are the server's constructor dependencies.
+// Deps are the server's constructor dependencies. Handlers of missing services are still
+// routed (so the API description matches), but only the provided ones may be called.
 type Deps struct {
-	Cfg        config.Config
-	Log        *slog.Logger
-	DB         Pinger // optional; when set, /healthz also checks database connectivity
-	Auth       *service.AuthService
-	Devices    *service.DeviceService
-	Uploads    *service.UploadService
-	Recordings ports.RecordingRepository
-	Objects    ports.ObjectStore
-	Pocket     *service.PocketService // optional; the Pocket webhook answers 503 without it
-	AI         *service.AIService
-	Actions    *service.RecordingService
+	Cfg     config.Config
+	Log     *slog.Logger
+	DB      Pinger // optional; when set, /healthz also checks database connectivity
+	Auth    *service.AuthService
+	Users   *service.UserService
+	Devices *service.DeviceService
+	Uploads *service.UploadService
+	Manual  *service.ManualUploadService
+	Actions *service.RecordingService
+	Objects ports.ObjectStore
+	Pocket  *service.PocketService
+	AI      *service.AIService
 }
 
 // NewServer builds the server.
@@ -65,8 +68,8 @@ func NewServer(d Deps) *Server {
 		log = slog.Default()
 	}
 	return &Server{
-		cfg: d.Cfg, log: log, db: d.DB, auth: d.Auth, devices: d.Devices, uploads: d.Uploads,
-		recordings: d.Recordings, objects: d.Objects, pocket: d.Pocket, ai: d.AI, actions: d.Actions, now: time.Now,
+		cfg: d.Cfg, log: log, db: d.DB, auth: d.Auth, users: d.Users, devices: d.Devices, uploads: d.Uploads,
+		manual: d.Manual, actions: d.Actions, objects: d.Objects, pocket: d.Pocket, ai: d.AI, now: time.Now,
 	}
 }
 
@@ -96,11 +99,6 @@ func (s *Server) Router() http.Handler {
 		// --- web UI sign-in (session cookie) ---
 		api.With(httprate.LimitByIP(10, time.Minute)).Post("/auth/login", s.handleLogin)
 		api.Post("/auth/logout", s.handleLogout)
-		api.Group(func(u chi.Router) {
-			u.Use(s.requireUser)
-			u.Get("/auth/me", s.handleMe)
-			u.Put("/auth/password", s.handleChangePassword)
-		})
 
 		// --- device API: recorders push recordings (device token) ---
 		api.Group(func(d chi.Router) {
@@ -111,25 +109,42 @@ func (s *Server) Router() http.Handler {
 		})
 
 		// --- webhooks from external services (authenticated by their signatures) ---
-		api.Post("/webhooks/pocket", s.handlePocketWebhook)
+		api.Post("/webhooks/pocket/{webhookId}", s.handlePocketWebhook)
 
-		// --- admin API: device provisioning and recording access (session or ADMIN_TOKEN) ---
+		// --- the signed-in user's own data (session, or ADMIN_TOKEN for everyone's) ---
+		api.Group(func(u chi.Router) {
+			u.Use(s.requireUser)
+			u.Get("/auth/me", s.handleMe)
+			u.Put("/auth/password", s.handleChangePassword)
+			u.Get("/me/pocket", s.handleGetPocketSettings)
+			u.Put("/me/pocket", s.handleUpdatePocketSettings)
+			u.Get("/ai/status", s.handleAIStatus)
+
+			u.Get("/devices", s.handleListDevices)
+			u.Post("/devices", s.handleRegisterDevice)
+			u.Delete("/devices/{id}", s.handleRevokeDevice)
+			u.Post("/devices/{id}/token", s.handleRotateDeviceToken)
+
+			u.Get("/recordings", s.handleListRecordings)
+			u.Post("/recordings", s.handleUploadRecording)
+			u.Get("/recordings/{id}", s.handleGetRecording)
+			u.Delete("/recordings/{id}", s.handleDeleteRecording)
+			u.Get("/recordings/{id}/audio", s.handleRecordingAudio)
+			u.Post("/recordings/{id}/retranscribe", s.handleRetranscribe)
+			u.Post("/recordings/{id}/resummarize", s.handleResummarize)
+		})
+
+		// --- administration (admins, or ADMIN_TOKEN) ---
 		api.Route("/admin", func(a chi.Router) {
 			a.Use(s.requireAdmin)
-			a.Post("/devices", s.handleRegisterDevice)
-			a.Get("/devices", s.handleListDevices)
-			a.Delete("/devices/{id}", s.handleRevokeDevice)
-			a.Post("/devices/{id}/token", s.handleRotateDeviceToken)
-			a.Get("/recordings", s.handleListRecordings)
-			a.Get("/recordings/{id}", s.handleGetRecording)
-			a.Get("/recordings/{id}/audio", s.handleRecordingAudio)
-			a.Delete("/recordings/{id}", s.handleDeleteRecording)
-			a.Post("/recordings/{id}/retranscribe", s.handleRetranscribe)
-			a.Post("/recordings/{id}/resummarize", s.handleResummarize)
+			a.Get("/users", s.handleListUsers)
+			a.Post("/users", s.handleCreateUser)
+			a.Put("/users/{id}", s.handleUpdateUser)
+			a.Delete("/users/{id}", s.handleDeleteUser)
+			a.Put("/users/{id}/password", s.handleSetUserPassword)
 			a.Get("/settings/openrouter", s.handleGetOpenRouterSettings)
 			a.Put("/settings/openrouter", s.handleUpdateOpenRouterSettings)
 			a.Get("/openrouter/models", s.handleOpenRouterModels)
-			a.Get("/integrations", s.handleIntegrations)
 		})
 	})
 

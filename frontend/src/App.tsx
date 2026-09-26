@@ -8,14 +8,17 @@ import { Conversation } from './pages/Conversation';
 import { Conversations } from './pages/Conversations';
 import { Login } from './pages/Login';
 import { Settings } from './pages/Settings';
+import { Users } from './pages/Users';
 import { Status } from './pages/Status';
 
-// RequireLogin sends signed-out visitors to the login page and back afterwards.
-function RequireLogin({ children }: { children: ReactNode }) {
+// RequireLogin sends signed-out visitors to the login page and back afterwards. With admin,
+// only administrators get through.
+function RequireLogin({ children, admin = false }: { children: ReactNode; admin?: boolean }) {
   const { account, loading } = useAuth();
   const location = useLocation();
   if (loading) return <p className="muted">Loading…</p>;
   if (!account) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  if (admin && account.role !== 'admin') return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
@@ -43,8 +46,16 @@ export default function App() {
         <Route
           path="/settings"
           element={
-            <RequireLogin>
+            <RequireLogin admin>
               <Settings />
+            </RequireLogin>
+          }
+        />
+        <Route
+          path="/users"
+          element={
+            <RequireLogin admin>
+              <Users />
             </RequireLogin>
           }
         />

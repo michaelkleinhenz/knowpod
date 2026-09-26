@@ -53,7 +53,11 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &req) {
 		return
 	}
-	c, _ := r.Cookie(sessionCookie) // present: requireUser checked it
+	c, err := r.Cookie(sessionCookie)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, errResponse{Error: "sign in to the web UI to change your password"})
+		return
+	}
 	if err := s.auth.ChangePassword(r.Context(), accountFrom(r.Context()), c.Value, req.CurrentPassword, req.NewPassword); err != nil {
 		s.writeErr(w, err)
 		return

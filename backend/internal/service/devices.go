@@ -24,15 +24,15 @@ func NewDeviceService(repo ports.DeviceRepository) *DeviceService {
 	return &DeviceService{repo: repo, clock: time.Now}
 }
 
-// Register creates a device and returns it with its token. The token is only available
-// here; only its hash is stored.
-func (s *DeviceService) Register(ctx context.Context, name string) (*device.Device, string, error) {
+// Register creates a device for the account's user and returns it with its token. The token
+// is only available here; only its hash is stored.
+func (s *DeviceService) Register(ctx context.Context, acc *Account, name string) (*device.Device, string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" || len(name) > 100 {
 		return nil, "", invalid("name must be 1-100 characters")
 	}
 	token := newToken()
-	d := &device.Device{ID: newID(), Name: name, TokenHash: hashToken(token), CreatedAt: s.clock().UTC()}
+	d := &device.Device{ID: newID(), OwnerID: acc.ID, Name: name, TokenHash: hashToken(token), CreatedAt: s.clock().UTC()}
 	if err := s.repo.Create(ctx, d); err != nil {
 		return nil, "", err
 	}
@@ -62,13 +62,27 @@ func (s *DeviceService) Authenticate(ctx context.Context, token string) (*device
 	return d, nil
 }
 
-// List returns all devices.
-func (s *DeviceService) List(ctx context.Context) ([]*device.Device, error) { return s.repo.List(ctx) }
+// List returns the account's devices (all devices for ADMIN_TOKEN).
+func (s *DeviceService) List(ctx context.Context, acc *Account) ([]*device.Device, error) {
+	return s.repo.List(ctx, acc.OwnerFilter())
+}
+
+// owned loads a device the account may manage.
+func (s *DeviceService) owned(ctx context.Context, acc *Account, id string) (*device.Device, error) {
+	d, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if !acc.Owns(d.OwnerID) {
+		return nil, ErrNotFound
+	}
+	return d, nil
+}
 
 // RotateToken replaces the token of an active device, e.g. when the old one was lost. The
 // old token stops working immediately; the device keeps its ID and recordings.
-func (s *DeviceService) RotateToken(ctx context.Context, id string) (*device.Device, string, error) {
-	d, err := s.repo.Get(ctx, id)
+func (s *DeviceService) RotateToken(ctx context.Context, acc *Account, id string) (*device.Device, string, error) {
+	d, err := s.owned(ctx, acc, id)
 	if err != nil {
 		return nil, "", err
 	}
@@ -84,8 +98,8 @@ func (s *DeviceService) RotateToken(ctx context.Context, id string) (*device.Dev
 }
 
 // Revoke disables a device's token permanently. Its recordings are kept.
-func (s *DeviceService) Revoke(ctx context.Context, id string) error {
-	d, err := s.repo.Get(ctx, id)
+func (s *DeviceService) Revoke(ctx context.Context, acc *Account, id string) error {
+	d, err := s.owned(ctx, acc, id)
 	if err != nil {
 		return err
 	}

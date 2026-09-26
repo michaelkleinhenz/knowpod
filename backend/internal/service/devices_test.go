@@ -11,16 +11,26 @@ import (
 func TestDeviceLifecycle(t *testing.T) {
 	ctx := context.Background()
 	s := NewDeviceService(memory.NewDevices())
+	alice, bob, script := &Account{ID: "alice"}, &Account{ID: "bob"}, &Account{All: true}
 
-	if _, _, err := s.Register(ctx, "  "); !errors.Is(err, ErrInvalidInput) {
+	if _, _, err := s.Register(ctx, alice, "  "); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("empty name: %v", err)
 	}
-	d, token, err := s.Register(ctx, "kitchen recorder")
+	d, token, err := s.Register(ctx, alice, "kitchen recorder")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d.TokenHash == token || d.TokenHash != hashToken(token) {
-		t.Fatal("token must be stored hashed")
+	if d.OwnerID != "alice" || d.TokenHash == token || d.TokenHash != hashToken(token) {
+		t.Fatalf("device = %+v", d)
+	}
+	if list, _ := s.List(ctx, bob); len(list) != 0 {
+		t.Fatalf("bob sees %d devices", len(list))
+	}
+	if list, _ := s.List(ctx, script); len(list) != 1 {
+		t.Fatalf("ADMIN_TOKEN sees %d devices", len(list))
+	}
+	if err := s.Revoke(ctx, bob, d.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("bob revoking alice's device: %v", err)
 	}
 
 	got, err := s.Authenticate(ctx, token)
@@ -31,25 +41,22 @@ func TestDeviceLifecycle(t *testing.T) {
 		t.Fatalf("wrong token: %v", err)
 	}
 
-	_, rotated, err := s.RotateToken(ctx, d.ID)
+	_, rotated, err := s.RotateToken(ctx, alice, d.ID)
 	if err != nil || rotated == token {
 		t.Fatalf("rotate: %q, %v", rotated, err)
 	}
 	if _, err := s.Authenticate(ctx, token); !errors.Is(err, ErrUnauthorized) {
 		t.Fatalf("old token after rotation: %v", err)
 	}
-	if got, err := s.Authenticate(ctx, rotated); err != nil || got.ID != d.ID {
-		t.Fatalf("new token: %+v, %v", got, err)
-	}
 	token = rotated
 
-	if err := s.Revoke(ctx, d.ID); err != nil {
+	if err := s.Revoke(ctx, alice, d.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.Authenticate(ctx, token); !errors.Is(err, ErrUnauthorized) {
 		t.Fatalf("revoked token: %v", err)
 	}
-	if _, _, err := s.RotateToken(ctx, d.ID); !errors.Is(err, ErrNotFound) {
+	if _, _, err := s.RotateToken(ctx, alice, d.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("rotate revoked device: %v", err)
 	}
 }

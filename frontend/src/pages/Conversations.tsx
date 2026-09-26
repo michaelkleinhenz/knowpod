@@ -1,26 +1,41 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, DragEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, Recording } from '../api/client';
-import { DocIcon, RefreshIcon, SearchIcon } from '../components/Icons';
+import { useAuth } from '../auth';
+import { DocIcon, RefreshIcon, SearchIcon, UploadIcon } from '../components/Icons';
 import { dayKey, dayLabel, formatTime, processing, statusLabel, title, when } from '../lib/recordings';
 
 const POLL_MS = 10_000;
+const ACCEPT = '.wav,.mp3,audio/wav,audio/x-wav,audio/wave,audio/mpeg';
 
-// Conversations lists all recordings, newest first, grouped by day. While any of them is
-// still being processed, the list refreshes itself.
+interface UploadState {
+  key: string;
+  name: string;
+  progress: number;
+  error?: string;
+  done?: boolean;
+}
+
+// Conversations lists the user's recordings, newest first, grouped by day, and accepts
+// WAV/MP3 uploads (button or drag and drop). While anything is still being processed, the
+// list refreshes itself.
 export function Conversations() {
+  const { account } = useAuth();
   const [recordings, setRecordings] = useState<Recording[] | null>(null);
   const [aiReady, setAIReady] = useState(true);
   const [query, setQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [uploads, setUploads] = useState<UploadState[]>([]);
+  const [dragging, setDragging] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [list, ai] = await Promise.all([api.recordings(), api.openRouterSettings()]);
+      const [list, ai] = await Promise.all([api.recordings(), api.aiStatus()]);
       setRecordings(list);
-      setAIReady(ai.apiKeyConfigured && !!ai.transcriptionModel && !!ai.summaryModel);
+      setAIReady(ai.transcription && ai.summary);
       setError(null);
     } catch (err) {
       setError((err as Error).message);
@@ -40,6 +55,34 @@ export function Conversations() {
     return () => clearInterval(t);
   }, [busy, load]);
 
+  async function upload(files: File[]) {
+    for (const file of files) {
+      const key = `${file.name}-${file.size}-${Date.now()}`;
+      const update = (u: Partial<UploadState>) => setUploads((list) => list.map((x) => (x.key === key ? { ...x, ...u } : x)));
+      setUploads((list) => [...list, { key, name: file.name, progress: 0 }]);
+      try {
+        await api.uploadRecording(file, (p) => update({ progress: p }));
+        update({ progress: 1, done: true });
+        load();
+        setTimeout(() => setUploads((list) => list.filter((x) => x.key !== key)), 4000);
+      } catch (err) {
+        update({ error: (err as Error).message });
+      }
+    }
+  }
+
+  function handleFiles(e: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = '';
+    upload(files);
+  }
+
+  function handleDrop(e: DragEvent) {
+    e.preventDefault();
+    setDragging(false);
+    upload(Array.from(e.dataTransfer.files));
+  }
+
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();
     const list = (recordings ?? [])
@@ -56,12 +99,28 @@ export function Conversations() {
   }, [recordings, query]);
 
   return (
-    <section className="conversations">
+    <section
+      className={`conversations${dragging ? ' dragging' : ''}`}
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes('Files')) {
+          e.preventDefault();
+          setDragging(true);
+        }
+      }}
+      onDragLeave={(e) => e.currentTarget === e.target && setDragging(false)}
+      onDrop={handleDrop}
+    >
       <div className="conversations-head">
         <h1>All Conversations</h1>
-        <button type="button" className="pill-button" onClick={load} disabled={refreshing}>
-          <RefreshIcon /> {refreshing ? 'Refreshing…' : 'Refresh'}
-        </button>
+        <div className="head-actions">
+          <button type="button" className="pill-button icon-only-mobile" onClick={() => fileInput.current?.click()} aria-label="Upload audio">
+            <UploadIcon /> <span>Upload</span>
+          </button>
+          <button type="button" className="pill-button icon-only-mobile" onClick={load} disabled={refreshing} aria-label="Refresh">
+            <RefreshIcon /> <span>{refreshing ? 'Refreshing…' : 'Refresh'}</span>
+          </button>
+        </div>
+        <input ref={fileInput} type="file" accept={ACCEPT} multiple hidden onChange={handleFiles} />
       </div>
 
       <label className="search">
@@ -69,18 +128,54 @@ export function Conversations() {
         <input type="search" placeholder="Search" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search conversations" />
       </label>
 
+      {uploads.length > 0 && (
+        <ul className="upload-list" aria-live="polite">
+          {uploads.map((u) => (
+            <li key={u.key} className={u.error ? 'failed' : ''}>
+              <span className="upload-name">{u.name}</span>
+              {u.error ? (
+                <span className="error">
+                  {u.error}{' '}
+                  <button type="button" className="link-button" onClick={() => setUploads((l) => l.filter((x) => x.key !== u.key))}>
+                    Dismiss
+                  </button>
+                </span>
+              ) : (
+                <>
+                  <progress max={1} value={u.progress} />
+                  <span className="muted">{u.done ? 'Uploaded' : `${Math.round(u.progress * 100)}%`}</span>
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
       {!aiReady && recordings && recordings.length > 0 && (
         <p className="notice">
-          Transcription and summaries are off until an OpenRouter API key and models are set in{' '}
-          <Link to="/settings">Settings</Link>.
+          Transcription and summaries are off until an administrator sets up OpenRouter
+          {account?.role === 'admin' ? (
+            <>
+              {' '}
+              in <Link to="/settings">Settings</Link>
+            </>
+          ) : null}
+          .
         </p>
       )}
       {error && <p className="error">{error}</p>}
       {!recordings && !error && <p className="muted">Loading…</p>}
       {recordings && recordings.length === 0 && (
-        <p className="muted empty">
-          No conversations yet. Recordings uploaded by your <Link to="/devices">devices</Link> or Pocket appear here.
-        </p>
+        <div className="empty">
+          <p className="muted">No conversations yet.</p>
+          <p className="muted">
+            Upload a WAV or MP3 file, record with one of your <Link to="/devices">devices</Link>, or connect Pocket on the{' '}
+            <Link to="/account">Account</Link> page.
+          </p>
+          <button type="button" onClick={() => fileInput.current?.click()}>
+            Upload audio
+          </button>
+        </div>
       )}
       {recordings && recordings.length > 0 && groups.length === 0 && <p className="muted empty">No conversation matches “{query}”.</p>}
 
@@ -111,6 +206,8 @@ export function Conversations() {
           </div>
         );
       })}
+
+      {dragging && <div className="drop-overlay">Drop WAV or MP3 files to upload</div>}
     </section>
   );
 }

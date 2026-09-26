@@ -85,7 +85,7 @@ func (s *UploadService) Create(ctx context.Context, dev *device.Device, in Creat
 
 	now := s.clock().UTC()
 	rec := &recording.Recording{
-		ID: newID(), DeviceID: dev.ID, ClientID: in.RecordingID, Status: recording.StatusUploading,
+		ID: newID(), OwnerID: dev.OwnerID, DeviceID: dev.ID, ClientID: in.RecordingID, Status: recording.StatusUploading,
 		Size: in.Size, SHA256: in.SHA256, RecordedAt: in.RecordedAt,
 		NotBefore: now, CreatedAt: now, UpdatedAt: now,
 	}

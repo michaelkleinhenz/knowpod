@@ -33,11 +33,13 @@ const (
 	SourceDevice Source = ""
 	// SourcePocket: announced by a Pocket (heypocketai.com) webhook and fetched from its API.
 	SourcePocket Source = "pocket"
+	// SourceUpload: a WAV or MP3 file uploaded in the web UI.
+	SourceUpload Source = "upload"
 )
 
-// PocketDeviceID is the DeviceID of recordings from Pocket. Together with ClientID (the
-// Pocket recording ID) it makes webhook deliveries idempotent.
-const PocketDeviceID = "pocket"
+// PocketDeviceID returns the DeviceID of a user's Pocket recordings. Together with ClientID
+// (the Pocket recording ID) it makes webhook deliveries idempotent.
+func PocketDeviceID(userID string) string { return "pocket:" + userID }
 
 // Format describes the PCM audio of the uploaded WAV file.
 type Format struct {
@@ -58,7 +60,9 @@ type Object struct {
 // Recording is one audio recording of one device. The upload session and the recording are
 // the same document: its ID doubles as the upload ID.
 type Recording struct {
-	ID       string `bson:"_id" json:"id"`
+	ID string `bson:"_id" json:"id"`
+	// OwnerID is the user the recording belongs to.
+	OwnerID  string `bson:"ownerId" json:"ownerId"`
 	DeviceID string `bson:"deviceId" json:"deviceId"`
 	Source   Source `bson:"source,omitempty" json:"source,omitempty"`
 	Title    string `bson:"title,omitempty" json:"title,omitempty"`
@@ -108,6 +112,7 @@ type Summary struct {
 
 // ListFilter selects recordings for listing. Zero values mean "no restriction".
 type ListFilter struct {
+	OwnerID  string
 	DeviceID string
 	Status   Status
 	Limit    int

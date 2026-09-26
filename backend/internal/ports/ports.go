@@ -30,6 +30,8 @@ type RecordingRepository interface {
 	Claim(ctx context.Context, status recording.Status, now, leaseUntil time.Time) (*recording.Recording, error)
 	// ListStale returns recordings in the given status not updated since before.
 	ListStale(ctx context.Context, status recording.Status, before time.Time, limit int) ([]*recording.Recording, error)
+	// AssignOwnerless gives recordings without an owner to ownerID (data from before users).
+	AssignOwnerless(ctx context.Context, ownerID string) (int, error)
 }
 
 // DeviceRepository persists devices. Lookups of missing documents return domain.ErrNotFound.
@@ -37,16 +39,24 @@ type DeviceRepository interface {
 	Create(ctx context.Context, d *device.Device) error
 	Get(ctx context.Context, id string) (*device.Device, error)
 	GetByTokenHash(ctx context.Context, hash string) (*device.Device, error)
-	List(ctx context.Context) ([]*device.Device, error)
+	// List returns the devices of ownerID, or all devices when ownerID is empty.
+	List(ctx context.Context, ownerID string) ([]*device.Device, error)
 	Update(ctx context.Context, d *device.Device) error
+	Delete(ctx context.Context, id string) error
+	// AssignOwnerless gives devices without an owner to ownerID (data from before users).
+	AssignOwnerless(ctx context.Context, ownerID string) (int, error)
 }
 
-// UserRepository persists web UI accounts. GetByEmail returns domain.ErrNotFound when the
-// email has no stored account.
+// UserRepository persists web UI accounts. Lookups of missing users return
+// domain.ErrNotFound; Create and Update return domain.ErrDuplicate for a taken email.
 type UserRepository interface {
+	Create(ctx context.Context, u *user.User) error
+	Get(ctx context.Context, id string) (*user.User, error)
 	GetByEmail(ctx context.Context, email string) (*user.User, error)
-	// Upsert creates the account or replaces the existing one with the same email.
-	Upsert(ctx context.Context, u *user.User) error
+	GetByPocketWebhookID(ctx context.Context, webhookID string) (*user.User, error)
+	List(ctx context.Context) ([]*user.User, error)
+	Update(ctx context.Context, u *user.User) error
+	Delete(ctx context.Context, id string) error
 }
 
 // SessionRepository persists web UI sessions. Get returns domain.ErrNotFound for unknown
@@ -55,8 +65,8 @@ type SessionRepository interface {
 	Create(ctx context.Context, s *user.Session) error
 	Get(ctx context.Context, tokenHash string) (*user.Session, error)
 	Delete(ctx context.Context, tokenHash string) error
-	// DeleteByEmail removes all sessions of the account except the one with keepTokenHash.
-	DeleteByEmail(ctx context.Context, email, keepTokenHash string) error
+	// DeleteByUser removes all sessions of the user except the one with keepTokenHash.
+	DeleteByUser(ctx context.Context, userID, keepTokenHash string) error
 }
 
 // SettingsRepository persists runtime settings. A missing document yields zero values.

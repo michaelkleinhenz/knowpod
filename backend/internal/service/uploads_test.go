@@ -17,8 +17,8 @@ import (
 )
 
 var (
-	dev1 = &device.Device{ID: "dev-1"}
-	dev2 = &device.Device{ID: "dev-2"}
+	dev1 = &device.Device{ID: "dev-1", OwnerID: "user-1"}
+	dev2 = &device.Device{ID: "dev-2", OwnerID: "user-2"}
 )
 
 func testWAV() []byte { return audiotest.WAV(16000, 16, audiotest.Samples(1, 16000, 16)) }

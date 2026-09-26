@@ -17,7 +17,8 @@ var (
 	ErrInvalidLogin  = errors.New("invalid email or password")
 	ErrNotSignedIn   = errors.New("not signed in")
 	ErrWrongPassword = errors.New("current password is wrong")
-	ErrWeakPassword  = errors.New("new password must be 8-72 characters")
+	ErrWeakPassword  = errors.New("password must be 8-72 characters")
+	ErrForbidden     = errors.New("not allowed")
 )
 
 const (
@@ -37,14 +38,33 @@ func mustHash(pw string) []byte {
 	return h
 }
 
-// Account is the signed-in person.
+// Account is the caller of a request: a signed-in user, or a script using ADMIN_TOKEN
+// (All: it acts as the built-in admin and sees every user's data).
 type Account struct {
-	Email string `json:"email"`
+	ID    string    `json:"id"`
+	Email string    `json:"email"`
+	Role  user.Role `json:"role"`
+	All   bool      `json:"-"`
 }
 
-// AuthService signs people in to the web UI. Accounts stored in the database take
-// precedence; the default admin credentials from the environment only work for an email
-// that has no stored account yet, i.e. until its password is changed.
+// IsAdmin reports whether the account may manage users and global settings.
+func (a *Account) IsAdmin() bool { return a.Role == user.RoleAdmin }
+
+// Owns reports whether the account may access data owned by ownerID.
+func (a *Account) Owns(ownerID string) bool { return a.All || a.ID == ownerID }
+
+// OwnerFilter is the owner to filter lists by ("" = everyone's, for ADMIN_TOKEN).
+func (a *Account) OwnerFilter() string {
+	if a.All {
+		return ""
+	}
+	return a.ID
+}
+
+// AuthService signs people in to the web UI.
+//
+// The built-in admin (ADMIN_EMAIL) is a normal user record created at startup, but until a
+// password is set for it in the UI its password is ADMIN_PASSWORD from the environment.
 type AuthService struct {
 	users         ports.UserRepository
 	sessions      ports.SessionRepository
@@ -54,7 +74,7 @@ type AuthService struct {
 	clock         func() time.Time
 }
 
-// NewAuthService builds the service. adminEmail/adminPassword are the default login; empty
+// NewAuthService builds the service. adminEmail/adminPassword are the built-in admin; empty
 // values disable it.
 func NewAuthService(users ports.UserRepository, sessions ports.SessionRepository, adminEmail, adminPassword string, sessionTTL time.Duration) *AuthService {
 	return &AuthService{
@@ -64,46 +84,71 @@ func NewAuthService(users ports.UserRepository, sessions ports.SessionRepository
 	}
 }
 
+// IsBuiltIn reports whether u is the built-in admin.
+func (s *AuthService) IsBuiltIn(u *user.User) bool {
+	return s.adminEmail != "" && u.Email == s.adminEmail
+}
+
+// EnsureBuiltInAdmin creates the built-in admin's record if it is missing (and keeps it an
+// admin). It returns the record, or nil when ADMIN_EMAIL is not set.
+func (s *AuthService) EnsureBuiltInAdmin(ctx context.Context) (*user.User, error) {
+	if s.adminEmail == "" {
+		return nil, nil
+	}
+	u, err := s.users.GetByEmail(ctx, s.adminEmail)
+	switch {
+	case errors.Is(err, ErrNotFound):
+		u = &user.User{ID: newID(), Email: s.adminEmail, Role: user.RoleAdmin, CreatedAt: s.clock().UTC()}
+		if err := s.users.Create(ctx, u); err != nil && !errors.Is(err, errDuplicate) {
+			return nil, err
+		}
+		return s.users.GetByEmail(ctx, s.adminEmail)
+	case err != nil:
+		return nil, err
+	case u.Role != user.RoleAdmin:
+		u.Role = user.RoleAdmin
+		return u, s.users.Update(ctx, u)
+	}
+	return u, nil
+}
+
 // Login checks the credentials and starts a session. It returns the session token for the
 // cookie and its expiry.
 func (s *AuthService) Login(ctx context.Context, email, password string) (acc *Account, token string, expires time.Time, err error) {
-	email = normalizeEmail(email)
-	ok, err := s.checkPassword(ctx, email, password)
+	u, err := s.users.GetByEmail(ctx, normalizeEmail(email))
+	if errors.Is(err, ErrNotFound) {
+		_ = bcrypt.CompareHashAndPassword(dummyPasswordHash, []byte(password)) // equal timing
+		return nil, "", time.Time{}, ErrInvalidLogin
+	}
 	if err != nil {
 		return nil, "", time.Time{}, err
 	}
-	if !ok {
+	if !s.passwordMatches(u, password) {
 		return nil, "", time.Time{}, ErrInvalidLogin
 	}
 
 	token = newToken()
 	now := s.clock().UTC()
-	sess := &user.Session{TokenHash: hashToken(token), Email: email, CreatedAt: now, ExpiresAt: now.Add(s.sessionTTL)}
+	sess := &user.Session{TokenHash: hashToken(token), UserID: u.ID, CreatedAt: now, ExpiresAt: now.Add(s.sessionTTL)}
 	if err := s.sessions.Create(ctx, sess); err != nil {
 		return nil, "", time.Time{}, err
 	}
-	return &Account{Email: email}, token, sess.ExpiresAt, nil
+	return account(u), token, sess.ExpiresAt, nil
 }
 
-// checkPassword verifies the password against the stored account, or against the default
-// admin credentials when the email has no stored account.
-func (s *AuthService) checkPassword(ctx context.Context, email, password string) (bool, error) {
-	u, err := s.users.GetByEmail(ctx, email)
-	switch {
-	case err == nil:
-		return bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)) == nil, nil
-	case !errors.Is(err, ErrNotFound):
-		return false, err
+// passwordMatches checks a password against the stored hash, or, for the built-in admin
+// without a stored password, against ADMIN_PASSWORD.
+func (s *AuthService) passwordMatches(u *user.User, password string) bool {
+	if u.PasswordHash != "" {
+		return bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)) == nil
 	}
-	if s.adminEmail != "" && s.adminPassword != "" && email == s.adminEmail {
-		return subtle.ConstantTimeCompare([]byte(password), []byte(s.adminPassword)) == 1, nil
-	}
-	// Unknown account: spend the same time as a real check so timing doesn't reveal it.
-	_ = bcrypt.CompareHashAndPassword(dummyPasswordHash, []byte(password))
-	return false, nil
+	_ = bcrypt.CompareHashAndPassword(dummyPasswordHash, []byte(password)) // equal timing
+	return s.IsBuiltIn(u) && s.adminPassword != "" &&
+		subtle.ConstantTimeCompare([]byte(password), []byte(s.adminPassword)) == 1
 }
 
-// Authenticate resolves a session token to the signed-in account.
+// Authenticate resolves a session token to the signed-in account. The user is loaded on
+// every request, so role changes and deletions take effect immediately.
 func (s *AuthService) Authenticate(ctx context.Context, token string) (*Account, error) {
 	if token == "" {
 		return nil, ErrNotSignedIn
@@ -115,11 +160,31 @@ func (s *AuthService) Authenticate(ctx context.Context, token string) (*Account,
 	if err != nil {
 		return nil, err
 	}
-	if !s.clock().Before(sess.ExpiresAt) {
+	if !s.clock().Before(sess.ExpiresAt) || sess.UserID == "" {
 		_ = s.sessions.Delete(ctx, sess.TokenHash)
 		return nil, ErrNotSignedIn
 	}
-	return &Account{Email: sess.Email}, nil
+	u, err := s.users.Get(ctx, sess.UserID)
+	if errors.Is(err, ErrNotFound) {
+		_ = s.sessions.Delete(ctx, sess.TokenHash)
+		return nil, ErrNotSignedIn
+	}
+	if err != nil {
+		return nil, err
+	}
+	return account(u), nil
+}
+
+// ScriptAccount is the account for requests authenticated with ADMIN_TOKEN: it acts as the
+// built-in admin and sees all users' data.
+func (s *AuthService) ScriptAccount(ctx context.Context) (*Account, error) {
+	acc := &Account{Role: user.RoleAdmin, All: true}
+	if s.adminEmail != "" {
+		if u, err := s.users.GetByEmail(ctx, s.adminEmail); err == nil {
+			acc.ID, acc.Email = u.ID, u.Email
+		}
+	}
+	return acc, nil
 }
 
 // Logout ends the session.
@@ -131,37 +196,50 @@ func (s *AuthService) Logout(ctx context.Context, token string) error {
 	return err
 }
 
-// ChangePassword stores a new password for the account, which from then on replaces the
-// default credentials from the environment. All other sessions of the account are ended.
+// ChangePassword sets a new password for the signed-in user after checking the current one.
+// For the built-in admin this replaces ADMIN_PASSWORD. Other sessions are ended.
 func (s *AuthService) ChangePassword(ctx context.Context, acc *Account, currentToken, current, next string) error {
-	if len(next) < minPasswordLength || len(next) > maxPasswordLength {
-		return ErrWeakPassword
-	}
-	ok, err := s.checkPassword(ctx, acc.Email, current)
+	u, err := s.users.Get(ctx, acc.ID)
 	if err != nil {
 		return err
 	}
-	if !ok {
+	if !s.passwordMatches(u, current) {
 		return ErrWrongPassword
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(next), bcrypt.DefaultCost)
+	if err := s.setPassword(ctx, u, next); err != nil {
+		return err
+	}
+	return s.sessions.DeleteByUser(ctx, u.ID, hashToken(currentToken))
+}
+
+// setPassword validates, hashes and stores a password.
+func (s *AuthService) setPassword(ctx context.Context, u *user.User, password string) error {
+	if err := s.setPasswordValue(u, password); err != nil {
+		return err
+	}
+	return s.users.Update(ctx, u)
+}
+
+// setPasswordValue validates and hashes a password into u without saving it.
+func (s *AuthService) setPasswordValue(u *user.User, password string) error {
+	if len(password) < minPasswordLength || len(password) > maxPasswordLength {
+		return ErrWeakPassword
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
-
 	now := s.clock().UTC()
-	u, err := s.users.GetByEmail(ctx, acc.Email)
-	if errors.Is(err, ErrNotFound) {
-		u = &user.User{ID: newID(), Email: acc.Email, CreatedAt: now}
-	} else if err != nil {
-		return err
+	u.PasswordHash, u.PasswordChangedAt = string(hash), &now
+	return nil
+}
+
+func account(u *user.User) *Account {
+	role := u.Role
+	if !role.Valid() {
+		role = user.RoleUser
 	}
-	u.PasswordHash = string(hash)
-	u.PasswordChangedAt = now
-	if err := s.users.Upsert(ctx, u); err != nil {
-		return err
-	}
-	return s.sessions.DeleteByEmail(ctx, acc.Email, hashToken(currentToken))
+	return &Account{ID: u.ID, Email: u.Email, Role: role}
 }
 
 func normalizeEmail(email string) string { return strings.ToLower(strings.TrimSpace(email)) }

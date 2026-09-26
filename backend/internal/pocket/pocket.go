@@ -89,20 +89,17 @@ func ParseEvent(body []byte) (*Event, error) {
 	return &ev, nil
 }
 
-// Client calls the Pocket public API.
+// Client calls the Pocket public API. The API key is passed per call because every user
+// has their own.
 type Client struct {
 	baseURL string
-	apiKey  string
 	http    *http.Client
 }
 
-// NewClient builds a client. apiKey is a Pocket API key ("pk_…").
-func NewClient(baseURL, apiKey string) *Client {
-	return &Client{baseURL: strings.TrimRight(baseURL, "/"), apiKey: apiKey, http: &http.Client{}}
+// NewClient builds a client.
+func NewClient(baseURL string) *Client {
+	return &Client{baseURL: strings.TrimRight(baseURL, "/"), http: &http.Client{}}
 }
-
-// Configured reports whether an API key is set.
-func (c *Client) Configured() bool { return c.apiKey != "" }
 
 // apiResponse is Pocket's response envelope.
 type apiResponse struct {
@@ -112,10 +109,10 @@ type apiResponse struct {
 }
 
 // AudioURL returns a pre-signed download URL for a recording's audio
-// (GET /public/recordings/{id}/audio-url).
-func (c *Client) AudioURL(ctx context.Context, recordingID string) (string, error) {
-	if !c.Configured() {
-		return "", errors.New("POCKET_API_KEY is not set")
+// (GET /public/recordings/{id}/audio-url). apiKey is a Pocket API key ("pk_…").
+func (c *Client) AudioURL(ctx context.Context, apiKey, recordingID string) (string, error) {
+	if apiKey == "" {
+		return "", errors.New("no Pocket API key")
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -124,7 +121,7 @@ func (c *Client) AudioURL(ctx context.Context, recordingID string) (string, erro
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Accept", "application/json")
 	res, err := c.http.Do(req)
 	if err != nil {

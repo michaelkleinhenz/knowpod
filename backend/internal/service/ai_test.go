@@ -180,28 +180,35 @@ func TestRecordingActions(t *testing.T) {
 	objects := memstore.New()
 	spool, _ := NewSpool(t.TempDir())
 	s := NewRecordingService(recs, objects, spool)
+	owner, stranger := &Account{ID: "u1"}, &Account{ID: "u2"}
 	requeued := 0
 	s.OnRequeued = func() { requeued++ }
 
 	_ = objects.Put(ctx, "k.flac", strings.NewReader("x"), 1, "audio/flac")
-	rec := &recording.Recording{ID: "r1", DeviceID: "d", ClientID: "c", Status: recording.StatusSummarized,
+	rec := &recording.Recording{ID: "r1", OwnerID: "u1", DeviceID: "d", ClientID: "c", Status: recording.StatusSummarized,
 		Audio:      &recording.Object{Key: "k.flac"},
 		Transcript: &recording.Transcript{Text: "t"}, Summary: &recording.Summary{Title: "s"}, Attempts: 3, LastError: "old"}
 	_ = recs.Create(ctx, rec)
 
-	got, err := s.Resummarize(ctx, "r1")
+	if _, err := s.Resummarize(ctx, stranger, "r1"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("other user's recording: %v", err)
+	}
+	if err := s.Delete(ctx, stranger, "r1"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("other user's delete: %v", err)
+	}
+	got, err := s.Resummarize(ctx, owner, "r1")
 	if err != nil || got.Status != recording.StatusTranscribed || got.Summary != nil || got.Transcript == nil || got.Attempts != 0 || got.LastError != "" {
 		t.Fatalf("resummarize: %+v, %v", got, err)
 	}
-	got, err = s.Retranscribe(ctx, "r1")
+	got, err = s.Retranscribe(ctx, owner, "r1")
 	if err != nil || got.Status != recording.StatusStored || got.Transcript != nil || requeued != 2 {
 		t.Fatalf("retranscribe: %+v, %v", got, err)
 	}
-	if _, err := s.Resummarize(ctx, "r1"); !errors.Is(err, ErrNotReady) {
+	if _, err := s.Resummarize(ctx, owner, "r1"); !errors.Is(err, ErrNotReady) {
 		t.Fatalf("resummarize without transcript: %v", err)
 	}
 
-	if err := s.Delete(ctx, "r1"); err != nil {
+	if err := s.Delete(ctx, owner, "r1"); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := objects.Object("k.flac"); ok {

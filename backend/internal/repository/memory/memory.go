@@ -78,7 +78,7 @@ func (m *Recordings) Delete(_ context.Context, id string) error {
 
 func (m *Recordings) List(_ context.Context, f recording.ListFilter) ([]*recording.Recording, error) {
 	out := m.filter(func(r *recording.Recording) bool {
-		return (f.DeviceID == "" || r.DeviceID == f.DeviceID) && (f.Status == "" || r.Status == f.Status)
+		return (f.OwnerID == "" || r.OwnerID == f.OwnerID) && (f.DeviceID == "" || r.DeviceID == f.DeviceID) && (f.Status == "" || r.Status == f.Status)
 	})
 	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
 	if f.Offset >= len(out) {
@@ -128,6 +128,20 @@ func (m *Recordings) ListStale(_ context.Context, status recording.Status, befor
 		out = out[:limit]
 	}
 	return out, nil
+}
+
+func (m *Recordings) AssignOwnerless(_ context.Context, ownerID string) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	n := 0
+	for id, r := range m.recs {
+		if r.OwnerID == "" {
+			r.OwnerID = ownerID
+			m.recs[id] = r
+			n++
+		}
+	}
+	return n, nil
 }
 
 func (m *Recordings) filter(keep func(*recording.Recording) bool) []*recording.Recording {
@@ -185,13 +199,15 @@ func (m *Devices) GetByTokenHash(_ context.Context, hash string) (*device.Device
 	return nil, domain.ErrNotFound
 }
 
-func (m *Devices) List(_ context.Context) ([]*device.Device, error) {
+func (m *Devices) List(_ context.Context, ownerID string) ([]*device.Device, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	out := []*device.Device{}
 	for _, d := range m.devs {
 		d := d
-		out = append(out, &d)
+		if ownerID == "" || d.OwnerID == ownerID {
+			out = append(out, &d)
+		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
 	return out, nil
@@ -207,30 +223,110 @@ func (m *Devices) Update(_ context.Context, d *device.Device) error {
 	return nil
 }
 
+func (m *Devices) Delete(_ context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.devs[id]; !ok {
+		return domain.ErrNotFound
+	}
+	delete(m.devs, id)
+	return nil
+}
+
+func (m *Devices) AssignOwnerless(_ context.Context, ownerID string) (int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	n := 0
+	for id, d := range m.devs {
+		if d.OwnerID == "" {
+			d.OwnerID = ownerID
+			m.devs[id] = d
+			n++
+		}
+	}
+	return n, nil
+}
+
 // Users is an in-memory ports.UserRepository.
 type Users struct {
 	mu    sync.Mutex
-	users map[string]user.User // by email
+	users map[string]user.User // by ID
 }
 
 // NewUsers builds an empty repository.
 func NewUsers() *Users { return &Users{users: map[string]user.User{}} }
 
-func (m *Users) GetByEmail(_ context.Context, email string) (*user.User, error) {
+func (m *Users) Create(_ context.Context, u *user.User) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	u, ok := m.users[email]
-	if !ok {
-		return nil, domain.ErrNotFound
+	for _, x := range m.users {
+		if x.ID == u.ID || x.Email == u.Email || (u.Pocket.WebhookID != "" && x.Pocket.WebhookID == u.Pocket.WebhookID) {
+			return domain.ErrDuplicate
+		}
 	}
-	return &u, nil
+	m.users[u.ID] = *u
+	return nil
 }
 
-func (m *Users) Upsert(_ context.Context, u *user.User) error {
+func (m *Users) Get(_ context.Context, id string) (*user.User, error) {
+	return m.find(func(u *user.User) bool { return u.ID == id })
+}
+
+func (m *Users) GetByEmail(_ context.Context, email string) (*user.User, error) {
+	return m.find(func(u *user.User) bool { return u.Email == email })
+}
+
+func (m *Users) GetByPocketWebhookID(_ context.Context, webhookID string) (*user.User, error) {
+	return m.find(func(u *user.User) bool { return webhookID != "" && u.Pocket.WebhookID == webhookID })
+}
+
+func (m *Users) List(context.Context) ([]*user.User, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.users[u.Email] = *u
+	out := []*user.User{}
+	for _, u := range m.users {
+		u := u
+		out = append(out, &u)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Email < out[j].Email })
+	return out, nil
+}
+
+func (m *Users) Update(_ context.Context, u *user.User) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.users[u.ID]; !ok {
+		return domain.ErrNotFound
+	}
+	for _, x := range m.users {
+		if x.ID != u.ID && (x.Email == u.Email || (u.Pocket.WebhookID != "" && x.Pocket.WebhookID == u.Pocket.WebhookID)) {
+			return domain.ErrDuplicate
+		}
+	}
+	m.users[u.ID] = *u
 	return nil
+}
+
+func (m *Users) Delete(_ context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.users[id]; !ok {
+		return domain.ErrNotFound
+	}
+	delete(m.users, id)
+	return nil
+}
+
+func (m *Users) find(match func(*user.User) bool) (*user.User, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, u := range m.users {
+		u := u
+		if match(&u) {
+			return &u, nil
+		}
+	}
+	return nil, domain.ErrNotFound
 }
 
 // Sessions is an in-memory ports.SessionRepository.
@@ -272,11 +368,11 @@ func (m *Sessions) Delete(_ context.Context, tokenHash string) error {
 	return nil
 }
 
-func (m *Sessions) DeleteByEmail(_ context.Context, email, keepTokenHash string) error {
+func (m *Sessions) DeleteByUser(_ context.Context, userID, keepTokenHash string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for h, s := range m.sessions {
-		if s.Email == email && h != keepTokenHash {
+		if s.UserID == userID && h != keepTokenHash {
 			delete(m.sessions, h)
 		}
 	}

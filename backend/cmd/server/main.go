@@ -72,13 +72,14 @@ func main() {
 	if cfg.AdminEmail == "" || cfg.AdminPassword == "" {
 		log.Warn("ADMIN_EMAIL/ADMIN_PASSWORD not set: only accounts with a stored password can sign in")
 	}
+	if err := setupBuiltInAdmin(ctx, authSvc, recordings, devices, log); err != nil {
+		fatal(log, "built-in admin setup failed", err)
+	}
 	deviceSvc := service.NewDeviceService(devices)
 	uploadSvc := service.NewUploadService(recordings, spool, cfg.MaxUploadBytes)
 	archiver := service.NewArchiver(spool, objects, cfg.KeepOriginalWAV, log)
-	pocketSvc := service.NewPocketService(recordings, pocket.NewClient(cfg.PocketAPIURL, cfg.PocketAPIKey), spool, cfg.MaxUploadBytes, log)
-	if cfg.PocketWebhookSecret == "" || cfg.PocketAPIKey == "" {
-		log.Info("Pocket integration disabled: set POCKET_WEBHOOK_SECRET and POCKET_API_KEY to enable it")
-	}
+	pocketSvc := service.NewPocketService(recordings, users, pocket.NewClient(cfg.PocketAPIURL), spool, cfg.MaxUploadBytes, log)
+	manualSvc := service.NewManualUploadService(recordings, spool, cfg.MaxUploadBytes)
 	var wakeAI func() // set below, once the AI worker exists
 	pipeline := worker.New(recordings, []worker.Stage{
 		{Name: "pocket-fetch", From: recording.StatusRemote, To: recording.StatusReceived, Run: pocketSvc.Fetch},
@@ -87,6 +88,7 @@ func main() {
 	}, worker.Options{PollInterval: cfg.WorkerPollInterval, MaxAttempts: cfg.WorkerMaxAttempts}, log)
 	uploadSvc.OnReceived = pipeline.Wake
 	pocketSvc.OnQueued = pipeline.Wake
+	manualSvc.OnReceived = pipeline.Wake
 
 	// AI processing (transcription, summaries) runs in its own worker so that slow model
 	// calls never delay archiving. Its stages wait until OpenRouter is configured.
@@ -99,6 +101,7 @@ func main() {
 	}, worker.Options{PollInterval: cfg.WorkerPollInterval, MaxAttempts: cfg.WorkerMaxAttempts}, log)
 	aiSvc.OnSettingsChanged = aiPipeline.Wake
 	actions := service.NewRecordingService(recordings, objects, spool)
+	userSvc := service.NewUserService(users, sessions, devices, recordings, authSvc, actions)
 	actions.OnRequeued = aiPipeline.Wake
 	wakeAI = aiPipeline.Wake // archived recordings move on to transcription right away
 
@@ -111,8 +114,8 @@ func main() {
 
 	// HTTP server.
 	srv := httpx.NewServer(httpx.Deps{
-		Cfg: cfg, Log: log, DB: store, Auth: authSvc, Devices: deviceSvc, Uploads: uploadSvc,
-		Recordings: recordings, Objects: objects, Pocket: pocketSvc, AI: aiSvc, Actions: actions,
+		Cfg: cfg, Log: log, DB: store, Auth: authSvc, Users: userSvc, Devices: deviceSvc, Uploads: uploadSvc,
+		Manual: manualSvc, Actions: actions, Objects: objects, Pocket: pocketSvc, AI: aiSvc,
 	})
 	httpServer := &http.Server{
 		Addr:              ":" + cfg.Port,
@@ -138,6 +141,27 @@ func main() {
 	_ = httpServer.Shutdown(shutdownCtx)
 	jobCancel()
 	jobs.Wait()
+}
+
+// setupBuiltInAdmin creates the ADMIN_EMAIL user if needed and gives it the recordings and
+// devices that were created before there were users.
+func setupBuiltInAdmin(ctx context.Context, auth *service.AuthService, recs *repo.RecordingRepo, devs *repo.DeviceRepo, log *slog.Logger) error {
+	admin, err := auth.EnsureBuiltInAdmin(ctx)
+	if err != nil || admin == nil {
+		return err
+	}
+	nr, err := recs.AssignOwnerless(ctx, admin.ID)
+	if err != nil {
+		return err
+	}
+	nd, err := devs.AssignOwnerless(ctx, admin.ID)
+	if err != nil {
+		return err
+	}
+	if nr+nd > 0 {
+		log.Info("assigned existing data to the built-in admin", "recordings", nr, "devices", nd)
+	}
+	return nil
 }
 
 // purgeStaleUploads periodically deletes uploads that stopped progressing.

@@ -14,6 +14,13 @@ func newID() string {
 	return hex.EncodeToString(b[:])
 }
 
+// newWebhookID returns a random, unguessable ID for a user's webhook URL.
+func newWebhookID() string {
+	var b [16]byte
+	_, _ = rand.Read(b[:])
+	return hex.EncodeToString(b[:])
+}
+
 // newToken returns a new random device token.
 func newToken() string {
 	var b [32]byte
@@ -27,3 +34,7 @@ func hashToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
 }
+
+// SessionHash returns the stored form of a session token (for keeping a session alive when
+// others are ended).
+func SessionHash(token string) string { return hashToken(token) }

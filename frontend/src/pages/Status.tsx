@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { api, Health, Info, Integrations, OpenAPIOperation, OpenAPISpec } from '../api/client';
+import { Link } from 'react-router-dom';
+import { api, Health, Info, OpenAPIOperation, OpenAPISpec, PocketSettings } from '../api/client';
 import { CopyButton } from '../components/CopyButton';
 import { inline, Markdown } from '../components/Markdown';
 
@@ -23,30 +24,18 @@ function authLabel(op: OpenAPIOperation): string {
   return op.security.map((req) => Object.keys(req).map((k) => AUTH_LABELS[k] ?? k).join(' + ')).join(' or ');
 }
 
-function ConfigState({ ok, name }: { ok: boolean; name: string }) {
-  return ok ? (
-    <span className="status-pill ok">Configured</span>
-  ) : (
-    <span className="status-pill bad">
-      Missing: set <code>{name}</code>
-    </span>
-  );
+function ConfigState({ ok }: { ok: boolean }) {
+  return ok ? <span className="status-pill ok">Set</span> : <span className="status-pill bad">Not set</span>;
 }
 
-// PocketCard shows the webhook URL to enter in the Pocket app and whether the service has
-// the secrets it needs.
-function PocketCard({ integrations, origin }: { integrations: Integrations | null; origin: string }) {
-  if (!integrations) return null;
-  const p = integrations.pocket;
-  const url = origin + p.webhookPath;
-  const ready = p.webhookSecretConfigured && p.apiKeyConfigured;
+// PocketCard shows the signed-in user's Pocket webhook URL and its state; the secrets are
+// set on the Account page.
+function PocketCard({ pocket, origin }: { pocket: PocketSettings | null; origin: string }) {
+  if (!pocket) return null;
+  const url = origin + pocket.webhookPath;
   return (
     <section className="card">
-      <h2 className="card-title">Pocket integration</h2>
-      <p className="muted">
-        Recordings made with a Pocket recorder (heypocketai.com) are announced by webhook; knowpod then downloads the audio
-        through the Pocket API and archives it with the other recordings.
-      </p>
+      <h2 className="card-title">Your Pocket integration</h2>
       <dl className="facts">
         <dt>Webhook URL</dt>
         <dd className="with-action">
@@ -54,27 +43,16 @@ function PocketCard({ integrations, origin }: { integrations: Integrations | nul
         </dd>
         <dt>Signing secret</dt>
         <dd>
-          <ConfigState ok={p.webhookSecretConfigured} name="POCKET_WEBHOOK_SECRET" />
+          <ConfigState ok={pocket.webhookSecretConfigured} />
         </dd>
         <dt>API key</dt>
         <dd>
-          <ConfigState ok={p.apiKeyConfigured} name="POCKET_API_KEY" />
+          <ConfigState ok={pocket.apiKeyConfigured} />
         </dd>
-        <dt>State</dt>
-        <dd>{ready ? 'Receiving webhooks' : 'Webhooks are refused until both are set'}</dd>
       </dl>
-      {!ready && (
-        <ol className="steps">
-          <li>In the Pocket app, open the integrations settings and add a webhook with the URL above.</li>
-          <li>
-            Pocket shows the webhook's signing secret once. Set it as <code>POCKET_WEBHOOK_SECRET</code> on the service
-            (Railway variables).
-          </li>
-          <li>
-            Create a Pocket API key and set it as <code>POCKET_API_KEY</code>. Redeploy.
-          </li>
-        </ol>
-      )}
+      <p className="muted field-note">
+        Set the secret and API key on the <Link to="/account">Account</Link> page.
+      </p>
     </section>
   );
 }
@@ -138,14 +116,14 @@ export function Status() {
   const [health, setHealth] = useState<Health | null>(null);
   const [info, setInfo] = useState<Info | null>(null);
   const [spec, setSpec] = useState<OpenAPISpec | null>(null);
-  const [integrations, setIntegrations] = useState<Integrations | null>(null);
+  const [pocket, setPocket] = useState<PocketSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     api.health().then(setHealth, () => setHealth({ status: 'unreachable', service: '' }));
     api.info().then(setInfo, () => undefined);
     api.openapi().then(setSpec, (e: Error) => setError(e.message));
-    api.integrations().then(setIntegrations, () => undefined);
+    api.pocket().then(setPocket, () => undefined);
   }, []);
 
   const origin = window.location.origin;
@@ -204,7 +182,7 @@ export function Status() {
         </dl>
       </section>
 
-      <PocketCard integrations={integrations} origin={origin} />
+      <PocketCard pocket={pocket} origin={origin} />
 
       {spec?.info.description && (
         <section className="card">

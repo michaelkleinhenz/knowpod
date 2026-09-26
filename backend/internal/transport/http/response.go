@@ -40,10 +40,14 @@ func (s *Server) writeErr(w http.ResponseWriter, err error) {
 		status = http.StatusNotFound
 	case errors.Is(err, service.ErrInvalidInput), errors.Is(err, service.ErrWeakPassword):
 		status = http.StatusBadRequest
-	case errors.Is(err, service.ErrInvalidLogin), errors.Is(err, service.ErrNotSignedIn):
+	case errors.Is(err, service.ErrInvalidLogin), errors.Is(err, service.ErrNotSignedIn), errors.Is(err, errInvalidAdminToken):
 		status = http.StatusUnauthorized
-	case errors.Is(err, service.ErrWrongPassword):
+	case errors.Is(err, service.ErrWrongPassword), errors.Is(err, service.ErrForbidden):
 		status = http.StatusForbidden
+	case errors.Is(err, service.ErrEmailTaken):
+		status = http.StatusConflict
+	case errors.Is(err, service.ErrUnsupportedMedia):
+		status = http.StatusUnsupportedMediaType
 	case errors.Is(err, service.ErrConflict), errors.Is(err, service.ErrNotReady):
 		status = http.StatusConflict
 	case errors.Is(err, service.ErrTooLarge):

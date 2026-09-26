@@ -4,20 +4,26 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/michaelkleinhenz/knowpod-service/backend/internal/pocket"
-)
+	"github.com/go-chi/chi/v5"
 
-// pocketWebhookPath is where Pocket delivers webhooks; the Status page shows the full URL.
-const pocketWebhookPath = "/api/v1/webhooks/pocket"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/pocket"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/service"
+)
 
 // maxWebhookBody bounds a webhook payload (it includes transcript and summaries).
 const maxWebhookBody = 10 << 20
 
-// handlePocketWebhook verifies and accepts a Pocket webhook. The audio is fetched in the
-// background, so the response is immediate (Pocket times out after 30 seconds).
+// handlePocketWebhook verifies and accepts a Pocket webhook for the user its URL belongs to.
+// The audio is fetched in the background, so the response is immediate (Pocket times out
+// after 30 seconds).
 func (s *Server) handlePocketWebhook(w http.ResponseWriter, r *http.Request) {
-	if s.pocket == nil || s.cfg.PocketWebhookSecret == "" || s.cfg.PocketAPIKey == "" {
-		writeJSON(w, http.StatusServiceUnavailable, errResponse{Error: "Pocket integration is not configured"})
+	owner, err := s.pocket.WebhookUser(r.Context(), chi.URLParam(r, "webhookId"))
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, errResponse{Error: "unknown webhook"})
+		return
+	}
+	if owner.Pocket.WebhookSecret == "" || owner.Pocket.APIKey == "" {
+		writeJSON(w, http.StatusServiceUnavailable, errResponse{Error: "Pocket integration is not set up for this user"})
 		return
 	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxWebhookBody))
@@ -25,10 +31,10 @@ func (s *Server) handlePocketWebhook(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusRequestEntityTooLarge, errResponse{Error: "payload too large"})
 		return
 	}
-	err = pocket.VerifySignature(s.cfg.PocketWebhookSecret, r.Header.Get(pocket.TimestampHeader),
+	err = pocket.VerifySignature(owner.Pocket.WebhookSecret, r.Header.Get(pocket.TimestampHeader),
 		r.Header.Get(pocket.SignatureHeader), body, s.now())
 	if err != nil {
-		s.log.Warn("pocket webhook rejected", "err", err, "remote", r.RemoteAddr)
+		s.log.Warn("pocket webhook rejected", "err", err, "user", owner.ID, "remote", r.RemoteAddr)
 		writeJSON(w, http.StatusUnauthorized, errResponse{Error: pocket.ErrBadSignature.Error()})
 		return
 	}
@@ -37,7 +43,7 @@ func (s *Server) handlePocketWebhook(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, errResponse{Error: "invalid payload"})
 		return
 	}
-	result, err := s.pocket.HandleWebhook(r.Context(), ev)
+	result, err := s.pocket.HandleWebhook(r.Context(), owner, ev)
 	if err != nil {
 		s.writeErr(w, err)
 		return
@@ -45,21 +51,24 @@ func (s *Server) handlePocketWebhook(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": string(result)})
 }
 
-type pocketIntegration struct {
-	WebhookPath             string `json:"webhookPath"`
-	WebhookSecretConfigured bool   `json:"webhookSecretConfigured"`
-	APIKeyConfigured        bool   `json:"apiKeyConfigured"`
+func (s *Server) handleGetPocketSettings(w http.ResponseWriter, r *http.Request) {
+	v, err := s.pocket.Settings(r.Context(), accountFrom(r.Context()))
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
 }
 
-type integrationsResponse struct {
-	Pocket pocketIntegration `json:"pocket"`
-}
-
-// handleIntegrations reports how external integrations are set up, for the Status page.
-func (s *Server) handleIntegrations(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, integrationsResponse{Pocket: pocketIntegration{
-		WebhookPath:             pocketWebhookPath,
-		WebhookSecretConfigured: s.cfg.PocketWebhookSecret != "",
-		APIKeyConfigured:        s.cfg.PocketAPIKey != "",
-	}})
+func (s *Server) handleUpdatePocketSettings(w http.ResponseWriter, r *http.Request) {
+	var in service.PocketUpdate
+	if !decode(w, r, &in) {
+		return
+	}
+	v, err := s.pocket.UpdateSettings(r.Context(), accountFrom(r.Context()), in)
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
 }

@@ -4,66 +4,17 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"path"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/device"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/service"
 )
-
-type registerDeviceRequest struct {
-	Name string `json:"name"`
-}
-
-type registerDeviceResponse struct {
-	Device *device.Device `json:"device"`
-	// Token is shown only once; configure it on the recorder.
-	Token string `json:"token"`
-}
-
-func (s *Server) handleRegisterDevice(w http.ResponseWriter, r *http.Request) {
-	var req registerDeviceRequest
-	if !decode(w, r, &req) {
-		return
-	}
-	d, token, err := s.devices.Register(r.Context(), req.Name)
-	if err != nil {
-		s.writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusCreated, registerDeviceResponse{Device: d, Token: token})
-}
-
-// handleRotateDeviceToken issues a new token for a device; the old one stops working.
-func (s *Server) handleRotateDeviceToken(w http.ResponseWriter, r *http.Request) {
-	d, token, err := s.devices.RotateToken(r.Context(), chi.URLParam(r, "id"))
-	if err != nil {
-		s.writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, registerDeviceResponse{Device: d, Token: token})
-}
-
-func (s *Server) handleListDevices(w http.ResponseWriter, r *http.Request) {
-	list, err := s.devices.List(r.Context())
-	if err != nil {
-		s.writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, list)
-}
-
-func (s *Server) handleRevokeDevice(w http.ResponseWriter, r *http.Request) {
-	if err := s.devices.Revoke(r.Context(), chi.URLParam(r, "id")); err != nil {
-		s.writeErr(w, err)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
-}
 
 func (s *Server) handleListRecordings(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
@@ -72,7 +23,7 @@ func (s *Server) handleListRecordings(w http.ResponseWriter, r *http.Request) {
 		limit = 50
 	}
 	offset, _ := strconv.Atoi(q.Get("offset"))
-	list, err := s.recordings.List(r.Context(), recording.ListFilter{
+	list, err := s.actions.List(r.Context(), accountFrom(r.Context()), recording.ListFilter{
 		DeviceID: q.Get("deviceId"), Status: recording.Status(q.Get("status")), Limit: limit, Offset: max(offset, 0),
 		Brief: q.Get("full") == "",
 	})
@@ -84,7 +35,7 @@ func (s *Server) handleListRecordings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetRecording(w http.ResponseWriter, r *http.Request) {
-	rec, err := s.recordings.Get(r.Context(), chi.URLParam(r, "id"))
+	rec, err := s.actions.Get(r.Context(), accountFrom(r.Context()), chi.URLParam(r, "id"))
 	if err != nil {
 		s.writeErr(w, err)
 		return
@@ -92,11 +43,29 @@ func (s *Server) handleGetRecording(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, rec)
 }
 
+// handleUploadRecording stores an audio file sent as the raw request body (WAV or MP3). The
+// file name comes in X-Filename (URL-encoded) and optionally the recording time in
+// X-Recorded-At (RFC 3339).
+func (s *Server) handleUploadRecording(w http.ResponseWriter, r *http.Request) {
+	name, _ := url.QueryUnescape(r.Header.Get("X-Filename"))
+	in := service.ManualUpload{Filename: name, Body: r.Body}
+	if t, err := time.Parse(time.RFC3339, r.Header.Get("X-Recorded-At")); err == nil {
+		t = t.UTC()
+		in.RecordedAt = &t
+	}
+	rec, err := s.manual.Upload(r.Context(), accountFrom(r.Context()), in)
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, rec)
+}
+
 // handleRecordingAudio streams the archived audio (FLAC, or the original format of fetched
-// recordings). It supports single byte ranges so the browser's audio player can seek.
+// and uploaded MP3s). It supports single byte ranges so the browser's audio player can seek.
 // ?download=1 asks the browser to save the file instead of playing it.
 func (s *Server) handleRecordingAudio(w http.ResponseWriter, r *http.Request) {
-	rec, err := s.recordings.Get(r.Context(), chi.URLParam(r, "id"))
+	rec, err := s.actions.Get(r.Context(), accountFrom(r.Context()), chi.URLParam(r, "id"))
 	if err != nil {
 		s.writeErr(w, err)
 		return
@@ -174,7 +143,7 @@ func parseRange(header string, size int64) (offset, length int64, partial, ok bo
 
 // handleDeleteRecording removes a recording with its audio.
 func (s *Server) handleDeleteRecording(w http.ResponseWriter, r *http.Request) {
-	if err := s.actions.Delete(r.Context(), chi.URLParam(r, "id")); err != nil {
+	if err := s.actions.Delete(r.Context(), accountFrom(r.Context()), chi.URLParam(r, "id")); err != nil {
 		s.writeErr(w, err)
 		return
 	}
@@ -182,7 +151,7 @@ func (s *Server) handleDeleteRecording(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRetranscribe(w http.ResponseWriter, r *http.Request) {
-	rec, err := s.actions.Retranscribe(r.Context(), chi.URLParam(r, "id"))
+	rec, err := s.actions.Retranscribe(r.Context(), accountFrom(r.Context()), chi.URLParam(r, "id"))
 	if err != nil {
 		s.writeErr(w, err)
 		return
@@ -191,42 +160,10 @@ func (s *Server) handleRetranscribe(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleResummarize(w http.ResponseWriter, r *http.Request) {
-	rec, err := s.actions.Resummarize(r.Context(), chi.URLParam(r, "id"))
+	rec, err := s.actions.Resummarize(r.Context(), accountFrom(r.Context()), chi.URLParam(r, "id"))
 	if err != nil {
 		s.writeErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, rec)
-}
-
-func (s *Server) handleGetOpenRouterSettings(w http.ResponseWriter, r *http.Request) {
-	v, err := s.ai.Settings(r.Context())
-	if err != nil {
-		s.writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, v)
-}
-
-func (s *Server) handleUpdateOpenRouterSettings(w http.ResponseWriter, r *http.Request) {
-	var u service.OpenRouterUpdate
-	if !decode(w, r, &u) {
-		return
-	}
-	v, err := s.ai.UpdateSettings(r.Context(), u)
-	if err != nil {
-		s.writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, v)
-}
-
-func (s *Server) handleOpenRouterModels(w http.ResponseWriter, r *http.Request) {
-	models, err := s.ai.Models(r.Context())
-	if err != nil {
-		s.log.Warn("listing OpenRouter models failed", "err", err)
-		writeJSON(w, http.StatusBadGateway, errResponse{Error: "could not load the model list from OpenRouter"})
-		return
-	}
-	writeJSON(w, http.StatusOK, models)
 }

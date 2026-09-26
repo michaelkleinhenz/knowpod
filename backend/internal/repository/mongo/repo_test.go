@@ -102,7 +102,7 @@ func TestDeviceRepo(t *testing.T) {
 	if err := repo.Update(ctx, got); err != nil {
 		t.Fatal(err)
 	}
-	list, err := repo.List(ctx)
+	list, err := repo.List(ctx, "")
 	if err != nil || len(list) != 1 || list[0].Active() {
 		t.Fatalf("List = %v, %v", list, err)
 	}
@@ -116,34 +116,66 @@ func TestUserAndSessionRepo(t *testing.T) {
 	if _, err := users.GetByEmail(ctx, "a@x"); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("missing user: %v", err)
 	}
-	u := &user.User{ID: NewID(), Email: "a@x", PasswordHash: "h1"}
-	if err := users.Upsert(ctx, u); err != nil {
+	u := &user.User{ID: NewID(), Email: "a@x", Role: user.RoleUser, PasswordHash: "h1"}
+	if err := users.Create(ctx, u); err != nil {
+		t.Fatal(err)
+	}
+	if err := users.Create(ctx, &user.User{ID: NewID(), Email: "a@x"}); !errors.Is(err, domain.ErrDuplicate) {
+		t.Fatalf("duplicate email: %v", err)
+	}
+	// Users without Pocket don't collide on the sparse webhook index.
+	if err := users.Create(ctx, &user.User{ID: NewID(), Email: "b@x"}); err != nil {
 		t.Fatal(err)
 	}
 	u.PasswordHash = "h2"
-	if err := users.Upsert(ctx, u); err != nil {
+	u.Pocket.WebhookID = "hook1"
+	if err := users.Update(ctx, u); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := users.GetByEmail(ctx, "a@x"); err != nil || got.PasswordHash != "h2" {
-		t.Fatalf("GetByEmail = %+v, %v", got, err)
+	if got, err := users.GetByPocketWebhookID(ctx, "hook1"); err != nil || got.PasswordHash != "h2" {
+		t.Fatalf("GetByPocketWebhookID = %+v, %v", got, err)
+	}
+	if list, err := users.List(ctx); err != nil || len(list) != 2 {
+		t.Fatalf("List = %v, %v", list, err)
 	}
 
 	exp := time.Now().Add(time.Hour).UTC()
 	for _, h := range []string{"s1", "s2", "s3"} {
-		if err := sessions.Create(ctx, &user.Session{TokenHash: h, Email: "a@x", ExpiresAt: exp}); err != nil {
+		if err := sessions.Create(ctx, &user.Session{TokenHash: h, UserID: u.ID, ExpiresAt: exp}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := sessions.DeleteByEmail(ctx, "a@x", "s2"); err != nil {
+	if err := sessions.DeleteByUser(ctx, u.ID, "s2"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := sessions.Get(ctx, "s1"); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("s1 not deleted: %v", err)
 	}
-	if got, err := sessions.Get(ctx, "s2"); err != nil || got.Email != "a@x" {
+	if got, err := sessions.Get(ctx, "s2"); err != nil || got.UserID != u.ID {
 		t.Fatalf("kept session: %+v, %v", got, err)
 	}
-	if err := sessions.Delete(ctx, "s2"); err != nil {
+	if err := users.Delete(ctx, u.ID); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestAssignOwnerless(t *testing.T) {
+	ctx := context.Background()
+	s := testStore(t)
+	recs, devs := NewRecordingRepo(s), NewDeviceRepo(s)
+	_ = recs.Create(ctx, &recording.Recording{ID: "r1", DeviceID: "d", ClientID: "1"})
+	_ = recs.Create(ctx, &recording.Recording{ID: "r2", OwnerID: "bob", DeviceID: "d", ClientID: "2"})
+	_ = devs.Create(ctx, &device.Device{ID: "d1", TokenHash: "h"})
+	if n, err := recs.AssignOwnerless(ctx, "admin"); err != nil || n != 1 {
+		t.Fatalf("recordings: %d, %v", n, err)
+	}
+	if n, err := devs.AssignOwnerless(ctx, "admin"); err != nil || n != 1 {
+		t.Fatalf("devices: %d, %v", n, err)
+	}
+	if r, _ := recs.Get(ctx, "r2"); r.OwnerID != "bob" {
+		t.Fatal("owned recording reassigned")
+	}
+	if list, _ := devs.List(ctx, "admin"); len(list) != 1 {
+		t.Fatalf("admin's devices: %d", len(list))
 	}
 }

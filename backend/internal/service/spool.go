@@ -34,10 +34,10 @@ func (s *Spool) FLACPath(id string) string { return filepath.Join(s.dir, id+".fl
 // DownloadPath returns the path of audio fetched from an external source (any format).
 func (s *Spool) DownloadPath(id string) string { return filepath.Join(s.dir, id+".download") }
 
-// SourcePath returns the spooled audio of a recording: the fetched file for external
-// sources, the uploaded WAV otherwise.
+// SourcePath returns the spooled audio of a recording: the file fetched or uploaded through
+// the web UI (any format), or the WAV uploaded by a device.
 func (s *Spool) SourcePath(rec *recording.Recording) string {
-	if rec.Source == recording.SourcePocket {
+	if rec.Source != recording.SourceDevice {
 		return s.DownloadPath(rec.ID)
 	}
 	return s.WAVPath(rec.ID)

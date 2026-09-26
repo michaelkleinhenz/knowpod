@@ -34,41 +34,48 @@ The code is layered so that the application logic depends only on interfaces:
 | `transport/http` | Router, authentication middleware, handlers. Maps errors to HTTP status codes. |
 | `cmd/server` | Reads config, connects everything, starts the HTTP server and background jobs. |
 
-## Authentication
+## Users, ownership and authentication
 
-There are three kinds of callers, each with its own credential:
+Every recording and device has an `ownerId`: the user it belongs to. Users see and act only
+on their own data; the services check this with `Account.Owns` / `Account.OwnerFilter`
+(`service/auth.go`), and anything owned by someone else answers `404`, as if it didn't exist.
+
+There are four kinds of callers:
 
 | Caller | Credential | Checked by | Grants |
 |---|---|---|---|
-| Recorder gadget | Device token (`Authorization: Bearer kpd_…`) | `requireDevice` → `DeviceService.Authenticate` | `/api/v1/uploads/*`, own uploads only |
-| Person in the web UI | Session cookie `knowpod_session` | `requireUser` → `AuthService.Authenticate` | `/api/v1/auth/me`, `/auth/password`, and the admin API |
-| Script | `ADMIN_TOKEN` (`Authorization: Bearer …`) | `requireAdmin` | The admin API |
+| Recorder gadget | Device token (`Authorization: Bearer kpd_…`) | `requireDevice` → `DeviceService.Authenticate` | `/uploads/*`; recordings belong to the device's owner |
+| User in the web UI | Session cookie `knowpod_session` | `requireUser` → `AuthService.Authenticate` | Own devices, recordings, Pocket settings, password |
+| Admin in the web UI | Session cookie, user with role `admin` | `requireAdmin` | The above for their own data, plus `/admin/*` (users, OpenRouter) |
+| Script | `ADMIN_TOKEN` (`Authorization: Bearer …`) | `requireUser` / `requireAdmin` | Everything above, acting as the built-in admin, with `All` set: lists and lookups cover every user's data |
+| Pocket | HMAC signature, secret of the user named by the webhook URL | `handlePocketWebhook` | Queue recordings for that user |
 
-`requireAdmin` treats a request with a bearer header as a script and checks it against
-`ADMIN_TOKEN`; otherwise it requires a session.
+A bearer header on a user/admin route is always treated as a script token; otherwise the
+session cookie decides.
 
-### Web UI sign-in (`service/auth.go`)
+### Users and sign-in (`service/auth.go`, `service/users.go`)
 
-- **Checking a password.** If the email has a document in `users`, the password is checked
-  against its bcrypt hash, and nothing else is accepted. Only when there is no document,
-  and the email equals `ADMIN_EMAIL`, is the password compared (in constant time) with
-  `ADMIN_PASSWORD`. Unknown emails still spend one bcrypt comparison, so response times
-  don't reveal which accounts exist.
-- **Changing the password** verifies the current password the same way, then upserts the
-  `users` document with the new bcrypt hash. That document makes the environment password
-  stop working for this email. All other sessions of the account are deleted; the current
-  one stays.
+- **Built-in admin.** At startup `EnsureBuiltInAdmin` creates the `ADMIN_EMAIL` user (role
+  admin, empty password hash) if missing, and `cmd/server` assigns ownerless recordings and
+  devices (from before users existed) to it. With an empty hash, the password is compared
+  in constant time with `ADMIN_PASSWORD`; once a password is set, only the bcrypt hash
+  counts. The built-in admin can't be deleted, renamed or demoted.
+- **Signing in** checks the user's bcrypt hash. Unknown emails still spend one bcrypt
+  comparison, so response times don't reveal which accounts exist.
 - **Sessions.** Login creates a random 256-bit token. The browser gets it in an `HttpOnly`,
-  `SameSite=Strict` cookie; MongoDB stores only its SHA-256 with the email and expiry.
-  `Authenticate` rejects expired sessions itself; a TTL index removes them from the
-  database. `SameSite=Strict` is the CSRF protection: browsers don't send the cookie on
-  requests started by other sites.
-- **Rate limit.** `POST /auth/login` allows 10 requests per minute per client IP
-  (`go-chi/httprate`).
+  `SameSite=Strict` cookie; MongoDB stores only its SHA-256 with the user ID and expiry.
+  `Authenticate` loads the user on every request, so role changes and deletions apply at
+  once; a TTL index removes expired sessions. `SameSite=Strict` is the CSRF protection.
+- **Password changes** (own, with the current password; or by an admin) end the user's other
+  sessions.
+- **User management** keeps at least one admin, forbids deleting yourself, and deletes a
+  user together with their devices, recordings (via `RecordingService`, so audio in S3 goes
+  too) and sessions.
+- **Rate limit.** `POST /auth/login` allows 10 requests per minute per client IP.
 
-The frontend asks `GET /api/v1/auth/me` on load to learn whether it is signed in (the cookie
-can't be read by scripts), and `RequireLogin` in `App.tsx` sends signed-out visitors to
-`/login`.
+The frontend asks `GET /api/v1/auth/me` on load (the cookie can't be read by scripts);
+`RequireLogin` in `App.tsx` sends signed-out visitors to `/login` and non-admins away from
+admin pages.
 
 ## Recording lifecycle
 
@@ -157,9 +164,15 @@ The loop, per stage:
 The worker checks for work every `WORKER_POLL_INTERVAL` and immediately when an upload
 completes. Each stage must therefore be safe to run more than once for the same recording.
 
-### The Pocket fetch stage (`service/pocket.go`)
+### Pocket (`service/pocket.go`)
 
-`remote → received`: asks the Pocket API for a pre-signed download URL, streams the file
+Each user has a random `pocket.webhookId`, created the first time their Pocket settings are
+opened; their webhook URL is `/api/v1/webhooks/pocket/<webhookId>`. The handler looks the
+user up by that ID and verifies the signature with the user's secret. Recordings get
+`ownerId` = that user and `deviceId` `pocket:<userId>`, so the (device, Pocket recording ID)
+key keeps deliveries idempotent per user.
+
+The fetch stage (`remote → received`) uses the owner's API key to ask for a pre-signed download URL, streams the file
 into `<id>.download` (limited to `MAX_UPLOAD_BYTES`), identifies the format from its first
 bytes (`audio.Sniff`; pre-signed storage URLs often report a generic content type), and
 records size, SHA-256 and media type. The Pocket API docs don't specify the field that
@@ -170,7 +183,18 @@ unrecognised response fails the stage with the response body in `lastError`.
 
 `received → stored`:
 
-Fetched files that aren't WAV are uploaded unchanged to `recordings/pocket/<id>.<ext>`.
+### Browser uploads (`service/manual_upload.go`)
+
+`POST /api/v1/recordings` streams the raw request body into the spool (`<id>.download`),
+hashing it and keeping the first bytes to identify the format. Only WAV (which must parse
+as integer PCM) and MP3 are accepted. The recording is created directly in `received` with
+`source` `upload`, the file name as title and `X-Recorded-At` as recording time, and the
+worker takes it from there like a fetched Pocket file.
+
+### Archive
+
+Objects are stored under the owner: `recordings/<ownerId>/<id>.<ext>`. Spooled files from
+Pocket or the browser that aren't WAV are uploaded unchanged.
 Everything else:
 
 1. Encode `<id>.wav` to `<id>.flac` in the spool.
@@ -251,6 +275,7 @@ implements the work.
 | Field | Notes |
 |---|---|
 | `_id` | Random 24-hex ID |
+| `ownerId` | The user whose recordings it uploads (indexed) |
 | `name` | Label given at registration |
 | `tokenHash` | SHA-256 of the token (unique index). Tokens are 256-bit random values, so an unsalted fast hash is enough. |
 | `createdAt`, `lastSeenAt`, `revokedAt` | `lastSeenAt` is updated at most once a minute |
@@ -260,7 +285,8 @@ implements the work.
 | Field | Notes |
 |---|---|
 | `_id` | Random 24-hex ID; the device's `uploadId` |
-| `deviceId`, `clientId` | Owner and device-assigned `recordingId` (unique together) |
+| `ownerId` | The user it belongs to (indexed with `createdAt` for lists) |
+| `deviceId`, `clientId` | Device (or `pocket:<userId>` / `upload:<userId>`) and its `recordingId` (unique together) |
 | `status` | `uploading`, `received`, `stored` or `failed` |
 | `size`, `sha256` | Declared by the device at create |
 | `recordedAt` | Optional, from the device |
@@ -274,14 +300,16 @@ implements the work.
 Indexes: `(deviceId, clientId)` unique; `(status, notBefore)` for claiming;
 `(status, updatedAt)` for stale uploads; `createdAt` for listing.
 
-**`users`**: web UI accounts with a stored password. Empty until the admin changes the
-default password.
+**`users`**
 
 | Field | Notes |
 |---|---|
 | `_id` | Random 24-hex ID |
 | `email` | Lower-case (unique index) |
-| `passwordHash` | bcrypt |
+| `role` | `admin` or `user` |
+| `passwordHash` | bcrypt; empty for the built-in admin until a password is set (then `ADMIN_PASSWORD` applies) |
+| `pocket.webhookId` | Random part of the user's webhook URL (unique, sparse index) |
+| `pocket.webhookSecret`, `pocket.apiKey` | The user's Pocket credentials; never returned by the API |
 | `createdAt`, `passwordChangedAt` | Timestamps (UTC) |
 
 **`sessions`**
@@ -289,7 +317,7 @@ default password.
 | Field | Notes |
 |---|---|
 | `_id` | SHA-256 of the session token |
-| `email` | The signed-in account (indexed, to end all its sessions) |
+| `userId` | The signed-in user (indexed, to end all their sessions) |
 | `createdAt`, `expiresAt` | TTL index on `expiresAt` deletes expired sessions |
 
 **`settings`**: one document per settings group. `_id: "openrouter"` holds `apiKey`,
@@ -305,12 +333,23 @@ reason MongoDB runs as a replica set). Nothing uses it yet.
 | Test | Covers |
 |---|---|
 | `audio/*_test.go` | WAV parsing edge cases; FLAC output decodes to the exact input samples |
-| `service/*_test.go` | Upload protocol: chunks, idempotency, offsets, dropped connections, checksum reset, invalid audio, isolation between devices, purge; device tokens; sign-in with the default login, password change overriding it, session expiry and logout; transcription (FLAC chunks, passthrough, size limit), summaries and their parsing, OpenRouter settings and model filtering, delete/re-transcribe/re-summarize |
+| `service/*_test.go` | Users (built-in admin, create/update/delete with cascade, last-admin and self protection), per-user Pocket settings, browser uploads (formats, limits), ownership checks; upload protocol: chunks, idempotency, offsets, dropped connections, checksum reset, invalid audio, isolation between devices, purge; device tokens; sign-in with the default login, password change overriding it, session expiry and logout; transcription (FLAC chunks, passthrough, size limit), summaries and their parsing, OpenRouter settings and model filtering, delete/re-transcribe/re-summarize |
 | `worker/worker_test.go` | Archive stage end to end, retry/backoff, permanent failure, recovery, disabled stages waiting |
 | `openrouter/*_test.go` | Request shape for audio, error handling, model list |
 | `audio/speech_test.go` | Speech chunks: count, duration, mono 16 kHz output |
-| `transport/http/*_test.go` | Full HTTP flows: uploads, device and admin auth, browser sign-in with cookies, password change, login rate limit. `openapi_test.go` fails if a route under `/api/v1` is missing from `openapi.yaml` or the spec lists a route that doesn't exist. |
+| `transport/http/*_test.go` | Full HTTP flows on in-memory storage: device uploads, browser sign-in with cookies, password change and reset, user management, access control per role, isolation between users, browser uploads, per-user Pocket webhooks, audio ranges, login rate limit. `openapi_test.go` fails if a route under `/api/v1` is missing from `openapi.yaml` or the spec lists a route that doesn't exist. |
 | `repository/mongo/repo_test.go` | Real MongoDB; runs only with `KNOWPOD_TEST_MONGO_URI` set |
 
 The S3 store has no automated test. It has been checked by hand against an S3-compatible
 server.
+
+## Web app
+
+The React app (`frontend/`) is built with Vite and embedded into the binary. It is
+responsive down to phone width (the navigation collapses into a menu button below 760 px;
+form fields use 16 px text so iOS doesn't zoom) and installable as a PWA: `vite-plugin-pwa`
+generates the manifest and a Workbox service worker that precaches the app shell and falls
+back to `index.html` for client-side routes, but never for `/api/*` or `/healthz`, so data
+is always live. `internal/web` serves `sw.js`, `registerSW.js` and the manifest with
+`Cache-Control: no-cache` (so updates reach installed apps) and hashed `/assets/*` as
+immutable.
