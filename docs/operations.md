@@ -215,9 +215,16 @@ shown next to it; on phones the list and a note are separate screens.
 
 **Editing.** A note's summary is always editable, like a document in a word processor:
 clicking into the text places the cursor there, and the title at the top of the page is
-edited in place. A formatting toolbar sits above the text (bold, italic, strikethrough,
-code, headings, bulleted and numbered lists (nested with Tab), quotes, links, undo/redo);
-Ctrl/Cmd+S saves immediately and Ctrl/Cmd+click opens a link. Summaries are stored as
+edited in place. The note is a plain white page without a toolbar:
+
+- Typing **/** at the start of an empty line opens a block menu: headings 1–3, bulleted,
+  numbered and task lists, code block, quote and divider. Keep typing to filter it, choose
+  with the arrow keys and Enter (or a click), close it with Escape.
+- **Selecting text** shows a small bubble with bold, italic, strikethrough, code and link.
+- Markdown shortcuts work too (`## ` for a heading, `- ` for a list, `[ ] ` for a task,
+  `**bold**`), lists nest with Tab, Ctrl/Cmd+Z undoes, Ctrl/Cmd+S saves immediately and
+  Ctrl/Cmd+click opens a link.
+ Summaries are stored as
 Markdown; the editor reads and writes Markdown, so nothing else changes. Edited summaries
 show "Edited <date>"; just viewing a note never changes it.
 

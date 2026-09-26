@@ -276,11 +276,10 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload }: BodyProps) {
         ))}
       </div>
 
-      <div className="card conversation-body" role="tabpanel">
+      <div className="conversation-body" role="tabpanel">
         {/* The summary stays mounted on other tabs so unsaved edits and the undo history survive. */}
         <div hidden={tab !== 'summary'}>
           <div className="summary-head">
-            <h2>{t('conversation.summaryHeading')}</h2>
             <div className="summary-tools">
               {rec.transcript && <SummaryDetails rec={rec} onRegenerate={(fn) => regenerate(fn)} />}
               {summary?.markdown && (

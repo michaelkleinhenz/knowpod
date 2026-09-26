@@ -1,7 +1,12 @@
+import { Editor, Extension, Range } from '@tiptap/core';
+import { TaskItem, TaskList } from '@tiptap/extension-list';
+import { Placeholder } from '@tiptap/extensions';
 import { Markdown } from '@tiptap/markdown';
 import { EditorContent, useEditor, useEditorState } from '@tiptap/react';
+import { BubbleMenu } from '@tiptap/react/menus';
 import StarterKit from '@tiptap/starter-kit';
-import { ReactNode } from 'react';
+import Suggestion, { SuggestionKeyDownProps, SuggestionProps } from '@tiptap/suggestion';
+import { ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 interface Props {
@@ -14,16 +19,166 @@ interface Props {
   onSaveShortcut: () => void;
 }
 
-function ToolButton(props: { label: string; active?: boolean; disabled?: boolean; onClick: () => void; children: ReactNode }) {
+// cleanMarkdown drops the "&nbsp;" lines that empty paragraphs become: Markdown has no
+// empty paragraphs, and the lines would show up as text elsewhere.
+function cleanMarkdown(md: string): string {
+  return md
+    .replace(/\n+&nbsp;(?=\n|$)/g, '')
+    .replace(/^(&nbsp;\n+)+/, '')
+    .trim();
+}
+
+// --- Slash commands ----------------------------------------------------------------------
+
+interface SlashItem {
+  id: string;
+  icon: string;
+  run: (editor: Editor, range: Range) => void;
+}
+
+const SLASH_ITEMS: SlashItem[] = [
+  { id: 'heading1', icon: 'H₁', run: (e, r) => e.chain().focus().deleteRange(r).setNode('heading', { level: 1 }).run() },
+  { id: 'heading2', icon: 'H₂', run: (e, r) => e.chain().focus().deleteRange(r).setNode('heading', { level: 2 }).run() },
+  { id: 'heading3', icon: 'H₃', run: (e, r) => e.chain().focus().deleteRange(r).setNode('heading', { level: 3 }).run() },
+  { id: 'bulletList', icon: '•≡', run: (e, r) => e.chain().focus().deleteRange(r).toggleBulletList().run() },
+  { id: 'orderedList', icon: '1≡', run: (e, r) => e.chain().focus().deleteRange(r).toggleOrderedList().run() },
+  { id: 'taskList', icon: '☑', run: (e, r) => e.chain().focus().deleteRange(r).toggleTaskList().run() },
+  { id: 'codeBlock', icon: '</>', run: (e, r) => e.chain().focus().deleteRange(r).toggleCodeBlock().run() },
+  { id: 'quote', icon: '❝', run: (e, r) => e.chain().focus().deleteRange(r).toggleBlockquote().run() },
+  { id: 'divider', icon: '—', run: (e, r) => e.chain().focus().deleteRange(r).setHorizontalRule().run() },
+];
+
+interface SlashState {
+  items: SlashItem[];
+  rect: DOMRect | null;
+  selected: number;
+  choose: (item: SlashItem) => void;
+}
+
+// SlashBridge connects the suggestion plugin (outside React) with the menu component.
+interface SlashBridge {
+  set: (s: SlashState | null) => void;
+  get: () => SlashState | null;
+}
+
+function slashCommands(bridge: SlashBridge, label: (id: string) => string) {
+  return Extension.create({
+    name: 'slashCommands',
+    addProseMirrorPlugins() {
+      return [
+        Suggestion<SlashItem>({
+          editor: this.editor,
+          char: '/',
+          startOfLine: true, // "/" at the start of a line, as in word processors
+          items: ({ query }) => {
+            const q = query.toLowerCase();
+            return SLASH_ITEMS.filter((item) => !q || label(item.id).toLowerCase().includes(q) || item.id.toLowerCase().includes(q));
+          },
+          command: ({ editor, range, props }) => props.run(editor, range),
+          render: () => {
+            const update = (p: SuggestionProps<SlashItem>) =>
+              bridge.set({
+                items: p.items,
+                rect: p.clientRect?.() ?? null,
+                selected: Math.min(bridge.get()?.selected ?? 0, Math.max(p.items.length - 1, 0)),
+                choose: (item) => p.command(item),
+              });
+            return {
+              onStart: (p) => {
+                bridge.set(null);
+                update(p);
+              },
+              onUpdate: update,
+              onKeyDown: ({ event }: SuggestionKeyDownProps) => {
+                const s = bridge.get();
+                if (!s) return false;
+                if (event.key === 'Escape') {
+                  bridge.set(null);
+                  return true;
+                }
+                if (!s.items.length) return false;
+                if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+                  const step = event.key === 'ArrowDown' ? 1 : -1;
+                  bridge.set({ ...s, selected: (s.selected + step + s.items.length) % s.items.length });
+                  return true;
+                }
+                if (event.key === 'Enter' || event.key === 'Tab') {
+                  s.choose(s.items[s.selected]);
+                  return true;
+                }
+                return false;
+              },
+              onExit: () => bridge.set(null),
+            };
+          },
+        }),
+      ];
+    },
+  });
+}
+
+// SlashMenu is the block menu shown after typing "/" at the start of a line.
+function SlashMenu({ state, onHover }: { state: SlashState; onHover: (i: number) => void }) {
+  const { t } = useTranslation();
+  const menu = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number }>({ top: -9999, left: -9999 });
+
+  // Below the cursor, or above it when there's no room.
+  useLayoutEffect(() => {
+    const r = state.rect;
+    const el = menu.current;
+    if (!r || !el) return;
+    const h = el.offsetHeight;
+    const w = el.offsetWidth;
+    const below = r.bottom + 6 + h <= window.innerHeight;
+    setPos({
+      top: below ? r.bottom + 6 : Math.max(8, r.top - h - 6),
+      left: Math.max(8, Math.min(r.left, window.innerWidth - w - 8)),
+    });
+  }, [state.rect, state.items.length]);
+
+  useEffect(() => {
+    menu.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' });
+  }, [state.selected]);
+
+  return (
+    <div ref={menu} className="slash-menu" style={{ top: pos.top, left: pos.left }} role="listbox" aria-label={t('editor.slash.label')}>
+      {state.items.length === 0 && <div className="slash-empty">{t('common.noMatches')}</div>}
+      {state.items.map((item, i) => (
+        <button
+          key={item.id}
+          type="button"
+          role="option"
+          aria-selected={i === state.selected}
+          className={i === state.selected ? 'selected' : ''}
+          onMouseEnter={() => onHover(i)}
+          onMouseDown={(e) => e.preventDefault()} // keep the editor's focus
+          onClick={() => state.choose(item)}
+        >
+          <span className="slash-icon" aria-hidden="true">
+            {item.icon}
+          </span>
+          <span className="slash-text">
+            <span className="slash-title">{t(`editor.slash.${item.id}`)}</span>
+            <span className="slash-desc">{t(`editor.slash.${item.id}Hint`)}</span>
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// --- Selection bubble --------------------------------------------------------------------
+
+function BubbleButton(props: { label: string; active?: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button
       type="button"
-      className={`tool-button${props.active ? ' active' : ''}`}
+      className={`bubble-button${props.active ? ' active' : ''}`}
       title={props.label}
       aria-label={props.label}
       aria-pressed={props.active}
-      disabled={props.disabled}
-      onMouseDown={(e) => e.preventDefault()} // keep the editor's selection
+      onMouseDown={(e) => e.preventDefault()}
       onClick={props.onClick}
     >
       {props.children}
@@ -32,11 +187,21 @@ function ToolButton(props: { label: string; active?: boolean; disabled?: boolean
 }
 
 // SummaryEditor shows a summary as an always-editable document: clicking into the text
-// places the cursor there, like in a word processor. The text is loaded from and read as
-// Markdown, which is how summaries are stored; saving is done by the caller (useAutosave).
-// It is loaded on demand (see Conversation.tsx).
+// places the cursor there, like in a word processor. There is no fixed toolbar: typing "/"
+// at the start of a line opens a block menu, and selecting text shows a formatting bubble.
+// The text is loaded from and read as Markdown, which is how summaries are stored; saving
+// is done by the caller (useAutosave). It is loaded on demand (see Conversation.tsx).
 export default function SummaryEditor({ markdown, onReady, onChange, onSaveShortcut }: Props) {
   const { t } = useTranslation();
+  const [slash, setSlashState] = useState<SlashState | null>(null);
+  const slashRef = useRef<SlashState | null>(null);
+  const bridge = useRef<SlashBridge>({
+    set: (s) => {
+      slashRef.current = s;
+      setSlashState(s);
+    },
+    get: () => slashRef.current,
+  });
 
   const editor = useEditor({
     extensions: [
@@ -45,7 +210,11 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
         underline: false, // not representable in Markdown
         link: { openOnClick: false, autolink: true, protocols: ['http', 'https', 'mailto'] },
       }),
+      TaskList,
+      TaskItem.configure({ nested: true }),
+      Placeholder.configure({ placeholder: t('editor.placeholder'), showOnlyCurrent: true }),
       Markdown,
+      slashCommands(bridge.current, (id) => t(`editor.slash.${id}`)),
     ],
     content: markdown,
     contentType: 'markdown',
@@ -71,25 +240,18 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
         return false;
       },
     },
-    onCreate: ({ editor: e }) => onReady(() => e.getMarkdown()),
+    onCreate: ({ editor: e }) => onReady(() => cleanMarkdown(e.getMarkdown())),
     onUpdate: () => onChange(),
   });
 
-  const state = useEditorState({
+  const marks = useEditorState({
     editor,
     selector: ({ editor: e }) => ({
       bold: e.isActive('bold'),
       italic: e.isActive('italic'),
       strike: e.isActive('strike'),
       code: e.isActive('code'),
-      h2: e.isActive('heading', { level: 2 }),
-      h3: e.isActive('heading', { level: 3 }),
-      bullet: e.isActive('bulletList'),
-      ordered: e.isActive('orderedList'),
-      quote: e.isActive('blockquote'),
       link: e.isActive('link'),
-      canUndo: e.can().undo(),
-      canRedo: e.can().redo(),
     }),
   });
 
@@ -105,48 +267,34 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
   const chain = () => editor.chain().focus();
   return (
     <div className="doc-editor">
-      <div className="editor-toolbar" role="toolbar" aria-label={t('editor.toolbar')}>
-        <ToolButton label={t('editor.bold')} active={state.bold} onClick={() => chain().toggleBold().run()}>
+      <BubbleMenu editor={editor} className="bubble-menu" options={{ placement: 'top' }}>
+        <BubbleButton label={t('editor.bold')} active={marks.bold} onClick={() => chain().toggleBold().run()}>
           <b>B</b>
-        </ToolButton>
-        <ToolButton label={t('editor.italic')} active={state.italic} onClick={() => chain().toggleItalic().run()}>
+        </BubbleButton>
+        <BubbleButton label={t('editor.italic')} active={marks.italic} onClick={() => chain().toggleItalic().run()}>
           <i>I</i>
-        </ToolButton>
-        <ToolButton label={t('editor.strike')} active={state.strike} onClick={() => chain().toggleStrike().run()}>
+        </BubbleButton>
+        <BubbleButton label={t('editor.strike')} active={marks.strike} onClick={() => chain().toggleStrike().run()}>
           <s>S</s>
-        </ToolButton>
-        <ToolButton label={t('editor.code')} active={state.code} onClick={() => chain().toggleCode().run()}>
+        </BubbleButton>
+        <BubbleButton label={t('editor.code')} active={marks.code} onClick={() => chain().toggleCode().run()}>
           {'</>'}
-        </ToolButton>
-        <span className="tool-sep" />
-        <ToolButton label={t('editor.heading2')} active={state.h2} onClick={() => chain().toggleHeading({ level: 2 }).run()}>
-          H2
-        </ToolButton>
-        <ToolButton label={t('editor.heading3')} active={state.h3} onClick={() => chain().toggleHeading({ level: 3 }).run()}>
-          H3
-        </ToolButton>
-        <span className="tool-sep" />
-        <ToolButton label={t('editor.bulletList')} active={state.bullet} onClick={() => chain().toggleBulletList().run()}>
-          •≡
-        </ToolButton>
-        <ToolButton label={t('editor.orderedList')} active={state.ordered} onClick={() => chain().toggleOrderedList().run()}>
-          1.
-        </ToolButton>
-        <ToolButton label={t('editor.quote')} active={state.quote} onClick={() => chain().toggleBlockquote().run()}>
-          ❝
-        </ToolButton>
-        <ToolButton label={t('editor.link')} active={state.link} onClick={setLink}>
-          🔗
-        </ToolButton>
-        <span className="tool-sep" />
-        <ToolButton label={t('editor.undo')} disabled={!state.canUndo} onClick={() => chain().undo().run()}>
-          ↶
-        </ToolButton>
-        <ToolButton label={t('editor.redo')} disabled={!state.canRedo} onClick={() => chain().redo().run()}>
-          ↷
-        </ToolButton>
-      </div>
+        </BubbleButton>
+        <span className="bubble-sep" />
+        <BubbleButton label={t('editor.link')} active={marks.link} onClick={setLink}>
+          {t('editor.link')}
+        </BubbleButton>
+      </BubbleMenu>
       <EditorContent editor={editor} />
+      {slash && (
+        <SlashMenu
+          state={slash}
+          onHover={(i) => {
+            const s = slashRef.current;
+            if (s) bridge.current.set({ ...s, selected: i });
+          }}
+        />
+      )}
     </div>
   );
 }

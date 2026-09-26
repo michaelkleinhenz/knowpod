@@ -60,7 +60,7 @@ export function Layout({ children }: { children: ReactNode }) {
           </>
         )}
       </header>
-      <main className={`container${onConversations ? ' wide' : ''}`}>{children}</main>
+      <main className={`container${onConversations ? ' full' : ''}`}>{children}</main>
     </>
   );
 }

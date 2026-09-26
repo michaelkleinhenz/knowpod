@@ -45,12 +45,13 @@ type Block =
 const HEADING = /^(#{1,6})\s+(.*)$/;
 const LIST = /^(\s*)([-*+•]|\d+[.)])\s+(.*)$/;
 const FENCE = /^\s*(```|~~~)/;
+const TASK = /^\[([ xX])\]\s+(.*)$/;
 const RULE = /^\s*([-*_])(\s*\1){2,}\s*$/;
 const indentOf = (line: string) => line.length - line.trimStart().length;
 const startsBlock = (line: string) => HEADING.test(line.trim()) || LIST.test(line) || FENCE.test(line) || RULE.test(line) || /^\s*>/.test(line);
 
-// parse splits Markdown into blocks: headings, paragraphs, nested bullet and numbered
-// lists, quotes, rules and code blocks. No raw HTML is ever rendered.
+// parse splits Markdown into blocks: headings, paragraphs, nested bullet, numbered and
+// task lists, quotes, rules and code blocks. No raw HTML is ever rendered.
 function parse(lines: string[]): Block[] {
   const blocks: Block[] = [];
   let i = 0;
@@ -145,8 +146,21 @@ function render(blocks: Block[]): ReactNode[] {
         return <blockquote key={i}>{render(b.children)}</blockquote>;
       case 'ul':
       case 'ol': {
+        let tasks = b.kind === 'ul';
         const items = b.items.map((item, j) => {
           const sub = item.children.some((c) => c.trim()) ? render(parse(item.children)) : null;
+          const task = TASK.exec(item.text);
+          if (!task) tasks = false;
+          if (task && b.kind === 'ul') {
+            const done = task[1] !== ' ';
+            return (
+              <li key={j} className={done ? 'done' : undefined}>
+                <input type="checkbox" checked={done} disabled aria-label={task[2]} />
+                {inline(task[2])}
+                {sub}
+              </li>
+            );
+          }
           return (
             <li key={j}>
               {inline(item.text)}
@@ -159,7 +173,9 @@ function render(blocks: Block[]): ReactNode[] {
             {items}
           </ol>
         ) : (
-          <ul key={i}>{items}</ul>
+          <ul key={i} className={tasks ? 'task-list' : undefined}>
+            {items}
+          </ul>
         );
       }
       default:

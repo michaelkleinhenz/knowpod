@@ -280,7 +280,11 @@ reference. Markdown remains the only stored format.
 
 In the web app the summary is always an editable document (there is no view/edit mode):
 `components/SummaryEditor.tsx` is a TipTap (ProseMirror) editor with the official
-`@tiptap/markdown` extension, and the page title is an in-place input. Saving lives in
+`@tiptap/markdown` extension, and the page title is an in-place input. There is no
+toolbar: a slash menu (`@tiptap/suggestion`, triggered by `/` at the start of a line,
+rendered by React through a small bridge object) inserts blocks, and a BubbleMenu
+(`@tiptap/react/menus`) on text selections formats inline. Empty paragraphs serialize as
+`&nbsp;` lines, which the editor strips before saving. Saving lives in
 `hooks/useAutosave.ts`, shared by both:
 
 - The unchanged baseline is the editor's own Markdown right after loading (not the stored
@@ -297,13 +301,11 @@ In the web app the summary is always an editable document (there is no view/edit
   summary tab stays mounted while other tabs are shown, so unsaved text and undo history
   survive tab switches.
 
-The editor bundle (~150 KB gzipped) is lazy-loaded; until it arrives, the summary is shown
-with the read-only renderer in `components/Markdown.tsx`, which covers everything the editor
-produces: headings, nested bullet and numbered lists, quotes, rules, code blocks, links
-(http, https and mailto only), bold, italic, strikethrough and code. Summaries are
-displayed with the small, HTML-free renderer in `components/Markdown.tsx`, which covers
-what the editor produces: headings, nested bullet and numbered lists, quotes, rules, code
-blocks, links (http, https and mailto only), bold, italic, strikethrough and code.
+The editor bundle (~170 KB gzipped) is lazy-loaded; until it arrives, the summary is shown
+with the small, HTML-free read-only renderer in `components/Markdown.tsx`, which covers
+everything the editor produces: headings, nested bullet, numbered and task lists (`- [ ]`,
+`- [x]`), quotes, rules, code blocks, links (http, https and mailto only), bold, italic,
+strikethrough and code.
 
 Built-in themes are defined in code with English instructions; the UI translates their
 names and descriptions by ID. Users' themes live in the `themes` collection. A user's
