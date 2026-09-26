@@ -5,3 +5,7 @@ backend/bin/
 # Build output copied in by `make frontend`; only the placeholder index.html is tracked.
 backend/internal/web/dist/*
 !backend/internal/web/dist/index.html
+# Default local upload spool (UPLOAD_DIR).
+backend/data/
+# Local secrets for docker compose (see .env.example).
+.env

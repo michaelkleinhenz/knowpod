@@ -1,5 +1,6 @@
-// Command server is the knowpod-service backend entrypoint. It wires configuration, MongoDB
-// and the HTTP API (with the embedded web UI), then serves until interrupted.
+// Command server is the knowpod-service backend entrypoint. It wires configuration, MongoDB,
+// S3 object storage, the upload and processing services and the HTTP API (with the embedded
+// web UI), then serves until interrupted.
 package main
 
 import (
@@ -9,12 +10,17 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/config"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	repo "github.com/michaelkleinhenz/knowpod-service/backend/internal/repository/mongo"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/service"
+	s3store "github.com/michaelkleinhenz/knowpod-service/backend/internal/storage/s3"
 	httpx "github.com/michaelkleinhenz/knowpod-service/backend/internal/transport/http"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/worker"
 )
 
 func main() {
@@ -22,33 +28,78 @@ func main() {
 	slog.SetDefault(log)
 
 	cfg := config.Load()
+	if err := cfg.Validate(); err != nil {
+		fatal(log, "invalid configuration", err)
+	}
 	ctx := context.Background()
 
+	// Database.
 	store, err := repo.Connect(ctx, cfg.MongoURI, cfg.MongoDB)
 	if err != nil {
-		log.Error("mongo connect failed", "err", err)
-		os.Exit(1)
+		fatal(log, "mongo connect failed", err)
 	}
 	defer store.Disconnect(ctx)
-
 	if err := repo.Setup(ctx, store.DB()); err != nil {
-		log.Error("mongo setup (collections/indexes) failed", "err", err)
-		os.Exit(1)
+		fatal(log, "mongo setup (collections/indexes) failed", err)
 	}
 	log.Info("database ready", "db", cfg.MongoDB)
+	recordings := repo.NewRecordingRepo(store)
+	devices := repo.NewDeviceRepo(store)
+	users := repo.NewUserRepo(store)
+	sessions := repo.NewSessionRepo(store)
 
-	srv := httpx.NewServer(httpx.Deps{Cfg: cfg, Log: log, DB: store})
+	// Object storage.
+	objects, err := s3store.New(ctx, s3store.Options{
+		Bucket: cfg.S3Bucket, Prefix: cfg.S3Prefix,
+	})
+	if err != nil {
+		fatal(log, "s3 setup failed", err)
+	}
+	if err := objects.Check(ctx); err != nil {
+		fatal(log, "s3 check failed", err)
+	}
+	log.Info("object storage ready", "bucket", cfg.S3Bucket)
+
+	// Upload spool, services and the processing pipeline.
+	spool, err := service.NewSpool(cfg.UploadDir)
+	if err != nil {
+		fatal(log, "upload dir setup failed", err)
+	}
+	authSvc := service.NewAuthService(users, sessions, cfg.AdminEmail, cfg.AdminPassword, cfg.SessionTTL)
+	if cfg.AdminEmail == "" || cfg.AdminPassword == "" {
+		log.Warn("ADMIN_EMAIL/ADMIN_PASSWORD not set: only accounts with a stored password can sign in")
+	}
+	deviceSvc := service.NewDeviceService(devices)
+	uploadSvc := service.NewUploadService(recordings, spool, cfg.MaxUploadBytes)
+	archiver := service.NewArchiver(spool, objects, cfg.KeepOriginalWAV, log)
+	pipeline := worker.New(recordings, []worker.Stage{{
+		Name: "archive", From: recording.StatusReceived, To: recording.StatusStored,
+		Run: archiver.Run, Cleanup: archiver.Cleanup,
+	}}, worker.Options{PollInterval: cfg.WorkerPollInterval, MaxAttempts: cfg.WorkerMaxAttempts}, log)
+	uploadSvc.OnReceived = pipeline.Wake
+
+	jobCtx, jobCancel := context.WithCancel(ctx)
+	var jobs sync.WaitGroup
+	jobs.Add(2)
+	go func() { defer jobs.Done(); pipeline.Start(jobCtx) }()
+	go func() { defer jobs.Done(); purgeStaleUploads(jobCtx, uploadSvc, cfg.UploadTTL, log) }()
+
+	// HTTP server.
+	srv := httpx.NewServer(httpx.Deps{
+		Cfg: cfg, Log: log, DB: store, Auth: authSvc, Devices: deviceSvc, Uploads: uploadSvc,
+		Recordings: recordings, Objects: objects,
+	})
 	httpServer := &http.Server{
 		Addr:              ":" + cfg.Port,
 		Handler:           srv.Router(),
 		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       2 * time.Minute,
 	}
 
 	go func() {
 		log.Info("server listening", "port", cfg.Port)
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Error("server error", "err", err)
-			os.Exit(1)
+			fatal(log, "server error", err)
 		}
 	}()
 
@@ -60,4 +111,29 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_ = httpServer.Shutdown(shutdownCtx)
+	jobCancel()
+	jobs.Wait()
+}
+
+// purgeStaleUploads periodically deletes uploads that stopped progressing.
+func purgeStaleUploads(ctx context.Context, uploads *service.UploadService, ttl time.Duration, log *slog.Logger) {
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	for {
+		if n, err := uploads.PurgeStale(ctx, ttl); err != nil {
+			log.Error("purging stale uploads failed", "err", err)
+		} else if n > 0 {
+			log.Info("purged stale uploads", "count", n)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func fatal(log *slog.Logger, msg string, err error) {
+	log.Error(msg, "err", err)
+	os.Exit(1)
 }

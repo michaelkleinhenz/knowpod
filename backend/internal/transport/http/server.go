@@ -10,8 +10,11 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/go-chi/httprate"
 
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/config"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/ports"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/service"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/web"
 )
 
@@ -25,21 +28,38 @@ type Pinger interface {
 
 // Server bundles the services and configuration the handlers need.
 type Server struct {
-	cfg config.Config
-	log *slog.Logger
-	db  Pinger
+	cfg        config.Config
+	log        *slog.Logger
+	db         Pinger
+	auth       *service.AuthService
+	devices    *service.DeviceService
+	uploads    *service.UploadService
+	recordings ports.RecordingRepository
+	objects    ports.ObjectStore
 }
 
 // Deps are the server's constructor dependencies.
 type Deps struct {
-	Cfg config.Config
-	Log *slog.Logger
-	DB  Pinger // optional; when set, /healthz also checks database connectivity
+	Cfg        config.Config
+	Log        *slog.Logger
+	DB         Pinger // optional; when set, /healthz also checks database connectivity
+	Auth       *service.AuthService
+	Devices    *service.DeviceService
+	Uploads    *service.UploadService
+	Recordings ports.RecordingRepository
+	Objects    ports.ObjectStore
 }
 
 // NewServer builds the server.
 func NewServer(d Deps) *Server {
-	return &Server{cfg: d.Cfg, log: d.Log, db: d.DB}
+	log := d.Log
+	if log == nil {
+		log = slog.Default()
+	}
+	return &Server{
+		cfg: d.Cfg, log: log, db: d.DB, auth: d.Auth, devices: d.Devices, uploads: d.Uploads,
+		recordings: d.Recordings, objects: d.Objects,
+	}
 }
 
 // Router builds the fully-wired chi router.
@@ -51,8 +71,9 @@ func (s *Server) Router() http.Handler {
 	r.Use(securityHeaders)
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{s.cfg.FrontendURL, "http://localhost:5173"},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Authorization", "Content-Type"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Authorization", "Content-Type", uploadOffsetHeader},
+		ExposedHeaders:   []string{uploadOffsetHeader},
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
@@ -61,6 +82,34 @@ func (s *Server) Router() http.Handler {
 
 	r.Route("/api/v1", func(api chi.Router) {
 		api.Get("/info", s.handleInfo)
+
+		// --- web UI sign-in (session cookie) ---
+		api.With(httprate.LimitByIP(10, time.Minute)).Post("/auth/login", s.handleLogin)
+		api.Post("/auth/logout", s.handleLogout)
+		api.Group(func(u chi.Router) {
+			u.Use(s.requireUser)
+			u.Get("/auth/me", s.handleMe)
+			u.Put("/auth/password", s.handleChangePassword)
+		})
+
+		// --- device API: recorders push recordings (device token) ---
+		api.Group(func(d chi.Router) {
+			d.Use(s.requireDevice)
+			d.Post("/uploads", s.handleCreateUpload)
+			d.Get("/uploads/{id}", s.handleGetUpload)
+			d.Patch("/uploads/{id}", s.handleAppendUpload)
+		})
+
+		// --- admin API: device provisioning and recording access (session or ADMIN_TOKEN) ---
+		api.Route("/admin", func(a chi.Router) {
+			a.Use(s.requireAdmin)
+			a.Post("/devices", s.handleRegisterDevice)
+			a.Get("/devices", s.handleListDevices)
+			a.Delete("/devices/{id}", s.handleRevokeDevice)
+			a.Get("/recordings", s.handleListRecordings)
+			a.Get("/recordings/{id}", s.handleGetRecording)
+			a.Get("/recordings/{id}/audio", s.handleRecordingAudio)
+		})
 	})
 
 	// The embedded single-page app serves everything else. Unknown paths fall back to

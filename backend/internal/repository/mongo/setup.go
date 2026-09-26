@@ -5,14 +5,45 @@ import (
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+)
+
+// Collection names (single source of truth).
+const (
+	CollDevices    = "devices"
+	CollRecordings = "recordings"
+	CollUsers      = "users"
+	CollSessions   = "sessions"
 )
 
 // collections lists every collection the service owns. Setup creates any that are missing.
-var collections = []string{}
+var collections = []string{CollDevices, CollRecordings, CollUsers, CollSessions}
 
 // indexes lists the indexes per collection. Setup creates them; CreateMany on an existing
 // identical index is a no-op.
-var indexes = map[string][]mongo.IndexModel{}
+var indexes = map[string][]mongo.IndexModel{
+	CollDevices: {
+		{Keys: bson.D{{Key: "tokenHash", Value: 1}}, Options: options.Index().SetUnique(true)},
+	},
+	CollRecordings: {
+		// Idempotency key: one recording per device-assigned ID.
+		{Keys: bson.D{{Key: "deviceId", Value: 1}, {Key: "clientId", Value: 1}}, Options: options.Index().SetUnique(true)},
+		// Worker claim queue.
+		{Keys: bson.D{{Key: "status", Value: 1}, {Key: "notBefore", Value: 1}}},
+		// Stale upload cleanup.
+		{Keys: bson.D{{Key: "status", Value: 1}, {Key: "updatedAt", Value: 1}}},
+		// Listing, newest first.
+		{Keys: bson.D{{Key: "createdAt", Value: -1}}},
+	},
+	CollUsers: {
+		{Keys: bson.D{{Key: "email", Value: 1}}, Options: options.Index().SetUnique(true)},
+	},
+	CollSessions: {
+		// MongoDB deletes sessions once they expire.
+		{Keys: bson.D{{Key: "expiresAt", Value: 1}}, Options: options.Index().SetExpireAfterSeconds(0)},
+		{Keys: bson.D{{Key: "email", Value: 1}}},
+	},
+}
 
 // Setup creates collections and indexes idempotently. It is safe to run on every start.
 func Setup(ctx context.Context, db *mongo.Database) error {

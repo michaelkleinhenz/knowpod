@@ -1,6 +1,9 @@
-# knowpod-service full stack: a single app container (Go backend with the React SPA embedded)
-# and MongoDB as a single-node replica set (required for multi-document transactions).
-# Configuration is exclusively via environment variables.
+# knowpod-service stack: the app container (Go backend with the React SPA embedded) and
+# MongoDB as a single-node replica set (required for multi-document transactions). Audio is
+# stored in an existing Amazon S3 bucket.
+#
+# Configuration comes from the environment or a .env file next to this file; see
+# .env.example. Variables marked ":?" are required.
 
 services:
   mongo:
@@ -31,10 +34,24 @@ services:
     environment:
       PORT: "8080"
       MONGO_URI: "mongodb://mongo:27017/?replicaSet=rs0"
-      MONGO_DB: "knowpod"
+      MONGO_DATABASE: "knowpod"
       FRONTEND_URL: "${FRONTEND_URL:-http://localhost:8080}"
+      # Default web UI login; a password changed in the UI replaces ADMIN_PASSWORD.
+      ADMIN_EMAIL: "${ADMIN_EMAIL:?set ADMIN_EMAIL}"
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:?set ADMIN_PASSWORD}"
+      ADMIN_TOKEN: "${ADMIN_TOKEN:-}"
+      # Amazon S3.
+      AWS_S3_BUCKET_NAME: "${AWS_S3_BUCKET_NAME:?set AWS_S3_BUCKET_NAME}"
+      AWS_S3_PREFIX: "${AWS_S3_PREFIX:-}"
+      AWS_DEFAULT_REGION: "${AWS_DEFAULT_REGION:?set AWS_DEFAULT_REGION}"
+      AWS_ACCESS_KEY_ID: "${AWS_ACCESS_KEY_ID:-}"
+      AWS_SECRET_ACCESS_KEY: "${AWS_SECRET_ACCESS_KEY:-}"
+      AWS_SESSION_TOKEN: "${AWS_SESSION_TOKEN:-}"
     ports:
       - "8080:8080"
+    volumes:
+      - upload_spool:/data/uploads
 
 volumes:
   mongo_data:
+  upload_spool:

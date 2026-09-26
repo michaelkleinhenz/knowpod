@@ -1,9 +1,31 @@
 openapi: 3.0.3
 info:
   title: knowpod-service API
-  version: 0.1.0
+  version: 0.3.0
+  description: |
+    Backend for the knowpod AI audio recorder.
+
+    **Device API** — recorders push WAV recordings with a resumable upload protocol:
+
+    1. `POST /uploads` with the device's own `recordingId`, the total `size` and the
+       `sha256` of the WAV file. Repeating the call with the same `recordingId` returns the
+       existing upload (idempotent).
+    2. `PATCH /uploads/{uploadId}` with an `Upload-Offset` header and a chunk of bytes as
+       body. The whole file may be sent in one PATCH. After a dropped connection,
+       `GET /uploads/{uploadId}` returns the offset to resume from.
+    3. When the last byte arrives, the checksum and WAV header are verified and the status
+       becomes `received`. The recording is then transcoded to FLAC and archived in S3 in
+       the background (status `stored`).
+
+    **Web UI sign-in** — email and password, answered with an HttpOnly session cookie. The
+    default login comes from `ADMIN_EMAIL`/`ADMIN_PASSWORD`; a password changed via
+    `PUT /auth/password` replaces it.
+
+    **Admin API** — device provisioning and recording access, authenticated with a web UI
+    session or, for scripts, with `ADMIN_TOKEN` as bearer token.
 servers:
   - url: /api/v1
+security: []
 paths:
   /info:
     get:
@@ -16,16 +38,347 @@ paths:
               schema:
                 type: object
                 properties:
-                  service:
-                    type: string
-                    example: knowpod-service
-                  apiVersion:
-                    type: string
-                    example: v1
+                  service: { type: string, example: knowpod-service }
+                  apiVersion: { type: string, example: v1 }
+
+  /auth/login:
+    post:
+      summary: Sign in to the web UI
+      description: Sets the `knowpod_session` cookie. Limited to 10 requests per minute per client IP.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password }
+      responses:
+        "200":
+          description: Signed in
+          headers:
+            Set-Cookie: { schema: { type: string, example: knowpod_session=…; Path=/; HttpOnly; SameSite=Strict } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/Account" } } }
+        "401":
+          description: Invalid email or password
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "429": { description: Too many login attempts }
+
+  /auth/logout:
+    post:
+      summary: Sign out
+      description: Ends the session (if any) and clears the cookie.
+      responses:
+        "204": { description: Signed out }
+
+  /auth/me:
+    get:
+      summary: The signed-in account
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: Signed in
+          content: { application/json: { schema: { $ref: "#/components/schemas/Account" } } }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /auth/password:
+    put:
+      summary: Change the password
+      description: |
+        Stores the new password, which from then on replaces the default password from the
+        environment. All other sessions of the account are ended.
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword: { type: string, format: password }
+                newPassword: { type: string, format: password, minLength: 8, maxLength: 72 }
+      responses:
+        "204": { description: Password changed }
+        "400":
+          description: New password too short or too long
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403":
+          description: Current password is wrong
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /uploads:
+    post:
+      summary: Create (or resume) an upload
+      security: [{ deviceToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateUpload" }
+      responses:
+        "201":
+          description: Upload created
+          headers: { Upload-Offset: { $ref: "#/components/headers/UploadOffset" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/Upload" } } }
+        "200":
+          description: An upload with this recordingId already exists; its current state
+          headers: { Upload-Offset: { $ref: "#/components/headers/UploadOffset" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/Upload" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "409":
+          description: The recordingId exists with a different size or checksum
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "413": { $ref: "#/components/responses/Error" }
+
+  /uploads/{uploadId}:
+    parameters:
+      - { name: uploadId, in: path, required: true, schema: { type: string } }
+    get:
+      summary: Upload state (offset to resume from)
+      security: [{ deviceToken: [] }]
+      responses:
+        "200":
+          description: Current state
+          headers: { Upload-Offset: { $ref: "#/components/headers/UploadOffset" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/Upload" } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    patch:
+      summary: Append a chunk
+      description: |
+        Appends the body at `Upload-Offset`, which must equal the current offset. Bytes
+        received before a dropped connection are kept. Sending a chunk to a completed upload
+        is a no-op that returns its final state.
+      security: [{ deviceToken: [] }]
+      parameters:
+        - name: Upload-Offset
+          in: header
+          required: true
+          schema: { type: integer, format: int64, minimum: 0 }
+      requestBody:
+        required: true
+        content:
+          application/offset+octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        "200":
+          description: Chunk stored. `status` is `received` once the file is complete and verified.
+          headers: { Upload-Offset: { $ref: "#/components/headers/UploadOffset" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/Upload" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409":
+          description: Offset mismatch; resume from `offset`
+          headers: { Upload-Offset: { $ref: "#/components/headers/UploadOffset" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "413":
+          description: The chunk would exceed the declared size
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "422":
+          description: |
+            Checksum mismatch (the upload is reset to offset 0; resend) or the file is not a
+            supported WAV (the recording is marked `failed`).
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /admin/devices:
+    post:
+      summary: Register a device
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, maxLength: 100 }
+      responses:
+        "201":
+          description: Device registered. The token is only returned here.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  device: { $ref: "#/components/schemas/Device" }
+                  token: { type: string, example: kpd_Zx3... }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+    get:
+      summary: List devices
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      responses:
+        "200":
+          description: All devices
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Device" } }
+
+  /admin/devices/{deviceId}:
+    delete:
+      summary: Revoke a device token
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: deviceId, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Revoked }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /admin/recordings:
+    get:
+      summary: List recordings, newest first
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: deviceId, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/Status" } }
+        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 200 } }
+        - { name: offset, in: query, schema: { type: integer, default: 0 } }
+      responses:
+        "200":
+          description: Recordings
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Recording" } }
+
+  /admin/recordings/{recordingId}:
+    get:
+      summary: Get a recording
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Recording
+          content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /admin/recordings/{recordingId}/audio:
+    get:
+      summary: Download the archived FLAC file
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: FLAC audio
+          content:
+            audio/flac:
+              schema: { type: string, format: binary }
+        "404": { $ref: "#/components/responses/Error" }
+        "409":
+          description: Not archived yet
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
 components:
+  securitySchemes:
+    deviceToken:
+      type: http
+      scheme: bearer
+      description: Device token returned by POST /admin/devices
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: knowpod_session
+      description: Web UI session, set by POST /auth/login
+    adminToken:
+      type: http
+      scheme: bearer
+      description: The ADMIN_TOKEN environment variable (for scripts)
+
+  headers:
+    UploadOffset:
+      description: Bytes received so far
+      schema: { type: integer, format: int64 }
+
+  responses:
+    Error:
+      description: Error
+      content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
   schemas:
+    Account:
+      type: object
+      properties:
+        email: { type: string, format: email }
+
+    Status:
+      type: string
+      enum: [uploading, received, stored, failed]
+
+    CreateUpload:
+      type: object
+      required: [recordingId, size, sha256]
+      properties:
+        recordingId:
+          type: string
+          pattern: "^[A-Za-z0-9._-]{1,128}$"
+          description: ID assigned by the device; unique per device
+        size: { type: integer, format: int64, minimum: 44, description: Total WAV size in bytes }
+        sha256: { type: string, pattern: "^[0-9a-fA-F]{64}$", description: Hex SHA-256 of the WAV file }
+        recordedAt: { type: string, format: date-time }
+
+    Upload:
+      type: object
+      properties:
+        uploadId: { type: string }
+        recordingId: { type: string }
+        status: { $ref: "#/components/schemas/Status" }
+        size: { type: integer, format: int64 }
+        offset: { type: integer, format: int64 }
+        error: { type: string, description: Reason when status is failed }
+
+    Device:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        createdAt: { type: string, format: date-time }
+        lastSeenAt: { type: string, format: date-time }
+        revokedAt: { type: string, format: date-time }
+
+    Recording:
+      type: object
+      properties:
+        id: { type: string }
+        deviceId: { type: string }
+        recordingId: { type: string }
+        status: { $ref: "#/components/schemas/Status" }
+        size: { type: integer, format: int64 }
+        sha256: { type: string }
+        recordedAt: { type: string, format: date-time }
+        format:
+          type: object
+          properties:
+            sampleRate: { type: integer }
+            channels: { type: integer }
+            bitsPerSample: { type: integer }
+            frames: { type: integer, format: int64 }
+            durationMs: { type: integer, format: int64 }
+        audio: { $ref: "#/components/schemas/Object" }
+        original: { $ref: "#/components/schemas/Object" }
+        attempts: { type: integer }
+        lastError: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        receivedAt: { type: string, format: date-time }
+        storedAt: { type: string, format: date-time }
+
+    Object:
+      type: object
+      properties:
+        key: { type: string }
+        contentType: { type: string }
+        size: { type: integer, format: int64 }
+
     Error:
       type: object
       properties:
-        error:
-          type: string
+        error: { type: string }
+        offset: { type: integer, format: int64, description: Set on offset mismatches }

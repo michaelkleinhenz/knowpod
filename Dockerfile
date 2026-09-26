@@ -23,8 +23,13 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/server ./cmd/serv
 
 # --- Stage 3: minimal runtime image ---
 FROM alpine:3.20
-RUN adduser -D -u 10001 app && apk add --no-cache ca-certificates
+RUN adduser -D -u 10001 app && apk add --no-cache ca-certificates \
+    && mkdir -p /data/uploads && chown app:app /data/uploads
 USER app
 COPY --from=backend /out/server /server
+# Spool for in-flight uploads and received WAV files awaiting archiving. Mount a volume so
+# partially uploaded recordings survive container restarts.
+ENV UPLOAD_DIR=/data/uploads
+VOLUME /data/uploads
 EXPOSE 8080
 ENTRYPOINT ["/server"]
