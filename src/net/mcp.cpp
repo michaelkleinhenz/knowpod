@@ -265,6 +265,7 @@ static bool tool_device_status(JsonObjectConst, String &out)
     doc["sd_total_gb"] = roundf(SD_MMC.totalBytes() / 1e8) / 10;
     doc["recordings"] = recordings_list().size();
     doc["waiting_for_processing"] = worker_pending();
+    doc["waiting_for_upload"] = worker_pending_uploads();
     String status = worker_status();
     if (!status.isEmpty()) doc["processing"] = status;
     serializeJson(doc, out);

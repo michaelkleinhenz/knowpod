@@ -32,6 +32,10 @@ static const char DEFAULT_CONFIG[] = R"json({
   "sound_cues": true,
   "sleep_minutes": 5,
   "power_off_hours": 12,
+  "backend": {
+    "url": "https://www.knowpod.de/api/v1",
+    "token": ""
+  },
   "web_enabled": true,
   "web_password": ""
 })json";
@@ -156,6 +160,17 @@ bool config_sound_cues()             { Lock l; return doc["sound_cues"] | true; 
 int config_sleep_minutes()           { Lock l; return doc["sleep_minutes"] | 5; }
 int config_power_off_hours()         { Lock l; return doc["power_off_hours"] | 12; }
 bool config_web_enabled()            { Lock l; return doc["web_enabled"] | true; }
+String config_backend_token()        { Lock l; return doc["backend"]["token"] | ""; }
+bool config_backend_enabled()        { return !config_backend_url().isEmpty() && !config_backend_token().isEmpty(); }
+
+String config_backend_url()
+{
+    Lock lock;
+    String url = doc["backend"]["url"] | "https://www.knowpod.de/api/v1";
+    url.trim();
+    while (url.endsWith("/")) url.remove(url.length() - 1);
+    return url;
+}
 
 std::vector<String> config_stt_models()
 {

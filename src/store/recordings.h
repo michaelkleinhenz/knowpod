@@ -11,7 +11,8 @@
 //     audio.wav        16 kHz mono PCM
 //     meta.json        {"id", "created", "created_unix", "duration_s", "sample_rate",
 //                       "highlights": [seconds, ...], "dropped_s", "state", "title",
-//                       "tags", "template", "model", "error", "error_state", ...}
+//                       "tags", "template", "model", "error", "error_state",
+//                       "upload": {"status", "sha256", "size", "upload_id", "offset", ...}}
 //     transcript.json  {"segments": [{"start", "end", "text"}], "speakers": [...]}
 //     transcript.md    readable transcript with timestamps (and speakers)
 //     summary.json     {"title", "tags", "summary", "action_items", "highlights"}
@@ -33,6 +34,9 @@ struct RecordingInfo {
     int      highlights;
     String   state;
     String   error;
+    String   upload;         // backend upload: "" (not started), "uploading", "done", "failed"
+    String   upload_error;
+    int      upload_percent;
 };
 
 bool recordings_begin(fs::FS &fs);   // creates /recs and recovers interrupted recordings

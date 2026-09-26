@@ -185,6 +185,8 @@ public:
         String info = String(recs.size()) + (recs.size() == 1 ? " recording" : " recordings");
         int pending = worker_pending();
         if (pending) info += " · " + String(pending) + " to process";
+        int uploads = worker_pending_uploads();
+        if (uploads) info += " · " + String(uploads) + " to upload";
         y = draw_paragraph(MARGIN, y, SCREEN_W - 2 * MARGIN, info, FONT_BODY, CONTENT_BOTTOM);
 
         String status = worker_status();

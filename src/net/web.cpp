@@ -113,6 +113,9 @@ static void handle_recording()
     html += "<p class=muted>" + esc(recording_display_date(info.created_unix)) + " &middot; " +
             format_duration(info.duration_s) + " &middot; " + recording_state_label(info.state);
     if (!info.error.isEmpty()) html += " &middot; " + esc(info.error);
+    if (info.upload == "done") html += " &middot; uploaded";
+    else if (info.upload == "failed") html += " &middot; upload failed: " + esc(info.upload_error);
+    else if (info.upload == "uploading") html += " &middot; " + String(info.upload_percent) + "% uploaded";
     html += "</p><p>Download: ";
     for (const char *name : {"audio.wav", "summary.md", "transcript.md", "transcript.json", "meta.json", "qa.md"}) {
         if (recordings_fs().exists(recording_path(id, name)))

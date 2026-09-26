@@ -6,6 +6,7 @@
 #include "net/openrouter.h"
 #include "net/web.h"
 #include "net/wifi.h"
+#include "proc/worker.h"
 #include "store/config.h"
 #include "store/templates.h"
 
@@ -50,6 +51,9 @@ static String device_info()
     s += "\nTranscription: " + config_stt_model();
     s += "\nSummary: " + config_llm_model();
     s += "\nOpenRouter key: " + String(config_api_key().isEmpty() ? "missing (/openrouter.txt)" : "set");
+    s += "\nBackend: " + (config_backend_enabled() ? config_backend_url() : String("off (no token in config.json)"));
+    int uploads = worker_pending_uploads();
+    if (uploads) s += "\nWaiting for upload: " + String(uploads);
     s += "\nFree memory: " + String(ESP.getFreeHeap() / 1024) + " KB RAM, " +
          String(ESP.getFreePsram() / 1024) + " KB PSRAM";
     return s;

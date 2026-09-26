@@ -30,6 +30,10 @@ Step label_speakers(const String &id, JsonDocument &meta);
 // Sets state "summarized".
 Step summarize(const String &id, JsonDocument &meta);
 
+// Uploads the recording to the knowpod backend, one step (checksum, create,
+// or one chunk) per call. Sets meta["upload"]["status"] to "done" at the end.
+Step upload_next(const String &id, JsonDocument &meta, int &percent);
+
 // Transcribes a spoken question and answers it from one recording
 // (`scope_id`) or from all recordings (empty scope).
 Step answer_question(const String &question_wav, const String &scope_id,

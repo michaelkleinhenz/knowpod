@@ -1,7 +1,5 @@
 #include "openrouter.h"
 #include <map>
-#include <NetworkClientSecure.h>
-#include "net/wifi.h"
 #include "store/config.h"
 
 #define OPENROUTER_HOST     "openrouter.ai"
@@ -11,89 +9,8 @@
 #define MULTIPART_BOUNDARY  "----knowpodFormBoundary7MA4YWxkTrZu0gW"
 
 // ============================================================
-// HTTP helpers
+// HTTP
 // ============================================================
-
-// Waits for response data while yielding the CPU. (Stream's readStringUntil()
-// and readBytes() spin without yielding; waiting seconds for a model's answer
-// that way starves the idle task and trips the task watchdog.)
-static bool wait_data(NetworkClientSecure &client, uint32_t deadline)
-{
-    while (!client.available()) {
-        if (!client.connected() || (int32_t)(millis() - deadline) > 0) return false;
-        delay(10);
-    }
-    return true;
-}
-
-static bool read_line(NetworkClientSecure &client, uint32_t deadline, String &line)
-{
-    line = "";
-    for (;;) {
-        if (!wait_data(client, deadline)) return !line.isEmpty();
-        int c = client.read();
-        if (c < 0) continue;
-        if (c == '\n') return true;
-        line += (char)c;
-    }
-}
-
-// Reads up to `len` bytes into `body`; returns false on timeout/close before that.
-static bool read_bytes(NetworkClientSecure &client, uint32_t deadline, String &body, long len)
-{
-    uint8_t buf[512];
-    while (len != 0) {
-        if (!wait_data(client, deadline)) return len < 0;  // unknown length: read until close
-        size_t want = len < 0 ? sizeof(buf) : min<long>(len, sizeof(buf));
-        int n = client.read(buf, want);
-        if (n <= 0) continue;
-        body.concat((const char *)buf, n);
-        if (len > 0) len -= n;
-    }
-    return true;
-}
-
-// Reads the rest of the response body, decoding chunked transfer encoding.
-static String read_body(NetworkClientSecure &client, uint32_t deadline, bool chunked, long content_length)
-{
-    String body;
-    if (!chunked) {
-        if (content_length > 0) body.reserve(content_length);
-        read_bytes(client, deadline, body, content_length);
-        return body;
-    }
-
-    String line;
-    while (read_line(client, deadline, line)) {
-        line.trim();
-        long size = strtol(line.c_str(), nullptr, 16);
-        if (size <= 0) break;
-        if (!read_bytes(client, deadline, body, size)) break;
-        read_line(client, deadline, line);  // CRLF after chunk data
-    }
-    return body;
-}
-
-// Adapts NetworkClientSecure so large writes are retried until complete.
-class FullWritePrint : public Print {
-public:
-    explicit FullWritePrint(NetworkClientSecure &c) : client(c) {}
-    size_t write(uint8_t b) override { return write(&b, 1); }
-    size_t write(const uint8_t *buf, size_t len) override
-    {
-        size_t done = 0;
-        while (done < len) {
-            size_t n = client.write(buf + done, len - done);
-            if (n == 0) { failed = true; break; }
-            done += n;
-        }
-        return done;
-    }
-    bool failed = false;
-
-private:
-    NetworkClientSecure &client;
-};
 
 // POSTs a body of `content_length` bytes to /api/v1/<path>.
 // Returns the HTTP status (or -1 on a connection error) and the response body.
@@ -106,66 +23,12 @@ static int https_post(const char *path, const String &content_type, size_t conte
         response = "No API key in /openrouter.txt";
         return -1;
     }
-    if (!wifi_connected()) {
-        response = "Wi-Fi not connected";
-        return -1;
-    }
-
-    NetworkClientSecure client;
-    client.useBuiltinCACertBundle();
-    client.setTimeout(timeout_ms);
-    if (!client.connect(OPENROUTER_HOST, 443)) {
-        response = "Connection to " OPENROUTER_HOST " failed";
-        return -1;
-    }
-
-    client.printf("POST /api/v1/%s HTTP/1.1\r\n", path);
-    client.print("Host: " OPENROUTER_HOST "\r\n"
-                 "X-Title: " APP_TITLE "\r\n"
-                 "Authorization: Bearer ");
-    client.print(key);
-    client.print("\r\nContent-Type: ");
-    client.print(content_type);
-    client.printf("\r\nContent-Length: %u\r\n"
-                  "Connection: close\r\n\r\n", (unsigned)content_length);
-
-    FullWritePrint out(client);
-    if (!write_body(out) || out.failed) {
-        client.stop();
-        response = "Upload failed";
-        return -1;
-    }
-
-    // Status line, e.g. "HTTP/1.1 200 OK"; the model may take a while to answer
-    uint32_t deadline = millis() + timeout_ms;
-    String status_line;
-    read_line(client, deadline, status_line);
-    int status = status_line.length() > 9 ? status_line.substring(9, 12).toInt() : 0;
-    if (status == 0) {
-        client.stop();
-        response = "No response (timeout)";
-        return -1;
-    }
-
-    bool chunked = false;
-    long body_len = -1;
-    String line;
-    for (;;) {
-        if (!read_line(client, deadline, line)) break;
-        line.trim();
-        if (line.isEmpty()) break;
-        line.toLowerCase();
-        if (line.startsWith("transfer-encoding:") && line.indexOf("chunked") > 0)
-            chunked = true;
-        else if (line.startsWith("content-length:"))
-            body_len = line.substring(15).toInt();
-        else if (line.startsWith("retry-after:") && retry_after_s)
-            *retry_after_s = line.substring(12).toInt();  // seconds form only
-    }
-
-    response = read_body(client, deadline, chunked, body_len);
-    client.stop();
-    return status;
+    HttpHeaders headers = {{"Authorization", "Bearer " + key}, {"X-Title", APP_TITLE}};
+    HttpResponse r = http_request("https://" OPENROUTER_HOST "/api/v1/" + String(path), "POST", headers,
+                                  content_type, content_length, write_body, timeout_ms);
+    response = r.body;
+    if (retry_after_s) *retry_after_s = r.retry_after_s;
+    return r.status;
 }
 
 // Builds the result for a finished request; extracts OpenRouter's

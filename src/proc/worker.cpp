@@ -22,12 +22,24 @@ static TaskHandle_t task;
 static QueueHandle_t commands;
 static SemaphoreHandle_t mutex = xSemaphoreCreateMutex();
 
+// Processing (transcribe/summarize) and backend uploads are independent
+// lanes with their own retry timers, so a rate-limited OpenRouter doesn't
+// hold back uploads and an unreachable backend doesn't block summaries.
+struct Lane {
+    const char *name;
+    volatile int pending = 0;
+    volatile uint32_t retry_at = 0;
+    uint32_t backoff_ms = 0;
+
+    bool waiting() const { return retry_at && (int32_t)(retry_at - millis()) > 0; }
+    void reset() { backoff_ms = 0; retry_at = 0; }
+};
+
 static volatile bool paused = false;
 static volatile bool step_running = false;
-static volatile int pending = 0;
+static Lane processing = {"processing"};
+static Lane uploads = {"upload"};
 static std::atomic<uint32_t> generation{0};
-static volatile uint32_t retry_at = 0;
-static uint32_t backoff_ms = 0;
 static String status, status_short, current_id;
 
 // Ask state (guarded by mutex)
@@ -61,10 +73,18 @@ static void apply_command(const Command &cmd)
     JsonDocument meta;
     if (!recording_load_meta(cmd.id, meta)) return;
     if (cmd.type == Command::RETRY) {
-        if (meta["state"] != "error") return;
-        meta["state"] = meta["error_state"] | "recorded";
-        meta.remove("error");
-        meta.remove("error_state");
+        if (meta["state"] == "error") {
+            meta["state"] = meta["error_state"] | "recorded";
+            meta.remove("error");
+            meta.remove("error_state");
+            processing.reset();
+        }
+        if (meta["upload"]["status"] == "failed") {
+            meta["upload"]["status"] = "uploading";
+            meta["upload"].remove("error");
+            meta["upload"].remove("checksum_resets");
+            uploads.reset();
+        }
     } else {
         String state = meta["state"] | "";
         meta["template"] = cmd.tmpl;  // used when the summary is (re)done
@@ -73,10 +93,9 @@ static void apply_command(const Command &cmd)
             meta.remove("error");
             meta.remove("error_state");
         }
+        processing.reset();
     }
     recording_save_meta(cmd.id, meta);
-    backoff_ms = 0;
-    retry_at = 0;
 }
 
 static void send_command(Command::Type type, const String &id, const String &tmpl)
@@ -95,34 +114,77 @@ void worker_resummarize(const String &id, const String &tmpl) { send_command(Com
 // Processing
 // ============================================================
 
-static bool needs_work(const String &state)
+static bool needs_processing(const RecordingInfo &r)
 {
-    return state == "recorded" || state == "transcribing" || state == "transcribed";
+    return r.state == "recorded" || r.state == "transcribing" || r.state == "transcribed";
 }
 
-// Oldest recording that still needs processing; counts all of them.
-static bool next_recording(RecordingInfo &next)
+static bool needs_upload(const RecordingInfo &r)
+{
+    return r.state != "recording" && r.upload != "done" && r.upload != "failed";
+}
+
+// Oldest recording of each lane; counts the pending ones.
+static void find_work(RecordingInfo &proc, bool &has_proc, RecordingInfo &upl, bool &has_upl)
 {
     std::vector<RecordingInfo> list = recordings_list();
-    int count = 0;
-    bool found = false;
+    bool backend = config_backend_enabled();
+    int n_proc = 0, n_upl = 0;
+    has_proc = has_upl = false;
     for (auto it = list.rbegin(); it != list.rend(); ++it) {
-        if (!needs_work(it->state)) continue;
-        if (!found) next = *it;
-        found = true;
-        count++;
+        if (needs_processing(*it)) {
+            if (!n_proc++) proc = *it;
+        }
+        if (backend && needs_upload(*it)) {
+            if (!n_upl++) upl = *it;
+        }
     }
-    pending = count;
-    return found;
+    has_proc = n_proc > 0;
+    has_upl = n_upl > 0;
+    processing.pending = n_proc;
+    uploads.pending = n_upl;
 }
 
-static void backoff(const String &reason, int retry_after_s = 0)
+static void backoff(Lane &lane, const String &reason, int retry_after_s = 0)
 {
-    backoff_ms = backoff_ms ? min<uint32_t>(backoff_ms * 2, BACKOFF_MAX_MS) : BACKOFF_MIN_MS;
-    backoff_ms = max<uint32_t>(backoff_ms, min(retry_after_s, 3600) * 1000);
-    retry_at = millis() + backoff_ms;
-    String when = backoff_ms >= 60000 ? String(backoff_ms / 60000) + " min" : String(backoff_ms / 1000) + " s";
-    set_status("Retrying in " + when + ": " + reason, "Retry in " + when);
+    lane.backoff_ms = lane.backoff_ms ? min<uint32_t>(lane.backoff_ms * 2, BACKOFF_MAX_MS) : BACKOFF_MIN_MS;
+    lane.backoff_ms = max<uint32_t>(lane.backoff_ms, min(retry_after_s, 3600) * 1000);
+    lane.retry_at = millis() + lane.backoff_ms;
+    String when = lane.backoff_ms >= 60000 ? String(lane.backoff_ms / 60000) + " min"
+                                           : String(lane.backoff_ms / 1000) + " s";
+    set_status("Retrying " + String(lane.name) + " in " + when + ": " + reason, "Retry in " + when);
+}
+
+static void upload(const RecordingInfo &info)
+{
+    JsonDocument meta;
+    if (!recording_load_meta(info.id, meta)) return;
+    String title = recording_display_title(info);
+    set_status("Uploading " + title + " (" + String(info.upload_percent) + "%)",
+               "Upload " + String(info.upload_percent) + "%", info.id);
+
+    int percent = 0;
+    step_running = true;
+    Step step = upload_next(info.id, meta, percent);
+    step_running = false;
+
+    if (paused && step.result != STEP_OK) return;  // Wi-Fi switched off for a recording
+
+    switch (step.result) {
+    case STEP_OK:
+        uploads.backoff_ms = 0;
+        if (meta["upload"]["status"] == "done") Serial.printf("[worker] %s uploaded\n", info.id.c_str());
+        break;
+    case STEP_RETRY:
+        backoff(uploads, step.error, step.retry_after_s);
+        break;
+    case STEP_FAILED:
+        Serial.printf("[worker] upload of %s failed: %s\n", info.id.c_str(), step.error.c_str());
+        meta["upload"]["status"] = "failed";
+        meta["upload"]["error"] = step.error;
+        break;
+    }
+    recording_save_meta(info.id, meta);
 }
 
 static void process(const RecordingInfo &info)
@@ -161,12 +223,12 @@ static void process(const RecordingInfo &info)
 
     switch (step.result) {
     case STEP_OK:
-        backoff_ms = 0;
+        processing.backoff_ms = 0;
         recording_save_meta(info.id, meta);
         break;
     case STEP_RETRY:
         recording_save_meta(info.id, meta);
-        backoff(step.error, step.retry_after_s);
+        backoff(processing, step.error, step.retry_after_s);
         break;
     case STEP_FAILED:
         Serial.printf("[worker] %s failed: %s\n", info.id.c_str(), step.error.c_str());
@@ -230,8 +292,10 @@ static void worker_task(void *)
             continue;
         }
 
-        RecordingInfo next;
-        if (!next_recording(next)) {
+        RecordingInfo proc, upl;
+        bool has_proc, has_upl;
+        find_work(proc, has_proc, upl, has_upl);
+        if (!has_proc && !has_upl) {
             set_status("", "");
             if (millis() - idle_since > WIFI_IDLE_OFF_MS) wifi_off();  // unless held by the web server
             wait = IDLE_WAIT_MS;
@@ -239,17 +303,25 @@ static void worker_task(void *)
         }
         idle_since = millis();
 
-        int32_t until_retry = (int32_t)(retry_at - millis());
-        if (retry_at && until_retry > 0) {
-            wait = until_retry;
+        bool run_proc = has_proc && !processing.waiting();
+        bool run_upl = !run_proc && has_upl && !uploads.waiting();
+        if (!run_proc && !run_upl) {
+            // Both lanes are backing off: sleep until the first one may retry
+            uint32_t now = millis();
+            uint32_t until = UINT32_MAX;
+            if (has_proc) until = min<uint32_t>(until, processing.retry_at - now);
+            if (has_upl) until = min<uint32_t>(until, uploads.retry_at - now);
+            wait = until;
             continue;
         }
 
         if (!wifi_connect()) {
-            backoff("no Wi-Fi");
+            if (has_proc) backoff(processing, "no Wi-Fi");
+            if (has_upl) backoff(uploads, "no Wi-Fi");
             continue;
         }
-        process(next);
+        if (run_proc) process(proc);
+        else upload(upl);
     }
 }
 
@@ -272,8 +344,8 @@ void worker_set_paused(bool p)
 {
     paused = p;
     if (!p) {
-        backoff_ms = 0;
-        retry_at = 0;
+        processing.reset();
+        uploads.reset();
         worker_kick();
     }
 }
@@ -310,7 +382,8 @@ void worker_ask_reset()
 String worker_status()        { Lock l; return status; }
 String worker_status_short()  { Lock l; return status_short; }
 String worker_current_id()    { Lock l; return current_id; }
-int worker_pending()          { return pending; }
+int worker_pending()          { return processing.pending; }
+int worker_pending_uploads()  { return uploads.pending; }
 uint32_t worker_generation()  { return generation + recordings_generation(); }
 
 bool worker_busy()
@@ -320,6 +393,6 @@ bool worker_busy()
         Lock lock;
         if (ask_state == ASK_RUNNING) return true;
     }
-    int32_t until_retry = (int32_t)(retry_at - millis());
-    return pending > 0 && !paused && !(retry_at && until_retry > 0);
+    if (paused) return false;
+    return (processing.pending > 0 && !processing.waiting()) || (uploads.pending > 0 && !uploads.waiting());
 }

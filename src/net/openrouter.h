@@ -2,14 +2,11 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
-#include <functional>
+#include "net/http.h"
 
 // OpenRouter API client. Models and request options come from config.json;
 // the API key from /openrouter.txt. Callers must connect Wi-Fi first.
 // Thread-safe (each call uses its own TLS connection).
-
-// Writes exactly the announced number of bytes to `out`; returns false on error.
-using BodyWriter = std::function<bool(Print &out)>;
 
 struct ApiResult {
     bool   ok = false;

@@ -2,6 +2,7 @@
 #include <ArduinoJson.h>
 #include "audio/audio.h"
 #include "proc/worker.h"
+#include "store/config.h"
 #include "store/recordings.h"
 #include "store/templates.h"
 
@@ -54,6 +55,7 @@ private:
             String sub = r.created_unix ? recording_display_date(r.created_unix) : r.id;
             sub += " · " + format_duration(r.duration_s);
             if (r.state != "summarized") sub += " · " + recording_state_label(r.state);
+            if (r.upload == "failed") sub += " · upload failed";
             list.items.push_back({recording_display_title(r), sub});
             if (r.id == selected_id) list.selected = ids.size();
             ids.push_back(r.id);
@@ -233,6 +235,13 @@ private:
                 view.add(String(meta["dropped_s"] | 0.0f, 1) + " s (SD card too slow)");
             }
             if (meta["recovered"] | false) view.add("Recovered after a power loss.", FONT_SMALL);
+            if (config_backend_enabled() || !info.upload.isEmpty()) {
+                view.add("Backend upload", FONT_SMALL);
+                if (info.upload == "done") view.add("Uploaded");
+                else if (info.upload == "failed") view.add("Failed: " + info.upload_error);
+                else if (info.upload == "uploading") view.add(String(info.upload_percent) + " % uploaded");
+                else view.add("Waiting");
+            }
             view.add("Folder", FONT_SMALL);
             view.add(recording_dir(id));
             break;
@@ -249,8 +258,8 @@ void DetailScreen::open_actions()
 {
     std::vector<String> options = {"Summary", "Action items & highlights", "Transcript", "Details",
                                    "Ask about this recording", "Play audio", "Summarize with template..."};
-    bool errored = info.state == "error";
-    if (errored) options.push_back("Retry processing");
+    if (info.state == "error") options.push_back("Retry processing");
+    if (info.upload == "failed") options.push_back("Retry upload");
     options.push_back("Delete");
 
     String rec_id = id;
@@ -277,7 +286,8 @@ void DetailScreen::open_actions()
             }));
         } else if (option.startsWith("Retry")) {
             worker_retry(rec_id);
-            ui_push(make_message("Queued", "Processing will be retried."));
+            ui_push(make_message("Queued", option == "Retry upload" ? "The upload will be retried."
+                                                                    : "Processing will be retried."));
         } else if (option == "Delete") {
             ui_push(make_confirm("Delete?", "Delete this recording with its transcript and summary?", [=] {
                 if (worker_current_id() == rec_id) {
