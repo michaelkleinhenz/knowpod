@@ -1,17 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, Recording } from '../api/client';
+import { CopyButton } from '../components/CopyButton';
 import { inline, Markdown } from '../components/Markdown';
+import { SummaryDetails } from '../components/SummaryDetails';
+import { locale } from '../i18n';
+import { errorText } from '../lib/errors';
 import { formatBytes, formatDuration, processing, statusLabel, title, when } from '../lib/recordings';
 
 type Tab = 'summary' | 'transcript' | 'source';
-
-const TABS: { id: Tab; label: string }[] = [
-  { id: 'summary', label: 'Summary' },
-  { id: 'transcript', label: 'Transcript' },
-  { id: 'source', label: 'Source' },
-];
-
+const TABS: Tab[] = ['summary', 'transcript', 'source'];
 const POLL_MS = 5_000;
 
 // Transcript shows the transcript line by line, with speaker labels ("Speaker 1:") set off.
@@ -34,6 +33,7 @@ function Transcript({ text }: { text: string }) {
 }
 
 export function Conversation() {
+  const { t } = useTranslation();
   const { id = '' } = useParams();
   const navigate = useNavigate();
   const [rec, setRec] = useState<Recording | null>(null);
@@ -49,9 +49,9 @@ export function Conversation() {
       setAIReady(ai.transcription && ai.summary);
       setError(null);
     } catch (err) {
-      setError((err as Error).message);
+      setError(errorText(err, t));
     }
-  }, [id]);
+  }, [id, t]);
 
   useEffect(() => {
     load();
@@ -60,8 +60,8 @@ export function Conversation() {
   const inProgress = rec ? processing(rec) : false;
   useEffect(() => {
     if (!inProgress) return;
-    const t = setInterval(load, POLL_MS);
-    return () => clearInterval(t);
+    const timer = setInterval(load, POLL_MS);
+    return () => clearInterval(timer);
   }, [inProgress, load]);
 
   async function act(action: () => Promise<unknown>, confirmText?: string) {
@@ -72,20 +72,20 @@ export function Conversation() {
       await action();
       await load();
     } catch (err) {
-      setError((err as Error).message);
+      setError(errorText(err, t));
     } finally {
       setBusy(false);
     }
   }
 
   async function handleDelete() {
-    if (!rec || !window.confirm(`Delete “${title(rec)}”? The audio, transcript and summary are removed permanently.`)) return;
+    if (!rec || !window.confirm(t('conversation.deleteConfirm', { title: title(rec) }))) return;
     setBusy(true);
     try {
       await api.deleteRecording(rec.id);
       navigate('/', { replace: true });
     } catch (err) {
-      setError((err as Error).message);
+      setError(errorText(err, t));
       setBusy(false);
     }
   }
@@ -94,40 +94,41 @@ export function Conversation() {
     return (
       <section className="conversation">
         <Link to="/" className="back-link">
-          ← All conversations
+          {t('conversation.back')}
         </Link>
-        {error ? <p className="error">{error}</p> : <p className="muted">Loading…</p>}
+        {error ? <p className="error">{error}</p> : <p className="muted">{t('common.loading')}</p>}
       </section>
     );
   }
 
   const state = statusLabel(rec, aiReady);
   const d = when(rec);
-  const pending = (what: string) =>
+  const pending = (empty: string) =>
     rec.status === 'failed' ? (
       <div className="notice bad">
         <p>
-          <strong>Processing failed.</strong> {rec.lastError}
+          <strong>{t('conversation.failed')}</strong> {rec.lastError}
         </p>
       </div>
     ) : (
-      <p className="muted">{state ?? `No ${what} yet.`}</p>
+      <p className="muted">{state ?? empty}</p>
     );
+  const sourceBadge = rec.source === 'pocket' ? t('conversation.sourcePocket') : rec.source === 'upload' ? t('conversation.sourceUpload') : '';
 
   return (
     <section className="conversation">
       <Link to="/" className="back-link">
-        ← All conversations
+        {t('conversation.back')}
       </Link>
 
       <div className="conversation-header">
         <div>
           <h1>{title(rec)}</h1>
           <p className="conversation-meta muted">
-            {d.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })},{' '}
-            {d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}
+            {d.toLocaleDateString(locale(), { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })},{' '}
+            {d.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' })}
             {rec.format?.durationMs ? ` · ${formatDuration(rec.format.durationMs)}` : ''}
-            {rec.source === 'pocket' ? ' · Pocket' : rec.source === 'upload' ? ' · Upload' : ''}
+            {sourceBadge && ` · ${sourceBadge}`}
             {state && <span className={`state-pill${rec.status === 'failed' ? ' bad' : ''}`}>{state}</span>}
           </p>
         </div>
@@ -136,98 +137,104 @@ export function Conversation() {
             type="button"
             className="small-button"
             disabled={busy || !rec.transcript}
-            title={rec.transcript ? 'Summarize the transcript again' : 'Needs a transcript first'}
+            title={rec.transcript ? undefined : t('conversation.needsTranscript')}
             onClick={() => act(() => api.resummarize(rec.id))}
           >
-            Re-summarize
+            {t('conversation.resummarize')}
           </button>
           <button
             type="button"
             className="small-button"
             disabled={busy || !rec.audio}
-            title={rec.audio ? 'Transcribe the audio again (also re-summarizes)' : 'The audio is not archived yet'}
-            onClick={() => act(() => api.retranscribe(rec.id), 'Transcribe again? The current transcript and summary are replaced.')}
+            title={rec.audio ? t('conversation.retranscribeTitle') : t('conversation.notArchived')}
+            onClick={() => act(() => api.retranscribe(rec.id), t('conversation.retranscribeConfirm'))}
           >
-            Re-transcribe
+            {t('conversation.retranscribe')}
           </button>
           <button type="button" className="small-button danger" disabled={busy} onClick={handleDelete}>
-            Delete
+            {t('common.delete')}
           </button>
         </div>
       </div>
       {error && <p className="error">{error}</p>}
 
-      <div className="segmented" role="tablist" aria-label="View">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            role="tab"
-            aria-selected={tab === t.id}
-            className={tab === t.id ? 'active' : ''}
-            onClick={() => setTab(t.id)}
-          >
-            {t.label}
+      <div className="segmented" role="tablist" aria-label={t('conversation.viewLabel')}>
+        {TABS.map((id) => (
+          <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}>
+            {t(`conversation.tabs.${id}`)}
           </button>
         ))}
       </div>
 
       <div className="card conversation-body" role="tabpanel">
-        {tab === 'summary' &&
-          (rec.summary?.markdown ? (
-            <div className="prose">
-              <Markdown text={rec.summary.markdown} />
-              <p className="model-note">Summarized with {rec.summary.model || '—'}</p>
+        {tab === 'summary' && (
+          <>
+            <div className="summary-head">
+              <h2>{t('conversation.summaryHeading')}</h2>
+              <div className="summary-tools">
+                {rec.transcript && <SummaryDetails rec={rec} onRegenerated={load} />}
+                {rec.summary?.markdown && (
+                  <CopyButton className="ghost-button" text={`# ${rec.summary.title}\n\n${rec.summary.markdown}`} label={t('conversation.copySummary')} />
+                )}
+              </div>
             </div>
-          ) : (
-            pending('summary')
-          ))}
+            {rec.summary?.markdown ? (
+              <div className="prose">
+                <Markdown text={rec.summary.markdown} />
+                {rec.summary.model && <p className="model-note">{t('conversation.summarizedWith', { model: rec.summary.model })}</p>}
+              </div>
+            ) : (
+              pending(t('conversation.noSummary'))
+            )}
+          </>
+        )}
 
         {tab === 'transcript' &&
           (rec.transcript ? (
             <>
-              {rec.transcript.text ? <Transcript text={rec.transcript.text} /> : <p className="muted">No speech was detected.</p>}
-              <p className="model-note">Transcribed with {rec.transcript.model}</p>
+              {rec.transcript.text ? <Transcript text={rec.transcript.text} /> : <p className="muted">{t('conversation.noSpeech')}</p>}
+              <p className="model-note">{t('conversation.transcribedWith', { model: rec.transcript.model })}</p>
             </>
           ) : (
-            pending('transcript')
+            pending(t('conversation.noTranscript'))
           ))}
 
         {tab === 'source' &&
           (rec.audio ? (
             <div className="source">
               <audio controls preload="metadata" src={api.audioURL(rec.id)}>
-                Your browser can't play this audio.
+                {t('conversation.noAudioSupport')}
               </audio>
               <dl className="facts">
-                <dt>File</dt>
+                <dt>{t('conversation.file')}</dt>
                 <dd>
                   {rec.audio.contentType} · {formatBytes(rec.audio.size)}{' '}
                   <a className="small-button" href={api.audioURL(rec.id, true)} download>
-                    Download
+                    {t('conversation.download')}
                   </a>
                 </dd>
                 {rec.format && (
                   <>
-                    <dt>Audio</dt>
+                    <dt>{t('conversation.audio')}</dt>
                     <dd>
-                      {rec.format.sampleRate / 1000} kHz · {rec.format.channels === 1 ? 'mono' : `${rec.format.channels} channels`} ·{' '}
+                      {new Intl.NumberFormat(locale()).format(rec.format.sampleRate / 1000)} kHz ·{' '}
+                      {rec.format.channels === 1 ? t('conversation.mono') : t('conversation.channels', { count: rec.format.channels })} ·{' '}
                       {rec.format.bitsPerSample} bit · {formatDuration(rec.format.durationMs)}
                     </dd>
                   </>
                 )}
-                <dt>Source</dt>
+                <dt>{t('conversation.source')}</dt>
                 <dd>
                   {rec.source === 'pocket'
-                    ? inline(`Pocket recording \`${rec.recordingId}\``)
+                    ? inline(`${t('conversation.pocketRecording')} \`${rec.recordingId}\``)
                     : rec.source === 'upload'
-                      ? 'Uploaded in the browser'
-                      : inline(`Device upload \`${rec.recordingId}\``)}
+                      ? t('conversation.browserUpload')
+                      : inline(`${t('conversation.deviceUpload')} \`${rec.recordingId}\``)}
                 </dd>
               </dl>
             </div>
           ) : (
-            <p className="muted">{state ?? 'The audio is not available yet.'}</p>
+            <p className="muted">{state ?? t('conversation.audioUnavailable')}</p>
           ))}
       </div>
     </section>

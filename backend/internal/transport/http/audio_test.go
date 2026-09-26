@@ -46,7 +46,7 @@ func TestAudioRangeAndDownload(t *testing.T) {
 	_ = recs.Create(ctx, &recording.Recording{ID: "r1", DeviceID: "d", ClientID: "c",
 		Audio: &recording.Object{Key: "recordings/d/r1.flac", ContentType: "audio/flac", Size: int64(len(data))}})
 	h := NewServer(Deps{Cfg: config.Config{AdminToken: adminToken}, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Actions: service.NewRecordingService(recs, objects, nil), Objects: objects}).Router()
+		Actions: service.NewRecordingService(recs, objects, nil, nil), Objects: objects}).Router()
 
 	get := func(path, rng string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodGet, path, nil)

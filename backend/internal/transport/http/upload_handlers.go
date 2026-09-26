@@ -74,7 +74,7 @@ func (s *Server) handleGetUpload(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAppendUpload(w http.ResponseWriter, r *http.Request) {
 	offset, err := strconv.ParseInt(r.Header.Get(uploadOffsetHeader), 10, 64)
 	if err != nil || offset < 0 {
-		writeJSON(w, http.StatusBadRequest, errResponse{Error: "Upload-Offset header must be a non-negative integer"})
+		writeCode(w, http.StatusBadRequest, "invalid_request", "Upload-Offset header must be a non-negative integer")
 		return
 	}
 	dev := deviceFrom(r.Context())

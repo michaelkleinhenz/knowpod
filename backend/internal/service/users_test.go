@@ -20,7 +20,8 @@ func TestUserManagement(t *testing.T) {
 	auth, users, sessions, builtIn := newAuth(t)
 	devs, recs, objects := memory.NewDevices(), memory.NewRecordings(), memstore.New()
 	spool, _ := NewSpool(t.TempDir())
-	s := NewUserService(users, sessions, devs, recs, auth, NewRecordingService(recs, objects, spool))
+	themes := memory.NewThemes()
+	s := NewUserService(users, sessions, devs, recs, themes, auth, NewRecordingService(recs, objects, spool, nil))
 	actor := &Account{ID: builtIn.ID, Role: user.RoleAdmin}
 
 	// Create.
@@ -109,7 +110,7 @@ func TestLastAdminIsKept(t *testing.T) {
 	ctx := context.Background()
 	users, sessions := memory.NewUsers(), memory.NewSessions()
 	auth := NewAuthService(users, sessions, "", "", 0) // no built-in admin
-	s := NewUserService(users, sessions, memory.NewDevices(), memory.NewRecordings(), auth, nil)
+	s := NewUserService(users, sessions, memory.NewDevices(), memory.NewRecordings(), memory.NewThemes(), auth, nil)
 	a, _ := s.Create(ctx, UserInput{Email: ptr("a@example.com"), Password: ptr("password-a"), Role: ptr(user.RoleAdmin)})
 	b, _ := s.Create(ctx, UserInput{Email: ptr("b@example.com"), Password: ptr("password-b"), Role: ptr(user.RoleAdmin)})
 

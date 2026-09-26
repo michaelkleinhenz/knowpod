@@ -50,6 +50,7 @@ func main() {
 	users := repo.NewUserRepo(store)
 	sessions := repo.NewSessionRepo(store)
 	settingsRepo := repo.NewSettingsRepo(store)
+	themeRepo := repo.NewThemeRepo(store)
 
 	// Object storage.
 	objects, err := s3store.New(ctx, s3store.Options{
@@ -92,7 +93,8 @@ func main() {
 
 	// AI processing (transcription, summaries) runs in its own worker so that slow model
 	// calls never delay archiving. Its stages wait until OpenRouter is configured.
-	aiSvc := service.NewAIService(settingsRepo, objects, openrouter.NewClient(cfg.OpenRouterAPIURL, cfg.FrontendURL), cfg.UploadDir, log)
+	themeSvc := service.NewThemeService(themeRepo)
+	aiSvc := service.NewAIService(settingsRepo, themeSvc, objects, openrouter.NewClient(cfg.OpenRouterAPIURL, cfg.FrontendURL), cfg.UploadDir, log)
 	aiPipeline := worker.New(recordings, []worker.Stage{
 		{Name: "transcribe", From: recording.StatusStored, To: recording.StatusTranscribed,
 			Run: aiSvc.Transcribe, Enabled: aiSvc.CanTranscribe, Lease: time.Hour},
@@ -100,8 +102,8 @@ func main() {
 			Run: aiSvc.Summarize, Enabled: aiSvc.CanSummarize},
 	}, worker.Options{PollInterval: cfg.WorkerPollInterval, MaxAttempts: cfg.WorkerMaxAttempts}, log)
 	aiSvc.OnSettingsChanged = aiPipeline.Wake
-	actions := service.NewRecordingService(recordings, objects, spool)
-	userSvc := service.NewUserService(users, sessions, devices, recordings, authSvc, actions)
+	actions := service.NewRecordingService(recordings, objects, spool, themeSvc)
+	userSvc := service.NewUserService(users, sessions, devices, recordings, themeRepo, authSvc, actions)
 	actions.OnRequeued = aiPipeline.Wake
 	wakeAI = aiPipeline.Wake // archived recordings move on to transcription right away
 
@@ -115,7 +117,7 @@ func main() {
 	// HTTP server.
 	srv := httpx.NewServer(httpx.Deps{
 		Cfg: cfg, Log: log, DB: store, Auth: authSvc, Users: userSvc, Devices: deviceSvc, Uploads: uploadSvc,
-		Manual: manualSvc, Actions: actions, Objects: objects, Pocket: pocketSvc, AI: aiSvc,
+		Manual: manualSvc, Actions: actions, Objects: objects, Pocket: pocketSvc, AI: aiSvc, Themes: themeSvc,
 	})
 	httpServer := &http.Server{
 		Addr:              ":" + cfg.Port,

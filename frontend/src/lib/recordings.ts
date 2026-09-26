@@ -1,9 +1,11 @@
+import i18n from 'i18next';
 import { Recording } from '../api/client';
+import { locale } from '../i18n';
 
 // title is what a conversation is called in the UI: the AI summary's title, else the
-// source's title (Pocket), else a placeholder.
+// source's title (Pocket, file name), else a placeholder.
 export function title(r: Recording): string {
-  return r.summary?.title || r.title || 'Untitled recording';
+  return r.summary?.title || r.title || i18n.t('conversations.untitled');
 }
 
 // when is the moment a conversation happened.
@@ -18,19 +20,20 @@ export function processing(r: Recording): boolean {
 
 // statusLabel describes an unfinished recording; aiReady says whether OpenRouter is set up.
 export function statusLabel(r: Recording, aiReady: boolean): string | null {
+  const t = i18n.t.bind(i18n);
   switch (r.status) {
     case 'remote':
-      return 'Fetching audio…';
+      return t('state.remote');
     case 'uploading':
-      return 'Uploading…';
+      return t('state.uploading');
     case 'received':
-      return 'Processing audio…';
+      return t('state.received');
     case 'stored':
-      return aiReady ? 'Transcribing…' : 'Waiting for AI setup';
+      return aiReady ? t('state.transcribing') : t('state.waitingAI');
     case 'transcribed':
-      return aiReady ? 'Summarizing…' : 'Waiting for AI setup';
+      return aiReady ? t('state.summarizing') : t('state.waitingAI');
     case 'failed':
-      return 'Failed';
+      return t('state.failed');
     default:
       return null;
   }
@@ -46,13 +49,19 @@ export function formatDuration(ms?: number): string {
 }
 
 export function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  const nf = new Intl.NumberFormat(locale(), { maximumFractionDigits: 1 });
+  if (n < 1024) return `${nf.format(n)} B`;
+  if (n < 1024 * 1024) return `${nf.format(Math.round(n / 1024))} KB`;
+  return `${nf.format(n / 1024 / 1024)} MB`;
 }
 
 export function formatTime(d: Date): string {
-  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  return d.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' });
+}
+
+export function formatDate(d: Date | string | undefined, opts: Intl.DateTimeFormatOptions = { dateStyle: 'medium' }): string {
+  if (!d) return '—';
+  return new Date(d).toLocaleString(locale(), opts);
 }
 
 // dayKey groups dates by local calendar day.
@@ -65,8 +74,25 @@ export function dayLabel(d: Date): { label: string; date: string } {
   const today = new Date();
   const yesterday = new Date(today);
   yesterday.setDate(today.getDate() - 1);
-  const date = d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: d.getFullYear() === today.getFullYear() ? undefined : 'numeric' });
-  if (dayKey(d) === dayKey(today)) return { label: 'Today', date };
-  if (dayKey(d) === dayKey(yesterday)) return { label: 'Yesterday', date };
-  return { label: d.toLocaleDateString(undefined, { weekday: 'short' }), date: d.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: d.getFullYear() === today.getFullYear() ? undefined : 'numeric' }) };
+  const year = d.getFullYear() === today.getFullYear() ? undefined : 'numeric';
+  if (dayKey(d) === dayKey(today) || dayKey(d) === dayKey(yesterday)) {
+    return {
+      label: i18n.t(dayKey(d) === dayKey(today) ? 'days.today' : 'days.yesterday'),
+      date: d.toLocaleDateString(locale(), { weekday: 'long', month: 'long', day: 'numeric', year }),
+    };
+  }
+  return {
+    label: d.toLocaleDateString(locale(), { weekday: 'short' }),
+    date: d.toLocaleDateString(locale(), { month: 'long', day: 'numeric', year }),
+  };
+}
+
+// languageName names a language tag in the current UI language, e.g. "de-DE" → "German
+// (Germany)" / "Deutsch (Deutschland)".
+export function languageName(tag: string): string {
+  try {
+    return new Intl.DisplayNames([locale()], { type: 'language' }).of(tag) ?? tag;
+  } catch {
+    return tag;
+  }
 }

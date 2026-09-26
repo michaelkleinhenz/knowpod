@@ -1,9 +1,12 @@
 import { FormEvent, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { api } from '../api/client';
 import { useAuth } from '../auth';
 import { PocketSetup } from '../components/PocketSetup';
+import { errorText } from '../lib/errors';
 
 function ChangePassword() {
+  const { t } = useTranslation();
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -16,7 +19,7 @@ function ChangePassword() {
     setError(null);
     setDone(false);
     if (next !== confirm) {
-      setError('The new passwords do not match.');
+      setError(t('account.mismatch'));
       return;
     }
     setBusy(true);
@@ -27,7 +30,7 @@ function ChangePassword() {
       setNext('');
       setConfirm('');
     } catch (err) {
-      setError((err as Error).message);
+      setError(errorText(err, t));
     } finally {
       setBusy(false);
     }
@@ -36,11 +39,11 @@ function ChangePassword() {
   return (
     <form onSubmit={handleSubmit} className="form">
       <label>
-        Current password
+        {t('account.current')}
         <input type="password" autoComplete="current-password" required value={current} onChange={(e) => setCurrent(e.target.value)} />
       </label>
       <label>
-        New password
+        {t('account.new')}
         <input
           type="password"
           autoComplete="new-password"
@@ -52,7 +55,7 @@ function ChangePassword() {
         />
       </label>
       <label>
-        Repeat new password
+        {t('account.repeat')}
         <input
           type="password"
           autoComplete="new-password"
@@ -64,29 +67,30 @@ function ChangePassword() {
         />
       </label>
       {error && <p className="error">{error}</p>}
-      {done && <p className="success">Password changed. Other signed-in browsers were signed out.</p>}
+      {done && <p className="success">{t('account.changed')}</p>}
       <button type="submit" disabled={busy}>
-        {busy ? 'Saving…' : 'Change password'}
+        {busy ? t('common.saving') : t('account.change')}
       </button>
     </form>
   );
 }
 
 export function Account() {
+  const { t } = useTranslation();
   const { account } = useAuth();
   return (
     <div className="page">
       <section className="card">
-        <h1>Account</h1>
+        <h1>{t('account.title')}</h1>
         <p className="muted">
-          Signed in as <strong>{account?.email}</strong>
-          {account?.role === 'admin' && <span className="role-pill">Admin</span>}
+          <Trans i18nKey="account.signedInAs" values={{ email: account?.email }} components={{ 1: <strong /> }} />
+          {account?.role === 'admin' && <span className="role-pill">{t('common.admin')}</span>}
         </p>
-        <h2 className="card-title">Change password</h2>
+        <h2 className="card-title">{t('account.changePassword')}</h2>
         <ChangePassword />
       </section>
       <section className="card">
-        <h2 className="card-title">Pocket integration</h2>
+        <h2 className="card-title">{t('account.pocketTitle')}</h2>
         <PocketSetup />
       </section>
     </div>

@@ -44,7 +44,11 @@ AI worker ─────────────▶ transcript (status: transcr
   on the web UI's **Settings** page.
 - The web UI's **Conversations** page lists your recordings by the title of their summary;
   each conversation shows its summary, transcript and audio, and can be re-transcribed,
-  re-summarized or deleted.
+  re-summarized or deleted. Under **Summary details** each summary's language, model and
+  **theme** (its structure, e.g. meeting or call notes) can be changed and regenerated.
+  Users manage their own themes on the **Settings** page.
+- The web UI is available in English and German; each user picks the language in
+  **Settings**.
 - The web UI works on phones and can be installed as an app (PWA).
 
 Supported input: integer PCM WAV, 8/16/24 bit, 1–8 channels, up to 4 GiB.
@@ -184,7 +188,8 @@ frontend/src/
   auth.tsx             sign-in state (AuthProvider, useAuth)
   components/          reusable UI components
   pages/               Conversations (list + detail), Devices, Users, Settings, Status, Account, Login
-  lib/recordings.ts    display helpers for recordings (titles, states, dates)
+  i18n/                translations (en.ts, de.ts) and language setup
+  lib/                 display helpers (recordings, themes, error texts)
 ```
 
 ## Tests

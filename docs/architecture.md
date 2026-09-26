@@ -246,6 +246,21 @@ model calls.
 The OpenRouter settings (key and models) live in the `settings` collection and are read on
 every stage run, so changes apply immediately.
 
+### Themes and summary options (`service/themes.go`)
+
+The summary prompt is assembled per recording (`summarySystemPrompt` in `service/ai.go`):
+the fixed JSON reply format, the **theme's instructions** (the structure of the Markdown
+summary) and the **output language**. `recording.summaryOptions` (`language`, `model`,
+`themeId`) choose them; empty values mean auto-detect, the configured summary model and the
+Auto theme. `POST /recordings/{id}/resummarize` with a body validates and stores new
+options before requeueing. `ThemeService.Resolve` finds built-in themes by ID and a user's
+own theme only for its owner; anything else (e.g. a deleted theme) falls back to Auto. The
+summary stores `themeId`, `themeName`, `language` and `model`, so the UI can show what a
+summary was made with.
+
+Built-in themes are defined in code with English instructions; the UI translates their
+names and descriptions by ID. Users' themes live in the `themes` collection.
+
 ## Adding a processing stage
 
 For example, extracting tasks after the summary:
@@ -293,7 +308,8 @@ implements the work.
 | `format` | Sample rate, channels, bits, frames, duration. Set once received. |
 | `audio`, `original` | S3 key, content type and size of the FLAC and the optional WAV |
 | `transcript` | `text`, `model`, `createdAt` |
-| `summary` | `title` (the conversation's name in the UI), `markdown`, `model`, `createdAt`. Lists leave out `transcript` and `summary.markdown`. |
+| `summary` | `title` (the conversation's name in the UI), `markdown`, `model`, `language`, `themeId`, `themeName`, `createdAt`. Lists leave out `transcript` and `summary.markdown`. |
+| `summaryOptions` | `language`, `model`, `themeId` chosen under Summary details (empty = defaults) |
 | `attempts`, `notBefore`, `lastError` | Worker bookkeeping |
 | `createdAt`, `updatedAt`, `receivedAt`, `storedAt` | Timestamps (UTC) |
 
@@ -307,6 +323,7 @@ Indexes: `(deviceId, clientId)` unique; `(status, notBefore)` for claiming;
 | `_id` | Random 24-hex ID |
 | `email` | Lower-case (unique index) |
 | `role` | `admin` or `user` |
+| `language` | Web UI language (`en`, `de`); empty follows the browser |
 | `passwordHash` | bcrypt; empty for the built-in admin until a password is set (then `ADMIN_PASSWORD` applies) |
 | `pocket.webhookId` | Random part of the user's webhook URL (unique, sparse index) |
 | `pocket.webhookSecret`, `pocket.apiKey` | The user's Pocket credentials; never returned by the API |
@@ -319,6 +336,9 @@ Indexes: `(deviceId, clientId)` unique; `(status, notBefore)` for claiming;
 | `_id` | SHA-256 of the session token |
 | `userId` | The signed-in user (indexed, to end all their sessions) |
 | `createdAt`, `expiresAt` | TTL index on `expiresAt` deletes expired sessions |
+
+**`themes`**: users' own summary themes: `_id`, `ownerId` (indexed with `name`), `name`,
+`description`, `instructions`, `createdAt`, `updatedAt`.
 
 **`settings`**: one document per settings group. `_id: "openrouter"` holds `apiKey`,
 `transcriptionModel`, `summaryModel` and `updatedAt`.
@@ -333,6 +353,7 @@ reason MongoDB runs as a replica set). Nothing uses it yet.
 | Test | Covers |
 |---|---|
 | `audio/*_test.go` | WAV parsing edge cases; FLAC output decodes to the exact input samples |
+| `service/themes_test.go`, `auth_test.go` | Themes (built-ins, own themes, isolation, fallback to Auto), summary prompts with theme/language/model, validation of summary options, language preference |
 | `service/*_test.go` | Users (built-in admin, create/update/delete with cascade, last-admin and self protection), per-user Pocket settings, browser uploads (formats, limits), ownership checks; upload protocol: chunks, idempotency, offsets, dropped connections, checksum reset, invalid audio, isolation between devices, purge; device tokens; sign-in with the default login, password change overriding it, session expiry and logout; transcription (FLAC chunks, passthrough, size limit), summaries and their parsing, OpenRouter settings and model filtering, delete/re-transcribe/re-summarize |
 | `worker/worker_test.go` | Archive stage end to end, retry/backoff, permanent failure, recovery, disabled stages waiting |
 | `openrouter/*_test.go` | Request shape for audio, error handling, model list |
@@ -343,6 +364,13 @@ reason MongoDB runs as a replica set). Nothing uses it yet.
 The S3 store has no automated test. It has been checked by hand against an S3-compatible
 server.
 
+## Errors
+
+API errors are `{"error": "...", "code": "..."}`. `code` is a stable identifier
+(`writeErr` in `transport/http/response.go` maps service errors to status and code, most
+specific first); the web UI translates it (`lib/errors.ts`, keys `errors.<code>`) and falls
+back to the English `error` text for unknown codes.
+
 ## Web app
 
 The React app (`frontend/`) is built with Vite and embedded into the binary. It is
@@ -350,6 +378,9 @@ responsive down to phone width (the navigation collapses into a menu button belo
 form fields use 16 px text so iOS doesn't zoom) and installable as a PWA: `vite-plugin-pwa`
 generates the manifest and a Workbox service worker that precaches the app shell and falls
 back to `index.html` for client-side routes, but never for `/api/*` or `/healthz`, so data
-is always live. `internal/web` serves `sw.js`, `registerSW.js` and the manifest with
+is always live. All texts are translated with `react-i18next` (`src/i18n/en.ts` and
+`de.ts`; the German file is typed against the English one, so a missing key is a compile
+error). The language is the user's saved `language` (from `GET /auth/me`), else the one last
+used on the device, else the browser's; dates and numbers follow it. `internal/web` serves `sw.js`, `registerSW.js` and the manifest with
 `Cache-Control: no-cache` (so updates reach installed apps) and hashed `/assets/*` as
 immutable.

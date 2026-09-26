@@ -1,6 +1,8 @@
 package http
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -71,7 +73,7 @@ func (s *Server) handleRecordingAudio(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if rec.Audio == nil {
-		writeJSON(w, http.StatusConflict, errResponse{Error: "audio not archived yet (status " + string(rec.Status) + ")"})
+		writeCode(w, http.StatusConflict, "not_archived", "audio not archived yet (status "+string(rec.Status)+")")
 		return
 	}
 	size := rec.Audio.Size
@@ -159,8 +161,20 @@ func (s *Server) handleRetranscribe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, rec)
 }
 
+// handleResummarize summarizes again, optionally with new options (language, model, theme)
+// given as a JSON body.
 func (s *Server) handleResummarize(w http.ResponseWriter, r *http.Request) {
-	rec, err := s.actions.Resummarize(r.Context(), accountFrom(r.Context()), chi.URLParam(r, "id"))
+	var opts *recording.SummaryOptions
+	if r.ContentLength != 0 && r.Body != nil {
+		var o recording.SummaryOptions
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&o); err == nil {
+			opts = &o
+		} else if !errors.Is(err, io.EOF) {
+			writeCode(w, http.StatusBadRequest, "invalid_request", "invalid request body")
+			return
+		}
+	}
+	rec, err := s.actions.Resummarize(r.Context(), accountFrom(r.Context()), chi.URLParam(r, "id"), opts)
 	if err != nil {
 		s.writeErr(w, err)
 		return

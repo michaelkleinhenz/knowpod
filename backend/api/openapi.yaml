@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: knowpod-service API
-  version: 0.6.0
+  version: 0.7.0
   description: |
     Backend for the knowpod AI audio recorder.
 
@@ -51,6 +51,8 @@ tags:
     description: Your conversations, their audio, and uploads from the browser. ADMIN_TOKEN sees every user's.
   - name: Integrations
     description: Webhooks from external recorders.
+  - name: Themes
+    description: Summary themes that define how summaries are structured. Built-in ones plus your own.
   - name: "Admin: users"
     description: Create, change and delete users. Administrators only.
   - name: "Admin: AI settings"
@@ -290,6 +292,108 @@ paths:
                 properties:
                   transcription: { type: boolean }
                   summary: { type: boolean }
+
+  /ai/models:
+    get:
+      tags: ["Your account"]
+      summary: Models available for transcription and summaries
+      description: From OpenRouter's model list. Transcription needs audio input; summaries need text input. Any signed-in user may list them (to pick a summary model per recording).
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      responses:
+        "200":
+          description: Model options
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transcription: { type: array, items: { $ref: "#/components/schemas/ModelOption" } }
+                  summary: { type: array, items: { $ref: "#/components/schemas/ModelOption" } }
+        "502":
+          description: OpenRouter could not be reached
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /ai/languages:
+    get:
+      tags: ["Your account"]
+      summary: Languages a summary can be written in
+      description: Language tags accepted as `language` in summary options, besides `auto` (the transcript's language).
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      responses:
+        "200":
+          description: Language tags
+          content:
+            application/json:
+              schema: { type: array, items: { type: string, example: de-DE } }
+
+  /me/preferences:
+    put:
+      tags: ["Your account"]
+      summary: Change your preferences
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                language: { type: string, enum: ["", en, de], description: Web UI language; empty follows the browser }
+      responses:
+        "200":
+          description: Saved
+          content: { application/json: { schema: { $ref: "#/components/schemas/Account" } } }
+        "400": { $ref: "#/components/responses/Error" }
+
+  /themes:
+    get:
+      tags: ["Themes"]
+      summary: List summary themes
+      description: The built-in themes (`builtIn`, fixed IDs such as `auto`, `meeting`) followed by your own.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      responses:
+        "200":
+          description: Themes
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Theme" } }
+    post:
+      tags: ["Themes"]
+      summary: Create a theme
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/ThemeInput" } } }
+      responses:
+        "201":
+          description: Created
+          content: { application/json: { schema: { $ref: "#/components/schemas/Theme" } } }
+        "400": { $ref: "#/components/responses/Error" }
+
+  /themes/{themeId}:
+    parameters:
+      - { name: themeId, in: path, required: true, schema: { type: string } }
+    put:
+      tags: ["Themes"]
+      summary: Change one of your themes
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/ThemeInput" } } }
+      responses:
+        "200":
+          description: Saved
+          content: { application/json: { schema: { $ref: "#/components/schemas/Theme" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: ["Themes"]
+      summary: Delete one of your themes
+      description: Summaries made with it keep their text; regenerating them uses the Auto theme.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/Error" }
 
   /webhooks/pocket/{webhookId}:
     post:
@@ -548,7 +652,12 @@ paths:
     post:
       tags: ["Recordings"]
       summary: Summarize again
-      description: Discards the summary and summarizes the existing transcript anew.
+      description: |
+        Discards the summary and summarizes the existing transcript anew. An optional body
+        sets new summary options, which are kept for later regenerations.
+      requestBody:
+        required: false
+        content: { application/json: { schema: { $ref: "#/components/schemas/SummaryOptions" } } }
       security: [{ sessionCookie: [] }, { adminToken: [] }]
       parameters:
         - { name: recordingId, in: path, required: true, schema: { type: string } }
@@ -687,26 +796,6 @@ paths:
           content: { application/json: { schema: { $ref: "#/components/schemas/OpenRouterSettings" } } }
         "400": { $ref: "#/components/responses/Error" }
 
-  /admin/openrouter/models:
-    get:
-      tags: ["Admin: AI settings"]
-      summary: Models available for transcription and summaries
-      description: From OpenRouter's model list. Transcription needs audio input; summaries need text input.
-      security: [{ sessionCookie: [] }, { adminToken: [] }]
-      responses:
-        "200":
-          description: Model options
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  transcription: { type: array, items: { $ref: "#/components/schemas/ModelOption" } }
-                  summary: { type: array, items: { $ref: "#/components/schemas/ModelOption" } }
-        "502":
-          description: OpenRouter could not be reached
-          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
-
 components:
   securitySchemes:
     deviceToken:
@@ -793,6 +882,7 @@ components:
             durationMs: { type: integer, format: int64 }
         audio: { $ref: "#/components/schemas/Object" }
         original: { $ref: "#/components/schemas/Object" }
+        summaryOptions: { $ref: "#/components/schemas/SummaryOptions" }
         transcript:
           type: object
           properties:
@@ -805,6 +895,9 @@ components:
             title: { type: string }
             markdown: { type: string, description: Left out in lists }
             model: { type: string }
+            language: { type: string }
+            themeId: { type: string }
+            themeName: { type: string }
             createdAt: { type: string, format: date-time }
         attempts: { type: integer }
         lastError: { type: string }
@@ -819,6 +912,7 @@ components:
         id: { type: string }
         email: { type: string, format: email }
         role: { type: string, enum: [user, admin] }
+        language: { type: string, description: Web UI language (en, de); absent follows the browser }
 
     User:
       type: object
@@ -839,6 +933,30 @@ components:
         webhookSecretConfigured: { type: boolean }
         apiKeyConfigured: { type: boolean }
         apiKeyHint: { type: string, example: …a1b2 }
+
+    SummaryOptions:
+      type: object
+      properties:
+        language: { type: string, example: de-DE, description: '"auto" (default) or a tag from GET /ai/languages' }
+        model: { type: string, example: google/gemini-2.5-flash, description: Empty uses the configured summary model }
+        themeId: { type: string, example: meeting, description: Empty or "auto" uses the Auto theme }
+
+    Theme:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        instructions: { type: string }
+        builtIn: { type: boolean }
+
+    ThemeInput:
+      type: object
+      required: [name, instructions]
+      properties:
+        name: { type: string, maxLength: 60 }
+        description: { type: string, maxLength: 120 }
+        instructions: { type: string, maxLength: 4000, description: How to structure the summary (Markdown sections etc.) }
 
     OpenRouterSettings:
       type: object
@@ -869,5 +987,6 @@ components:
     Error:
       type: object
       properties:
-        error: { type: string }
+        error: { type: string, description: English message }
+        code: { type: string, example: not_found, description: Stable code for clients to translate }
         offset: { type: integer, format: int64, description: Set on offset mismatches }

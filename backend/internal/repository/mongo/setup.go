@@ -15,10 +15,11 @@ const (
 	CollUsers      = "users"
 	CollSessions   = "sessions"
 	CollSettings   = "settings"
+	CollThemes     = "themes"
 )
 
 // collections lists every collection the service owns. Setup creates any that are missing.
-var collections = []string{CollDevices, CollRecordings, CollUsers, CollSessions, CollSettings}
+var collections = []string{CollDevices, CollRecordings, CollUsers, CollSessions, CollSettings, CollThemes}
 
 // indexes lists the indexes per collection. Setup creates them; CreateMany on an existing
 // identical index is a no-op.
@@ -42,6 +43,9 @@ var indexes = map[string][]mongo.IndexModel{
 		{Keys: bson.D{{Key: "email", Value: 1}}, Options: options.Index().SetUnique(true)},
 		// Webhook routing; users without Pocket have no webhookId.
 		{Keys: bson.D{{Key: "pocket.webhookId", Value: 1}}, Options: options.Index().SetUnique(true).SetSparse(true)},
+	},
+	CollThemes: {
+		{Keys: bson.D{{Key: "ownerId", Value: 1}, {Key: "name", Value: 1}}},
 	},
 	CollSessions: {
 		// MongoDB deletes sessions once they expire.

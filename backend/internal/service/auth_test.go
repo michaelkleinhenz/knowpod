@@ -48,6 +48,24 @@ func TestBuiltInAdminLogin(t *testing.T) {
 	}
 }
 
+func TestPreferences(t *testing.T) {
+	ctx := context.Background()
+	s, _, _, admin := newAuth(t)
+	acc := &Account{ID: admin.ID}
+	de, bad := "de", "fr"
+	if _, err := s.UpdatePreferences(ctx, acc, Preferences{Language: &bad}); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("unsupported language: %v", err)
+	}
+	got, err := s.UpdatePreferences(ctx, acc, Preferences{Language: &de})
+	if err != nil || got.Language != "de" {
+		t.Fatalf("update: %+v, %v", got, err)
+	}
+	_, token, _, _ := s.Login(ctx, "admin@example.com", "env-secret")
+	if a, _ := s.Authenticate(ctx, token); a.Language != "de" {
+		t.Fatalf("language not on account: %+v", a)
+	}
+}
+
 func TestNoBuiltInAdminWithoutEnv(t *testing.T) {
 	s := NewAuthService(memory.NewUsers(), memory.NewSessions(), "", "", time.Hour)
 	if u, err := s.EnsureBuiltInAdmin(context.Background()); u != nil || err != nil {

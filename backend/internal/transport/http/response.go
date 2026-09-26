@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sort"
 	"strconv"
 
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/service"
@@ -20,53 +21,70 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	}
 }
 
-// errResponse is the uniform error envelope.
+// errResponse is the uniform error envelope. Code is a stable, machine-readable identifier
+// that clients translate; Error is an English message for people and logs.
 type errResponse struct {
 	Error string `json:"error"`
+	Code  string `json:"code,omitempty"`
 	// Offset is set on offset mismatches: the offset to resume the upload from.
 	Offset *int64 `json:"offset,omitempty"`
 }
 
-// writeErr maps a service error to an HTTP status + message.
+// errorCodes maps service errors to HTTP statuses and codes, most specific first.
+var errorCodes = []struct {
+	err    error
+	status int
+	code   string
+}{
+	{service.ErrNotFound, http.StatusNotFound, "not_found"},
+	{service.ErrWeakPassword, http.StatusBadRequest, "weak_password"},
+	{service.ErrInvalidInput, http.StatusBadRequest, "invalid_input"},
+	{service.ErrInvalidLogin, http.StatusUnauthorized, "invalid_login"},
+	{service.ErrNotSignedIn, http.StatusUnauthorized, "not_signed_in"},
+	{errInvalidAdminToken, http.StatusUnauthorized, "invalid_token"},
+	{service.ErrWrongPassword, http.StatusForbidden, "wrong_password"},
+	{service.ErrSelfDelete, http.StatusForbidden, "cannot_delete_self"},
+	{service.ErrBuiltInAdmin, http.StatusForbidden, "builtin_admin"},
+	{service.ErrLastAdmin, http.StatusForbidden, "last_admin"},
+	{service.ErrForbidden, http.StatusForbidden, "forbidden"},
+	{service.ErrEmailTaken, http.StatusConflict, "email_taken"},
+	{service.ErrNotReady, http.StatusConflict, "not_ready"},
+	{service.ErrConflict, http.StatusConflict, "conflict"},
+	{service.ErrUnsupportedMedia, http.StatusUnsupportedMediaType, "unsupported_media"},
+	{service.ErrTooLarge, http.StatusRequestEntityTooLarge, "too_large"},
+	{service.ErrChecksumMismatch, http.StatusUnprocessableEntity, "checksum_mismatch"},
+	{service.ErrInvalidAudio, http.StatusUnprocessableEntity, "invalid_audio"},
+}
+
+// writeErr maps a service error to an HTTP status, code and message.
 func (s *Server) writeErr(w http.ResponseWriter, err error) {
 	var om *service.OffsetMismatchError
-	status := http.StatusInternalServerError
-	switch {
-	case errors.As(err, &om):
+	if errors.As(err, &om) {
 		w.Header().Set(uploadOffsetHeader, strconv.FormatInt(om.Current, 10))
-		writeJSON(w, http.StatusConflict, errResponse{Error: err.Error(), Offset: &om.Current})
-		return
-	case errors.Is(err, service.ErrNotFound):
-		status = http.StatusNotFound
-	case errors.Is(err, service.ErrInvalidInput), errors.Is(err, service.ErrWeakPassword):
-		status = http.StatusBadRequest
-	case errors.Is(err, service.ErrInvalidLogin), errors.Is(err, service.ErrNotSignedIn), errors.Is(err, errInvalidAdminToken):
-		status = http.StatusUnauthorized
-	case errors.Is(err, service.ErrWrongPassword), errors.Is(err, service.ErrForbidden):
-		status = http.StatusForbidden
-	case errors.Is(err, service.ErrEmailTaken):
-		status = http.StatusConflict
-	case errors.Is(err, service.ErrUnsupportedMedia):
-		status = http.StatusUnsupportedMediaType
-	case errors.Is(err, service.ErrConflict), errors.Is(err, service.ErrNotReady):
-		status = http.StatusConflict
-	case errors.Is(err, service.ErrTooLarge):
-		status = http.StatusRequestEntityTooLarge
-	case errors.Is(err, service.ErrChecksumMismatch), errors.Is(err, service.ErrInvalidAudio):
-		status = http.StatusUnprocessableEntity
-	}
-	if status == http.StatusInternalServerError {
-		s.log.Error("request failed", "err", err)
-		writeJSON(w, status, errResponse{Error: "internal error"})
+		writeJSON(w, http.StatusConflict, errResponse{Error: err.Error(), Code: "offset_mismatch", Offset: &om.Current})
 		return
 	}
-	writeJSON(w, status, errResponse{Error: err.Error()})
+	for _, e := range errorCodes {
+		if errors.Is(err, e.err) {
+			writeJSON(w, e.status, errResponse{Error: err.Error(), Code: e.code})
+			return
+		}
+	}
+	s.log.Error("request failed", "err", err)
+	writeJSON(w, http.StatusInternalServerError, errResponse{Error: "internal error", Code: "internal"})
+}
+
+func sortStrings(s []string) { sort.Strings(s) }
+
+// writeCode writes an error that isn't a service error.
+func writeCode(w http.ResponseWriter, status int, code, message string) {
+	writeJSON(w, status, errResponse{Error: message, Code: code})
 }
 
 // decode reads a JSON body into dst, returning false (and writing 400) on failure.
 func decode(w http.ResponseWriter, r *http.Request, dst interface{}) bool {
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(dst); err != nil {
-		writeJSON(w, http.StatusBadRequest, errResponse{Error: "invalid request body"})
+		writeCode(w, http.StatusBadRequest, "invalid_request", "invalid request body")
 		return false
 	}
 	return true

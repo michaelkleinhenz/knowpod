@@ -32,7 +32,7 @@ func (s *Server) handleOpenRouterModels(w http.ResponseWriter, r *http.Request) 
 	models, err := s.ai.Models(r.Context())
 	if err != nil {
 		s.log.Warn("listing OpenRouter models failed", "err", err)
-		writeJSON(w, http.StatusBadGateway, errResponse{Error: "could not load the model list from OpenRouter"})
+		writeCode(w, http.StatusBadGateway, "openrouter_unreachable", "could not load the model list from OpenRouter")
 		return
 	}
 	writeJSON(w, http.StatusOK, models)

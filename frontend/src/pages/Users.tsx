@@ -1,12 +1,12 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { api, Role, User } from '../api/client';
 import { useAuth } from '../auth';
-
-function formatDate(iso?: string): string {
-  return iso ? new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' }) : '—';
-}
+import { errorText } from '../lib/errors';
+import { formatDate } from '../lib/recordings';
 
 function CreateUser({ onCreated }: { onCreated: () => void }) {
+  const { t } = useTranslation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<Role>('user');
@@ -24,7 +24,7 @@ function CreateUser({ onCreated }: { onCreated: () => void }) {
       setRole('user');
       onCreated();
     } catch (err) {
-      setError((err as Error).message);
+      setError(errorText(err, t));
     } finally {
       setBusy(false);
     }
@@ -34,11 +34,11 @@ function CreateUser({ onCreated }: { onCreated: () => void }) {
     <form onSubmit={handleSubmit} className="form create-user">
       <div className="form-grid">
         <label>
-          Email
+          {t('users.email')}
           <input type="email" required autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />
         </label>
         <label>
-          Initial password
+          {t('users.initialPassword')}
           <input
             type="password"
             required
@@ -50,16 +50,16 @@ function CreateUser({ onCreated }: { onCreated: () => void }) {
           />
         </label>
         <label>
-          Role
+          {t('users.role')}
           <select value={role} onChange={(e) => setRole(e.target.value as Role)}>
-            <option value="user">User</option>
-            <option value="admin">Admin</option>
+            <option value="user">{t('common.user')}</option>
+            <option value="admin">{t('common.admin')}</option>
           </select>
         </label>
       </div>
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={busy}>
-        {busy ? 'Creating…' : 'Create user'}
+        {busy ? t('users.creating') : t('users.create')}
       </button>
     </form>
   );
@@ -68,6 +68,7 @@ function CreateUser({ onCreated }: { onCreated: () => void }) {
 type Mode = null | 'edit' | 'password';
 
 function UserRow({ u, self, onChanged }: { u: User; self: boolean; onChanged: () => void }) {
+  const { t } = useTranslation();
   const [mode, setMode] = useState<Mode>(null);
   const [email, setEmail] = useState(u.email);
   const [role, setRole] = useState<Role>(u.role);
@@ -87,7 +88,7 @@ function UserRow({ u, self, onChanged }: { u: User; self: boolean; onChanged: ()
       setInfo(success);
       onChanged();
     } catch (err) {
-      setError((err as Error).message);
+      setError(errorText(err, t));
     } finally {
       setBusy(false);
     }
@@ -96,10 +97,10 @@ function UserRow({ u, self, onChanged }: { u: User; self: boolean; onChanged: ()
   function handleDelete() {
     if (
       window.confirm(
-        `Delete ${u.email}? Their devices, conversations and audio are deleted permanently, and they can no longer sign in.`,
+        t('users.deleteConfirm', { email: u.email }),
       )
     )
-      run(() => api.deleteUser(u.id), 'Deleted.');
+      run(() => api.deleteUser(u.id), t('users.deleted'));
   }
 
   return (
@@ -108,26 +109,30 @@ function UserRow({ u, self, onChanged }: { u: User; self: boolean; onChanged: ()
         <div className="user-main">
           <span className="user-email">{u.email}</span>
           <span className="user-badges">
-            <span className={`role-pill${u.role === 'admin' ? '' : ' plain'}`}>{u.role === 'admin' ? 'Admin' : 'User'}</span>
-            {u.builtIn && <span className="role-pill plain">Built-in</span>}
-            {self && <span className="role-pill plain">You</span>}
-            {u.pocketConfigured && <span className="role-pill plain">Pocket</span>}
+            <span className={`role-pill${u.role === 'admin' ? '' : ' plain'}`}>{u.role === 'admin' ? t('common.admin') : t('common.user')}</span>
+            {u.builtIn && <span className="role-pill plain">{t('common.builtIn')}</span>}
+            {self && <span className="role-pill plain">{t('common.you')}</span>}
+            {u.pocketConfigured && <span className="role-pill plain">{t('users.pocket')}</span>}
           </span>
           <span className="muted user-meta">
-            Created {formatDate(u.createdAt)}
-            {u.usesEnvPassword ? ' · password from ADMIN_PASSWORD' : u.passwordChangedAt ? ` · password set ${formatDate(u.passwordChangedAt)}` : ''}
+            {t('users.created', { date: formatDate(u.createdAt) })}
+            {u.usesEnvPassword
+              ? ` · ${t('users.passwordFromEnv')}`
+              : u.passwordChangedAt
+                ? ` · ${t('users.passwordSetOn', { date: formatDate(u.passwordChangedAt) })}`
+                : ''}
           </span>
         </div>
         <div className="user-actions">
           <button type="button" className="small-button" disabled={busy} onClick={() => setMode(mode === 'edit' ? null : 'edit')}>
-            Edit
+            {t('common.edit')}
           </button>
           <button type="button" className="small-button" disabled={busy} onClick={() => setMode(mode === 'password' ? null : 'password')}>
-            Set password
+            {t('users.setPassword')}
           </button>
           {!u.builtIn && !self && (
             <button type="button" className="small-button danger" disabled={busy} onClick={handleDelete}>
-              Delete
+              {t('common.delete')}
             </button>
           )}
         </div>
@@ -138,29 +143,29 @@ function UserRow({ u, self, onChanged }: { u: User; self: boolean; onChanged: ()
           className="form inline-edit"
           onSubmit={(e) => {
             e.preventDefault();
-            run(() => api.updateUser(u.id, { email, role }), 'Saved.');
+            run(() => api.updateUser(u.id, { email, role }), t('common.saved'));
           }}
         >
           <div className="form-grid">
             <label>
-              Email
+              {t('users.email')}
               <input type="email" required value={email} disabled={u.builtIn} onChange={(e) => setEmail(e.target.value)} />
             </label>
             <label>
-              Role
+              {t('users.role')}
               <select value={role} disabled={u.builtIn} onChange={(e) => setRole(e.target.value as Role)}>
-                <option value="user">User</option>
-                <option value="admin">Admin</option>
+                <option value="user">{t('common.user')}</option>
+                <option value="admin">{t('common.admin')}</option>
               </select>
             </label>
           </div>
-          {u.builtIn && <p className="muted field-note">The built-in admin's email comes from ADMIN_EMAIL and its role can't change.</p>}
+          {u.builtIn && <p className="muted field-note">{t('users.builtInNote')}</p>}
           <div className="button-row">
             <button type="submit" disabled={busy || u.builtIn}>
-              Save
+              {t('common.save')}
             </button>
             <button type="button" className="secondary-button" onClick={() => setMode(null)}>
-              Cancel
+              {t('common.cancel')}
             </button>
           </div>
         </form>
@@ -171,11 +176,11 @@ function UserRow({ u, self, onChanged }: { u: User; self: boolean; onChanged: ()
           className="form inline-edit"
           onSubmit={(e) => {
             e.preventDefault();
-            run(() => api.setUserPassword(u.id, password), 'Password set. The user was signed out everywhere.');
+            run(() => api.setUserPassword(u.id, password), t('users.passwordSet'));
           }}
         >
           <label>
-            New password for {u.email}
+            {t('users.newPasswordFor', { email: u.email })}
             <input
               type="password"
               required
@@ -188,10 +193,10 @@ function UserRow({ u, self, onChanged }: { u: User; self: boolean; onChanged: ()
           </label>
           <div className="button-row">
             <button type="submit" disabled={busy}>
-              Set password
+              {t('users.setPassword')}
             </button>
             <button type="button" className="secondary-button" onClick={() => setMode(null)}>
-              Cancel
+              {t('common.cancel')}
             </button>
           </div>
         </form>
@@ -203,30 +208,28 @@ function UserRow({ u, self, onChanged }: { u: User; self: boolean; onChanged: ()
 }
 
 export function Users() {
+  const { t } = useTranslation();
   const { account } = useAuth();
   const [users, setUsers] = useState<User[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    api.users().then(setUsers, (e: Error) => setError(e.message));
-  }, []);
+    api.users().then(setUsers, (e) => setError(errorText(e, t)));
+  }, [t]);
   useEffect(load, [load]);
 
   return (
     <div className="page">
       <section className="card">
-        <h1>Users</h1>
-        <p className="muted">
-          Everyone signs in with email and password and sees only their own devices and conversations. Admins also manage
-          users and the AI settings.
-        </p>
-        <h2 className="card-title">Add a user</h2>
+        <h1>{t('users.title')}</h1>
+        <p className="muted">{t('users.intro')}</p>
+        <h2 className="card-title">{t('users.add')}</h2>
         <CreateUser onCreated={load} />
       </section>
       <section className="card">
-        <h2 className="card-title">All users</h2>
+        <h2 className="card-title">{t('users.all')}</h2>
         {error && <p className="error">{error}</p>}
-        {!users && !error && <p className="muted">Loading…</p>}
+        {!users && !error && <p className="muted">{t('common.loading')}</p>}
         {users && (
           <ul className="user-list">
             {users.map((u) => (

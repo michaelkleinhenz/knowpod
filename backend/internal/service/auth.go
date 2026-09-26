@@ -41,10 +41,11 @@ func mustHash(pw string) []byte {
 // Account is the caller of a request: a signed-in user, or a script using ADMIN_TOKEN
 // (All: it acts as the built-in admin and sees every user's data).
 type Account struct {
-	ID    string    `json:"id"`
-	Email string    `json:"email"`
-	Role  user.Role `json:"role"`
-	All   bool      `json:"-"`
+	ID       string    `json:"id"`
+	Email    string    `json:"email"`
+	Role     user.Role `json:"role"`
+	Language string    `json:"language,omitempty"` // web UI language; empty follows the browser
+	All      bool      `json:"-"`
 }
 
 // IsAdmin reports whether the account may manage users and global settings.
@@ -239,7 +240,33 @@ func account(u *user.User) *Account {
 	if !role.Valid() {
 		role = user.RoleUser
 	}
-	return &Account{ID: u.ID, Email: u.Email, Role: role}
+	return &Account{ID: u.ID, Email: u.Email, Role: role, Language: u.Language}
+}
+
+// Preferences are a user's own settings.
+type Preferences struct {
+	Language *string `json:"language,omitempty"`
+}
+
+// UpdatePreferences changes the signed-in user's settings.
+func (s *AuthService) UpdatePreferences(ctx context.Context, acc *Account, p Preferences) (*Account, error) {
+	if acc.ID == "" {
+		return nil, errors.Join(ErrForbidden, errors.New("preferences belong to a user; sign in"))
+	}
+	u, err := s.users.Get(ctx, acc.ID)
+	if err != nil {
+		return nil, err
+	}
+	if p.Language != nil {
+		if !user.ValidLanguage(*p.Language) {
+			return nil, invalid("language must be one of %v", user.Languages)
+		}
+		u.Language = *p.Language
+	}
+	if err := s.users.Update(ctx, u); err != nil {
+		return nil, err
+	}
+	return account(u), nil
 }
 
 func normalizeEmail(email string) string { return strings.ToLower(strings.TrimSpace(email)) }

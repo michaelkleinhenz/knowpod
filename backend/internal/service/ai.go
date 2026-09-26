@@ -40,15 +40,28 @@ const transcriptionPrompt = `Transcribe this audio recording verbatim in its ori
 When more than one person speaks, start each speaker's turn on a new line with a label such as "Speaker 1:".
 Output only the transcript. If there is no speech, output nothing.`
 
+// summaryPrompt is completed with the theme's structure and the output language.
 const summaryPrompt = `You summarize transcripts of recorded conversations and voice notes.
 Reply with a JSON object with exactly two string fields:
 - "title": a short, specific title for the conversation (at most 8 words, no quotes, no trailing period).
-- "summary": a Markdown summary: start with a 2-3 sentence overview, then "## Key points" as a bullet list; add "## Action items" and "## Decisions" as bullet lists only if there are any.
-Write both in the language of the transcript. Reply with the JSON object only.`
+- "summary": the summary in Markdown, structured as follows:
+%s
+%s Reply with the JSON object only.`
+
+// summarySystemPrompt builds the instructions for a theme and a language ("auto" or a key
+// of SummaryLanguages).
+func summarySystemPrompt(instructions, language string) string {
+	lang := "Write the title and the summary in the language of the transcript."
+	if name, ok := SummaryLanguages[language]; ok {
+		lang = "Write the title and the summary in " + name + ", regardless of the transcript's language."
+	}
+	return fmt.Sprintf(summaryPrompt, instructions, lang)
+}
 
 // AIService runs the transcription and summary stages through OpenRouter, and manages the
 // OpenRouter settings.
 type AIService struct {
+	themes   *ThemeService
 	settings ports.SettingsRepository
 	objects  ports.ObjectStore
 	ai       AIClient
@@ -61,8 +74,8 @@ type AIService struct {
 }
 
 // NewAIService builds the service. tmpDir holds audio while it is being transcribed.
-func NewAIService(st ports.SettingsRepository, objects ports.ObjectStore, ai AIClient, tmpDir string, log *slog.Logger) *AIService {
-	return &AIService{settings: st, objects: objects, ai: ai, tmpDir: tmpDir, log: log, clock: time.Now}
+func NewAIService(st ports.SettingsRepository, themes *ThemeService, objects ports.ObjectStore, ai AIClient, tmpDir string, log *slog.Logger) *AIService {
+	return &AIService{settings: st, themes: themes, objects: objects, ai: ai, tmpDir: tmpDir, log: log, clock: time.Now}
 }
 
 // --- settings ---
@@ -290,9 +303,19 @@ func (s *AIService) Summarize(ctx context.Context, rec *recording.Recording) err
 	if rec.Transcript == nil {
 		return errors.New("recording has no transcript")
 	}
+	opts := rec.SummaryOptions
+	language := opts.Language
+	if language == "" {
+		language = "auto"
+	}
+	model := st.SummaryModel
+	if opts.Model != "" {
+		model = opts.Model
+	}
+	th := s.themes.Resolve(ctx, rec.OwnerID, opts.ThemeID)
 	if strings.TrimSpace(rec.Transcript.Text) == "" {
 		rec.Summary = &recording.Summary{Title: "No speech detected", Markdown: "_No speech was detected in this recording._",
-			Model: "", CreatedAt: s.clock().UTC()}
+			Language: language, ThemeID: th.ID, ThemeName: th.Name, CreatedAt: s.clock().UTC()}
 		return nil
 	}
 
@@ -304,10 +327,10 @@ func (s *AIService) Summarize(ctx context.Context, rec *recording.Recording) err
 		fmt.Fprintf(&meta, "Source title: %s\n", rec.Title)
 	}
 	answer, err := s.ai.Complete(ctx, st.APIKey, openrouter.Request{
-		Model: st.SummaryModel,
+		Model: model,
 		JSON:  true,
 		Messages: []openrouter.Message{
-			{Role: "system", Content: summaryPrompt},
+			{Role: "system", Content: summarySystemPrompt(th.Instructions, language)},
 			{Role: "user", Content: meta.String() + "\nTranscript:\n\n" + rec.Transcript.Text},
 		},
 	})
@@ -315,8 +338,9 @@ func (s *AIService) Summarize(ctx context.Context, rec *recording.Recording) err
 		return fmt.Errorf("summarize: %w", err)
 	}
 	title, markdown := parseSummary(answer)
-	rec.Summary = &recording.Summary{Title: title, Markdown: markdown, Model: st.SummaryModel, CreatedAt: s.clock().UTC()}
-	s.log.Info("recording summarized", "id", rec.ID, "model", st.SummaryModel, "title", title)
+	rec.Summary = &recording.Summary{Title: title, Markdown: markdown, Model: model, Language: language,
+		ThemeID: th.ID, ThemeName: th.Name, CreatedAt: s.clock().UTC()}
+	s.log.Info("recording summarized", "id", rec.ID, "model", model, "theme", th.ID, "language", language, "title", title)
 	return nil
 }
 

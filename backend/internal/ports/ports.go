@@ -11,6 +11,7 @@ import (
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/device"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/settings"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/theme"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/user"
 )
 
@@ -73,6 +74,17 @@ type SessionRepository interface {
 type SettingsRepository interface {
 	OpenRouter(ctx context.Context) (*settings.OpenRouter, error)
 	SaveOpenRouter(ctx context.Context, s *settings.OpenRouter) error
+}
+
+// ThemeRepository persists users' own summary themes. Get of a missing theme returns
+// domain.ErrNotFound.
+type ThemeRepository interface {
+	Create(ctx context.Context, t *theme.Theme) error
+	Get(ctx context.Context, id string) (*theme.Theme, error)
+	List(ctx context.Context, ownerID string) ([]*theme.Theme, error)
+	Update(ctx context.Context, t *theme.Theme) error
+	Delete(ctx context.Context, id string) error
+	DeleteByOwner(ctx context.Context, ownerID string) error
 }
 
 // ObjectStore stores binary objects (the audio files). Get of a missing key returns

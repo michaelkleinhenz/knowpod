@@ -3,6 +3,8 @@ package http
 import (
 	"net/http"
 	"time"
+
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/service"
 )
 
 // sessionCookie holds the web UI session token. It is HttpOnly (not readable by scripts) and
@@ -48,6 +50,20 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, accountFrom(r.Context()))
 }
 
+// handleUpdatePreferences changes the signed-in user's own settings (UI language).
+func (s *Server) handleUpdatePreferences(w http.ResponseWriter, r *http.Request) {
+	var p service.Preferences
+	if !decode(w, r, &p) {
+		return
+	}
+	acc, err := s.auth.UpdatePreferences(r.Context(), accountFrom(r.Context()), p)
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, acc)
+}
+
 func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	var req changePasswordRequest
 	if !decode(w, r, &req) {
@@ -55,7 +71,7 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	c, err := r.Cookie(sessionCookie)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errResponse{Error: "sign in to the web UI to change your password"})
+		writeCode(w, http.StatusBadRequest, "session_required", "sign in to the web UI to change your password")
 		return
 	}
 	if err := s.auth.ChangePassword(r.Context(), accountFrom(r.Context()), c.Value, req.CurrentPassword, req.NewPassword); err != nil {

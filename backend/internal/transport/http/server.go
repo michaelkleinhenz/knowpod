@@ -41,6 +41,7 @@ type Server struct {
 	objects ports.ObjectStore
 	pocket  *service.PocketService
 	ai      *service.AIService
+	themes  *service.ThemeService
 	now     func() time.Time
 }
 
@@ -59,6 +60,7 @@ type Deps struct {
 	Objects ports.ObjectStore
 	Pocket  *service.PocketService
 	AI      *service.AIService
+	Themes  *service.ThemeService
 }
 
 // NewServer builds the server.
@@ -69,7 +71,7 @@ func NewServer(d Deps) *Server {
 	}
 	return &Server{
 		cfg: d.Cfg, log: log, db: d.DB, auth: d.Auth, users: d.Users, devices: d.Devices, uploads: d.Uploads,
-		manual: d.Manual, actions: d.Actions, objects: d.Objects, pocket: d.Pocket, ai: d.AI, now: time.Now,
+		manual: d.Manual, actions: d.Actions, objects: d.Objects, pocket: d.Pocket, ai: d.AI, themes: d.Themes, now: time.Now,
 	}
 }
 
@@ -118,7 +120,15 @@ func (s *Server) Router() http.Handler {
 			u.Put("/auth/password", s.handleChangePassword)
 			u.Get("/me/pocket", s.handleGetPocketSettings)
 			u.Put("/me/pocket", s.handleUpdatePocketSettings)
+			u.Put("/me/preferences", s.handleUpdatePreferences)
 			u.Get("/ai/status", s.handleAIStatus)
+			u.Get("/ai/models", s.handleOpenRouterModels)
+			u.Get("/ai/languages", s.handleSummaryLanguages)
+
+			u.Get("/themes", s.handleListThemes)
+			u.Post("/themes", s.handleCreateTheme)
+			u.Put("/themes/{id}", s.handleUpdateTheme)
+			u.Delete("/themes/{id}", s.handleDeleteTheme)
 
 			u.Get("/devices", s.handleListDevices)
 			u.Post("/devices", s.handleRegisterDevice)
@@ -144,7 +154,6 @@ func (s *Server) Router() http.Handler {
 			a.Put("/users/{id}/password", s.handleSetUserPassword)
 			a.Get("/settings/openrouter", s.handleGetOpenRouterSettings)
 			a.Put("/settings/openrouter", s.handleUpdateOpenRouterSettings)
-			a.Get("/openrouter/models", s.handleOpenRouterModels)
 		})
 	})
 
@@ -153,7 +162,7 @@ func (s *Server) Router() http.Handler {
 	spa := web.Handler()
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") {
-			writeJSON(w, http.StatusNotFound, errResponse{Error: "not found"})
+			writeCode(w, http.StatusNotFound, "not_found", "not found")
 			return
 		}
 		spa.ServeHTTP(w, r)

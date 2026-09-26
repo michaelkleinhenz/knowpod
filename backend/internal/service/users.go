@@ -11,8 +11,16 @@ import (
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/ports"
 )
 
-// ErrEmailTaken is returned when another user already has the email.
-var ErrEmailTaken = errors.New("a user with this email already exists")
+var (
+	// ErrEmailTaken is returned when another user already has the email.
+	ErrEmailTaken = errors.New("a user with this email already exists")
+	// ErrSelfDelete: administrators can't delete their own account.
+	ErrSelfDelete = errors.New("you can't delete your own account")
+	// ErrBuiltInAdmin: the ADMIN_EMAIL account can't be deleted, renamed or demoted.
+	ErrBuiltInAdmin = errors.New("the built-in admin can't be deleted, renamed or demoted")
+	// ErrLastAdmin: at least one admin must remain.
+	ErrLastAdmin = errors.New("there must be at least one admin")
+)
 
 // UserView is a user as shown to administrators (no secrets).
 type UserView struct {
@@ -39,6 +47,7 @@ type UserService struct {
 	sessions   ports.SessionRepository
 	devices    ports.DeviceRepository
 	recs       ports.RecordingRepository
+	themes     ports.ThemeRepository
 	auth       *AuthService
 	recordings *RecordingService
 	clock      func() time.Time
@@ -46,8 +55,9 @@ type UserService struct {
 
 // NewUserService builds the service.
 func NewUserService(users ports.UserRepository, sessions ports.SessionRepository, devices ports.DeviceRepository,
-	recs ports.RecordingRepository, auth *AuthService, recordings *RecordingService) *UserService {
-	return &UserService{users: users, sessions: sessions, devices: devices, recs: recs, auth: auth, recordings: recordings, clock: time.Now}
+	recs ports.RecordingRepository, themes ports.ThemeRepository, auth *AuthService, recordings *RecordingService) *UserService {
+	return &UserService{users: users, sessions: sessions, devices: devices, recs: recs, themes: themes, auth: auth,
+		recordings: recordings, clock: time.Now}
 }
 
 func (s *UserService) view(u *user.User) UserView {
@@ -115,7 +125,7 @@ func (s *UserService) Update(ctx context.Context, id string, in UserInput) (*Use
 			return nil, err
 		}
 		if email != u.Email && s.auth.IsBuiltIn(u) {
-			return nil, errors.Join(ErrForbidden, errors.New("the built-in admin's email is set by ADMIN_EMAIL"))
+			return nil, errors.Join(ErrForbidden, ErrBuiltInAdmin)
 		}
 		u.Email = email
 	}
@@ -125,7 +135,7 @@ func (s *UserService) Update(ctx context.Context, id string, in UserInput) (*Use
 		}
 		if u.Role == user.RoleAdmin {
 			if s.auth.IsBuiltIn(u) {
-				return nil, errors.Join(ErrForbidden, errors.New("the built-in admin stays an admin"))
+				return nil, errors.Join(ErrForbidden, ErrBuiltInAdmin)
 			}
 			if err := s.keepAnAdmin(ctx, u.ID); err != nil {
 				return nil, err
@@ -166,9 +176,9 @@ func (s *UserService) Delete(ctx context.Context, actor *Account, id string) err
 	}
 	switch {
 	case u.ID == actor.ID:
-		return errors.Join(ErrForbidden, errors.New("you can't delete your own account"))
+		return errors.Join(ErrForbidden, ErrSelfDelete)
 	case s.auth.IsBuiltIn(u):
-		return errors.Join(ErrForbidden, errors.New("the built-in admin can't be deleted"))
+		return errors.Join(ErrForbidden, ErrBuiltInAdmin)
 	case u.Role == user.RoleAdmin:
 		if err := s.keepAnAdmin(ctx, u.ID); err != nil {
 			return err
@@ -198,6 +208,11 @@ func (s *UserService) Delete(ctx context.Context, actor *Account, id string) err
 			}
 		}
 	}
+	if s.themes != nil {
+		if err := s.themes.DeleteByOwner(ctx, u.ID); err != nil {
+			return err
+		}
+	}
 	if err := s.sessions.DeleteByUser(ctx, u.ID, ""); err != nil {
 		return err
 	}
@@ -215,7 +230,7 @@ func (s *UserService) keepAnAdmin(ctx context.Context, exceptID string) error {
 			return nil
 		}
 	}
-	return errors.Join(ErrForbidden, errors.New("there must be at least one admin"))
+	return errors.Join(ErrForbidden, ErrLastAdmin)
 }
 
 func validEmail(s string) (string, error) {

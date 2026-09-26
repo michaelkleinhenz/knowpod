@@ -28,6 +28,24 @@ type User struct {
 	CreatedAt         time.Time  `bson:"createdAt"`
 	PasswordChangedAt *time.Time `bson:"passwordChangedAt,omitempty"`
 	Pocket            Pocket     `bson:"pocket"`
+	// Language is the web UI language ("en", "de"); empty follows the browser.
+	Language string `bson:"language,omitempty"`
+}
+
+// Languages lists the supported web UI languages.
+var Languages = []string{"en", "de"}
+
+// ValidLanguage reports whether lang is a supported UI language (or empty).
+func ValidLanguage(lang string) bool {
+	if lang == "" {
+		return true
+	}
+	for _, l := range Languages {
+		if l == lang {
+			return true
+		}
+	}
+	return false
 }
 
 // Pocket is a user's Pocket (heypocketai.com) integration. WebhookID is the random part of

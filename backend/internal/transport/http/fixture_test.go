@@ -50,7 +50,8 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	if _, err := auth.EnsureBuiltInAdmin(ctx); err != nil {
 		t.Fatal(err)
 	}
-	actions := service.NewRecordingService(recs, objects, spool)
+	themes := service.NewThemeService(memory.NewThemes())
+	actions := service.NewRecordingService(recs, objects, spool, themes)
 	archiver := service.NewArchiver(spool, objects, false, log)
 	w := worker.New(recs, []worker.Stage{{
 		Name: "archive", From: recording.StatusReceived, To: recording.StatusStored, Run: archiver.Run, Cleanup: archiver.Cleanup,
@@ -58,11 +59,12 @@ func newAPIFixture(t *testing.T) *apiFixture {
 
 	s := NewServer(Deps{
 		Cfg: config.Config{AdminToken: adminToken}, Log: log, Auth: auth,
-		Users:   service.NewUserService(users, sessions, devs, recs, auth, actions),
+		Users:   service.NewUserService(users, sessions, devs, recs, memory.NewThemes(), auth, actions),
 		Devices: service.NewDeviceService(devs), Uploads: service.NewUploadService(recs, spool, 1<<30),
 		Manual: service.NewManualUploadService(recs, spool, 1<<30), Actions: actions, Objects: objects,
 		Pocket: service.NewPocketService(recs, users, nil, spool, 1<<20, log),
-		AI:     service.NewAIService(memory.NewSettings(), objects, nil, t.TempDir(), log),
+		AI:     service.NewAIService(memory.NewSettings(), themes, objects, nil, t.TempDir(), log),
+		Themes: themes,
 	})
 	srv := httptest.NewServer(s.Router())
 	t.Cleanup(srv.Close)

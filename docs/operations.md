@@ -114,8 +114,8 @@ a user, and each user sees only their own conversations and devices.
 
 | Role | Can |
 |---|---|
-| **User** | Use Conversations (including uploads), Devices, Status, and Account (own password, own Pocket integration). |
-| **Admin** | Everything a user can, plus **Users** (create, edit, set passwords, delete) and **Settings** (OpenRouter). |
+| **User** | Use Conversations (including uploads and summary details), Devices, Status, Account (own password, own Pocket integration) and Settings (language, own themes). |
+| **Admin** | Everything a user can, plus **Users** (create, edit, set passwords, delete) and the OpenRouter section of **Settings**. |
 
 **The built-in admin** is `ADMIN_EMAIL`. Its record is created at startup; until a password
 is set for it in the UI (by itself under **Account**, or by another admin under **Users**),
@@ -127,7 +127,7 @@ users (assigned once at startup).
 **Managing users** (admins, **Users** page): create a user with an initial password and a
 role, change a user's email or role, set a new password (the user is signed out
 everywhere), or delete a user. Deleting removes the user **with all their devices,
-conversations and audio**. Admins can't delete themselves, and the last admin can't be
+conversations, audio and themes**. Admins can't delete themselves, and the last admin can't be
 removed or demoted.
 
 **Sessions** are stored in MongoDB and last `SESSION_TTL` (7 days by default). The user is
@@ -188,6 +188,34 @@ Pocket's transcripts, summaries and action items in the webhook payload are not 
 **Log messages:** `pocket recording queued`, `pocket audio fetched`, and
 `pocket webhook rejected` (signature problems, with the reason and user).
 
+## Summaries: themes, language, model
+
+Every summary is written with a **theme**, a set of instructions that define its structure.
+Built-in themes: Auto (adaptive; the default), Meeting Notes, Call Notes, Interview Notes,
+Dictation Notes, Key Points and Lecture Notes. Each user can add their own themes under
+**Settings → Summary themes** (name, short description, instructions such as "Write
+`## Needs` as bullets, then `## Next steps` with owners"); they are private to that user and
+deleted with the user.
+
+On a conversation, **Summary details** (next to the summary heading) sets:
+
+- **Language**: auto-detect (the transcript's language; default) or one of 23 languages.
+- **Model**: the default summary model from the admin settings, or any OpenRouter text model.
+- **Theme**: a built-in or own theme.
+
+**Regenerate summary** stores these choices with the recording (they also apply to later
+re-summaries and re-transcriptions) and summarizes it again. The summary records which
+theme, language and model it was made with. Deleting a theme doesn't change existing
+summaries; regenerating them then uses Auto.
+
+## Language of the app
+
+The web UI is available in English and German. Before signing in it follows the browser's
+language; each user then chooses a language under **Settings → Language**, which is saved
+with the account and applies on every device. API error responses carry a stable `code`
+(e.g. `invalid_login`, `email_taken`) that the UI translates; the `error` text stays
+English. The API reference on the Status page is shown in English.
+
 ## Uploading audio files
 
 On **Conversations**, **Upload** (or dragging files onto the page) sends WAV and MP3 files
@@ -216,8 +244,10 @@ variables:
 
 1. Create an API key at [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys)
    (and add credit to the OpenRouter account).
-2. In knowpod, open **Settings**, paste the key, choose a **transcription model** (only
-   models that accept audio are offered) and a **summary model**, and save.
+2. In knowpod, open **Settings** (as an admin), paste the key under **AI processing**,
+   choose a **transcription model** (only models that accept audio are offered) and a
+   **default summary model**, and save. Users can pick another summary model per
+   conversation.
 
 Recordings that arrived before this wait in `stored` and are processed as soon as the
 settings are saved. Usage is billed by OpenRouter per token; the Settings page shows each

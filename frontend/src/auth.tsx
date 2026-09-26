@@ -1,11 +1,14 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useState } from 'react';
 import { Account, api, ApiError } from './api/client';
+import { applyLanguage } from './i18n';
 
 interface AuthState {
   account: Account | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  // update replaces the signed-in account (e.g. after changing preferences).
+  update: (a: Account) => void;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -19,7 +22,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     api
       .me()
-      .then(setAccount)
+      .then((a) => {
+        applyLanguage(a.language);
+        setAccount(a);
+      })
       .catch((e) => {
         if (!(e instanceof ApiError && e.status === 401)) console.error(e);
         setAccount(null);
@@ -28,7 +34,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
-    setAccount(await api.login(email, password));
+    const a = await api.login(email, password);
+    applyLanguage(a.language);
+    setAccount(a);
   }, []);
 
   const logout = useCallback(async () => {
@@ -36,7 +44,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAccount(null);
   }, []);
 
-  return <AuthContext.Provider value={{ account, loading, login, logout }}>{children}</AuthContext.Provider>;
+  const update = useCallback((a: Account) => {
+    applyLanguage(a.language);
+    setAccount(a);
+  }, []);
+
+  return <AuthContext.Provider value={{ account, loading, login, logout, update }}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth(): AuthState {

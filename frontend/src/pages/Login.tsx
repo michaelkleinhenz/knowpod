@@ -1,8 +1,11 @@
 import { FormEvent, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
+import { errorText } from '../lib/errors';
 
 export function Login() {
+  const { t } = useTranslation();
   const { account, login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -22,7 +25,7 @@ export function Login() {
       await login(email, password);
       navigate(from, { replace: true });
     } catch (err) {
-      setError((err as Error).message);
+      setError(errorText(err, t));
     } finally {
       setBusy(false);
     }
@@ -30,14 +33,14 @@ export function Login() {
 
   return (
     <section className="card narrow">
-      <h1>Sign in</h1>
+      <h1>{t('login.title')}</h1>
       <form onSubmit={handleSubmit} className="form">
         <label>
-          Email
+          {t('login.email')}
           <input type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} />
         </label>
         <label>
-          Password
+          {t('login.password')}
           <input
             type="password"
             autoComplete="current-password"
@@ -48,7 +51,7 @@ export function Login() {
         </label>
         {error && <p className="error">{error}</p>}
         <button type="submit" disabled={busy}>
-          {busy ? 'Signing in…' : 'Sign in'}
+          {busy ? t('login.submitting') : t('login.submit')}
         </button>
       </form>
     </section>

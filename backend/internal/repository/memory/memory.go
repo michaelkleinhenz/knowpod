@@ -11,6 +11,7 @@ import (
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/device"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/settings"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/theme"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/user"
 )
 
@@ -406,5 +407,79 @@ func (m *Settings) SaveOpenRouter(_ context.Context, s *settings.OpenRouter) err
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.openRouter = *s
+	return nil
+}
+
+// Themes is an in-memory ports.ThemeRepository.
+type Themes struct {
+	mu     sync.Mutex
+	themes map[string]theme.Theme
+}
+
+// NewThemes builds an empty repository.
+func NewThemes() *Themes { return &Themes{themes: map[string]theme.Theme{}} }
+
+func (m *Themes) Create(_ context.Context, t *theme.Theme) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.themes[t.ID]; ok {
+		return domain.ErrDuplicate
+	}
+	m.themes[t.ID] = *t
+	return nil
+}
+
+func (m *Themes) Get(_ context.Context, id string) (*theme.Theme, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	t, ok := m.themes[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	return &t, nil
+}
+
+func (m *Themes) List(_ context.Context, ownerID string) ([]*theme.Theme, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := []*theme.Theme{}
+	for _, t := range m.themes {
+		t := t
+		if t.OwnerID == ownerID {
+			out = append(out, &t)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+func (m *Themes) Update(_ context.Context, t *theme.Theme) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.themes[t.ID]; !ok {
+		return domain.ErrNotFound
+	}
+	m.themes[t.ID] = *t
+	return nil
+}
+
+func (m *Themes) Delete(_ context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.themes[id]; !ok {
+		return domain.ErrNotFound
+	}
+	delete(m.themes, id)
+	return nil
+}
+
+func (m *Themes) DeleteByOwner(_ context.Context, ownerID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, t := range m.themes {
+		if t.OwnerID == ownerID {
+			delete(m.themes, id)
+		}
+	}
 	return nil
 }

@@ -41,7 +41,7 @@ func (f *fakeAI) Models(context.Context) ([]openrouter.Model, error) { return f.
 func newAI(t *testing.T, ai *fakeAI) (*AIService, *memstore.Store) {
 	t.Helper()
 	objects := memstore.New()
-	s := NewAIService(memory.NewSettings(), objects, ai, t.TempDir(), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	s := NewAIService(memory.NewSettings(), NewThemeService(memory.NewThemes()), objects, ai, t.TempDir(), slog.New(slog.NewTextHandler(io.Discard, nil)))
 	key, model := "sk-test", "google/gemini-2.5-flash"
 	if _, err := s.UpdateSettings(context.Background(), OpenRouterUpdate{APIKey: &key, TranscriptionModel: &model, SummaryModel: &model}); err != nil {
 		t.Fatal(err)
@@ -179,7 +179,7 @@ func TestRecordingActions(t *testing.T) {
 	recs := memory.NewRecordings()
 	objects := memstore.New()
 	spool, _ := NewSpool(t.TempDir())
-	s := NewRecordingService(recs, objects, spool)
+	s := NewRecordingService(recs, objects, spool, NewThemeService(memory.NewThemes()))
 	owner, stranger := &Account{ID: "u1"}, &Account{ID: "u2"}
 	requeued := 0
 	s.OnRequeued = func() { requeued++ }
@@ -190,13 +190,13 @@ func TestRecordingActions(t *testing.T) {
 		Transcript: &recording.Transcript{Text: "t"}, Summary: &recording.Summary{Title: "s"}, Attempts: 3, LastError: "old"}
 	_ = recs.Create(ctx, rec)
 
-	if _, err := s.Resummarize(ctx, stranger, "r1"); !errors.Is(err, ErrNotFound) {
+	if _, err := s.Resummarize(ctx, stranger, "r1", nil); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("other user's recording: %v", err)
 	}
 	if err := s.Delete(ctx, stranger, "r1"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("other user's delete: %v", err)
 	}
-	got, err := s.Resummarize(ctx, owner, "r1")
+	got, err := s.Resummarize(ctx, owner, "r1", nil)
 	if err != nil || got.Status != recording.StatusTranscribed || got.Summary != nil || got.Transcript == nil || got.Attempts != 0 || got.LastError != "" {
 		t.Fatalf("resummarize: %+v, %v", got, err)
 	}
@@ -204,7 +204,7 @@ func TestRecordingActions(t *testing.T) {
 	if err != nil || got.Status != recording.StatusStored || got.Transcript != nil || requeued != 2 {
 		t.Fatalf("retranscribe: %+v, %v", got, err)
 	}
-	if _, err := s.Resummarize(ctx, owner, "r1"); !errors.Is(err, ErrNotReady) {
+	if _, err := s.Resummarize(ctx, owner, "r1", nil); !errors.Is(err, ErrNotReady) {
 		t.Fatalf("resummarize without transcript: %v", err)
 	}
 

@@ -1,4 +1,5 @@
 import { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './auth';
 import { Layout } from './components/Layout';
@@ -14,9 +15,10 @@ import { Status } from './pages/Status';
 // RequireLogin sends signed-out visitors to the login page and back afterwards. With admin,
 // only administrators get through.
 function RequireLogin({ children, admin = false }: { children: ReactNode; admin?: boolean }) {
+  const { t } = useTranslation();
   const { account, loading } = useAuth();
   const location = useLocation();
-  if (loading) return <p className="muted">Loading…</p>;
+  if (loading) return <p className="muted">{t('common.loading')}</p>;
   if (!account) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   if (admin && account.role !== 'admin') return <Navigate to="/" replace />;
   return <>{children}</>;
@@ -46,7 +48,7 @@ export default function App() {
         <Route
           path="/settings"
           element={
-            <RequireLogin admin>
+            <RequireLogin>
               <Settings />
             </RequireLogin>
           }

@@ -45,12 +45,12 @@ func (s *Server) requireDevice(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		dev, err := s.devices.Authenticate(r.Context(), bearer(r))
 		if errors.Is(err, service.ErrUnauthorized) {
-			writeJSON(w, http.StatusUnauthorized, errResponse{Error: err.Error()})
+			writeCode(w, http.StatusUnauthorized, "invalid_token", err.Error())
 			return
 		}
 		if err != nil {
 			s.log.Error("device authentication failed", "err", err)
-			writeJSON(w, http.StatusInternalServerError, errResponse{Error: "internal error"})
+			writeCode(w, http.StatusInternalServerError, "internal", "internal error")
 			return
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), deviceKey, dev)))
@@ -74,7 +74,7 @@ func (s *Server) requireUser(next http.Handler) http.Handler {
 func (s *Server) requireAdmin(next http.Handler) http.Handler {
 	return s.requireUser(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !accountFrom(r.Context()).IsAdmin() {
-			writeJSON(w, http.StatusForbidden, errResponse{Error: "administrators only"})
+			writeCode(w, http.StatusForbidden, "admin_only", "administrators only")
 			return
 		}
 		next.ServeHTTP(w, r)

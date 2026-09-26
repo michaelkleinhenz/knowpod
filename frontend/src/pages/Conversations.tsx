@@ -1,8 +1,10 @@
 import { ChangeEvent, DragEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { api, Recording } from '../api/client';
 import { useAuth } from '../auth';
 import { DocIcon, RefreshIcon, SearchIcon, UploadIcon } from '../components/Icons';
+import { errorText } from '../lib/errors';
 import { dayKey, dayLabel, formatTime, processing, statusLabel, title, when } from '../lib/recordings';
 
 const POLL_MS = 10_000;
@@ -20,6 +22,7 @@ interface UploadState {
 // WAV/MP3 uploads (button or drag and drop). While anything is still being processed, the
 // list refreshes itself.
 export function Conversations() {
+  const { t } = useTranslation();
   const { account } = useAuth();
   const [recordings, setRecordings] = useState<Recording[] | null>(null);
   const [aiReady, setAIReady] = useState(true);
@@ -38,11 +41,11 @@ export function Conversations() {
       setAIReady(ai.transcription && ai.summary);
       setError(null);
     } catch (err) {
-      setError((err as Error).message);
+      setError(errorText(err, t));
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
@@ -66,7 +69,7 @@ export function Conversations() {
         load();
         setTimeout(() => setUploads((list) => list.filter((x) => x.key !== key)), 4000);
       } catch (err) {
-        update({ error: (err as Error).message });
+        update({ error: errorText(err, t) });
       }
     }
   }
@@ -111,13 +114,13 @@ export function Conversations() {
       onDrop={handleDrop}
     >
       <div className="conversations-head">
-        <h1>All Conversations</h1>
+        <h1>{t('conversations.title')}</h1>
         <div className="head-actions">
-          <button type="button" className="pill-button icon-only-mobile" onClick={() => fileInput.current?.click()} aria-label="Upload audio">
-            <UploadIcon /> <span>Upload</span>
+          <button type="button" className="pill-button icon-only-mobile" onClick={() => fileInput.current?.click()} aria-label={t('conversations.uploadAudio')}>
+            <UploadIcon /> <span>{t('conversations.upload')}</span>
           </button>
-          <button type="button" className="pill-button icon-only-mobile" onClick={load} disabled={refreshing} aria-label="Refresh">
-            <RefreshIcon /> <span>{refreshing ? 'Refreshing…' : 'Refresh'}</span>
+          <button type="button" className="pill-button icon-only-mobile" onClick={load} disabled={refreshing} aria-label={t('common.refresh')}>
+            <RefreshIcon /> <span>{refreshing ? t('common.refreshing') : t('common.refresh')}</span>
           </button>
         </div>
         <input ref={fileInput} type="file" accept={ACCEPT} multiple hidden onChange={handleFiles} />
@@ -125,7 +128,13 @@ export function Conversations() {
 
       <label className="search">
         <SearchIcon />
-        <input type="search" placeholder="Search" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search conversations" />
+        <input
+          type="search"
+          placeholder={t('common.search')}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          aria-label={t('conversations.searchLabel')}
+        />
       </label>
 
       {uploads.length > 0 && (
@@ -137,13 +146,13 @@ export function Conversations() {
                 <span className="error">
                   {u.error}{' '}
                   <button type="button" className="link-button" onClick={() => setUploads((l) => l.filter((x) => x.key !== u.key))}>
-                    Dismiss
+                    {t('conversations.dismiss')}
                   </button>
                 </span>
               ) : (
                 <>
                   <progress max={1} value={u.progress} />
-                  <span className="muted">{u.done ? 'Uploaded' : `${Math.round(u.progress * 100)}%`}</span>
+                  <span className="muted">{u.done ? t('conversations.uploaded') : `${Math.round(u.progress * 100)} %`}</span>
                 </>
               )}
             </li>
@@ -153,31 +162,29 @@ export function Conversations() {
 
       {!aiReady && recordings && recordings.length > 0 && (
         <p className="notice">
-          Transcription and summaries are off until an administrator sets up OpenRouter
           {account?.role === 'admin' ? (
-            <>
-              {' '}
-              in <Link to="/settings">Settings</Link>
-            </>
-          ) : null}
-          .
+            <Trans i18nKey="conversations.aiOffAdmin" components={{ 1: <Link to="/settings" /> }} />
+          ) : (
+            t('conversations.aiOff')
+          )}
         </p>
       )}
       {error && <p className="error">{error}</p>}
-      {!recordings && !error && <p className="muted">Loading…</p>}
+      {!recordings && !error && <p className="muted">{t('common.loading')}</p>}
       {recordings && recordings.length === 0 && (
         <div className="empty">
-          <p className="muted">No conversations yet.</p>
+          <p className="muted">{t('conversations.empty')}</p>
           <p className="muted">
-            Upload a WAV or MP3 file, record with one of your <Link to="/devices">devices</Link>, or connect Pocket on the{' '}
-            <Link to="/account">Account</Link> page.
+            <Trans i18nKey="conversations.emptyHint" components={{ 1: <Link to="/devices" />, 3: <Link to="/account" /> }} />
           </p>
           <button type="button" onClick={() => fileInput.current?.click()}>
-            Upload audio
+            {t('conversations.uploadAudio')}
           </button>
         </div>
       )}
-      {recordings && recordings.length > 0 && groups.length === 0 && <p className="muted empty">No conversation matches “{query}”.</p>}
+      {recordings && recordings.length > 0 && groups.length === 0 && (
+        <p className="muted empty">{t('conversations.noMatch', { query })}</p>
+      )}
 
       {groups.map((g) => {
         const { label, date } = dayLabel(g.day);
@@ -207,7 +214,7 @@ export function Conversations() {
         );
       })}
 
-      {dragging && <div className="drop-overlay">Drop WAV or MP3 files to upload</div>}
+      {dragging && <div className="drop-overlay">{t('conversations.dropHint')}</div>}
     </section>
   );
 }

@@ -80,8 +80,9 @@ type Recording struct {
 	Audio             *Object    `bson:"audio,omitempty" json:"audio,omitempty"`       // archived FLAC
 	Original          *Object    `bson:"original,omitempty" json:"original,omitempty"` // archived WAV, if kept
 
-	Transcript *Transcript `bson:"transcript,omitempty" json:"transcript,omitempty"`
-	Summary    *Summary    `bson:"summary,omitempty" json:"summary,omitempty"`
+	Transcript     *Transcript    `bson:"transcript,omitempty" json:"transcript,omitempty"`
+	Summary        *Summary       `bson:"summary,omitempty" json:"summary,omitempty"`
+	SummaryOptions SummaryOptions `bson:"summaryOptions,omitempty" json:"summaryOptions"`
 
 	// Background processing bookkeeping. NotBefore is both the retry backoff and the lease of
 	// the worker currently processing the recording.
@@ -107,7 +108,18 @@ type Summary struct {
 	Title     string    `bson:"title" json:"title"`
 	Markdown  string    `bson:"markdown,omitempty" json:"markdown,omitempty"`
 	Model     string    `bson:"model" json:"model"`
+	Language  string    `bson:"language,omitempty" json:"language,omitempty"` // "auto" or a language tag
+	ThemeID   string    `bson:"themeId,omitempty" json:"themeId,omitempty"`
+	ThemeName string    `bson:"themeName,omitempty" json:"themeName,omitempty"`
 	CreatedAt time.Time `bson:"createdAt" json:"createdAt"`
+}
+
+// SummaryOptions choose how a recording is summarized. Empty fields use the defaults: the
+// transcript's language, the configured summary model and the "auto" theme.
+type SummaryOptions struct {
+	Language string `bson:"language,omitempty" json:"language,omitempty"` // "auto" or e.g. "de-DE"
+	Model    string `bson:"model,omitempty" json:"model,omitempty"`
+	ThemeID  string `bson:"themeId,omitempty" json:"themeId,omitempty"`
 }
 
 // ListFilter selects recordings for listing. Zero values mean "no restriction".

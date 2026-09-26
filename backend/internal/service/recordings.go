@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
@@ -15,6 +16,7 @@ var ErrNotReady = errors.New("recording is not ready for this")
 // RecordingService implements the user actions on recordings: delete, re-transcribe and
 // re-summarize.
 type RecordingService struct {
+	themes  *ThemeService
 	recs    ports.RecordingRepository
 	objects ports.ObjectStore
 	spool   *Spool
@@ -24,8 +26,8 @@ type RecordingService struct {
 }
 
 // NewRecordingService builds the service.
-func NewRecordingService(recs ports.RecordingRepository, objects ports.ObjectStore, spool *Spool) *RecordingService {
-	return &RecordingService{recs: recs, objects: objects, spool: spool, clock: time.Now}
+func NewRecordingService(recs ports.RecordingRepository, objects ports.ObjectStore, spool *Spool, themes *ThemeService) *RecordingService {
+	return &RecordingService{recs: recs, objects: objects, spool: spool, themes: themes, clock: time.Now}
 }
 
 // Get returns a recording the account may see.
@@ -83,8 +85,9 @@ func (s *RecordingService) Retranscribe(ctx context.Context, acc *Account, id st
 	return s.requeue(ctx, rec, recording.StatusStored)
 }
 
-// Resummarize discards the summary and queues the recording for summarizing again.
-func (s *RecordingService) Resummarize(ctx context.Context, acc *Account, id string) (*recording.Recording, error) {
+// Resummarize discards the summary and queues the recording for summarizing again, with new
+// options if given (nil keeps the current ones).
+func (s *RecordingService) Resummarize(ctx context.Context, acc *Account, id string, opts *recording.SummaryOptions) (*recording.Recording, error) {
 	rec, err := s.Get(ctx, acc, id)
 	if err != nil {
 		return nil, err
@@ -92,8 +95,34 @@ func (s *RecordingService) Resummarize(ctx context.Context, acc *Account, id str
 	if rec.Transcript == nil {
 		return nil, errors.Join(ErrNotReady, errors.New("the recording has no transcript yet"))
 	}
+	if opts != nil {
+		if err := s.validOptions(ctx, acc, opts); err != nil {
+			return nil, err
+		}
+		rec.SummaryOptions = *opts
+	}
 	rec.Summary = nil
 	return s.requeue(ctx, rec, recording.StatusTranscribed)
+}
+
+func (s *RecordingService) validOptions(ctx context.Context, acc *Account, o *recording.SummaryOptions) error {
+	o.Language, o.Model, o.ThemeID = strings.TrimSpace(o.Language), strings.TrimSpace(o.Model), strings.TrimSpace(o.ThemeID)
+	if o.Language == "auto" {
+		o.Language = ""
+	}
+	if _, ok := SummaryLanguages[o.Language]; o.Language != "" && !ok {
+		return invalid("unsupported summary language %q", o.Language)
+	}
+	if len(o.Model) > 200 || strings.ContainsAny(o.Model, " \t\n") {
+		return invalid("model IDs look like \"google/gemini-2.5-flash\"")
+	}
+	if o.ThemeID == AutoTheme {
+		o.ThemeID = ""
+	}
+	if o.ThemeID != "" && (s.themes == nil || !s.themes.Accessible(ctx, acc, o.ThemeID)) {
+		return invalid("unknown theme")
+	}
+	return nil
 }
 
 func (s *RecordingService) requeue(ctx context.Context, rec *recording.Recording, status recording.Status) (*recording.Recording, error) {

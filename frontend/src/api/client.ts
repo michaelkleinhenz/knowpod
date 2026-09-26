@@ -1,10 +1,13 @@
 // Thin API client. All server communication goes through here. The web UI authenticates
 // with an HttpOnly session cookie, which the browser sends automatically (same origin).
 
+// ApiError is an error answer from the API. code is a stable identifier that the UI
+// translates (see errorText in lib/errors.ts); message is the server's English text.
 export class ApiError extends Error {
   constructor(
     public status: number,
     message: string,
+    public code?: string,
   ) {
     super(message);
   }
@@ -27,8 +30,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     // Non-JSON error body (e.g. from a proxy); fall through to the status message.
   }
   if (!res.ok) {
-    const message = (data as { error?: string } | null)?.error || `Error ${res.status}`;
-    throw new ApiError(res.status, message);
+    const body = data as { error?: string; code?: string } | null;
+    throw new ApiError(res.status, body?.error || `Error ${res.status}`, body?.code);
   }
   return data as T;
 }
@@ -44,6 +47,27 @@ export interface Account {
   id: string;
   email: string;
   role: Role;
+  language?: string;
+}
+
+export interface Theme {
+  id: string;
+  name: string;
+  description: string;
+  instructions: string;
+  builtIn: boolean;
+}
+
+export interface ThemeInput {
+  name: string;
+  description: string;
+  instructions: string;
+}
+
+export interface SummaryOptions {
+  language?: string;
+  model?: string;
+  themeId?: string;
 }
 
 export interface User {
@@ -100,7 +124,16 @@ export interface Recording {
   format?: { sampleRate: number; channels: number; bitsPerSample: number; durationMs: number };
   audio?: { key: string; contentType: string; size: number };
   transcript?: { text: string; model: string; createdAt: string };
-  summary?: { title: string; markdown?: string; model: string; createdAt: string };
+  summary?: {
+    title: string;
+    markdown?: string;
+    model: string;
+    language?: string;
+    themeId?: string;
+    themeName?: string;
+    createdAt: string;
+  };
+  summaryOptions?: SummaryOptions;
   lastError?: string;
 }
 
@@ -168,10 +201,11 @@ function uploadRecording(file: File, onProgress: (fraction: number) => void): Pr
       } catch {
         // fall through
       }
+      const body = data as { error?: string; code?: string } | null;
       if (xhr.status >= 200 && xhr.status < 300) resolve(data as Recording);
-      else reject(new ApiError(xhr.status, (data as { error?: string } | null)?.error || `Error ${xhr.status}`));
+      else reject(new ApiError(xhr.status, body?.error || `Error ${xhr.status}`, body?.code));
     };
-    xhr.onerror = () => reject(new ApiError(0, 'Network error during upload'));
+    xhr.onerror = () => reject(new ApiError(0, 'Network error during upload', 'network'));
     xhr.send(file);
   });
 }
@@ -188,7 +222,8 @@ export const api = {
   recording: (id: string) => request<Recording>('GET', `/recordings/${encodeURIComponent(id)}`),
   deleteRecording: (id: string) => request<void>('DELETE', `/recordings/${encodeURIComponent(id)}`),
   retranscribe: (id: string) => request<Recording>('POST', `/recordings/${encodeURIComponent(id)}/retranscribe`),
-  resummarize: (id: string) => request<Recording>('POST', `/recordings/${encodeURIComponent(id)}/resummarize`),
+  resummarize: (id: string, opts?: SummaryOptions) =>
+    request<Recording>('POST', `/recordings/${encodeURIComponent(id)}/resummarize`, opts),
   audioURL: (id: string, download = false) => `/api/v1/recordings/${encodeURIComponent(id)}/audio${download ? '?download=1' : ''}`,
   uploadRecording,
   users: () => request<User[]>('GET', '/admin/users'),
@@ -200,7 +235,13 @@ export const api = {
   openRouterSettings: () => request<OpenRouterSettings>('GET', '/admin/settings/openrouter'),
   saveOpenRouterSettings: (u: { apiKey?: string; transcriptionModel?: string; summaryModel?: string }) =>
     request<OpenRouterSettings>('PUT', '/admin/settings/openrouter', u),
-  openRouterModels: () => request<{ transcription: ModelOption[]; summary: ModelOption[] }>('GET', '/admin/openrouter/models'),
+  aiModels: () => request<{ transcription: ModelOption[]; summary: ModelOption[] }>('GET', '/ai/models'),
+  aiLanguages: () => request<string[]>('GET', '/ai/languages'),
+  themes: () => request<Theme[]>('GET', '/themes'),
+  createTheme: (t: ThemeInput) => request<Theme>('POST', '/themes', t),
+  updateTheme: (id: string, t: ThemeInput) => request<Theme>('PUT', `/themes/${encodeURIComponent(id)}`, t),
+  deleteTheme: (id: string) => request<void>('DELETE', `/themes/${encodeURIComponent(id)}`),
+  savePreferences: (p: { language?: string }) => request<Account>('PUT', '/me/preferences', p),
   createDevice: (name: string) => request<DeviceWithToken>('POST', '/devices', { name }),
   rotateDeviceToken: (id: string) => request<DeviceWithToken>('POST', `/devices/${encodeURIComponent(id)}/token`),
   removeDevice: (id: string) => request<void>('DELETE', `/devices/${encodeURIComponent(id)}`),

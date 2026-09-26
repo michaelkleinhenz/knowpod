@@ -19,28 +19,28 @@ const maxWebhookBody = 10 << 20
 func (s *Server) handlePocketWebhook(w http.ResponseWriter, r *http.Request) {
 	owner, err := s.pocket.WebhookUser(r.Context(), chi.URLParam(r, "webhookId"))
 	if err != nil {
-		writeJSON(w, http.StatusNotFound, errResponse{Error: "unknown webhook"})
+		writeCode(w, http.StatusNotFound, "unknown_webhook", "unknown webhook")
 		return
 	}
 	if owner.Pocket.WebhookSecret == "" || owner.Pocket.APIKey == "" {
-		writeJSON(w, http.StatusServiceUnavailable, errResponse{Error: "Pocket integration is not set up for this user"})
+		writeCode(w, http.StatusServiceUnavailable, "pocket_not_configured", "Pocket integration is not set up for this user")
 		return
 	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxWebhookBody))
 	if err != nil {
-		writeJSON(w, http.StatusRequestEntityTooLarge, errResponse{Error: "payload too large"})
+		writeCode(w, http.StatusRequestEntityTooLarge, "too_large", "payload too large")
 		return
 	}
 	err = pocket.VerifySignature(owner.Pocket.WebhookSecret, r.Header.Get(pocket.TimestampHeader),
 		r.Header.Get(pocket.SignatureHeader), body, s.now())
 	if err != nil {
 		s.log.Warn("pocket webhook rejected", "err", err, "user", owner.ID, "remote", r.RemoteAddr)
-		writeJSON(w, http.StatusUnauthorized, errResponse{Error: pocket.ErrBadSignature.Error()})
+		writeCode(w, http.StatusUnauthorized, "bad_signature", pocket.ErrBadSignature.Error())
 		return
 	}
 	ev, err := pocket.ParseEvent(body)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errResponse{Error: "invalid payload"})
+		writeCode(w, http.StatusBadRequest, "invalid_request", "invalid payload")
 		return
 	}
 	result, err := s.pocket.HandleWebhook(r.Context(), owner, ev)

@@ -1200,3 +1200,350 @@ a {
   font-weight: 600;
   pointer-events: none;
 }
+
+/* --- Summary header and details menu --- */
+
+.summary-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding-bottom: 0.75rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px dashed var(--color-border);
+}
+
+.summary-head h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.summary-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.ghost-button,
+.details-trigger {
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--color-text);
+  background: none;
+  border: none;
+  border-radius: 999px;
+  padding: 0.35rem 0.7rem;
+  cursor: pointer;
+}
+
+.details-trigger {
+  background: var(--color-bg);
+  color: var(--color-muted);
+}
+
+.ghost-button:hover,
+.details-trigger:hover {
+  background: #e2e7ee;
+}
+
+.chevron {
+  display: inline-block;
+  transform: rotate(90deg);
+  margin-left: 0.2rem;
+  transition: transform 0.15s;
+}
+
+.chevron.up {
+  transform: rotate(-90deg);
+}
+
+.summary-details {
+  position: relative;
+}
+
+.details-backdrop {
+  display: none;
+}
+
+.details-panel {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 20rem;
+  max-width: calc(100vw - 2rem);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(30, 42, 58, 0.18);
+  padding: 0.5rem;
+}
+
+.details-title {
+  font-weight: 600;
+  padding: 0.5rem 0.6rem 0.7rem;
+  border-bottom: 1px dashed var(--color-border);
+  margin-bottom: 0.3rem;
+}
+
+.details-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.details-rows button,
+.details-list li button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  color: var(--color-text);
+  background: none;
+  border: none;
+  border-radius: 8px;
+  padding: 0.6rem;
+  cursor: pointer;
+}
+
+.details-rows button:hover,
+.details-list li button:hover,
+.details-list li button.selected {
+  background: var(--color-bg);
+}
+
+.row-label {
+  color: var(--color-muted);
+}
+
+.row-value {
+  flex: 1;
+  text-align: right;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.details-rows .chevron {
+  transform: none;
+  color: var(--color-muted);
+}
+
+.regenerate {
+  display: block;
+  width: 100%;
+  margin-top: 0.6rem;
+  font: inherit;
+  font-weight: 600;
+  color: var(--color-primary-dark);
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-primary);
+  border-radius: 999px;
+  padding: 0.6rem 1rem;
+  cursor: pointer;
+}
+
+.regenerate:hover:not(:disabled) {
+  background: #eef3f9;
+}
+
+.regenerate:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.details-note,
+.details-error {
+  margin: 0.5rem 0.4rem 0.2rem;
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.details-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+  padding: 0.3rem 0.2rem 0.5rem;
+}
+
+.details-back {
+  font-size: 1.4rem;
+  line-height: 1;
+  width: 2rem;
+  height: 2rem;
+  color: var(--color-muted);
+  background: none;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.details-back:hover {
+  background: var(--color-bg);
+}
+
+.details-search {
+  width: 100%;
+  font: inherit;
+  font-size: 16px;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  margin-bottom: 0.4rem;
+}
+
+.details-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 18rem;
+  overflow-y: auto;
+}
+
+.option-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.option-label {
+  overflow-wrap: anywhere;
+}
+
+.option-sub {
+  font-size: 0.8rem;
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
+
+.check {
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
+.details-empty {
+  padding: 0.6rem;
+}
+
+/* On phones the menu is a bottom sheet. */
+@media (max-width: 600px) {
+  .details-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 39;
+    background: rgba(30, 42, 58, 0.35);
+  }
+
+  .details-panel {
+    position: fixed;
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    max-width: none;
+    border-radius: 16px 16px 0 0;
+    padding: 0.75rem 0.75rem calc(0.75rem + env(safe-area-inset-bottom));
+    max-height: 85vh;
+    overflow-y: auto;
+  }
+
+  .details-list ul {
+    max-height: 55vh;
+  }
+}
+
+/* --- Settings: themes --- */
+
+.subheading {
+  font-size: 1rem;
+  margin: 1.5rem 0 0.5rem;
+}
+
+.theme-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.theme-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.4rem 1rem;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.theme-row:last-child {
+  border-bottom: none;
+}
+
+.theme-row.builtin {
+  display: block;
+}
+
+.theme-row details summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.theme-row details summary::-webkit-details-marker {
+  display: none;
+}
+
+.theme-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.theme-name {
+  font-weight: 600;
+  margin-right: 0.6rem;
+}
+
+.theme-desc {
+  font-size: 0.85rem;
+}
+
+.theme-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.theme-instructions {
+  margin: 0.5rem 0 0.2rem;
+  font-size: 0.88rem;
+  color: var(--color-muted);
+  background: var(--color-bg);
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+  white-space: pre-wrap;
+}
+
+.theme-form {
+  margin-top: 0.4rem;
+}
+
+.form textarea {
+  font: inherit;
+  font-size: 16px;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  resize: vertical;
+  min-height: 7rem;
+}
+
+.form label .field-note {
+  font-weight: 400;
+}
