@@ -27,9 +27,9 @@ RUN adduser -D -u 10001 app && apk add --no-cache ca-certificates \
     && mkdir -p /data/uploads && chown app:app /data/uploads
 USER app
 COPY --from=backend /out/server /server
-# Spool for in-flight uploads and received WAV files awaiting archiving. Mount a volume so
-# partially uploaded recordings survive container restarts.
+# Spool for in-flight uploads and received WAV files awaiting archiving. Mount a persistent
+# volume here (a Railway volume, or a named volume in docker compose) so partially uploaded
+# recordings survive restarts. No VOLUME instruction: Railway rejects it.
 ENV UPLOAD_DIR=/data/uploads
-VOLUME /data/uploads
 EXPOSE 8080
 ENTRYPOINT ["/server"]

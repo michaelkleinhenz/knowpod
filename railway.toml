@@ -1,0 +1,14 @@
+# Railway deployment settings (config as code). Variables and the volume for the upload
+# spool are configured in the Railway dashboard; see docs/operations.md#railway.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# Railway waits for this to return 200 before switching traffic to a new deployment.
+# /healthz also checks the MongoDB connection.
+healthcheckPath = "/healthz"
+healthcheckTimeout = 120
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

@@ -12,6 +12,45 @@ list is in the [README](../README.md#configuration).
 | Persistent volume | Mounted at `UPLOAD_DIR` (`/data/uploads` in the image). |
 | TLS | The service speaks plain HTTP. Put it behind a load balancer or reverse proxy that terminates HTTPS and sets `X-Forwarded-Proto: https`. Device tokens, admin tokens and web UI session cookies are bearer credentials. |
 
+## Railway
+
+The service is deployed on [Railway](https://railway.com). `railway.toml` in the repository
+root sets the build (the root `Dockerfile`) and the deploy health check (`/healthz`).
+Everything else is configured in the Railway dashboard:
+
+1. **MongoDB.** Add a MongoDB service to the project.
+2. **App service** from this repository. Railway picks up `railway.toml`.
+3. **Volume.** Attach a volume to the app service with mount path `/data/uploads` (the
+   `UPLOAD_DIR` of the image). Without it, uploads in progress and recordings not yet
+   archived are lost on every redeploy.
+4. **Variables** on the app service:
+
+   | Variable | Value |
+   |---|---|
+   | `MONGO_URI` | `${{MongoDB.MONGO_URL}}` (reference to the MongoDB service's variable) |
+   | `MONGO_DATABASE` | `knowpod` |
+   | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | The default web UI login |
+   | `AWS_S3_BUCKET_NAME`, `AWS_DEFAULT_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | The S3 bucket and an IAM user's keys (see [S3](#s3)) |
+   | `RAILWAY_RUN_UID` | `0` (see below) |
+   | `ADMIN_TOKEN` | Optional, for scripts |
+
+   Don't set `PORT`; Railway provides it and the service listens on it.
+5. **Networking.** Generate a public domain for the app service. Railway terminates HTTPS
+   and sets `X-Forwarded-Proto` and the client IP headers that the session cookie and the
+   login rate limit rely on.
+
+**Why `RAILWAY_RUN_UID=0`:** Railway mounts volumes owned by root, and the image runs as the
+unprivileged user `app` (uid 10001). Without the variable, the service can't write to
+`/data/uploads`: uploads fail with permission errors.
+
+**One replica.** Keep the app service at one replica; the spool is local to the instance
+(see [Scaling](#scaling-and-the-spool)). A Railway service with a volume is limited to one
+replica anyway.
+
+If Railway's MongoDB runs as a standalone server rather than a replica set, the service
+logs `MongoDB is not a replica set member` at startup. That's fine; nothing uses
+transactions yet.
+
 ## Startup checks
 
 On start the service validates the configuration, connects to MongoDB and creates any

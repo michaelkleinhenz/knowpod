@@ -42,7 +42,7 @@ Supported input: integer PCM WAV, 8/16/24 bit, 1–8 channels, up to 4 GiB.
 |---|---|
 | [Device upload protocol](docs/device-protocol.md) | Implementing the upload client on the gadget: requests, error handling, retry logic |
 | [Architecture](docs/architecture.md) | Backend developers: components, recording lifecycle, worker, data model, adding processing stages |
-| [Operations](docs/operations.md) | Deploying and running: AWS/IAM setup, web UI sign-in, provisioning devices, monitoring, recovery, limitations |
+| [Operations](docs/operations.md) | Deploying and running: Railway, AWS/IAM setup, web UI sign-in, provisioning devices, monitoring, recovery, limitations |
 | [OpenAPI spec](backend/api/openapi.yaml) | The formal API definition |
 
 ## Quick start (Docker)
@@ -84,6 +84,12 @@ curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H "Upload-Offset: 0" \
 curl -s -H "$ADMIN" $API/admin/recordings/$ID | jq
 curl -s -H "$ADMIN" -o rec.flac $API/admin/recordings/$ID/audio
 ```
+
+## Deploying
+
+Production runs on [Railway](https://railway.com) with the root `Dockerfile` and
+`railway.toml`. The setup (MongoDB, volume, variables) is described in
+[Operations](docs/operations.md#railway).
 
 ## Build the binary without Docker
 
