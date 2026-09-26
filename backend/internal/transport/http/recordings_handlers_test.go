@@ -131,6 +131,22 @@ func TestManualUploadAndIsolation(t *testing.T) {
 	if rec.Status != recording.StatusStored || rec.Audio == nil || rec.Audio.ContentType != "audio/flac" {
 		t.Fatalf("archived: %+v", rec)
 	}
+	// Summaries can be edited once they exist.
+	var e errResponse
+	if res := bob.do("PUT", "/api/v1/recordings/"+rec.ID+"/summary", map[string]string{"title": "T", "markdown": "M"}, nil, &e); res.StatusCode != 409 || e.Code != "not_ready" {
+		t.Fatalf("edit without summary: %d %+v", res.StatusCode, e)
+	}
+	stored, _ := f.recs.Get(context.Background(), rec.ID)
+	stored.Summary = &recording.Summary{Title: "AI title", Markdown: "AI text", Model: "m"}
+	_ = f.recs.Update(context.Background(), stored)
+	if res := admin.do("PUT", "/api/v1/recordings/"+rec.ID+"/summary", map[string]string{"title": "T", "markdown": "M"}, nil, nil); res.StatusCode != 404 {
+		t.Fatalf("admin editing bob's summary: %d", res.StatusCode)
+	}
+	if res := bob.do("PUT", "/api/v1/recordings/"+rec.ID+"/summary", map[string]string{"title": "My title", "markdown": "## Mine\n- point"}, nil, &rec); res.StatusCode != 200 ||
+		rec.Summary.Title != "My title" || rec.Summary.EditedAt == nil {
+		t.Fatalf("edit: %d %+v", res.StatusCode, rec.Summary)
+	}
+
 	if res := bob.do("DELETE", "/api/v1/recordings/"+rec.ID, nil, nil, nil); res.StatusCode != 204 {
 		t.Fatalf("delete own: %d", res.StatusCode)
 	}

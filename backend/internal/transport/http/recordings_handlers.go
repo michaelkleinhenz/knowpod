@@ -152,6 +152,20 @@ func (s *Server) handleDeleteRecording(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// handleEditSummary saves a person's edits of a summary (title and Markdown text).
+func (s *Server) handleEditSummary(w http.ResponseWriter, r *http.Request) {
+	var in service.SummaryEdit
+	if !decode(w, r, &in) {
+		return
+	}
+	rec, err := s.actions.EditSummary(r.Context(), accountFrom(r.Context()), chi.URLParam(r, "id"), in)
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, rec)
+}
+
 func (s *Server) handleRetranscribe(w http.ResponseWriter, r *http.Request) {
 	rec, err := s.actions.Retranscribe(r.Context(), accountFrom(r.Context()), chi.URLParam(r, "id"))
 	if err != nil {

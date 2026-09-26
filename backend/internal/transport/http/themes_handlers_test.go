@@ -37,6 +37,21 @@ func TestThemesAndPreferencesAPI(t *testing.T) {
 		t.Fatalf("delete: %d", res.StatusCode)
 	}
 
+	// Built-in themes can be customized per user and reset.
+	var custom service.ThemeView
+	if res := bob.do("PUT", "/api/v1/themes/meeting", service.ThemeInput{Name: "Bob's meetings", Instructions: "## Decisions"}, nil, &custom); res.StatusCode != 200 || !custom.Customized {
+		t.Fatalf("customize built-in: %d %+v", res.StatusCode, custom)
+	}
+	admin.do("GET", "/api/v1/themes", nil, nil, &list)
+	for _, th := range list {
+		if th.ID == "meeting" && th.Customized {
+			t.Fatal("admin sees bob's customization")
+		}
+	}
+	if res := bob.do("DELETE", "/api/v1/themes/meeting", nil, nil, nil); res.StatusCode != 204 {
+		t.Fatalf("reset built-in: %d", res.StatusCode)
+	}
+
 	var langs []string
 	if res := bob.do("GET", "/api/v1/ai/languages", nil, nil, &langs); res.StatusCode != 200 || len(langs) < 10 {
 		t.Fatalf("languages: %d %v", res.StatusCode, langs)

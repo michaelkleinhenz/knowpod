@@ -22,6 +22,9 @@ type ThemeView struct {
 	Description  string `json:"description"`
 	Instructions string `json:"instructions"`
 	BuiltIn      bool   `json:"builtIn"`
+	// Customized marks a built-in theme the user has changed; its texts are then the
+	// user's, and deleting it resets it to the default.
+	Customized bool `json:"customized,omitempty"`
 }
 
 // builtInThemes are available to every user and can't be changed.
@@ -59,7 +62,8 @@ func NewThemeService(repo ports.ThemeRepository) *ThemeService {
 	return &ThemeService{repo: repo, clock: time.Now}
 }
 
-// List returns the built-in themes followed by the account's own.
+// List returns the built-in themes (with the account's own versions where it changed
+// them) followed by the account's own themes.
 func (s *ThemeService) List(ctx context.Context, acc *Account) ([]ThemeView, error) {
 	out := append([]ThemeView{}, builtInThemes...)
 	if acc.ID == "" {
@@ -70,9 +74,46 @@ func (s *ThemeService) List(ctx context.Context, acc *Account) ([]ThemeView, err
 		return nil, err
 	}
 	for _, t := range own {
-		out = append(out, viewOf(t))
+		if t.BuiltInID == "" {
+			out = append(out, viewOf(t))
+			continue
+		}
+		for i := range out {
+			if out[i].ID == t.BuiltInID {
+				out[i] = overrideView(t)
+			}
+		}
 	}
 	return out, nil
+}
+
+// builtIn returns the built-in theme with the ID, if there is one.
+func builtIn(id string) (ThemeView, bool) {
+	for _, b := range builtInThemes {
+		if b.ID == id {
+			return b, true
+		}
+	}
+	return ThemeView{}, false
+}
+
+// override finds the account's own version of a built-in theme.
+func (s *ThemeService) override(ctx context.Context, ownerID, builtInID string) (*theme.Theme, error) {
+	own, err := s.repo.List(ctx, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	for _, t := range own {
+		if t.BuiltInID == builtInID {
+			return t, nil
+		}
+	}
+	return nil, ErrNotFound
+}
+
+func overrideView(t *theme.Theme) ThemeView {
+	return ThemeView{ID: t.BuiltInID, Name: t.Name, Description: t.Description, Instructions: t.Instructions,
+		BuiltIn: true, Customized: true}
 }
 
 // Create adds a theme for the account's user.
@@ -93,8 +134,12 @@ func (s *ThemeService) Create(ctx context.Context, acc *Account, in ThemeInput) 
 	return &v, nil
 }
 
-// Update changes one of the account's themes.
+// Update changes one of the account's themes. For a built-in theme it saves the account's
+// own version, which replaces the built-in one for this user only.
 func (s *ThemeService) Update(ctx context.Context, acc *Account, id string, in ThemeInput) (*ThemeView, error) {
+	if _, ok := builtIn(id); ok {
+		return s.customize(ctx, acc, id, in)
+	}
 	t, err := s.own(ctx, acc, id)
 	if err != nil {
 		return nil, err
@@ -110,9 +155,45 @@ func (s *ThemeService) Update(ctx context.Context, acc *Account, id string, in T
 	return &v, nil
 }
 
+func (s *ThemeService) customize(ctx context.Context, acc *Account, id string, in ThemeInput) (*ThemeView, error) {
+	if acc.ID == "" {
+		return nil, errors.Join(ErrForbidden, errors.New("themes belong to a user; sign in"))
+	}
+	if err := validateTheme(&in); err != nil {
+		return nil, err
+	}
+	now := s.clock().UTC()
+	t, err := s.override(ctx, acc.ID, id)
+	switch {
+	case errors.Is(err, ErrNotFound):
+		t = &theme.Theme{ID: newID(), OwnerID: acc.ID, BuiltInID: id, Name: in.Name, Description: in.Description,
+			Instructions: in.Instructions, CreatedAt: now, UpdatedAt: now}
+		err = s.repo.Create(ctx, t)
+	case err == nil:
+		t.Name, t.Description, t.Instructions, t.UpdatedAt = in.Name, in.Description, in.Instructions, now
+		err = s.repo.Update(ctx, t)
+	}
+	if err != nil {
+		return nil, err
+	}
+	v := overrideView(t)
+	return &v, nil
+}
+
 // Delete removes one of the account's themes. Summaries made with it keep their text;
-// regenerating them falls back to the auto theme.
+// regenerating them falls back to the auto theme. For a built-in theme it removes the
+// account's own version, which resets the theme to its default.
 func (s *ThemeService) Delete(ctx context.Context, acc *Account, id string) error {
+	if _, ok := builtIn(id); ok {
+		t, err := s.override(ctx, acc.ID, id)
+		if errors.Is(err, ErrNotFound) {
+			return nil // already the default
+		}
+		if err != nil {
+			return err
+		}
+		return s.repo.Delete(ctx, t.ID)
+	}
 	if _, err := s.own(ctx, acc, id); err != nil {
 		return err
 	}
@@ -122,28 +203,28 @@ func (s *ThemeService) Delete(ctx context.Context, acc *Account, id string) erro
 // Resolve returns the theme to summarize a recording of ownerID with. Unknown themes (e.g.
 // deleted ones, or another user's) resolve to the auto theme.
 func (s *ThemeService) Resolve(ctx context.Context, ownerID, id string) ThemeView {
-	for _, b := range builtInThemes {
-		if b.ID == id {
-			return b
-		}
+	if id == "" {
+		id = AutoTheme
 	}
-	if id != "" {
-		if t, err := s.repo.Get(ctx, id); err == nil && t.OwnerID == ownerID {
-			return viewOf(t)
+	if b, ok := builtIn(id); ok {
+		if t, err := s.override(ctx, ownerID, id); err == nil {
+			return overrideView(t)
 		}
+		return b
 	}
-	return builtInThemes[0]
+	if t, err := s.repo.Get(ctx, id); err == nil && t.OwnerID == ownerID && t.BuiltInID == "" {
+		return viewOf(t)
+	}
+	return s.Resolve(ctx, ownerID, AutoTheme)
 }
 
 // Accessible reports whether the account may use the theme.
 func (s *ThemeService) Accessible(ctx context.Context, acc *Account, id string) bool {
-	for _, b := range builtInThemes {
-		if b.ID == id {
-			return true
-		}
+	if _, ok := builtIn(id); ok {
+		return true
 	}
 	t, err := s.repo.Get(ctx, id)
-	return err == nil && acc.Owns(t.OwnerID)
+	return err == nil && acc.Owns(t.OwnerID) && t.BuiltInID == ""
 }
 
 func (s *ThemeService) own(ctx context.Context, acc *Account, id string) (*theme.Theme, error) {
@@ -151,7 +232,7 @@ func (s *ThemeService) own(ctx context.Context, acc *Account, id string) (*theme
 	if err != nil {
 		return nil, err
 	}
-	if !acc.Owns(t.OwnerID) {
+	if !acc.Owns(t.OwnerID) || t.BuiltInID != "" {
 		return nil, ErrNotFound
 	}
 	return t, nil

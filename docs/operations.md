@@ -110,11 +110,11 @@ but every cut costs a round trip.
 ## Users and sign-in
 
 People sign in to the web UI with email and password. Every recording and device belongs to
-a user, and each user sees only their own conversations and devices.
+a user, and each user sees only their own notes and devices.
 
 | Role | Can |
 |---|---|
-| **User** | Use Conversations (including uploads and summary details), Devices, Status, Account (own password, own Pocket integration) and Settings (language, own themes). |
+| **User** | Use Notes (including uploads and summary details), Devices, Status, Account (own password, own Pocket integration) and Settings (language, own themes). |
 | **Admin** | Everything a user can, plus **Users** (create, edit, set passwords, delete) and the OpenRouter section of **Settings**. |
 
 **The built-in admin** is `ADMIN_EMAIL`. Its record is created at startup; until a password
@@ -127,7 +127,7 @@ users (assigned once at startup).
 **Managing users** (admins, **Users** page): create a user with an initial password and a
 role, change a user's email or role, set a new password (the user is signed out
 everywhere), or delete a user. Deleting removes the user **with all their devices,
-conversations, audio and themes**. Admins can't delete themselves, and the last admin can't be
+notes, audio and themes**. Admins can't delete themselves, and the last admin can't be
 removed or demoted.
 
 **Sessions** are stored in MongoDB and last `SESSION_TTL` (7 days by default). The user is
@@ -192,33 +192,58 @@ Pocket's transcripts, summaries and action items in the webhook payload are not 
 
 Every summary is written with a **theme**, a set of instructions that define its structure.
 Built-in themes: Auto (adaptive; the default), Meeting Notes, Call Notes, Interview Notes,
-Dictation Notes, Key Points and Lecture Notes. Each user can add their own themes under
-**Settings → Summary themes** (name, short description, instructions such as "Write
-`## Needs` as bullets, then `## Next steps` with owners"); they are private to that user and
-deleted with the user.
+Dictation Notes, Key Points and Lecture Notes. Under **Settings → Themes** each user can:
 
-On a conversation, **Summary details** (next to the summary heading) sets:
+- **edit a built-in theme** (name, description, instructions). The change applies to that
+  user only; the theme is marked "Customized" and **Reset to default** restores it;
+- **add own themes** (name, short description, instructions such as "Write `## Needs` as
+  bullets, then `## Next steps` with owners").
+
+Customized and own themes are private to the user and deleted with the user.
+
+On a note, **Summary details** (next to the summary heading) sets:
 
 - **Language**: auto-detect (the transcript's language; default) or one of 23 languages.
 - **Model**: the default summary model from the admin settings, or any OpenRouter text model.
 - **Theme**: a built-in or own theme.
 
 **Regenerate summary** stores these choices with the recording (they also apply to later
-re-summaries and re-transcriptions) and summarizes it again. The summary records which
+re-summaries and re-transcriptions) and summarizes it again.
+
+**Editing.** **Edit** (next to Summary details) opens the summary in a rich text editor:
+title, bold, italic, strikethrough, code, headings, bulleted and numbered lists (nested with
+Tab), quotes and links. Summaries are stored as Markdown; the editor reads and writes
+Markdown, so nothing else changes. Edited summaries show "Edited <date>".
+
+Changes are **saved automatically** 2 seconds after typing stops, and at least every 10
+seconds while typing continues; **Done** saves what is left and closes the editor. The sync
+state is always shown above the editor: *All changes saved*, *Unsaved changes*, *Saving…*,
+or *Not saved* / *Offline* with a **Retry** link. Failed saves are retried every 10 seconds
+and as soon as the browser is online again; closing the tab with unsaved changes asks first.
+
+**Regenerating asks first.** Re-summarize and Regenerate summary always ask for
+confirmation (with an explicit warning when the summary was edited), and they are disabled
+while the editor is open, so edits can't be lost by accident. The summary records which
 theme, language and model it was made with. Deleting a theme doesn't change existing
 summaries; regenerating them then uses Auto.
+
+## Settings
+
+**Settings** is organized in tabs: **General** (app language), **Themes** (built-in and own
+summary themes) and, for admins, **AI processing** (OpenRouter). The open tab is part of the
+URL (e.g. `/settings?tab=themes`).
 
 ## Language of the app
 
 The web UI is available in English and German. Before signing in it follows the browser's
-language; each user then chooses a language under **Settings → Language**, which is saved
+language; each user then chooses a language under **Settings → General**, which is saved
 with the account and applies on every device. API error responses carry a stable `code`
 (e.g. `invalid_login`, `email_taken`) that the UI translates; the `error` text stays
 English. The API reference on the Status page is shown in English.
 
 ## Uploading audio files
 
-On **Conversations**, **Upload** (or dragging files onto the page) sends WAV and MP3 files
+On **Notes**, **Upload** (or dragging files onto the page) sends WAV and MP3 files
 from the browser; several at a time are fine, each with a progress bar. The format is
 detected from the file's content: WAV must be integer PCM (like device uploads) and is
 archived as FLAC, MP3 is archived as it is; other formats are refused. The file name becomes
@@ -231,7 +256,7 @@ that large.
 The web UI is an installable web app (PWA): in Chrome/Edge use **Install app** in the
 address bar or menu, on Android **Add to home screen**, on iOS Safari **Share → Add to Home
 Screen**. It then opens in its own window without browser controls. The app shell is cached
-by a service worker so it starts instantly; conversations and all other data are always
+by a service worker so it starts instantly; notes and all other data are always
 loaded live (API responses are never cached), so the app needs a connection to show
 content. New versions are picked up automatically on the next start. Installing requires
 HTTPS (or `localhost`).
@@ -246,8 +271,7 @@ variables:
    (and add credit to the OpenRouter account).
 2. In knowpod, open **Settings** (as an admin), paste the key under **AI processing**,
    choose a **transcription model** (only models that accept audio are offered) and a
-   **default summary model**, and save. Users can pick another summary model per
-   conversation.
+   **default summary model**, and save. Users can pick another summary model per note.
 
 Recordings that arrived before this wait in `stored` and are processed as soon as the
 settings are saved. Usage is billed by OpenRouter per token; the Settings page shows each
@@ -264,7 +288,7 @@ browser (the UI shows only its last four characters), but anyone with database a
 read it; protect database backups accordingly, and remove the key in Settings if it leaks.
 
 **When a step fails**, it is retried like the other stages and the recording ends in
-`failed` after `WORKER_MAX_ATTEMPTS`, with the reason shown on the conversation page. Fix the
+`failed` after `WORKER_MAX_ATTEMPTS`, with the reason shown on the note's page. Fix the
 cause (credit, model choice) and use **Re-transcribe** or **Re-summarize** there.
 
 Log messages: `recording transcribed` (model, length, duration) and `recording summarized`
@@ -356,12 +380,12 @@ wipe it while `received` recordings exist.
 
 - Single instance only (see [Scaling](#scaling-and-the-spool)).
 - Users can't reset their own forgotten password; an admin sets a new one.
-- Admins see only their own conversations in the UI; `ADMIN_TOKEN` scripts see everyone's.
+- Admins see only their own notes in the UI; `ADMIN_TOKEN` scripts see everyone's.
 - Pocket or other compressed audio above 20 MB can't be transcribed (it is sent in one
   piece; splitting it would need an MP3/AAC decoder).
 - Speaker labels ("Speaker 1") are assigned per 5-minute piece and may not match across
   pieces of long recordings.
-- The conversation list loads the newest 200 recordings.
+- The notes list loads the newest 200 recordings.
 - The client IP for the login rate limit is taken from `X-Forwarded-For` / `X-Real-IP`.
   Without a proxy that sets these, clients can spoof them and bypass the limit.
 - No API to delete recordings or their objects.

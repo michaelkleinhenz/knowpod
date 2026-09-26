@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, Recording } from '../api/client';
@@ -7,7 +7,10 @@ import { inline, Markdown } from '../components/Markdown';
 import { SummaryDetails } from '../components/SummaryDetails';
 import { locale } from '../i18n';
 import { errorText } from '../lib/errors';
-import { formatBytes, formatDuration, processing, statusLabel, title, when } from '../lib/recordings';
+import { formatBytes, formatDate, formatDuration, processing, statusLabel, title, when } from '../lib/recordings';
+
+// The rich text editor is only downloaded when a summary is edited.
+const SummaryEditor = lazy(() => import('../components/SummaryEditor'));
 
 type Tab = 'summary' | 'transcript' | 'source';
 const TABS: Tab[] = ['summary', 'transcript', 'source'];
@@ -41,6 +44,7 @@ export function Conversation() {
   const [tab, setTab] = useState<Tab>('summary');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -136,17 +140,21 @@ export function Conversation() {
           <button
             type="button"
             className="small-button"
-            disabled={busy || !rec.transcript}
-            title={rec.transcript ? undefined : t('conversation.needsTranscript')}
-            onClick={() => act(() => api.resummarize(rec.id))}
+            disabled={busy || editing || !rec.transcript}
+            title={editing ? t('conversation.finishEditing') : rec.transcript ? undefined : t('conversation.needsTranscript')}
+            onClick={() =>
+              act(() => api.resummarize(rec.id), rec.summary?.editedAt ? t('editor.regenerateEditedConfirm') : t('details.regenerateConfirm'))
+            }
           >
             {t('conversation.resummarize')}
           </button>
           <button
             type="button"
             className="small-button"
-            disabled={busy || !rec.audio}
-            title={rec.audio ? t('conversation.retranscribeTitle') : t('conversation.notArchived')}
+            disabled={busy || editing || !rec.audio}
+            title={
+              editing ? t('conversation.finishEditing') : rec.audio ? t('conversation.retranscribeTitle') : t('conversation.notArchived')
+            }
             onClick={() => act(() => api.retranscribe(rec.id), t('conversation.retranscribeConfirm'))}
           >
             {t('conversation.retranscribe')}
@@ -167,12 +175,29 @@ export function Conversation() {
       </div>
 
       <div className="card conversation-body" role="tabpanel">
-        {tab === 'summary' && (
+        {tab === 'summary' && editing && rec.summary && (
+          <Suspense fallback={<p className="muted">{t('editor.loading')}</p>}>
+            <SummaryEditor
+              recordingId={rec.id}
+              title={rec.summary.title}
+              markdown={rec.summary.markdown ?? ''}
+              onSaved={setRec}
+              onClose={() => setEditing(false)}
+            />
+          </Suspense>
+        )}
+
+        {tab === 'summary' && !editing && (
           <>
             <div className="summary-head">
               <h2>{t('conversation.summaryHeading')}</h2>
               <div className="summary-tools">
                 {rec.transcript && <SummaryDetails rec={rec} onRegenerated={load} />}
+                {rec.summary && (
+                  <button type="button" className="ghost-button" onClick={() => setEditing(true)}>
+                    {t('editor.edit')}
+                  </button>
+                )}
                 {rec.summary?.markdown && (
                   <CopyButton className="ghost-button" text={`# ${rec.summary.title}\n\n${rec.summary.markdown}`} label={t('conversation.copySummary')} />
                 )}
@@ -181,7 +206,15 @@ export function Conversation() {
             {rec.summary?.markdown ? (
               <div className="prose">
                 <Markdown text={rec.summary.markdown} />
-                {rec.summary.model && <p className="model-note">{t('conversation.summarizedWith', { model: rec.summary.model })}</p>}
+                <p className="model-note">
+                  {rec.summary.model && t('conversation.summarizedWith', { model: rec.summary.model })}
+                  {rec.summary.editedAt && (
+                    <>
+                      {rec.summary.model && ' · '}
+                      {t('editor.edited', { date: formatDate(rec.summary.editedAt, { dateStyle: 'medium', timeStyle: 'short' }) })}
+                    </>
+                  )}
+                </p>
               </div>
             ) : (
               pending(t('conversation.noSummary'))

@@ -27,7 +27,7 @@ background worker ─────▶ WAV → FLAC, uploaded to S3 (status: store
 AI worker ─────────────▶ transcript (status: transcribed) → title + summary (status: summarized)
 ```
 
-- **Users** sign in with email and password and each see only their own conversations and
+- **Users** sign in with email and password and each see only their own notes and
   devices. Admins manage users and the AI settings. The built-in admin is `ADMIN_EMAIL`,
   whose password is `ADMIN_PASSWORD` until one is set in the UI.
 - Each gadget authenticates with its own revocable token, created on the web UI's
@@ -35,18 +35,20 @@ AI worker ─────────────▶ transcript (status: transcr
 - Each user can connect their own [Pocket](https://heypocket.com) recorder on the
   **Account** page: recordings arrive through the user's personal webhook and their audio is
   downloaded with the user's Pocket API key.
-- WAV and MP3 files can be uploaded from the browser on **Conversations**.
+- WAV and MP3 files can be uploaded from the browser on **Notes**.
 - Uploads are idempotent (the gadget names each recording), resumable after dropped
   connections, and checked against a SHA-256 the gadget declares up front.
 - Transcoding and archiving run in a background worker with retries and backoff.
 - Every archived recording is transcribed and summarized through
   [OpenRouter](https://openrouter.ai). The API key and both models are chosen by an admin
   on the web UI's **Settings** page.
-- The web UI's **Conversations** page lists your recordings by the title of their summary;
-  each conversation shows its summary, transcript and audio, and can be re-transcribed,
-  re-summarized or deleted. Under **Summary details** each summary's language, model and
+- The web UI's **Notes** page (a note per recording) lists your recordings by the title of
+  their summary;
+  each note shows its summary, transcript and audio, and can be re-transcribed,
+  re-summarized or deleted. Summaries can be edited in a rich text editor that saves
+  automatically (stored as Markdown). Under **Summary details** each summary's language, model and
   **theme** (its structure, e.g. meeting or call notes) can be changed and regenerated.
-  Users manage their own themes on the **Settings** page.
+  Users adjust the built-in themes and add their own on the **Settings** page.
 - The web UI is available in English and German; each user picks the language in
   **Settings**.
 - The web UI works on phones and can be installed as an app (PWA).
@@ -187,7 +189,8 @@ frontend/src/
   api/client.ts        API client
   auth.tsx             sign-in state (AuthProvider, useAuth)
   components/          reusable UI components
-  pages/               Conversations (list + detail), Devices, Users, Settings, Status, Account, Login
+  pages/               Conversations/Conversation (the Notes list and a note), Devices, Users,
+                       Settings (tabs), Status, Account, Login
   i18n/                translations (en.ts, de.ts) and language setup
   lib/                 display helpers (recordings, themes, error texts)
 ```

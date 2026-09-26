@@ -60,6 +60,55 @@ func TestThemes(t *testing.T) {
 	}
 }
 
+func TestCustomizedBuiltInThemes(t *testing.T) {
+	ctx := context.Background()
+	s := NewThemeService(memory.NewThemes())
+	alice, bob := &Account{ID: "alice"}, &Account{ID: "bob"}
+
+	v, err := s.Update(ctx, alice, "meeting", ThemeInput{Name: "Team meeting", Description: "Mine", Instructions: "## Decisions only"})
+	if err != nil || v.ID != "meeting" || !v.BuiltIn || !v.Customized {
+		t.Fatalf("customize: %+v, %v", v, err)
+	}
+	// Updating again changes the same version rather than adding another.
+	if _, err := s.Update(ctx, alice, "meeting", ThemeInput{Name: "Team meeting", Instructions: "## Decisions and owners"}); err != nil {
+		t.Fatal(err)
+	}
+	list, _ := s.List(ctx, alice)
+	if len(list) != len(builtInThemes) {
+		t.Fatalf("overrides must not show up as extra themes: %d", len(list))
+	}
+	for _, th := range list {
+		if th.ID == "meeting" && (th.Name != "Team meeting" || th.Instructions != "## Decisions and owners" || !th.Customized) {
+			t.Fatalf("alice's meeting theme = %+v", th)
+		}
+	}
+	if th := s.Resolve(ctx, "alice", "meeting"); th.Instructions != "## Decisions and owners" {
+		t.Fatalf("resolve alice = %+v", th)
+	}
+	// Other users keep the default.
+	if th := s.Resolve(ctx, "bob", "meeting"); th.Name != "Meeting Notes" || th.Customized {
+		t.Fatalf("resolve bob = %+v", th)
+	}
+	if list, _ := s.List(ctx, bob); list[1].Customized {
+		t.Fatal("bob sees alice's customization")
+	}
+	// The override's own document ID isn't usable as a theme.
+	own, _ := s.repo.List(ctx, "alice")
+	if s.Accessible(ctx, alice, own[0].ID) {
+		t.Fatal("override usable by its document ID")
+	}
+	// Deleting a built-in theme resets it (idempotently).
+	if err := s.Delete(ctx, alice, "meeting"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Delete(ctx, alice, "meeting"); err != nil {
+		t.Fatal(err)
+	}
+	if th := s.Resolve(ctx, "alice", "meeting"); th.Customized || th.Name != "Meeting Notes" {
+		t.Fatalf("after reset = %+v", th)
+	}
+}
+
 func TestSummarizeWithOptions(t *testing.T) {
 	ctx := context.Background()
 	ai := &fakeAI{answer: `{"title":"Verkaufsgespräch","summary":"## Bedarf"}`}
@@ -86,6 +135,40 @@ func TestSummarizeWithOptions(t *testing.T) {
 	system = ai.requests[1].Messages[0].Content.(string)
 	if ai.requests[1].Model != "google/gemini-2.5-flash" || !strings.Contains(system, "language of the transcript") || rec2.Summary.ThemeID != AutoTheme {
 		t.Fatalf("defaults: model=%s summary=%+v", ai.requests[1].Model, rec2.Summary)
+	}
+}
+
+func TestEditSummary(t *testing.T) {
+	ctx := context.Background()
+	recs := memory.NewRecordings()
+	spool, _ := NewSpool(t.TempDir())
+	s := NewRecordingService(recs, memstore.New(), spool, nil)
+	alice, bob := &Account{ID: "alice"}, &Account{ID: "bob"}
+	_ = recs.Create(ctx, &recording.Recording{ID: "r1", OwnerID: "alice", DeviceID: "d", ClientID: "1", Status: recording.StatusSummarized,
+		Transcript: &recording.Transcript{Text: "t"}, Summary: &recording.Summary{Title: "Old", Markdown: "old", Model: "m", ThemeID: "meeting"}})
+	_ = recs.Create(ctx, &recording.Recording{ID: "r2", OwnerID: "alice", DeviceID: "d", ClientID: "2", Status: recording.StatusStored})
+
+	if _, err := s.EditSummary(ctx, bob, "r1", SummaryEdit{Title: "x", Markdown: "y"}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("other user: %v", err)
+	}
+	if _, err := s.EditSummary(ctx, alice, "r2", SummaryEdit{Title: "x", Markdown: "y"}); !errors.Is(err, ErrNotReady) {
+		t.Fatalf("no summary: %v", err)
+	}
+	if _, err := s.EditSummary(ctx, alice, "r1", SummaryEdit{Title: "  ", Markdown: "y"}); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("empty title: %v", err)
+	}
+	if _, err := s.EditSummary(ctx, alice, "r1", SummaryEdit{Title: "x", Markdown: strings.Repeat("a", maxSummaryMarkdown+1)}); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("too long: %v", err)
+	}
+	got, err := s.EditSummary(ctx, alice, "r1", SummaryEdit{Title: " New title ", Markdown: "## Notes\r\n- **edited**\r\n"})
+	if err != nil || got.Summary.Title != "New title" || got.Summary.Markdown != "## Notes\n- **edited**" || got.Summary.EditedAt == nil ||
+		got.Summary.Model != "m" || got.Summary.ThemeID != "meeting" {
+		t.Fatalf("edit: %+v, %v", got.Summary, err)
+	}
+	// Regenerating starts from scratch: the edit marker goes with the old summary.
+	got, _ = s.Resummarize(ctx, alice, "r1", nil)
+	if got.Summary != nil {
+		t.Fatal("summary kept after resummarize")
 	}
 }
 

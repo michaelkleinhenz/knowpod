@@ -56,6 +56,7 @@ export interface Theme {
   description: string;
   instructions: string;
   builtIn: boolean;
+  customized?: boolean;
 }
 
 export interface ThemeInput {
@@ -131,6 +132,7 @@ export interface Recording {
     language?: string;
     themeId?: string;
     themeName?: string;
+    editedAt?: string;
     createdAt: string;
   };
   summaryOptions?: SummaryOptions;
@@ -224,6 +226,8 @@ export const api = {
   retranscribe: (id: string) => request<Recording>('POST', `/recordings/${encodeURIComponent(id)}/retranscribe`),
   resummarize: (id: string, opts?: SummaryOptions) =>
     request<Recording>('POST', `/recordings/${encodeURIComponent(id)}/resummarize`, opts),
+  editSummary: (id: string, title: string, markdown: string) =>
+    request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/summary`, { title, markdown }),
   audioURL: (id: string, download = false) => `/api/v1/recordings/${encodeURIComponent(id)}/audio${download ? '?download=1' : ''}`,
   uploadRecording,
   users: () => request<User[]>('GET', '/admin/users'),

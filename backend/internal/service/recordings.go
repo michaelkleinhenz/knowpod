@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/ports"
@@ -103,6 +104,42 @@ func (s *RecordingService) Resummarize(ctx context.Context, acc *Account, id str
 	}
 	rec.Summary = nil
 	return s.requeue(ctx, rec, recording.StatusTranscribed)
+}
+
+// SummaryEdit is a person's change to a summary.
+type SummaryEdit struct {
+	Title    string `json:"title"`
+	Markdown string `json:"markdown"`
+}
+
+// maxSummaryMarkdown bounds an edited summary (a long summary is a few thousand characters).
+const maxSummaryMarkdown = 100_000
+
+// EditSummary replaces the summary's title and Markdown text with the user's version. The
+// model, theme and language it was made with are kept for reference.
+func (s *RecordingService) EditSummary(ctx context.Context, acc *Account, id string, in SummaryEdit) (*recording.Recording, error) {
+	rec, err := s.Get(ctx, acc, id)
+	if err != nil {
+		return nil, err
+	}
+	if rec.Summary == nil {
+		return nil, errors.Join(ErrNotReady, errors.New("the recording has no summary yet"))
+	}
+	title := strings.TrimSpace(in.Title)
+	markdown := strings.TrimSpace(strings.ReplaceAll(in.Markdown, "\r\n", "\n"))
+	switch {
+	case title == "" || utf8.RuneCountInString(title) > 200:
+		return nil, invalid("title must be 1-200 characters")
+	case len(markdown) > maxSummaryMarkdown:
+		return nil, invalid("summary must be at most %d characters", maxSummaryMarkdown)
+	}
+	now := s.clock().UTC()
+	rec.Summary.Title, rec.Summary.Markdown, rec.Summary.EditedAt = title, markdown, &now
+	rec.UpdatedAt = now
+	if err := s.recs.Update(ctx, rec); err != nil {
+		return nil, err
+	}
+	return rec, nil
 }
 
 func (s *RecordingService) validOptions(ctx context.Context, acc *Account, o *recording.SummaryOptions) error {

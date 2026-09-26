@@ -124,6 +124,7 @@ export function SummaryDetails({ rec, onRegenerated }: { rec: Recording; onRegen
   }
 
   async function regenerate() {
+    if (!window.confirm(rec.summary?.editedAt ? t('editor.regenerateEditedConfirm') : t('details.regenerateConfirm'))) return;
     setBusy(true);
     setError(null);
     try {

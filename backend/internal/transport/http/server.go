@@ -142,6 +142,7 @@ func (s *Server) Router() http.Handler {
 			u.Get("/recordings/{id}/audio", s.handleRecordingAudio)
 			u.Post("/recordings/{id}/retranscribe", s.handleRetranscribe)
 			u.Post("/recordings/{id}/resummarize", s.handleResummarize)
+			u.Put("/recordings/{id}/summary", s.handleEditSummary)
 		})
 
 		// --- administration (admins, or ADMIN_TOKEN) ---

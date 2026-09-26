@@ -258,8 +258,27 @@ own theme only for its owner; anything else (e.g. a deleted theme) falls back to
 summary stores `themeId`, `themeName`, `language` and `model`, so the UI can show what a
 summary was made with.
 
+**Editing.** `PUT /recordings/{id}/summary` (`RecordingService.EditSummary`) replaces the
+title and Markdown text and sets `summary.editedAt`; theme, language and model stay for
+reference. Markdown remains the only stored format. In the web app,
+`components/SummaryEditor.tsx` is a TipTap (ProseMirror) editor with the official
+`@tiptap/markdown` extension: it loads the stored Markdown and saves `editor.getMarkdown()`.
+It is lazy-loaded, so its ~150 KB (gzipped) only download when someone edits. It saves
+automatically: a change is sent 2 s after the last keystroke and at least every 10 s;
+saves are serialized (a change made during a save goes out with the next one); failed
+saves are retried every 10 s and on the browser's `online` event; leaving with unsaved
+changes triggers a final save, and closing the tab asks first. The component always shows
+the sync state (saved, unsaved, saving, error/offline with retry). Summaries are
+displayed with the small, HTML-free renderer in `components/Markdown.tsx`, which covers
+what the editor produces: headings, nested bullet and numbered lists, quotes, rules, code
+blocks, links (http, https and mailto only), bold, italic, strikethrough and code.
+
 Built-in themes are defined in code with English instructions; the UI translates their
-names and descriptions by ID. Users' themes live in the `themes` collection.
+names and descriptions by ID. Users' themes live in the `themes` collection. A user's
+version of a built-in theme is a `themes` document with `builtInId` set: `PUT
+/themes/<built-in id>` creates or updates it, `DELETE /themes/<built-in id>` removes it
+(reset). `List` and `Resolve` substitute it for the built-in theme for that user only
+(`customized: true`), and it can't be used by its own document ID.
 
 ## Adding a processing stage
 
@@ -308,7 +327,7 @@ implements the work.
 | `format` | Sample rate, channels, bits, frames, duration. Set once received. |
 | `audio`, `original` | S3 key, content type and size of the FLAC and the optional WAV |
 | `transcript` | `text`, `model`, `createdAt` |
-| `summary` | `title` (the conversation's name in the UI), `markdown`, `model`, `language`, `themeId`, `themeName`, `createdAt`. Lists leave out `transcript` and `summary.markdown`. |
+| `summary` | `title` (the conversation's name in the UI), `markdown`, `model`, `language`, `themeId`, `themeName`, `createdAt`, `editedAt` (set by a person's edit). Lists leave out `transcript` and `summary.markdown`. |
 | `summaryOptions` | `language`, `model`, `themeId` chosen under Summary details (empty = defaults) |
 | `attempts`, `notBefore`, `lastError` | Worker bookkeeping |
 | `createdAt`, `updatedAt`, `receivedAt`, `storedAt` | Timestamps (UTC) |
@@ -338,7 +357,8 @@ Indexes: `(deviceId, clientId)` unique; `(status, notBefore)` for claiming;
 | `createdAt`, `expiresAt` | TTL index on `expiresAt` deletes expired sessions |
 
 **`themes`**: users' own summary themes: `_id`, `ownerId` (indexed with `name`), `name`,
-`description`, `instructions`, `createdAt`, `updatedAt`.
+`description`, `instructions`, `builtInId` (set for a user's version of a built-in theme),
+`createdAt`, `updatedAt`.
 
 **`settings`**: one document per settings group. `_id: "openrouter"` holds `apiKey`,
 `transcriptionModel`, `summaryModel` and `updatedAt`.

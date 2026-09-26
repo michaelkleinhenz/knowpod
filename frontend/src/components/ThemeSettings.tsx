@@ -90,6 +90,16 @@ export function ThemeSettings() {
     }
   }
 
+  async function reset(th: Theme) {
+    if (!window.confirm(t('settings.themes.resetConfirm', { name: themeText(th).name }))) return;
+    try {
+      await api.deleteTheme(th.id); // for a built-in theme: removes the user's version
+      load();
+    } catch (err) {
+      setError(errorText(err, t));
+    }
+  }
+
   const builtIn = themes?.filter((th) => th.builtIn) ?? [];
   const own = themes?.filter((th) => !th.builtIn) ?? [];
 
@@ -149,17 +159,44 @@ export function ThemeSettings() {
 
           <h3 className="subheading">{t('settings.themes.builtIn')}</h3>
           <ul className="theme-list">
-            {builtIn.map((th) => (
-              <li key={th.id} className="theme-row builtin">
-                <details>
-                  <summary>
-                    <span className="theme-name">{themeText(th).name}</span>
-                    <span className="muted theme-desc">{themeText(th).description}</span>
-                  </summary>
-                  <p className="theme-instructions">{th.instructions}</p>
-                </details>
-              </li>
-            ))}
+            {builtIn.map((th) => {
+              const text = themeText(th);
+              return editing === th.id ? (
+                <li key={th.id}>
+                  <ThemeForm
+                    initial={{ name: text.name, description: text.description, instructions: th.instructions }}
+                    submitLabel={t('common.save')}
+                    onSubmit={async (v) => {
+                      await api.updateTheme(th.id, v);
+                      setEditing(null);
+                      load();
+                    }}
+                    onCancel={() => setEditing(null)}
+                  />
+                </li>
+              ) : (
+                <li key={th.id} className="theme-row builtin">
+                  <details>
+                    <summary>
+                      <span className="theme-name">{text.name}</span>
+                      {th.customized && <span className="role-pill plain">{t('settings.themes.customized')}</span>}
+                      <span className="muted theme-desc">{text.description}</span>
+                    </summary>
+                    <p className="theme-instructions">{th.instructions}</p>
+                  </details>
+                  <div className="theme-actions">
+                    <button type="button" className="small-button" onClick={() => setEditing(th.id)}>
+                      {t('settings.themes.customize')}
+                    </button>
+                    {th.customized && (
+                      <button type="button" className="small-button" onClick={() => reset(th)}>
+                        {t('settings.themes.reset')}
+                      </button>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         </>
       )}

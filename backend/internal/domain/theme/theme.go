@@ -9,7 +9,10 @@ import "time"
 type Theme struct {
 	ID      string `bson:"_id" json:"id"`
 	OwnerID string `bson:"ownerId" json:"-"`
-	Name    string `bson:"name" json:"name"`
+	// BuiltInID is set when the document is the user's own version of a built-in theme
+	// (e.g. "meeting"); it then replaces that built-in theme for this user only.
+	BuiltInID string `bson:"builtInId,omitempty" json:"-"`
+	Name      string `bson:"name" json:"name"`
 	// Description is a short subtitle, e.g. "Topic · Agreement · Conclusion".
 	Description string `bson:"description" json:"description"`
 	// Instructions tell the model how to structure the summary (Markdown).

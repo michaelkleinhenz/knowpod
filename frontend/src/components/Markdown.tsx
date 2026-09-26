@@ -1,85 +1,173 @@
 import { Fragment, ReactNode } from 'react';
 
-// inline renders **bold**, *italic* / _italic_ and `code` spans.
+// safeHref allows only web and mail links, so Markdown can't smuggle in javascript: URLs.
+function safeHref(url: string): string | null {
+  return /^(https?:\/\/|mailto:)/i.test(url.trim()) ? url.trim() : null;
+}
+
+// inline renders `code`, **bold**, *italic* / _italic_, ~~strike~~ and [links](https://…).
 export function inline(text: string): ReactNode[] {
-  return text.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*\s][^*]*\*|_[^_\s][^_]*_)/).map((part, i) => {
+  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|~~[^~]+~~|\[[^\]]+\]\([^)\s]+\)|\*[^*\s][^*]*\*|_[^_\s][^_]*_)/);
+  return parts.map((part, i) => {
     if (part.length > 1 && part.startsWith('`') && part.endsWith('`')) return <code key={i}>{part.slice(1, -1)}</code>;
-    if (part.length > 3 && part.startsWith('**') && part.endsWith('**')) return <strong key={i}>{part.slice(2, -2)}</strong>;
+    if (part.length > 3 && part.startsWith('**') && part.endsWith('**')) return <strong key={i}>{inline(part.slice(2, -2))}</strong>;
+    if (part.length > 3 && part.startsWith('~~') && part.endsWith('~~')) return <s key={i}>{inline(part.slice(2, -2))}</s>;
+    const link = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(part);
+    if (link) {
+      const href = safeHref(link[2]);
+      return href ? (
+        <a key={i} href={href} target="_blank" rel="noreferrer noopener">
+          {inline(link[1])}
+        </a>
+      ) : (
+        <Fragment key={i}>{link[1]}</Fragment>
+      );
+    }
     if (part.length > 2 && ((part.startsWith('*') && part.endsWith('*')) || (part.startsWith('_') && part.endsWith('_'))))
-      return <em key={i}>{part.slice(1, -1)}</em>;
+      return <em key={i}>{inline(part.slice(1, -1))}</em>;
     return <Fragment key={i}>{part}</Fragment>;
   });
 }
 
+interface ListItem {
+  text: string;
+  children: string[]; // indented lines below the item, parsed as nested Markdown
+}
+
 type Block =
   | { kind: 'h'; level: number; text: string }
-  | { kind: 'ul' | 'ol'; items: string[] }
-  | { kind: 'p'; text: string };
+  | { kind: 'p'; text: string }
+  | { kind: 'hr' }
+  | { kind: 'code'; text: string }
+  | { kind: 'quote'; children: Block[] }
+  | { kind: 'ul' | 'ol'; start: number; items: ListItem[] };
 
-// parse splits the Markdown subset used by AI summaries and the API description into
-// blocks: headings, bullet and numbered lists (with wrapped lines), and paragraphs. No raw
-// HTML is ever rendered.
-function parse(text: string): Block[] {
+const HEADING = /^(#{1,6})\s+(.*)$/;
+const LIST = /^(\s*)([-*+•]|\d+[.)])\s+(.*)$/;
+const FENCE = /^\s*(```|~~~)/;
+const RULE = /^\s*([-*_])(\s*\1){2,}\s*$/;
+const indentOf = (line: string) => line.length - line.trimStart().length;
+const startsBlock = (line: string) => HEADING.test(line.trim()) || LIST.test(line) || FENCE.test(line) || RULE.test(line) || /^\s*>/.test(line);
+
+// parse splits Markdown into blocks: headings, paragraphs, nested bullet and numbered
+// lists, quotes, rules and code blocks. No raw HTML is ever rendered.
+function parse(lines: string[]): Block[] {
   const blocks: Block[] = [];
-  let para: string[] = [];
-  let list: { kind: 'ul' | 'ol'; items: string[] } | null = null;
-  const flush = () => {
-    if (para.length) blocks.push({ kind: 'p', text: para.join(' ') });
-    if (list) blocks.push(list);
-    para = [];
-    list = null;
-  };
-  for (const raw of text.replace(/\r/g, '').split('\n')) {
-    const line = raw.trim();
-    const heading = /^(#{1,6})\s+(.*)$/.exec(line);
-    const bullet = /^[-*•]\s+(.*)$/.exec(line);
-    const numbered = /^\d+[.)]\s+(.*)$/.exec(line);
-    if (!line) {
-      flush();
-    } else if (heading) {
-      flush();
-      blocks.push({ kind: 'h', level: heading[1].length, text: heading[2] });
-    } else if (bullet || numbered) {
-      const kind = bullet ? 'ul' : 'ol';
-      if (para.length || (list && list.kind !== kind)) flush();
-      if (!list) list = { kind, items: [] };
-      list.items.push((bullet ?? numbered)![1]);
-    } else if (list && /^\s/.test(raw)) {
-      list.items[list.items.length - 1] += ' ' + line; // continuation of a list item
-    } else {
-      if (list) flush();
-      para.push(line);
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    if (!trimmed) {
+      i++;
+      continue;
     }
+    if (FENCE.test(line)) {
+      const fence = FENCE.exec(line)![1];
+      const code: string[] = [];
+      for (i++; i < lines.length && !lines[i].trim().startsWith(fence); i++) code.push(lines[i]);
+      i++;
+      blocks.push({ kind: 'code', text: code.join('\n') });
+      continue;
+    }
+    const heading = HEADING.exec(trimmed);
+    if (heading) {
+      blocks.push({ kind: 'h', level: heading[1].length, text: heading[2].replace(/\s+#+\s*$/, '') });
+      i++;
+      continue;
+    }
+    if (RULE.test(line)) {
+      blocks.push({ kind: 'hr' });
+      i++;
+      continue;
+    }
+    if (/^\s*>/.test(line)) {
+      const quoted: string[] = [];
+      for (; i < lines.length && /^\s*>/.test(lines[i]); i++) quoted.push(lines[i].replace(/^\s*>\s?/, ''));
+      blocks.push({ kind: 'quote', children: parse(quoted) });
+      continue;
+    }
+    const first = LIST.exec(line);
+    if (first) {
+      const base = first[1].length;
+      const ordered = /\d/.test(first[2]);
+      const list: Block = { kind: ordered ? 'ol' : 'ul', start: ordered ? parseInt(first[2], 10) : 1, items: [] };
+      let contentIndent = base + first[2].length + 1;
+      for (; i < lines.length; i++) {
+        const l = lines[i];
+        const m = LIST.exec(l);
+        const items = list.items;
+        if (!l.trim()) {
+          // A blank line continues the list only if more of it follows.
+          const next = lines.slice(i + 1).find((x) => x.trim());
+          if (next === undefined || indentOf(next) < base || (indentOf(next) === base && !LIST.exec(next))) break;
+          if (items.length) items[items.length - 1].children.push('');
+          continue;
+        }
+        if (m && m[1].length === base) {
+          if (/\d/.test(m[2]) !== ordered) break;
+          items.push({ text: m[3], children: [] });
+          contentIndent = base + m[2].length + 1;
+        } else if (indentOf(l) > base && items.length) {
+          items[items.length - 1].children.push(l.slice(Math.min(indentOf(l), contentIndent)));
+        } else if (!startsBlock(l) && items.length && lines[i - 1]?.trim()) {
+          items[items.length - 1].text += ' ' + l.trim(); // lazy continuation
+        } else {
+          break;
+        }
+      }
+      blocks.push(list);
+      continue;
+    }
+    const para: string[] = [];
+    for (; i < lines.length && lines[i].trim() && (para.length === 0 || !startsBlock(lines[i])); i++) para.push(lines[i].trim());
+    blocks.push({ kind: 'p', text: para.join(' ') });
   }
-  flush();
   return blocks;
 }
 
+function render(blocks: Block[]): ReactNode[] {
+  return blocks.map((b, i) => {
+    switch (b.kind) {
+      case 'h': {
+        const level = Math.min(b.level + 1, 4); // the page title is the only h1
+        const Tag = `h${level}` as 'h2' | 'h3' | 'h4';
+        return <Tag key={i}>{inline(b.text)}</Tag>;
+      }
+      case 'hr':
+        return <hr key={i} />;
+      case 'code':
+        return (
+          <pre key={i}>
+            <code>{b.text}</code>
+          </pre>
+        );
+      case 'quote':
+        return <blockquote key={i}>{render(b.children)}</blockquote>;
+      case 'ul':
+      case 'ol': {
+        const items = b.items.map((item, j) => {
+          const sub = item.children.some((c) => c.trim()) ? render(parse(item.children)) : null;
+          return (
+            <li key={j}>
+              {inline(item.text)}
+              {sub}
+            </li>
+          );
+        });
+        return b.kind === 'ol' ? (
+          <ol key={i} start={b.start !== 1 ? b.start : undefined}>
+            {items}
+          </ol>
+        ) : (
+          <ul key={i}>{items}</ul>
+        );
+      }
+      default:
+        return <p key={i}>{inline(b.text)}</p>;
+    }
+  });
+}
+
 export function Markdown({ text }: { text: string }) {
-  return (
-    <>
-      {parse(text).map((b, i) => {
-        switch (b.kind) {
-          case 'h': {
-            const level = Math.min(b.level + 1, 4); // page title is the only h1
-            const Tag = `h${level}` as 'h2' | 'h3' | 'h4';
-            return <Tag key={i}>{inline(b.text)}</Tag>;
-          }
-          case 'ul':
-          case 'ol': {
-            const Tag = b.kind;
-            return (
-              <Tag key={i}>
-                {b.items.map((item, j) => (
-                  <li key={j}>{inline(item)}</li>
-                ))}
-              </Tag>
-            );
-          }
-          default:
-            return <p key={i}>{inline(b.text)}</p>;
-        }
-      })}
-    </>
-  );
+  return <>{render(parse(text.replace(/\r/g, '').split('\n')))}</>;
 }

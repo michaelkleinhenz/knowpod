@@ -105,13 +105,15 @@ type Transcript struct {
 
 // Summary is an AI summary of the transcript. Its Title names the conversation in the UI.
 type Summary struct {
-	Title     string    `bson:"title" json:"title"`
-	Markdown  string    `bson:"markdown,omitempty" json:"markdown,omitempty"`
-	Model     string    `bson:"model" json:"model"`
-	Language  string    `bson:"language,omitempty" json:"language,omitempty"` // "auto" or a language tag
-	ThemeID   string    `bson:"themeId,omitempty" json:"themeId,omitempty"`
-	ThemeName string    `bson:"themeName,omitempty" json:"themeName,omitempty"`
-	CreatedAt time.Time `bson:"createdAt" json:"createdAt"`
+	Title     string `bson:"title" json:"title"`
+	Markdown  string `bson:"markdown,omitempty" json:"markdown,omitempty"`
+	Model     string `bson:"model" json:"model"`
+	Language  string `bson:"language,omitempty" json:"language,omitempty"` // "auto" or a language tag
+	ThemeID   string `bson:"themeId,omitempty" json:"themeId,omitempty"`
+	ThemeName string `bson:"themeName,omitempty" json:"themeName,omitempty"`
+	// EditedAt is set when a person changed the title or text; regenerating replaces the edits.
+	EditedAt  *time.Time `bson:"editedAt,omitempty" json:"editedAt,omitempty"`
+	CreatedAt time.Time  `bson:"createdAt" json:"createdAt"`
 }
 
 // SummaryOptions choose how a recording is summarized. Empty fields use the defaults: the

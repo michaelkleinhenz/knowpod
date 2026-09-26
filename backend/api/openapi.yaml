@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: knowpod-service API
-  version: 0.7.0
+  version: 0.9.0
   description: |
     Backend for the knowpod AI audio recorder.
 
@@ -375,7 +375,10 @@ paths:
       - { name: themeId, in: path, required: true, schema: { type: string } }
     put:
       tags: ["Themes"]
-      summary: Change one of your themes
+      summary: Change one of your themes, or customize a built-in one
+      description: |
+        For a built-in theme ID (e.g. `meeting`) this saves your own version, which replaces
+        the built-in theme for you only (`customized: true` in the list).
       security: [{ sessionCookie: [] }, { adminToken: [] }]
       requestBody:
         required: true
@@ -388,8 +391,10 @@ paths:
         "404": { $ref: "#/components/responses/Error" }
     delete:
       tags: ["Themes"]
-      summary: Delete one of your themes
-      description: Summaries made with it keep their text; regenerating them uses the Auto theme.
+      summary: Delete one of your themes, or reset a customized built-in one
+      description: |
+        Summaries made with a deleted theme keep their text; regenerating them uses the Auto
+        theme. For a built-in theme ID this removes your version, restoring the default.
       security: [{ sessionCookie: [] }, { adminToken: [] }]
       responses:
         "204": { description: Deleted }
@@ -670,6 +675,36 @@ paths:
           description: The recording has no transcript yet
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
+  /recordings/{recordingId}/summary:
+    put:
+      tags: ["Recordings"]
+      summary: Edit the summary
+      description: |
+        Replaces the summary's title and Markdown text with your version and sets
+        `summary.editedAt`. Regenerating the summary later replaces the edits.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, markdown]
+              properties:
+                title: { type: string, maxLength: 200 }
+                markdown: { type: string, maxLength: 100000 }
+      responses:
+        "200":
+          description: Saved
+          content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409":
+          description: The recording has no summary yet
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
   /admin/users:
     get:
       tags: ["Admin: users"]
@@ -898,6 +933,7 @@ components:
             language: { type: string }
             themeId: { type: string }
             themeName: { type: string }
+            editedAt: { type: string, format: date-time, description: Set when a person edited the summary }
             createdAt: { type: string, format: date-time }
         attempts: { type: integer }
         lastError: { type: string }
@@ -949,6 +985,7 @@ components:
         description: { type: string }
         instructions: { type: string }
         builtIn: { type: boolean }
+        customized: { type: boolean, description: A built-in theme you changed }
 
     ThemeInput:
       type: object
