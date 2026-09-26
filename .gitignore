@@ -1,0 +1,7 @@
+node_modules/
+frontend/dist/
+frontend/tsconfig.tsbuildinfo
+backend/bin/
+# Build output copied in by `make frontend`; only the placeholder index.html is tracked.
+backend/internal/web/dist/*
+!backend/internal/web/dist/index.html

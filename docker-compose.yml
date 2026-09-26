@@ -1,0 +1,14 @@
+# knowpod-service: a single app container (Go backend with the React SPA embedded).
+# Configuration is exclusively via environment variables.
+
+services:
+  # Single binary: serves the embedded web UI and the API from the same origin/port.
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      PORT: "8080"
+      FRONTEND_URL: "${FRONTEND_URL:-http://localhost:8080}"
+    ports:
+      - "8080:8080"

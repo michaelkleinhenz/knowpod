@@ -1,0 +1,31 @@
+openapi: 3.0.3
+info:
+  title: knowpod-service API
+  version: 0.1.0
+servers:
+  - url: /api/v1
+paths:
+  /info:
+    get:
+      summary: Service information
+      responses:
+        "200":
+          description: Service name and API version
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service:
+                    type: string
+                    example: knowpod-service
+                  apiVersion:
+                    type: string
+                    example: v1
+components:
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
