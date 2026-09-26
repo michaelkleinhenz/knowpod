@@ -1,5 +1,5 @@
 import { Fragment, ReactNode, useEffect, useState } from 'react';
-import { api, Health, Info, OpenAPIOperation, OpenAPISpec } from '../api/client';
+import { api, Health, Info, Integrations, OpenAPIOperation, OpenAPISpec } from '../api/client';
 import { CopyButton } from '../components/CopyButton';
 
 const METHODS = ['get', 'post', 'put', 'patch', 'delete'];
@@ -56,6 +56,62 @@ function Markdown({ text }: { text: string }) {
         return <p key={i}>{inline(lines.map((l) => l.trim()).join(' '))}</p>;
       })}
     </>
+  );
+}
+
+function ConfigState({ ok, name }: { ok: boolean; name: string }) {
+  return ok ? (
+    <span className="status-pill ok">Configured</span>
+  ) : (
+    <span className="status-pill bad">
+      Missing: set <code>{name}</code>
+    </span>
+  );
+}
+
+// PocketCard shows the webhook URL to enter in the Pocket app and whether the service has
+// the secrets it needs.
+function PocketCard({ integrations, origin }: { integrations: Integrations | null; origin: string }) {
+  if (!integrations) return null;
+  const p = integrations.pocket;
+  const url = origin + p.webhookPath;
+  const ready = p.webhookSecretConfigured && p.apiKeyConfigured;
+  return (
+    <section className="card">
+      <h2 className="card-title">Pocket integration</h2>
+      <p className="muted">
+        Recordings made with a Pocket recorder (heypocketai.com) are announced by webhook; knowpod then downloads the audio
+        through the Pocket API and archives it with the other recordings.
+      </p>
+      <dl className="facts">
+        <dt>Webhook URL</dt>
+        <dd className="with-action">
+          <code>{url}</code> <CopyButton text={url} />
+        </dd>
+        <dt>Signing secret</dt>
+        <dd>
+          <ConfigState ok={p.webhookSecretConfigured} name="POCKET_WEBHOOK_SECRET" />
+        </dd>
+        <dt>API key</dt>
+        <dd>
+          <ConfigState ok={p.apiKeyConfigured} name="POCKET_API_KEY" />
+        </dd>
+        <dt>State</dt>
+        <dd>{ready ? 'Receiving webhooks' : 'Webhooks are refused until both are set'}</dd>
+      </dl>
+      {!ready && (
+        <ol className="steps">
+          <li>In the Pocket app, open the integrations settings and add a webhook with the URL above.</li>
+          <li>
+            Pocket shows the webhook's signing secret once. Set it as <code>POCKET_WEBHOOK_SECRET</code> on the service
+            (Railway variables).
+          </li>
+          <li>
+            Create a Pocket API key and set it as <code>POCKET_API_KEY</code>. Redeploy.
+          </li>
+        </ol>
+      )}
+    </section>
   );
 }
 
@@ -118,12 +174,14 @@ export function Status() {
   const [health, setHealth] = useState<Health | null>(null);
   const [info, setInfo] = useState<Info | null>(null);
   const [spec, setSpec] = useState<OpenAPISpec | null>(null);
+  const [integrations, setIntegrations] = useState<Integrations | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     api.health().then(setHealth, () => setHealth({ status: 'unreachable', service: '' }));
     api.info().then(setInfo, () => undefined);
     api.openapi().then(setSpec, (e: Error) => setError(e.message));
+    api.integrations().then(setIntegrations, () => undefined);
   }, []);
 
   const origin = window.location.origin;
@@ -181,6 +239,8 @@ export function Status() {
           </dd>
         </dl>
       </section>
+
+      <PocketCard integrations={integrations} origin={origin} />
 
       {spec?.info.description && (
         <section className="card">

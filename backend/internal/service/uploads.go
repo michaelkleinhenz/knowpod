@@ -6,13 +6,11 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
-	"os"
 	"regexp"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/michaelkleinhenz/knowpod-service/backend/internal/audio"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/device"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/ports"
@@ -177,7 +175,7 @@ func (s *UploadService) finish(ctx context.Context, rec *recording.Recording) (*
 		return nil, ErrChecksumMismatch
 	}
 
-	info, err := s.wavInfo(rec.ID)
+	info, err := wavInfoAt(s.spool.WAVPath(rec.ID))
 	now := s.clock().UTC()
 	rec.UpdatedAt = now
 	if err != nil {
@@ -205,19 +203,6 @@ func (s *UploadService) finish(ctx context.Context, rec *recording.Recording) (*
 		s.OnReceived()
 	}
 	return &Upload{Recording: rec, Offset: rec.Size}, nil
-}
-
-func (s *UploadService) wavInfo(id string) (*audio.WAVInfo, error) {
-	f, err := os.Open(s.spool.WAVPath(id))
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	st, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	return audio.ReadWAVInfo(f, st.Size())
 }
 
 // PurgeStale deletes uploads that have not progressed within ttl, including their spooled

@@ -8,6 +8,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 )
 
 // Spool keeps in-flight and received WAV files on local disk until they are archived. Files
@@ -28,6 +30,18 @@ func (s *Spool) WAVPath(id string) string { return filepath.Join(s.dir, id+".wav
 
 // FLACPath returns the path of the recording's transcoded FLAC file.
 func (s *Spool) FLACPath(id string) string { return filepath.Join(s.dir, id+".flac") }
+
+// DownloadPath returns the path of audio fetched from an external source (any format).
+func (s *Spool) DownloadPath(id string) string { return filepath.Join(s.dir, id+".download") }
+
+// SourcePath returns the spooled audio of a recording: the fetched file for external
+// sources, the uploaded WAV otherwise.
+func (s *Spool) SourcePath(rec *recording.Recording) string {
+	if rec.Source == recording.SourcePocket {
+		return s.DownloadPath(rec.ID)
+	}
+	return s.WAVPath(rec.ID)
+}
 
 // Size returns the number of bytes received so far (0 when no file exists).
 func (s *Spool) Size(id string) (int64, error) {
@@ -75,7 +89,7 @@ func (s *Spool) SHA256(id string) (string, error) {
 // Remove deletes all files of the recording.
 func (s *Spool) Remove(id string) error {
 	var errs []error
-	for _, p := range []string{s.WAVPath(id), s.FLACPath(id)} {
+	for _, p := range []string{s.WAVPath(id), s.FLACPath(id), s.DownloadPath(id)} {
 		if err := os.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			errs = append(errs, err)
 		}

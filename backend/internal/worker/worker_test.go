@@ -15,9 +15,11 @@ import (
 
 	"github.com/mewkiz/flac"
 
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/audio"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/audio/audiotest"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/device"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/pocket"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/repository/memory"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/service"
 	memstore "github.com/michaelkleinhenz/knowpod-service/backend/internal/storage/memory"
@@ -150,5 +152,71 @@ func TestArchiveRecoversAfterTransientFailure(t *testing.T) {
 	rec, _ = f.recs.Get(ctx, id)
 	if rec.Status != recording.StatusStored || rec.LastError != "" {
 		t.Fatalf("after recovery: %+v", rec)
+	}
+}
+
+// fakePocket serves one audio file for every recording.
+type fakePocket struct {
+	data []byte
+	err  error
+}
+
+func (p *fakePocket) AudioURL(context.Context, string) (string, error) {
+	return "https://s3.example.com/audio?sig=1", p.err
+}
+
+func (p *fakePocket) Download(_ context.Context, _, dst string, _ int64) (*pocket.Download, error) {
+	if err := os.WriteFile(dst, p.data, 0o600); err != nil {
+		return nil, err
+	}
+	ctype, _ := audio.Sniff(p.data)
+	return &pocket.Download{ContentType: ctype, Size: int64(len(p.data)), SHA256: "abc"}, nil
+}
+
+func runPocket(t *testing.T, data []byte) (*recording.Recording, *memstore.Store) {
+	t.Helper()
+	ctx := context.Background()
+	f := newFixture(t, false)
+	svc := service.NewPocketService(f.recs, &fakePocket{data: data}, f.spool, 1<<30, quiet)
+	archiver := service.NewArchiver(f.spool, f.objects, false, quiet)
+	w := worker.New(f.recs, []worker.Stage{
+		{Name: "pocket-fetch", From: recording.StatusRemote, To: recording.StatusReceived, Run: svc.Fetch},
+		{Name: "archive", From: recording.StatusReceived, To: recording.StatusStored, Run: archiver.Run, Cleanup: archiver.Cleanup},
+	}, worker.Options{}, quiet)
+
+	ev := &pocket.Event{Event: "recording.created"}
+	ev.Recording.ID = "rec_1"
+	if _, err := svc.HandleWebhook(ctx, ev); err != nil {
+		t.Fatal(err)
+	}
+	if n := w.RunOnce(ctx); n != 2 {
+		t.Fatalf("processed %d stages, want 2 (fetch + archive)", n)
+	}
+	rec, err := f.recs.GetByClientID(ctx, recording.PocketDeviceID, "rec_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(f.spool.DownloadPath(rec.ID)); !os.IsNotExist(err) {
+		t.Fatal("downloaded file not cleaned up")
+	}
+	return rec, f.objects
+}
+
+func TestPocketAudioStoredAsIs(t *testing.T) {
+	mp3 := append([]byte("ID3\x04\x00"), make([]byte, 1000)...)
+	rec, objects := runPocket(t, mp3)
+	if rec.Status != recording.StatusStored || rec.Audio == nil || rec.Audio.ContentType != "audio/mpeg" ||
+		rec.Audio.Key != "recordings/pocket/"+rec.ID+".mp3" || rec.Size != int64(len(mp3)) {
+		t.Fatalf("recording = %+v audio=%+v", rec, rec.Audio)
+	}
+	if obj, ok := objects.Object(rec.Audio.Key); !ok || !bytes.Equal(obj.Data, mp3) {
+		t.Fatal("stored object differs from the downloaded file")
+	}
+}
+
+func TestPocketWAVIsTranscoded(t *testing.T) {
+	rec, _ := runPocket(t, audiotest.WAV(16000, 16, audiotest.Samples(1, 16000, 16)))
+	if rec.Status != recording.StatusStored || rec.Audio.ContentType != "audio/flac" || rec.Format == nil || rec.Format.DurationMs != 1000 {
+		t.Fatalf("recording = %+v audio=%+v", rec, rec.Audio)
 	}
 }

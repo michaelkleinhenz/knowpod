@@ -510,3 +510,16 @@ a {
   font-size: 0.85rem;
   color: var(--color-primary-dark);
 }
+
+.steps {
+  margin: 1rem 0 0;
+  padding-left: 1.25rem;
+  line-height: 1.5;
+}
+
+.status-pill code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+}

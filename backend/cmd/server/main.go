@@ -16,6 +16,7 @@ import (
 
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/config"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/pocket"
 	repo "github.com/michaelkleinhenz/knowpod-service/backend/internal/repository/mongo"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/service"
 	s3store "github.com/michaelkleinhenz/knowpod-service/backend/internal/storage/s3"
@@ -72,11 +73,16 @@ func main() {
 	deviceSvc := service.NewDeviceService(devices)
 	uploadSvc := service.NewUploadService(recordings, spool, cfg.MaxUploadBytes)
 	archiver := service.NewArchiver(spool, objects, cfg.KeepOriginalWAV, log)
-	pipeline := worker.New(recordings, []worker.Stage{{
-		Name: "archive", From: recording.StatusReceived, To: recording.StatusStored,
-		Run: archiver.Run, Cleanup: archiver.Cleanup,
-	}}, worker.Options{PollInterval: cfg.WorkerPollInterval, MaxAttempts: cfg.WorkerMaxAttempts}, log)
+	pocketSvc := service.NewPocketService(recordings, pocket.NewClient(cfg.PocketAPIURL, cfg.PocketAPIKey), spool, cfg.MaxUploadBytes, log)
+	if cfg.PocketWebhookSecret == "" || cfg.PocketAPIKey == "" {
+		log.Info("Pocket integration disabled: set POCKET_WEBHOOK_SECRET and POCKET_API_KEY to enable it")
+	}
+	pipeline := worker.New(recordings, []worker.Stage{
+		{Name: "pocket-fetch", From: recording.StatusRemote, To: recording.StatusReceived, Run: pocketSvc.Fetch},
+		{Name: "archive", From: recording.StatusReceived, To: recording.StatusStored, Run: archiver.Run, Cleanup: archiver.Cleanup},
+	}, worker.Options{PollInterval: cfg.WorkerPollInterval, MaxAttempts: cfg.WorkerMaxAttempts}, log)
 	uploadSvc.OnReceived = pipeline.Wake
+	pocketSvc.OnQueued = pipeline.Wake
 
 	jobCtx, jobCancel := context.WithCancel(ctx)
 	var jobs sync.WaitGroup
@@ -87,7 +93,7 @@ func main() {
 	// HTTP server.
 	srv := httpx.NewServer(httpx.Deps{
 		Cfg: cfg, Log: log, DB: store, Auth: authSvc, Devices: deviceSvc, Uploads: uploadSvc,
-		Recordings: recordings, Objects: objects,
+		Recordings: recordings, Objects: objects, Pocket: pocketSvc,
 	})
 	httpServer := &http.Server{
 		Addr:              ":" + cfg.Port,

@@ -76,6 +76,9 @@ One MongoDB document in `recordings` represents both the upload session and the 
 its `_id` is the `uploadId` the device sees.
 
 ```
+  Pocket webhook          pocket-fetch stage OK
+  (none) ─────────▶ remote ─────────────────────┐
+                                                 ▼
             create                 last byte, checksum + WAV OK        archive stage OK
   (none) ──────────▶ uploading ─────────────────────────────▶ received ──────────────▶ stored
                       │   ▲                                      │
@@ -91,8 +94,9 @@ its `_id` is the `uploadId` the device sees.
 
 | Status | Where the audio is |
 |---|---|
+| `remote` | Announced by a Pocket webhook; the audio is still at Pocket. |
 | `uploading` | Partial WAV in the spool (`UPLOAD_DIR/<id>.wav`). Its file size is the upload offset. |
-| `received` | Complete, verified WAV in the spool, waiting for the worker. |
+| `received` | Complete audio in the spool, waiting for the worker: a verified WAV upload, or a file fetched from Pocket (`<id>.download`, any format). |
 | `stored` | FLAC (and optionally the WAV) in S3. The spool files are gone. |
 | `failed` | Rejected WAV: nothing kept. Archive failure: the WAV stays in the spool for recovery. |
 
@@ -144,9 +148,21 @@ The loop, per stage:
 The worker checks for work every `WORKER_POLL_INTERVAL` and immediately when an upload
 completes. Each stage must therefore be safe to run more than once for the same recording.
 
+### The Pocket fetch stage (`service/pocket.go`)
+
+`remote → received`: asks the Pocket API for a pre-signed download URL, streams the file
+into `<id>.download` (limited to `MAX_UPLOAD_BYTES`), identifies the format from its first
+bytes (`audio.Sniff`; pre-signed storage URLs often report a generic content type), and
+records size, SHA-256 and media type. The Pocket API docs don't specify the field that
+holds the URL, so `pocket.findURL` accepts a bare string or the usual field names; an
+unrecognised response fails the stage with the response body in `lastError`.
+
 ### The archive stage (`service/archive.go`)
 
 `received → stored`:
+
+Fetched files that aren't WAV are uploaded unchanged to `recordings/pocket/<id>.<ext>`.
+Everything else:
 
 1. Encode `<id>.wav` to `<id>.flac` in the spool.
 2. `PutObject` the FLAC to `recordings/<deviceId>/<id>.flac` (the key uses the server ID,

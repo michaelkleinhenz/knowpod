@@ -37,6 +37,8 @@ type Server struct {
 	uploads    *service.UploadService
 	recordings ports.RecordingRepository
 	objects    ports.ObjectStore
+	pocket     *service.PocketService
+	now        func() time.Time
 }
 
 // Deps are the server's constructor dependencies.
@@ -49,6 +51,7 @@ type Deps struct {
 	Uploads    *service.UploadService
 	Recordings ports.RecordingRepository
 	Objects    ports.ObjectStore
+	Pocket     *service.PocketService // optional; the Pocket webhook answers 503 without it
 }
 
 // NewServer builds the server.
@@ -59,7 +62,7 @@ func NewServer(d Deps) *Server {
 	}
 	return &Server{
 		cfg: d.Cfg, log: log, db: d.DB, auth: d.Auth, devices: d.Devices, uploads: d.Uploads,
-		recordings: d.Recordings, objects: d.Objects,
+		recordings: d.Recordings, objects: d.Objects, pocket: d.Pocket, now: time.Now,
 	}
 }
 
@@ -103,6 +106,9 @@ func (s *Server) Router() http.Handler {
 			d.Patch("/uploads/{id}", s.handleAppendUpload)
 		})
 
+		// --- webhooks from external services (authenticated by their signatures) ---
+		api.Post("/webhooks/pocket", s.handlePocketWebhook)
+
 		// --- admin API: device provisioning and recording access (session or ADMIN_TOKEN) ---
 		api.Route("/admin", func(a chi.Router) {
 			a.Use(s.requireAdmin)
@@ -113,6 +119,7 @@ func (s *Server) Router() http.Handler {
 			a.Get("/recordings", s.handleListRecordings)
 			a.Get("/recordings/{id}", s.handleGetRecording)
 			a.Get("/recordings/{id}/audio", s.handleRecordingAudio)
+			a.Get("/integrations", s.handleIntegrations)
 		})
 	})
 

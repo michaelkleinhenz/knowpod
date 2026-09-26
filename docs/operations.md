@@ -33,6 +33,7 @@ Everything else is configured in the Railway dashboard:
    | `AWS_S3_BUCKET_NAME`, `AWS_DEFAULT_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | The S3 bucket and an IAM user's keys (see [S3](#s3)) |
    | `RAILWAY_RUN_UID` | `0` (see below) |
    | `ADMIN_TOKEN` | Optional, for scripts |
+   | `POCKET_WEBHOOK_SECRET`, `POCKET_API_KEY` | Optional, for the [Pocket integration](#pocket-integration) |
 
    Don't set `PORT`; Railway provides it and the service listens on it.
 5. **Networking.** Generate a public domain for the app service. Railway terminates HTTPS
@@ -133,6 +134,46 @@ db.users.deleteOne({ email: "admin@example.com" })
 **Changing `ADMIN_EMAIL`** after the password was changed leaves the old account in the
 database, still able to sign in with its stored password. Delete it as above if it
 shouldn't.
+
+## Pocket integration
+
+Recordings made with a [Pocket](https://heypocket.com) recorder can flow into knowpod.
+Pocket calls a webhook whenever something happens to a recording; knowpod then downloads
+the recording's audio through the Pocket API and archives it in S3 like the other
+recordings.
+
+**Setup**
+
+1. Open **Status** in the knowpod web UI and copy the **Webhook URL**
+   (`https://<your domain>/api/v1/webhooks/pocket`).
+2. In the Pocket app's integrations settings, add a webhook with that URL. Pocket shows the
+   webhook's **signing secret** once; set it as `POCKET_WEBHOOK_SECRET`.
+3. Create a Pocket **API key** (`pk_…`) and set it as `POCKET_API_KEY`.
+4. Redeploy. The Pocket card on the Status page shows both as configured.
+
+Until both variables are set, the webhook answers `503` and nothing is stored.
+
+**What happens**
+
+- Each webhook's signature (`X-HeyPocket-Signature`, HMAC-SHA256 over
+  `<X-HeyPocket-Timestamp>.<body>`) is verified, and its timestamp must be within 5 minutes
+  of the server clock. Unsigned or stale requests get `401`.
+- Every event that names a recording (`recording.created`, `transcription.completed`,
+  `summary.completed`, …) queues that recording **once**; Pocket delivers at least once and
+  later events for the same recording are ignored. `recording.deleted` is ignored: the
+  archived copy is kept.
+- The worker asks the Pocket API for a download URL
+  (`GET /public/recordings/{id}/audio-url`), streams the file to the spool, and archives
+  it: WAV is transcoded to FLAC, other formats (e.g. MP3, M4A) are stored as they are.
+  Failures, including audio that isn't available yet, are retried with backoff and end in
+  `failed` after `WORKER_MAX_ATTEMPTS`.
+- Pocket recordings appear in `/api/v1/admin/recordings` with `deviceId` `pocket`,
+  `source` `pocket`, the Pocket `title`, and the Pocket recording ID as `recordingId`.
+
+Pocket's transcripts, summaries and action items in the webhook payload are not stored.
+
+**Log messages:** `pocket recording queued`, `pocket audio fetched`, and
+`pocket webhook rejected` (signature problems, with the reason).
 
 ## Provisioning devices
 

@@ -3,6 +3,7 @@ package http
 import (
 	"io"
 	"net/http"
+	"path"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
@@ -87,7 +88,8 @@ func (s *Server) handleGetRecording(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, rec)
 }
 
-// handleRecordingAudio streams the archived FLAC file.
+// handleRecordingAudio streams the archived audio (FLAC, or the original format of fetched
+// recordings).
 func (s *Server) handleRecordingAudio(w http.ResponseWriter, r *http.Request) {
 	rec, err := s.recordings.Get(r.Context(), chi.URLParam(r, "id"))
 	if err != nil {
@@ -106,7 +108,7 @@ func (s *Server) handleRecordingAudio(w http.ResponseWriter, r *http.Request) {
 	defer body.Close()
 	w.Header().Set("Content-Type", rec.Audio.ContentType)
 	w.Header().Set("Content-Length", strconv.FormatInt(rec.Audio.Size, 10))
-	w.Header().Set("Content-Disposition", `attachment; filename="`+rec.ID+`.flac"`)
+	w.Header().Set("Content-Disposition", `attachment; filename="`+rec.ID+path.Ext(rec.Audio.Key)+`"`)
 	if _, err := io.Copy(w, body); err != nil {
 		s.log.Warn("streaming audio aborted", "id", rec.ID, "err", err)
 	}

@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: knowpod-service API
-  version: 0.3.0
+  version: 0.4.0
   description: |
     Backend for the knowpod AI audio recorder.
 
@@ -16,6 +16,10 @@ info:
     3. When the last byte arrives, the checksum and WAV header are verified and the status
        becomes `received`. The recording is then transcoded to FLAC and archived in S3 in
        the background (status `stored`).
+
+    **Pocket** — recordings from a Pocket recorder (heypocketai.com) arrive through the
+    `POST /webhooks/pocket` webhook; the audio is then downloaded from the Pocket API and
+    archived like device uploads.
 
     **Web UI sign-in** — email and password, answered with an HttpOnly session cookie. The
     default login comes from `ADMIN_EMAIL`/`ADMIN_PASSWORD`; a password changed via
@@ -37,6 +41,8 @@ tags:
     description: Register and revoke recorder gadgets. Web UI session or ADMIN_TOKEN.
   - name: "Admin: recordings"
     description: Inspect recordings and download the archived audio. Web UI session or ADMIN_TOKEN.
+  - name: Integrations
+    description: Webhooks from external recorders and their configuration.
 paths:
   /info:
     get:
@@ -227,6 +233,78 @@ paths:
             supported WAV (the recording is marked `failed`).
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
+  /webhooks/pocket:
+    post:
+      tags: ["Integrations"]
+      summary: Webhook for Pocket (heypocketai.com)
+      description: |
+        Configure this URL as a webhook in the Pocket app. Requests are authenticated by
+        their signature: `X-HeyPocket-Signature` must be the hex HMAC-SHA256 of
+        `<X-HeyPocket-Timestamp>.<raw body>`, keyed with `POCKET_WEBHOOK_SECRET`, and the
+        timestamp (Unix milliseconds) must be within 5 minutes of the server clock.
+
+        Every event that names a recording queues it once (repeated deliveries are ignored);
+        `recording.deleted` is ignored. The audio is then downloaded in the background via
+        the Pocket API (`POCKET_API_KEY`) and archived in S3.
+      parameters:
+        - { name: X-HeyPocket-Signature, in: header, required: true, schema: { type: string } }
+        - { name: X-HeyPocket-Timestamp, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                event: { type: string, example: recording.created }
+                timestamp: { type: string, format: date-time }
+                recording:
+                  type: object
+                  properties:
+                    id: { type: string }
+                    title: { type: string }
+                    duration: { type: number }
+                    recordingAt: { type: string, format: date-time }
+      responses:
+        "200":
+          description: Accepted. `status` is `queued`, `duplicate` or `ignored`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [queued, duplicate, ignored] }
+        "400": { $ref: "#/components/responses/Error" }
+        "401":
+          description: Missing, wrong or expired signature
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "413": { $ref: "#/components/responses/Error" }
+        "503":
+          description: POCKET_WEBHOOK_SECRET or POCKET_API_KEY is not set
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /admin/integrations:
+    get:
+      tags: ["Integrations"]
+      summary: Integration settings
+      description: The webhook path and whether the required secrets are configured (their values are never returned).
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      responses:
+        "200":
+          description: Integration settings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pocket:
+                    type: object
+                    properties:
+                      webhookPath: { type: string, example: /api/v1/webhooks/pocket }
+                      webhookSecretConfigured: { type: boolean }
+                      apiKeyConfigured: { type: boolean }
+        "401": { $ref: "#/components/responses/Error" }
+
   /admin/devices:
     post:
       tags: ["Admin: devices"]
@@ -335,7 +413,8 @@ paths:
   /admin/recordings/{recordingId}/audio:
     get:
       tags: ["Admin: recordings"]
-      summary: Download the archived FLAC file
+      summary: Download the archived audio
+      description: FLAC for uploaded WAV recordings; the original format (e.g. MP3, M4A) for recordings fetched from Pocket.
       security: [{ sessionCookie: [] }, { adminToken: [] }]
       parameters:
         - { name: recordingId, in: path, required: true, schema: { type: string } }
@@ -344,6 +423,8 @@ paths:
           description: FLAC audio
           content:
             audio/flac:
+              schema: { type: string, format: binary }
+            audio/*:
               schema: { type: string, format: binary }
         "404": { $ref: "#/components/responses/Error" }
         "409":
@@ -384,7 +465,7 @@ components:
 
     Status:
       type: string
-      enum: [uploading, received, stored, failed]
+      enum: [remote, uploading, received, stored, failed]
 
     CreateUpload:
       type: object
@@ -421,11 +502,14 @@ components:
       type: object
       properties:
         id: { type: string }
-        deviceId: { type: string }
-        recordingId: { type: string }
+        deviceId: { type: string, description: '"pocket" for recordings from Pocket' }
+        source: { type: string, enum: [pocket], description: Absent for device uploads }
+        title: { type: string, description: Title from the source (Pocket) }
+        recordingId: { type: string, description: Device-assigned ID, or the Pocket recording ID }
         status: { $ref: "#/components/schemas/Status" }
         size: { type: integer, format: int64 }
         sha256: { type: string }
+        sourceContentType: { type: string, description: Media type of audio fetched from Pocket }
         recordedAt: { type: string, format: date-time }
         format:
           type: object

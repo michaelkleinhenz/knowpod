@@ -27,6 +27,8 @@ background worker ─────▶ WAV → FLAC, uploaded to S3 (status: store
 
 - Each gadget authenticates with its own revocable token, created on the web UI's
   **Devices** page (or through the admin API).
+- Recordings made with a [Pocket](https://heypocket.com) recorder arrive by webhook; the
+  service downloads their audio through the Pocket API and archives it the same way.
 - People sign in to the web UI with email and password. The first login uses
   `ADMIN_EMAIL`/`ADMIN_PASSWORD` from the environment; once the password is changed in the
   UI, the stored password replaces the one from the environment.
@@ -124,6 +126,9 @@ Environment variables only.
 | `ADMIN_PASSWORD` | _(empty)_ | Password of the default login, until it is changed in the UI. Empty disables the default login. |
 | `SESSION_TTL` | `168h` | How long a web UI sign-in lasts |
 | `ADMIN_TOKEN` | _(empty: disabled)_ | Bearer token for scripting `/api/v1/admin/*` without signing in |
+| `POCKET_WEBHOOK_SECRET` | _(empty: webhook refused)_ | Signing secret of the Pocket webhook |
+| `POCKET_API_KEY` | _(empty: webhook refused)_ | Pocket API key (`pk_…`) for downloading audio |
+| `POCKET_API_URL` | `https://public.heypocketai.com/api/v1` | Pocket API base URL |
 | `AWS_S3_BUCKET_NAME` | _(required)_ | Existing bucket for the audio files |
 | `AWS_S3_PREFIX` | _(empty)_ | Key prefix inside the bucket |
 | `AWS_DEFAULT_REGION` | _(required)_ | AWS region of the bucket. `AWS_REGION` also works and takes precedence. |
@@ -136,7 +141,8 @@ Environment variables only.
 | `WORKER_MAX_ATTEMPTS` | `5` | Attempts per processing stage before `failed` |
 
 Objects are stored at `recordings/<deviceId>/<id>.flac` (and `.wav` when kept), where
-`<id>` is the server-assigned recording ID. For the required IAM permissions, see
+`<id>` is the server-assigned recording ID. Pocket recordings are stored at
+`recordings/pocket/<id>.<ext>` in their original format (FLAC if Pocket delivers WAV). For the required IAM permissions, see
 [Operations](docs/operations.md#s3).
 
 ## Layout
@@ -146,13 +152,14 @@ backend/
   api/openapi.yaml     API specification
   cmd/server/          entrypoint and wiring
   internal/
-    audio/             WAV parsing, WAV → FLAC transcoding
+    audio/             WAV parsing, WAV → FLAC transcoding, format sniffing
     config/            environment-based configuration
     domain/            models: recording (lifecycle), device, user + session
+    pocket/            Pocket webhook signatures and API client
     ports/             repository and object store interfaces
     repository/mongo/  MongoDB connection, repositories, collection/index setup
     repository/memory/ in-memory repositories for tests
-    service/           web UI sign-in, device auth, resumable uploads + spool, archive stage
+    service/           web UI sign-in, device auth, resumable uploads + spool, Pocket, archive stage
     storage/s3/        S3 object store (storage/memory for tests)
     transport/http/    router, middleware, handlers
     web/               embedded frontend (dist/) + SPA handler

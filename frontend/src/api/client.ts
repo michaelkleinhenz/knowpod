@@ -56,6 +56,14 @@ export interface DeviceWithToken {
   token: string;
 }
 
+export interface Integrations {
+  pocket: {
+    webhookPath: string;
+    webhookSecretConfigured: boolean;
+    apiKeyConfigured: boolean;
+  };
+}
+
 export interface Health {
   status: string;
   service: string;
@@ -90,6 +98,7 @@ export const api = {
   health,
   openapi: () => request<OpenAPISpec>('GET', '/openapi.json'),
   devices: () => request<Device[]>('GET', '/admin/devices'),
+  integrations: () => request<Integrations>('GET', '/admin/integrations'),
   createDevice: (name: string) => request<DeviceWithToken>('POST', '/admin/devices', { name }),
   rotateDeviceToken: (id: string) => request<DeviceWithToken>('POST', `/admin/devices/${encodeURIComponent(id)}/token`),
   removeDevice: (id: string) => request<void>('DELETE', `/admin/devices/${encodeURIComponent(id)}`),

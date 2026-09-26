@@ -12,8 +12,9 @@ import (
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/ports"
 )
 
-// Archiver is the first processing stage: it transcodes a received WAV to FLAC and stores
-// it (and optionally the original WAV) in object storage.
+// Archiver is the processing stage that moves received audio to object storage. WAV is
+// transcoded to FLAC (the original WAV is kept too if configured); other formats, e.g. MP3
+// or M4A fetched from Pocket, are stored unchanged.
 type Archiver struct {
 	spool        *Spool
 	store        ports.ObjectStore
@@ -35,7 +36,12 @@ func ObjectKey(rec *recording.Recording, ext string) string {
 // Run archives the recording and records the stored objects on rec. The spooled files are
 // left in place; Cleanup removes them once the new state is persisted.
 func (a *Archiver) Run(ctx context.Context, rec *recording.Recording) error {
-	wavPath, flacPath := a.spool.WAVPath(rec.ID), a.spool.FLACPath(rec.ID)
+	srcPath := a.spool.SourcePath(rec)
+	if rec.Source != recording.SourceDevice && !isWAV(srcPath) {
+		return a.storeAsIs(ctx, rec, srcPath)
+	}
+
+	wavPath, flacPath := srcPath, a.spool.FLACPath(rec.ID)
 	start := a.clock()
 	if _, err := audio.EncodeFLAC(ctx, wavPath, flacPath); err != nil {
 		return fmt.Errorf("transcode to FLAC: %w", err)
@@ -57,6 +63,37 @@ func (a *Archiver) Run(ctx context.Context, rec *recording.Recording) error {
 	a.log.Info("recording archived", "id", rec.ID, "wavBytes", rec.Size, "flacBytes", flacObj.Size,
 		"took", now.Sub(start).String())
 	return nil
+}
+
+// storeAsIs uploads a fetched file in its original format.
+func (a *Archiver) storeAsIs(ctx context.Context, rec *recording.Recording, path string) error {
+	ctype := rec.SourceContentType
+	if ctype == "" {
+		ctype = "application/octet-stream"
+	}
+	obj, err := a.put(ctx, path, ObjectKey(rec, audio.ExtensionFor(ctype)), ctype)
+	if err != nil {
+		return err
+	}
+	now := a.clock().UTC()
+	rec.Audio, rec.StoredAt = obj, &now
+	a.log.Info("recording archived", "id", rec.ID, "source", string(rec.Source), "contentType", ctype, "bytes", obj.Size)
+	return nil
+}
+
+// isWAV reports whether the file at path is a WAV file this service can transcode.
+func isWAV(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	_, err = audio.ReadWAVInfo(f, st.Size())
+	return err == nil
 }
 
 // Cleanup removes the spooled files after the archived state has been persisted.
