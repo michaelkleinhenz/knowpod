@@ -167,6 +167,14 @@ with the reference `flac` tool, and noisy 24-bit audio barely shrinks at all. To
 harder, replace `audio.EncodeFLAC` with a call to the `flac` command-line tool and install
 it in the runtime image. Nothing else needs to change.
 
+## API description
+
+`backend/api/openapi.yaml` is the single description of the HTTP API. It is embedded in the
+binary (`backend/api/api.go`) and served at `/api/v1/openapi.yaml` and, converted, at
+`/api/v1/openapi.json`. The web UI's Status page reads the JSON and lists every operation
+grouped by its first tag. When you add or change a route, update the spec; the route
+coverage test enforces it.
+
 ## Adding a processing stage
 
 For example, transcription after archiving:
@@ -246,7 +254,7 @@ reason MongoDB runs as a replica set). Nothing uses it yet.
 | `audio/*_test.go` | WAV parsing edge cases; FLAC output decodes to the exact input samples |
 | `service/*_test.go` | Upload protocol: chunks, idempotency, offsets, dropped connections, checksum reset, invalid audio, isolation between devices, purge; device tokens; sign-in with the default login, password change overriding it, session expiry and logout |
 | `worker/worker_test.go` | Archive stage end to end, retry/backoff, permanent failure, recovery |
-| `transport/http/*_test.go` | Full HTTP flows: uploads, device and admin auth, browser sign-in with cookies, password change, login rate limit |
+| `transport/http/*_test.go` | Full HTTP flows: uploads, device and admin auth, browser sign-in with cookies, password change, login rate limit. `openapi_test.go` fails if a route under `/api/v1` is missing from `openapi.yaml` or the spec lists a route that doesn't exist. |
 | `repository/mongo/repo_test.go` | Real MongoDB; runs only with `KNOWPOD_TEST_MONGO_URI` set |
 
 The S3 store has no automated test. It has been checked by hand against an S3-compatible

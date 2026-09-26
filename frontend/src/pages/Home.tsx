@@ -11,11 +11,11 @@ export function Home() {
 
   return (
     <section className="card">
-      <h1>knowpod-service</h1>
+      <h1>knowpod</h1>
       {error && <p className="error">Backend unreachable: {error}</p>}
       {info && (
         <p>
-          Connected to <strong>{info.service}</strong> (API {info.apiVersion}).
+          Backend connected (API {info.apiVersion}).
         </p>
       )}
       {!info && !error && <p>…</p>}

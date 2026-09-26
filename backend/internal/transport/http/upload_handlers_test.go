@@ -154,6 +154,19 @@ func TestUploadProtocolEndToEnd(t *testing.T) {
 		t.Fatalf("list: %d %d", res.StatusCode, len(list))
 	}
 
+	// A rotated token replaces the old one.
+	var rotated registerDeviceResponse
+	if res := f.do("POST", "/api/v1/admin/devices/"+reg.Device.ID+"/token", adminToken, nil, nil, &rotated); res.StatusCode != 200 || rotated.Token == "" || rotated.Token == token {
+		t.Fatalf("rotate: %d %+v", res.StatusCode, rotated)
+	}
+	if res := f.do("GET", path, token, nil, nil, nil); res.StatusCode != 401 {
+		t.Fatalf("old token after rotation: %d", res.StatusCode)
+	}
+	token = rotated.Token
+	if res := f.do("GET", path, token, nil, nil, nil); res.StatusCode != 200 {
+		t.Fatalf("new token: %d", res.StatusCode)
+	}
+
 	// Revoked devices are locked out.
 	if res := f.do("DELETE", "/api/v1/admin/devices/"+reg.Device.ID, adminToken, nil, nil, nil); res.StatusCode != 204 {
 		t.Fatalf("revoke: %d", res.StatusCode)

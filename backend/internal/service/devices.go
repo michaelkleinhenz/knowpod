@@ -65,6 +65,24 @@ func (s *DeviceService) Authenticate(ctx context.Context, token string) (*device
 // List returns all devices.
 func (s *DeviceService) List(ctx context.Context) ([]*device.Device, error) { return s.repo.List(ctx) }
 
+// RotateToken replaces the token of an active device, e.g. when the old one was lost. The
+// old token stops working immediately; the device keeps its ID and recordings.
+func (s *DeviceService) RotateToken(ctx context.Context, id string) (*device.Device, string, error) {
+	d, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return nil, "", err
+	}
+	if !d.Active() {
+		return nil, "", ErrNotFound
+	}
+	token := newToken()
+	d.TokenHash = hashToken(token)
+	if err := s.repo.Update(ctx, d); err != nil {
+		return nil, "", err
+	}
+	return d, token, nil
+}
+
 // Revoke disables a device's token permanently. Its recordings are kept.
 func (s *DeviceService) Revoke(ctx context.Context, id string) error {
 	d, err := s.repo.Get(ctx, id)

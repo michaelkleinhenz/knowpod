@@ -3,8 +3,10 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './auth';
 import { Layout } from './components/Layout';
 import { Account } from './pages/Account';
+import { Devices } from './pages/Devices';
 import { Home } from './pages/Home';
 import { Login } from './pages/Login';
+import { Status } from './pages/Status';
 
 // RequireLogin sends signed-out visitors to the login page and back afterwards.
 function RequireLogin({ children }: { children: ReactNode }) {
@@ -25,6 +27,22 @@ export default function App() {
           element={
             <RequireLogin>
               <Home />
+            </RequireLogin>
+          }
+        />
+        <Route
+          path="/devices"
+          element={
+            <RequireLogin>
+              <Devices />
+            </RequireLogin>
+          }
+        />
+        <Route
+          path="/status"
+          element={
+            <RequireLogin>
+              <Status />
             </RequireLogin>
           }
         />

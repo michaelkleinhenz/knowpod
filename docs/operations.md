@@ -136,10 +136,19 @@ shouldn't.
 
 ## Provisioning devices
 
-Devices are managed through the admin API. A signed-in web UI session can use it, and so can
-scripts that send `ADMIN_TOKEN` as a bearer token. `ADMIN_TOKEN` is optional; set it to a
-long random value, e.g. `openssl rand -base64 32`. When it's empty, only signed-in sessions
-can use the admin API.
+**In the web UI**, open **Devices**:
+
+- **Add device:** enter a name. The device's API token appears in its row with a copy
+  button. Configure it on the recorder right away: the token is shown only once and is gone
+  when you leave the page (only its hash is stored).
+- **New token:** issues a replacement token, e.g. when the old one was lost. The old token
+  stops working immediately; the device keeps its recordings.
+- **Remove:** revokes the device. Its token stops working and it disappears from the list;
+  recordings it already uploaded are kept.
+
+**From scripts**, use the admin API with `ADMIN_TOKEN` as a bearer token. `ADMIN_TOKEN` is
+optional; set it to a long random value, e.g. `openssl rand -base64 32`. When it's empty,
+only signed-in web UI sessions can use the admin API.
 
 ```bash
 API=https://knowpod.example.com/api/v1
@@ -151,17 +160,17 @@ curl -s -X POST -H "$ADMIN" -d '{"name":"recorder-kitchen"}' $API/admin/devices
 # List devices (shows lastSeenAt and revokedAt).
 curl -s -H "$ADMIN" $API/admin/devices
 
-# Revoke a device. Its recordings are kept.
+# Issue a new token for a device (the old one stops working).
+curl -s -X POST -H "$ADMIN" $API/admin/devices/<deviceId>/token
+
+# Remove (revoke) a device. Its recordings are kept.
 curl -s -X DELETE -H "$ADMIN" $API/admin/devices/<deviceId>
 ```
-
-To **rotate** a token: register a new device entry, configure the gadget with the new
-token, then revoke the old entry.
 
 ## Monitoring
 
 - **`GET /healthz`** returns `200` when MongoDB answers and `503` otherwise. It doesn't
-  check S3.
+  check S3. The **Status** page in the web UI shows the same result.
 - **Logs** are JSON lines on stdout. Useful messages:
 
   | Message | Meaning |
@@ -208,8 +217,8 @@ wipe it while `received` recordings exist.
 
 - Single instance only (see [Scaling](#scaling-and-the-spool)).
 - One web UI account (the admin); there is no user management.
-- The web UI covers sign-in and password change only; devices and recordings are managed
-  through the admin API.
+- The web UI covers sign-in, password change, devices and the Status page; recordings are
+  only accessible through the admin API.
 - The client IP for the login rate limit is taken from `X-Forwarded-For` / `X-Real-IP`.
   Without a proxy that sets these, clients can spoof them and bypass the limit.
 - No API to delete recordings or their objects.

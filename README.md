@@ -25,7 +25,8 @@ gadget ──POST /uploads──▶ upload created (status: uploading)
 background worker ─────▶ WAV → FLAC, uploaded to S3 (status: stored), spool cleaned up
 ```
 
-- Each gadget authenticates with its own revocable token, issued through the admin API.
+- Each gadget authenticates with its own revocable token, created on the web UI's
+  **Devices** page (or through the admin API).
 - People sign in to the web UI with email and password. The first login uses
   `ADMIN_EMAIL`/`ADMIN_PASSWORD` from the environment; once the password is changed in the
   UI, the stored password replaces the one from the environment.
@@ -43,7 +44,7 @@ Supported input: integer PCM WAV, 8/16/24 bit, 1–8 channels, up to 4 GiB.
 | [Device upload protocol](docs/device-protocol.md) | Implementing the upload client on the gadget: requests, error handling, retry logic |
 | [Architecture](docs/architecture.md) | Backend developers: components, recording lifecycle, worker, data model, adding processing stages |
 | [Operations](docs/operations.md) | Deploying and running: Railway, AWS/IAM setup, web UI sign-in, provisioning devices, monitoring, recovery, limitations |
-| [OpenAPI spec](backend/api/openapi.yaml) | The formal API definition |
+| [OpenAPI spec](backend/api/openapi.yaml) | The formal API definition. The service serves it at `/api/v1/openapi.yaml` and `/api/v1/openapi.json`, and the web UI's **Status** page renders it as an API reference. |
 
 ## Quick start (Docker)
 
@@ -161,7 +162,7 @@ frontend/src/
   api/client.ts        API client
   auth.tsx             sign-in state (AuthProvider, useAuth)
   components/          reusable UI components
-  pages/               Login, Account (change password), Home
+  pages/               Login, Home, Devices, Status (health, API URLs + reference), Account
 ```
 
 ## Tests

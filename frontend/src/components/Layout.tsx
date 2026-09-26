@@ -15,13 +15,15 @@ export function Layout({ children }: { children: ReactNode }) {
     <>
       <header className="header">
         <Link to="/" className="brand">
-          knowpod-service
+          knowpod
         </Link>
         {account && (
           <nav className="nav">
             <NavLink to="/" end>
               Home
             </NavLink>
+            <NavLink to="/devices">Devices</NavLink>
+            <NavLink to="/status">Status</NavLink>
             <NavLink to="/account">Account</NavLink>
             <span className="nav-user">{account.email}</span>
             <button type="button" className="link-button" onClick={handleLogout}>

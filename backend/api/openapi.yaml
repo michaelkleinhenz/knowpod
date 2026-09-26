@@ -26,9 +26,21 @@ info:
 servers:
   - url: /api/v1
 security: []
+tags:
+  - name: Service
+    description: Service information and this API description.
+  - name: Device uploads
+    description: Used by recorder gadgets, authenticated with their device token.
+  - name: Web UI sign-in
+    description: Email/password sign-in for the web UI, with a session cookie.
+  - name: "Admin: devices"
+    description: Register and revoke recorder gadgets. Web UI session or ADMIN_TOKEN.
+  - name: "Admin: recordings"
+    description: Inspect recordings and download the archived audio. Web UI session or ADMIN_TOKEN.
 paths:
   /info:
     get:
+      tags: ["Service"]
       summary: Service information
       responses:
         "200":
@@ -41,8 +53,31 @@ paths:
                   service: { type: string, example: knowpod-service }
                   apiVersion: { type: string, example: v1 }
 
+  /openapi.yaml:
+    get:
+      tags: ["Service"]
+      summary: This API description (OpenAPI 3, YAML)
+      responses:
+        "200":
+          description: The OpenAPI document
+          content:
+            application/yaml:
+              schema: { type: string }
+
+  /openapi.json:
+    get:
+      tags: ["Service"]
+      summary: This API description (OpenAPI 3, JSON)
+      responses:
+        "200":
+          description: The OpenAPI document
+          content:
+            application/json:
+              schema: { type: object }
+
   /auth/login:
     post:
+      tags: ["Web UI sign-in"]
       summary: Sign in to the web UI
       description: Sets the `knowpod_session` cookie. Limited to 10 requests per minute per client IP.
       requestBody:
@@ -68,6 +103,7 @@ paths:
 
   /auth/logout:
     post:
+      tags: ["Web UI sign-in"]
       summary: Sign out
       description: Ends the session (if any) and clears the cookie.
       responses:
@@ -75,6 +111,7 @@ paths:
 
   /auth/me:
     get:
+      tags: ["Web UI sign-in"]
       summary: The signed-in account
       security: [{ sessionCookie: [] }]
       responses:
@@ -85,6 +122,7 @@ paths:
 
   /auth/password:
     put:
+      tags: ["Web UI sign-in"]
       summary: Change the password
       description: |
         Stores the new password, which from then on replaces the default password from the
@@ -112,6 +150,7 @@ paths:
 
   /uploads:
     post:
+      tags: ["Device uploads"]
       summary: Create (or resume) an upload
       security: [{ deviceToken: [] }]
       requestBody:
@@ -139,6 +178,7 @@ paths:
     parameters:
       - { name: uploadId, in: path, required: true, schema: { type: string } }
     get:
+      tags: ["Device uploads"]
       summary: Upload state (offset to resume from)
       security: [{ deviceToken: [] }]
       responses:
@@ -149,6 +189,7 @@ paths:
         "401": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
     patch:
+      tags: ["Device uploads"]
       summary: Append a chunk
       description: |
         Appends the body at `Upload-Offset`, which must equal the current offset. Bytes
@@ -188,6 +229,7 @@ paths:
 
   /admin/devices:
     post:
+      tags: ["Admin: devices"]
       summary: Register a device
       security: [{ sessionCookie: [] }, { adminToken: [] }]
       requestBody:
@@ -212,6 +254,7 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "401": { $ref: "#/components/responses/Error" }
     get:
+      tags: ["Admin: devices"]
       summary: List devices
       security: [{ sessionCookie: [] }, { adminToken: [] }]
       responses:
@@ -221,9 +264,37 @@ paths:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/Device" } }
 
+  /admin/devices/{deviceId}/token:
+    post:
+      tags: ["Admin: devices"]
+      summary: Issue a new device token
+      description: |
+        Replaces the device's token, e.g. when the old one was lost. The old token stops
+        working immediately. The device keeps its ID and recordings. The new token is only
+        returned here.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: deviceId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: New token issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  device: { $ref: "#/components/schemas/Device" }
+                  token: { type: string, example: kpd_Zx3... }
+        "401": { $ref: "#/components/responses/Error" }
+        "404":
+          description: Unknown or removed device
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
   /admin/devices/{deviceId}:
     delete:
-      summary: Revoke a device token
+      tags: ["Admin: devices"]
+      summary: Remove (revoke) a device
+      description: The device's token stops working permanently. Its recordings are kept.
       security: [{ sessionCookie: [] }, { adminToken: [] }]
       parameters:
         - { name: deviceId, in: path, required: true, schema: { type: string } }
@@ -233,6 +304,7 @@ paths:
 
   /admin/recordings:
     get:
+      tags: ["Admin: recordings"]
       summary: List recordings, newest first
       security: [{ sessionCookie: [] }, { adminToken: [] }]
       parameters:
@@ -249,6 +321,7 @@ paths:
 
   /admin/recordings/{recordingId}:
     get:
+      tags: ["Admin: recordings"]
       summary: Get a recording
       security: [{ sessionCookie: [] }, { adminToken: [] }]
       parameters:
@@ -261,6 +334,7 @@ paths:
 
   /admin/recordings/{recordingId}/audio:
     get:
+      tags: ["Admin: recordings"]
       summary: Download the archived FLAC file
       security: [{ sessionCookie: [] }, { adminToken: [] }]
       parameters:

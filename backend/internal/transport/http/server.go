@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/go-chi/httprate"
 
+	"github.com/michaelkleinhenz/knowpod-service/backend/api"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/config"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/ports"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/service"
@@ -82,6 +83,8 @@ func (s *Server) Router() http.Handler {
 
 	r.Route("/api/v1", func(api chi.Router) {
 		api.Get("/info", s.handleInfo)
+		api.Get("/openapi.yaml", s.handleOpenAPIYAML)
+		api.Get("/openapi.json", s.handleOpenAPIJSON)
 
 		// --- web UI sign-in (session cookie) ---
 		api.With(httprate.LimitByIP(10, time.Minute)).Post("/auth/login", s.handleLogin)
@@ -106,6 +109,7 @@ func (s *Server) Router() http.Handler {
 			a.Post("/devices", s.handleRegisterDevice)
 			a.Get("/devices", s.handleListDevices)
 			a.Delete("/devices/{id}", s.handleRevokeDevice)
+			a.Post("/devices/{id}/token", s.handleRotateDeviceToken)
 			a.Get("/recordings", s.handleListRecordings)
 			a.Get("/recordings/{id}", s.handleGetRecording)
 			a.Get("/recordings/{id}/audio", s.handleRecordingAudio)
@@ -140,4 +144,19 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"service": serviceName, "apiVersion": "v1"})
+}
+
+func (s *Server) handleOpenAPIYAML(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/yaml; charset=utf-8")
+	_, _ = w.Write(api.OpenAPIYAML)
+}
+
+func (s *Server) handleOpenAPIJSON(w http.ResponseWriter, r *http.Request) {
+	doc, err := api.OpenAPIJSON()
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_, _ = w.Write(doc)
 }
