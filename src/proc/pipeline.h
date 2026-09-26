@@ -11,12 +11,14 @@ enum StepResult {
     STEP_OK,       // progress made
     STEP_RETRY,    // temporary problem (network, rate limit); try again later
     STEP_FAILED,   // permanent problem; needs the user's attention
+    STEP_WAIT,     // nothing to do yet (e.g. the backend is still processing);
+                   // check this recording again after retry_after_s
 };
 
 struct Step {
     StepResult result;
     String     error;
-    int        retry_after_s = 0;   // server-requested wait for STEP_RETRY
+    int        retry_after_s = 0;   // server-requested wait for STEP_RETRY, delay for STEP_WAIT
 };
 
 // Transcribes the next chunk (~5 min, cut at a quiet moment). Sets state
@@ -33,6 +35,11 @@ Step summarize(const String &id, JsonDocument &meta);
 // Uploads the recording to the knowpod backend, one step (checksum, create,
 // or one chunk) per call. Sets meta["upload"]["status"] to "done" at the end.
 Step upload_next(const String &id, JsonDocument &meta, int &percent);
+
+// With "processing": "backend": downloads the backend's transcript and
+// summary of an uploaded recording into transcript.md / summary.md and
+// advances the state to "transcribed" / "summarized".
+Step sync_from_backend(const String &id, JsonDocument &meta);
 
 // Transcribes a spoken question and answers it from one recording
 // (`scope_id`) or from all recordings (empty scope).

@@ -21,10 +21,17 @@
 //   "sound_cues": true,        beep when recording starts and stops
 //   "sleep_minutes": 5,        idle time before deep sleep (0 = never)
 //   "power_off_hours": 12,     time in deep sleep before switching off (0 = never)
-//   "backend": {"url": "https://www.knowpod.de/api/v1", "token": ""},
+//   "processing": "device",    who transcribes and summarizes: "device" (OpenRouter
+//                              from the device) or "backend" (the knowpod-service
+//                              backend; results are downloaded after the upload)
+//   "backend": {"url": "https://www.knowpod.de/api/v1", "token": "",
+//               "email": "", "password": ""},
 //                              upload recordings to a knowpod-service backend;
 //                              the device token comes from POST /devices there
-//                              (signed in as the user the recordings belong to)
+//                              (signed in as the user the recordings belong to).
+//                              email/password of that user are only needed with
+//                              "processing": "backend" to download the results
+//                              (the device token can't read recordings).
 //   "web_enabled": true,       web page and MCP server whenever Wi-Fi is available
 //   "web_password": ""         generated when web access is first enabled
 // }
@@ -67,6 +74,10 @@ bool config_web_enabled();
 String config_backend_url();             // API base, no trailing slash
 String config_backend_token();
 bool config_backend_enabled();           // url and token set
+String config_backend_email();
+String config_backend_password();
+bool config_processing_backend();        // "processing": "backend"
+void config_set_processing_backend(bool backend);
 
 void config_set_llm_model(const String &model);
 void config_set_stt_language(const String &language);

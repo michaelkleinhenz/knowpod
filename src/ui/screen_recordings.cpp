@@ -133,6 +133,15 @@ private:
     {
         if (info.state == "error") return "Processing failed: " + info.error + "\n\nUse the menu to retry.";
         if (info.state == "summarized") return "";
+        if (config_processing_backend()) {
+            if (info.upload == "failed") return "The upload failed: " + info.upload_error + "\n\nUse the menu to retry.";
+            if (info.upload != "done")
+                return "Waiting for the upload (" + String(info.upload_percent) + " %). The backend "
+                       "transcribes and summarizes it afterwards.";
+            String note = "Uploaded. Waiting for the backend's transcript and summary.";
+            if (worker_current_id() == id) note += "\n\n" + worker_status();
+            return note;
+        }
         String note = "Not summarized yet (" + recording_state_label(info.state) + ").";
         if (worker_current_id() == id) note += "\n\n" + worker_status();
         else if (worker_pending()) note += "\n\nWaiting for Wi-Fi or other recordings.";
@@ -257,7 +266,8 @@ private:
 void DetailScreen::open_actions()
 {
     std::vector<String> options = {"Summary", "Action items & highlights", "Transcript", "Details",
-                                   "Ask about this recording", "Play audio", "Summarize with template..."};
+                                   "Ask about this recording", "Play audio"};
+    if (!config_processing_backend()) options.push_back("Summarize with template...");
     if (info.state == "error") options.push_back("Retry processing");
     if (info.upload == "failed") options.push_back("Retry upload");
     options.push_back("Delete");

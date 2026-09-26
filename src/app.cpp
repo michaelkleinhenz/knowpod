@@ -53,9 +53,14 @@ static void stop_recording(const String &reason = String())
     if (!reason.isEmpty()) body += reason + "\n\n";
     body += "Duration: " + format_duration(info.seconds) + "\n";
     body += "Highlights: " + String(info.highlights) + "\n\n";
-    body += config_api_key().isEmpty() || config_wifi().empty()
-                ? "Add Wi-Fi and an OpenRouter key to get a transcript and summary."
-                : "Transcript and summary will be ready when Wi-Fi is available.";
+    bool ready = !config_wifi().empty() &&
+                 (config_processing_backend() ? config_backend_enabled() : !config_api_key().isEmpty());
+    body += !ready ? String(config_processing_backend()
+                                ? "Add Wi-Fi and the backend settings to get a transcript and summary."
+                                : "Add Wi-Fi and an OpenRouter key to get a transcript and summary.")
+                   : String(config_processing_backend()
+                                ? "It is uploaded; the backend's transcript and summary follow."
+                                : "Transcript and summary will be ready when Wi-Fi is available.");
 
     ui_replace(make_message(reason.isEmpty() ? "Saved" : "Recording stopped", body, false, SAVED_HOME_MS));
     ui_dirty(true);  // the recording screen changed many times

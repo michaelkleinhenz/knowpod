@@ -190,15 +190,23 @@ HttpResponse http_request(const String &url, const char *method, const HttpHeade
         if (!read_line(*client, deadline, line)) break;
         line.trim();
         if (line.isEmpty()) break;
-        line.toLowerCase();
-        if (line.startsWith("transfer-encoding:") && line.indexOf("chunked") > 0)
+        String name = line.substring(0, line.indexOf(':') + 1);
+        name.toLowerCase();
+        String value = line.substring(name.length());
+        value.trim();
+        if (name == "transfer-encoding:" && value.indexOf("chunked") >= 0)
             chunked = true;
-        else if (line.startsWith("content-length:"))
-            body_len = line.substring(15).toInt();
-        else if (line.startsWith("retry-after:"))
-            r.retry_after_s = line.substring(12).toInt();
-        else if (line.startsWith("upload-offset:"))
-            r.upload_offset = atol(line.substring(14).c_str());
+        else if (name == "content-length:")
+            body_len = value.toInt();
+        else if (name == "retry-after:")
+            r.retry_after_s = value.toInt();
+        else if (name == "upload-offset:")
+            r.upload_offset = atol(value.c_str());
+        else if (name == "set-cookie:") {
+            int semi = value.indexOf(';');  // keep name=value, drop attributes
+            if (!r.cookies.isEmpty()) r.cookies += "; ";
+            r.cookies += semi < 0 ? value : value.substring(0, semi);
+        }
     }
 
     // No body for HEAD-like responses

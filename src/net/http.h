@@ -19,6 +19,7 @@ struct HttpResponse {
     String body;                 // or the error description when status is -1
     long   upload_offset = -1;   // "Upload-Offset" header, if present
     int    retry_after_s = 0;    // "Retry-After" header (seconds form), if present
+    String cookies;              // "name=value; ..." from Set-Cookie headers
 };
 
 // `method` is e.g. "GET", "POST", "PATCH". For requests without a body pass

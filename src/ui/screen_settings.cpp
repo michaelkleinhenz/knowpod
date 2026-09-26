@@ -52,6 +52,7 @@ static String device_info()
     s += "\nSummary: " + config_llm_model();
     s += "\nOpenRouter key: " + String(config_api_key().isEmpty() ? "missing (/openrouter.txt)" : "set");
     s += "\nBackend: " + (config_backend_enabled() ? config_backend_url() : String("off (no token in config.json)"));
+    s += "\nProcessing: " + String(config_processing_backend() ? "backend" : "on device");
     int uploads = worker_pending_uploads();
     if (uploads) s += "\nWaiting for upload: " + String(uploads);
     s += "\nFree memory: " + String(ESP.getFreeHeap() / 1024) + " KB RAM, " +
@@ -97,6 +98,8 @@ private:
         list.items = {
             {"Device info", ""},
             {"Wi-Fi & time sync", wifi_connected() ? "Connected to " + wifi_ssid() : String("Off")},
+            {"Processing", config_processing_backend() ? "Backend (" + config_backend_url() + ")"
+                                                       : String("On device (OpenRouter)")},
             {"Summary model", config_llm_model()},
             {"Default template", config_default_template()},
             {"Language", language_name(config_stt_language())},
@@ -144,7 +147,24 @@ private:
             break;
         }
 
-        case 2: {
+        case 2:
+            ui_push(make_menu("Processing", {"On device (OpenRouter)", "Backend service"},
+                              config_processing_backend() ? 1 : 0, [](int c) {
+                config_set_processing_backend(c == 1);
+                if (c == 1 && (!config_backend_enabled() || config_backend_email().isEmpty() ||
+                               config_backend_password().isEmpty()))
+                    ui_push(make_message("Backend processing",
+                                         "Recordings are uploaded and transcribed by the backend; the results "
+                                         "are downloaded afterwards.\n\nStill missing in config.json under "
+                                         "\"backend\": " +
+                                         String(!config_backend_enabled() ? "\"token\" " : "") +
+                                         String(config_backend_email().isEmpty() ? "\"email\" " : "") +
+                                         String(config_backend_password().isEmpty() ? "\"password\"" : "")));
+                worker_kick();
+            }));
+            break;
+
+        case 3: {
             std::vector<String> models = config_model_choices();
             int sel = 0;
             for (size_t i = 0; i < models.size(); i++)
@@ -155,7 +175,7 @@ private:
             break;
         }
 
-        case 3: {
+        case 4: {
             std::vector<String> names = templates_list();
             int sel = 0;
             for (size_t i = 0; i < names.size(); i++)
@@ -166,7 +186,7 @@ private:
             break;
         }
 
-        case 4: {
+        case 5: {
             std::vector<String> names;
             int sel = 0;
             for (const Language &l : LANGUAGES) {
@@ -179,18 +199,18 @@ private:
             break;
         }
 
-        case 5:
+        case 6:
             config_set_speaker_labels(!config_speaker_labels());
             ui_dirty();
             break;
 
-        case 6:
+        case 7:
             config_set_sound_cues(!config_sound_cues());
             if (config_sound_cues()) play_cue(CUE_START);  // let the user hear it
             ui_dirty();
             break;
 
-        case 7: {
+        case 8: {
             std::vector<String> names;
             int sel = 0;
             for (int m : SLEEP_CHOICES) {
@@ -203,7 +223,7 @@ private:
             break;
         }
 
-        case 8:
+        case 9:
             if (config_web_enabled()) {
                 ui_push(make_menu("Web access & MCP", {"Show connection details", "Turn off"}, 0, [](int c) {
                     if (c == 0) {
@@ -226,7 +246,7 @@ private:
             }
             break;
 
-        case 9: {
+        case 10: {
             show_progress("Test", "Asking " + config_llm_model() + " ...");
             String reply;
             ApiResult r = {false, -1, "No Wi-Fi connection."};

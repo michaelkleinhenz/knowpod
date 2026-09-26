@@ -32,9 +32,12 @@ static const char DEFAULT_CONFIG[] = R"json({
   "sound_cues": true,
   "sleep_minutes": 5,
   "power_off_hours": 12,
+  "processing": "device",
   "backend": {
     "url": "https://www.knowpod.de/api/v1",
-    "token": ""
+    "token": "",
+    "email": "",
+    "password": ""
   },
   "web_enabled": true,
   "web_password": ""
@@ -162,6 +165,10 @@ int config_power_off_hours()         { Lock l; return doc["power_off_hours"] | 1
 bool config_web_enabled()            { Lock l; return doc["web_enabled"] | true; }
 String config_backend_token()        { Lock l; return doc["backend"]["token"] | ""; }
 bool config_backend_enabled()        { return !config_backend_url().isEmpty() && !config_backend_token().isEmpty(); }
+String config_backend_email()        { Lock l; return doc["backend"]["email"] | ""; }
+String config_backend_password()     { Lock l; return doc["backend"]["password"] | ""; }
+bool config_processing_backend()     { Lock l; return doc["processing"] == "backend"; }
+void config_set_processing_backend(bool backend) { Lock l; doc["processing"] = backend ? "backend" : "device"; save_locked(); }
 
 String config_backend_url()
 {

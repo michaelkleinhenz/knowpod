@@ -1,6 +1,7 @@
 #include "worker.h"
 #include <ArduinoJson.h>
 #include <atomic>
+#include <map>
 #include "net/wifi.h"
 #include "pipeline.h"
 #include "store/config.h"
@@ -27,7 +28,8 @@ static SemaphoreHandle_t mutex = xSemaphoreCreateMutex();
 // hold back uploads and an unreachable backend doesn't block summaries.
 struct Lane {
     const char *name;
-    volatile int pending = 0;
+    volatile int pending = 0;   // recordings that still need this lane
+    volatile int ready = 0;     // ... of which can be worked on right now
     volatile uint32_t retry_at = 0;
     uint32_t backoff_ms = 0;
 
@@ -41,6 +43,19 @@ static Lane processing = {"processing"};
 static Lane uploads = {"upload"};
 static std::atomic<uint32_t> generation{0};
 static String status, status_short, current_id;
+
+// Recordings waiting for something outside the device (the backend still
+// processing them) are checked again at this time (worker task only).
+static std::map<String, uint32_t> not_before;
+
+static bool deferred(const String &id)
+{
+    auto it = not_before.find(id);
+    if (it == not_before.end()) return false;
+    if ((int32_t)(it->second - millis()) > 0) return true;
+    not_before.erase(it);
+    return false;
+}
 
 // Ask state (guarded by mutex)
 static AskState ask_state = ASK_IDLE;
@@ -116,7 +131,10 @@ void worker_resummarize(const String &id, const String &tmpl) { send_command(Com
 
 static bool needs_processing(const RecordingInfo &r)
 {
-    return r.state == "recorded" || r.state == "transcribing" || r.state == "transcribed";
+    bool open = r.state == "recorded" || r.state == "transcribing" || r.state == "transcribed";
+    // With backend processing, results can only be fetched once uploaded
+    if (open && config_processing_backend()) return config_backend_enabled() && r.upload == "done";
+    return open;
 }
 
 static bool needs_upload(const RecordingInfo &r)
@@ -124,25 +142,35 @@ static bool needs_upload(const RecordingInfo &r)
     return r.state != "recording" && r.upload != "done" && r.upload != "failed";
 }
 
-// Oldest recording of each lane; counts the pending ones.
-static void find_work(RecordingInfo &proc, bool &has_proc, RecordingInfo &upl, bool &has_upl)
+// Oldest recording of each lane that can be worked on now; counts the
+// pending ones. `next_check` is the earliest time a deferred one is due.
+static void find_work(RecordingInfo &proc, bool &has_proc, RecordingInfo &upl, bool &has_upl,
+                      uint32_t &next_check_ms)
 {
     std::vector<RecordingInfo> list = recordings_list();
     bool backend = config_backend_enabled();
     int n_proc = 0, n_upl = 0;
     has_proc = has_upl = false;
+    next_check_ms = UINT32_MAX;
     for (auto it = list.rbegin(); it != list.rend(); ++it) {
         if (needs_processing(*it)) {
-            if (!n_proc++) proc = *it;
+            n_proc++;
+            if (deferred(it->id)) {
+                next_check_ms = min<uint32_t>(next_check_ms, not_before[it->id] - millis());
+            } else if (!has_proc) {
+                proc = *it;
+                has_proc = true;
+            }
         }
         if (backend && needs_upload(*it)) {
             if (!n_upl++) upl = *it;
         }
     }
-    has_proc = n_proc > 0;
     has_upl = n_upl > 0;
     processing.pending = n_proc;
+    processing.ready = has_proc;
     uploads.pending = n_upl;
+    uploads.ready = n_upl;
 }
 
 static void backoff(Lane &lane, const String &reason, int retry_after_s = 0)
@@ -178,6 +206,8 @@ static void upload(const RecordingInfo &info)
     case STEP_RETRY:
         backoff(uploads, step.error, step.retry_after_s);
         break;
+    case STEP_WAIT:
+        break;
     case STEP_FAILED:
         Serial.printf("[worker] upload of %s failed: %s\n", info.id.c_str(), step.error.c_str());
         meta["upload"]["status"] = "failed";
@@ -197,7 +227,10 @@ static void process(const RecordingInfo &info)
     Step step = {STEP_OK, ""};
 
     step_running = true;
-    if (state == "recorded") {
+    if (config_processing_backend()) {
+        set_status("Getting results for " + title, "Syncing", info.id);
+        step = sync_from_backend(info.id, meta);
+    } else if (state == "recorded") {
         // Fresh start: drop partial results from an earlier attempt
         recordings_fs().remove(recording_path(info.id, "transcript.json"));
         meta["state"] = "transcribing";
@@ -225,6 +258,13 @@ static void process(const RecordingInfo &info)
     case STEP_OK:
         processing.backoff_ms = 0;
         recording_save_meta(info.id, meta);
+        break;
+    case STEP_WAIT:
+        // Only this recording waits; others are processed meanwhile
+        processing.backoff_ms = 0;
+        recording_save_meta(info.id, meta);
+        not_before[info.id] = millis() + max(step.retry_after_s, 10) * 1000;
+        set_status(title + ": " + step.error, "");
         break;
     case STEP_RETRY:
         recording_save_meta(info.id, meta);
@@ -294,11 +334,12 @@ static void worker_task(void *)
 
         RecordingInfo proc, upl;
         bool has_proc, has_upl;
-        find_work(proc, has_proc, upl, has_upl);
+        uint32_t next_check;
+        find_work(proc, has_proc, upl, has_upl, next_check);
         if (!has_proc && !has_upl) {
-            set_status("", "");
+            if (next_check == UINT32_MAX) set_status("", "");  // keep "waiting for the backend" visible
             if (millis() - idle_since > WIFI_IDLE_OFF_MS) wifi_off();  // unless held by the web server
-            wait = IDLE_WAIT_MS;
+            wait = min<uint32_t>(IDLE_WAIT_MS, next_check);
             continue;
         }
         idle_since = millis();
@@ -394,5 +435,5 @@ bool worker_busy()
         if (ask_state == ASK_RUNNING) return true;
     }
     if (paused) return false;
-    return (processing.pending > 0 && !processing.waiting()) || (uploads.pending > 0 && !uploads.waiting());
+    return (processing.ready > 0 && !processing.waiting()) || (uploads.ready > 0 && !uploads.waiting());
 }
