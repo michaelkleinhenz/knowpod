@@ -14,10 +14,11 @@ const (
 	CollRecordings = "recordings"
 	CollUsers      = "users"
 	CollSessions   = "sessions"
+	CollSettings   = "settings"
 )
 
 // collections lists every collection the service owns. Setup creates any that are missing.
-var collections = []string{CollDevices, CollRecordings, CollUsers, CollSessions}
+var collections = []string{CollDevices, CollRecordings, CollUsers, CollSessions, CollSettings}
 
 // indexes lists the indexes per collection. Setup creates them; CreateMany on an existing
 // identical index is a no-op.

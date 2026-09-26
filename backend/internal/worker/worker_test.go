@@ -220,3 +220,25 @@ func TestPocketWAVIsTranscoded(t *testing.T) {
 		t.Fatalf("recording = %+v audio=%+v", rec, rec.Audio)
 	}
 }
+
+func TestDisabledStageWaits(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t, false)
+	id := f.receive(t, audiotest.WAV(8000, 16, audiotest.Samples(1, 800, 16)))
+	enabled := false
+	w := worker.New(f.recs, []worker.Stage{{
+		Name: "archive", From: recording.StatusReceived, To: recording.StatusStored,
+		Run: service.NewArchiver(f.spool, f.objects, false, quiet).Run, Enabled: func(context.Context) bool { return enabled },
+	}}, worker.Options{}, quiet)
+
+	if n := w.RunOnce(ctx); n != 0 {
+		t.Fatalf("disabled stage processed %d", n)
+	}
+	if rec, _ := f.recs.Get(ctx, id); rec.Status != recording.StatusReceived || rec.Attempts != 0 {
+		t.Fatalf("waiting recording changed: %+v", rec)
+	}
+	enabled = true
+	if n := w.RunOnce(ctx); n != 1 {
+		t.Fatalf("enabled stage processed %d", n)
+	}
+}

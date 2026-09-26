@@ -24,6 +24,11 @@ type Stage struct {
 	Run func(ctx context.Context, rec *recording.Recording) error
 	// Cleanup runs after the new status has been persisted. Optional.
 	Cleanup func(rec *recording.Recording)
+	// Enabled reports whether the stage can run now (e.g. its API key is configured).
+	// Recordings wait in From while it returns false; they don't use up attempts. Optional.
+	Enabled func(ctx context.Context) bool
+	// Lease overrides Options.Lease for slow stages. Optional.
+	Lease time.Duration
 }
 
 // Options tunes the worker. Zero values get defaults.
@@ -94,9 +99,16 @@ func (w *Worker) RunOnce(ctx context.Context) int {
 	for progress := true; progress && ctx.Err() == nil; {
 		progress = false
 		for _, st := range w.stages {
+			if st.Enabled != nil && !st.Enabled(ctx) {
+				continue
+			}
+			lease := w.opts.Lease
+			if st.Lease > 0 {
+				lease = st.Lease
+			}
 			for ctx.Err() == nil {
 				now := w.clock().UTC()
-				rec, err := w.recs.Claim(ctx, st.From, now, now.Add(w.opts.Lease))
+				rec, err := w.recs.Claim(ctx, st.From, now, now.Add(lease))
 				if errors.Is(err, domain.ErrNotFound) {
 					break
 				}

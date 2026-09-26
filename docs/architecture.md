@@ -81,6 +81,9 @@ its `_id` is the `uploadId` the device sees.
                                                  ▼
             create                 last byte, checksum + WAV OK        archive stage OK
   (none) ──────────▶ uploading ─────────────────────────────▶ received ──────────────▶ stored
+                                                                                         │ transcribe
+                                                                  summarize              ▼
+                                                    summarized ◀────────────────── transcribed
                       │   ▲                                      │
      checksum mismatch│   │ spool reset, device resends          │ archive failed
                       └───┘                                      │ WORKER_MAX_ATTEMPTS times
@@ -97,8 +100,14 @@ its `_id` is the `uploadId` the device sees.
 | `remote` | Announced by a Pocket webhook; the audio is still at Pocket. |
 | `uploading` | Partial WAV in the spool (`UPLOAD_DIR/<id>.wav`). Its file size is the upload offset. |
 | `received` | Complete audio in the spool, waiting for the worker: a verified WAV upload, or a file fetched from Pocket (`<id>.download`, any format). |
-| `stored` | FLAC (and optionally the WAV) in S3. The spool files are gone. |
-| `failed` | Rejected WAV: nothing kept. Archive failure: the WAV stays in the spool for recovery. |
+| `stored` | FLAC (and optionally the WAV) in S3. The spool files are gone. Waits for transcription. |
+| `transcribed` | Transcript stored; waits for the summary. |
+| `summarized` | Title and summary stored; fully processed. |
+| `failed` | Rejected WAV: nothing kept. Archive failure: the WAV stays in the spool for recovery. AI failure: audio (and transcript) are kept; the UI offers re-transcribe/re-summarize. |
+
+**Re-transcribe** clears transcript and summary and sets the status back to `stored`;
+**re-summarize** clears the summary and sets it back to `transcribed` (`service/recordings.go`).
+**Delete** removes the document, its S3 objects and any spooled files.
 
 ## Upload handling (`service/uploads.go`)
 
@@ -191,19 +200,42 @@ binary (`backend/api/api.go`) and served at `/api/v1/openapi.yaml` and, converte
 grouped by its first tag. When you add or change a route, update the spec; the route
 coverage test enforces it.
 
+### AI stages (`service/ai.go`)
+
+Transcription and summaries run in a **second worker** (see `cmd/server/main.go`), so a
+long transcription never delays archiving new uploads. Both stages have an `Enabled` check:
+while OpenRouter isn't configured, recordings wait in their status without using up
+attempts. Saving the settings, archiving a recording and the re-process actions wake the
+AI worker. The transcription stage has a 1-hour lease because long recordings take several
+model calls.
+
+- **transcribe** (`stored → transcribed`): downloads the archived audio to a temporary file.
+  FLAC is decoded with `audio.SpeechChunks` (mono, averaged down to 16 kHz, 16-bit) into
+  5-minute WAV pieces; other formats are sent as they are, up to 20 MB. Each piece goes to
+  OpenRouter's chat completions as an `input_audio` part with a verbatim-transcription
+  prompt; the texts are joined.
+- **summarize** (`transcribed → summarized`): sends the transcript with a prompt that asks
+  for a JSON object with `title` and a Markdown `summary` in the transcript's language
+  (`response_format: json_object`). `parseSummary` tolerates code fences and surrounding
+  text. Empty transcripts get "No speech detected" without a model call.
+
+The OpenRouter settings (key and models) live in the `settings` collection and are read on
+every stage run, so changes apply immediately.
+
 ## Adding a processing stage
 
-For example, transcription after archiving:
+For example, extracting tasks after the summary:
 
-1. Add statuses in `domain/recording/recording.go`, e.g. `StatusTranscribed`, and fields
-   for the results (e.g. `Transcript *Transcript`).
-2. Implement the stage in `service`, e.g. `Transcriber.Run(ctx, rec)`. It can read the FLAC
-   through `ports.ObjectStore` using `rec.Audio.Key`. Keep it idempotent.
-3. Register it in `cmd/server/main.go` after the archive stage:
+1. Add a status in `domain/recording/recording.go`, e.g. `StatusTasksExtracted`, and a
+   field for the result.
+2. Implement the stage in `service`, e.g. `Extractor.Run(ctx, rec)`. It can use
+   `rec.Transcript`, or read the audio through `ports.ObjectStore` using `rec.Audio.Key`.
+   Keep it idempotent.
+3. Register it in `cmd/server/main.go`, e.g. in the AI worker after the summary stage:
 
    ```go
-   {Name: "transcribe", From: recording.StatusStored, To: recording.StatusTranscribed,
-    Run: transcriber.Run},
+   {Name: "extract-tasks", From: recording.StatusSummarized, To: recording.StatusTasksExtracted,
+    Run: extractor.Run, Enabled: extractor.Configured},
    ```
 
 4. Test it the way `worker/worker_test.go` does, with the in-memory repositories and
@@ -234,6 +266,8 @@ implements the work.
 | `recordedAt` | Optional, from the device |
 | `format` | Sample rate, channels, bits, frames, duration. Set once received. |
 | `audio`, `original` | S3 key, content type and size of the FLAC and the optional WAV |
+| `transcript` | `text`, `model`, `createdAt` |
+| `summary` | `title` (the conversation's name in the UI), `markdown`, `model`, `createdAt`. Lists leave out `transcript` and `summary.markdown`. |
 | `attempts`, `notBefore`, `lastError` | Worker bookkeeping |
 | `createdAt`, `updatedAt`, `receivedAt`, `storedAt` | Timestamps (UTC) |
 
@@ -258,6 +292,9 @@ default password.
 | `email` | The signed-in account (indexed, to end all its sessions) |
 | `createdAt`, `expiresAt` | TTL index on `expiresAt` deletes expired sessions |
 
+**`settings`**: one document per settings group. `_id: "openrouter"` holds `apiKey`,
+`transcriptionModel`, `summaryModel` and `updatedAt`.
+
 `repository/mongo/setup.go` creates collections and indexes on every start.
 
 The `TxManager` in `repository/mongo/client.go` provides multi-document transactions (the
@@ -268,8 +305,10 @@ reason MongoDB runs as a replica set). Nothing uses it yet.
 | Test | Covers |
 |---|---|
 | `audio/*_test.go` | WAV parsing edge cases; FLAC output decodes to the exact input samples |
-| `service/*_test.go` | Upload protocol: chunks, idempotency, offsets, dropped connections, checksum reset, invalid audio, isolation between devices, purge; device tokens; sign-in with the default login, password change overriding it, session expiry and logout |
-| `worker/worker_test.go` | Archive stage end to end, retry/backoff, permanent failure, recovery |
+| `service/*_test.go` | Upload protocol: chunks, idempotency, offsets, dropped connections, checksum reset, invalid audio, isolation between devices, purge; device tokens; sign-in with the default login, password change overriding it, session expiry and logout; transcription (FLAC chunks, passthrough, size limit), summaries and their parsing, OpenRouter settings and model filtering, delete/re-transcribe/re-summarize |
+| `worker/worker_test.go` | Archive stage end to end, retry/backoff, permanent failure, recovery, disabled stages waiting |
+| `openrouter/*_test.go` | Request shape for audio, error handling, model list |
+| `audio/speech_test.go` | Speech chunks: count, duration, mono 16 kHz output |
 | `transport/http/*_test.go` | Full HTTP flows: uploads, device and admin auth, browser sign-in with cookies, password change, login rate limit. `openapi_test.go` fails if a route under `/api/v1` is missing from `openapi.yaml` or the spec lists a route that doesn't exist. |
 | `repository/mongo/repo_test.go` | Real MongoDB; runs only with `KNOWPOD_TEST_MONGO_URI` set |
 

@@ -4,8 +4,10 @@ import { useAuth } from './auth';
 import { Layout } from './components/Layout';
 import { Account } from './pages/Account';
 import { Devices } from './pages/Devices';
-import { Home } from './pages/Home';
+import { Conversation } from './pages/Conversation';
+import { Conversations } from './pages/Conversations';
 import { Login } from './pages/Login';
+import { Settings } from './pages/Settings';
 import { Status } from './pages/Status';
 
 // RequireLogin sends signed-out visitors to the login page and back afterwards.
@@ -26,7 +28,23 @@ export default function App() {
           path="/"
           element={
             <RequireLogin>
-              <Home />
+              <Conversations />
+            </RequireLogin>
+          }
+        />
+        <Route
+          path="/conversations/:id"
+          element={
+            <RequireLogin>
+              <Conversation />
+            </RequireLogin>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <RequireLogin>
+              <Settings />
             </RequireLogin>
           }
         />

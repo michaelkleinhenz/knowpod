@@ -63,6 +63,9 @@ func (r *RecordingRepo) List(ctx context.Context, f recording.ListFilter) ([]*re
 		filter["status"] = f.Status
 	}
 	opts := options.Find().SetSort(bson.D{{Key: "createdAt", Value: -1}}).SetSkip(int64(f.Offset))
+	if f.Brief {
+		opts.SetProjection(bson.M{"transcript": 0, "summary.markdown": 0})
+	}
 	if f.Limit > 0 {
 		opts.SetLimit(int64(f.Limit))
 	}

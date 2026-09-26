@@ -1,7 +1,8 @@
 # knowpod-service
 
 Backend for the knowpod AI audio recorder. Recorder gadgets push WAV recordings to this
-service, which verifies them, transcodes them losslessly to FLAC and archives them in S3.
+service, which verifies them, transcodes them losslessly to FLAC, archives them in S3, and
+then transcribes and summarizes them with AI models through OpenRouter.
 Metadata lives in MongoDB. A Go backend with an embedded React web UI (password sign-in),
 built and shipped as a single binary.
 
@@ -23,6 +24,7 @@ gadget ──POST /uploads──▶ upload created (status: uploading)
        ──PATCH chunks──▶ streamed to the local spool (UPLOAD_DIR), resumable
                          last byte: SHA-256 + WAV header verified (status: received)
 background worker ─────▶ WAV → FLAC, uploaded to S3 (status: stored), spool cleaned up
+AI worker ─────────────▶ transcript (status: transcribed) → title + summary (status: summarized)
 ```
 
 - Each gadget authenticates with its own revocable token, created on the web UI's
@@ -35,7 +37,12 @@ background worker ─────▶ WAV → FLAC, uploaded to S3 (status: store
 - Uploads are idempotent (the gadget names each recording), resumable after dropped
   connections, and checked against a SHA-256 the gadget declares up front.
 - Transcoding and archiving run in a background worker with retries and backoff.
-  Transcription and AI steps can be added as further worker stages.
+- Every archived recording is transcribed and summarized through
+  [OpenRouter](https://openrouter.ai). The API key and both models are chosen by an admin
+  on the web UI's **Settings** page.
+- The web UI's **Conversations** page lists all recordings by the title of their summary;
+  each conversation shows its summary, transcript and audio, and can be re-transcribed,
+  re-summarized or deleted.
 
 Supported input: integer PCM WAV, 8/16/24 bit, 1–8 channels, up to 4 GiB.
 
@@ -152,14 +159,16 @@ backend/
   api/openapi.yaml     API specification
   cmd/server/          entrypoint and wiring
   internal/
-    audio/             WAV parsing, WAV → FLAC transcoding, format sniffing
+    audio/             WAV parsing, WAV → FLAC, format sniffing, speech chunks for transcription
     config/            environment-based configuration
     domain/            models: recording (lifecycle), device, user + session
+    openrouter/        OpenRouter API client (chat completions with audio, model list)
     pocket/            Pocket webhook signatures and API client
     ports/             repository and object store interfaces
     repository/mongo/  MongoDB connection, repositories, collection/index setup
     repository/memory/ in-memory repositories for tests
-    service/           web UI sign-in, device auth, resumable uploads + spool, Pocket, archive stage
+    service/           web UI sign-in, device auth, uploads + spool, Pocket, archive,
+                       transcription and summary stages, recording actions
     storage/s3/        S3 object store (storage/memory for tests)
     transport/http/    router, middleware, handlers
     web/               embedded frontend (dist/) + SPA handler
@@ -169,7 +178,8 @@ frontend/src/
   api/client.ts        API client
   auth.tsx             sign-in state (AuthProvider, useAuth)
   components/          reusable UI components
-  pages/               Login, Home, Devices, Status (health, API URLs + reference), Account
+  pages/               Conversations (list + detail), Devices, Settings, Status, Account, Login
+  lib/recordings.ts    display helpers for recordings (titles, states, dates)
 ```
 
 ## Tests

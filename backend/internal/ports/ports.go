@@ -10,6 +10,7 @@ import (
 
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/device"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/settings"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/user"
 )
 
@@ -58,10 +59,17 @@ type SessionRepository interface {
 	DeleteByEmail(ctx context.Context, email, keepTokenHash string) error
 }
 
+// SettingsRepository persists runtime settings. A missing document yields zero values.
+type SettingsRepository interface {
+	OpenRouter(ctx context.Context) (*settings.OpenRouter, error)
+	SaveOpenRouter(ctx context.Context, s *settings.OpenRouter) error
+}
+
 // ObjectStore stores binary objects (the audio files). Get of a missing key returns
 // domain.ErrNotFound.
 type ObjectStore interface {
 	Put(ctx context.Context, key string, body io.Reader, size int64, contentType string) error
-	Get(ctx context.Context, key string) (io.ReadCloser, error)
+	// Get reads length bytes starting at offset; length < 0 reads to the end.
+	Get(ctx context.Context, key string, offset, length int64) (io.ReadCloser, error)
 	Delete(ctx context.Context, key string) error
 }

@@ -1,0 +1,40 @@
+package mongo
+
+import (
+	"context"
+
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/settings"
+)
+
+// openRouterSettingsID is the settings document holding the OpenRouter configuration.
+const openRouterSettingsID = "openrouter"
+
+// SettingsRepo is the MongoDB implementation of ports.SettingsRepository. Each settings
+// group is one document in the settings collection.
+type SettingsRepo struct{ c *mongo.Collection }
+
+// NewSettingsRepo builds the repository.
+func NewSettingsRepo(s *Store) *SettingsRepo {
+	return &SettingsRepo{c: s.DB().Collection(CollSettings)}
+}
+
+func (r *SettingsRepo) OpenRouter(ctx context.Context) (*settings.OpenRouter, error) {
+	var s settings.OpenRouter
+	err := r.c.FindOne(ctx, bson.M{"_id": openRouterSettingsID}).Decode(&s)
+	if IsNoDocs(err) {
+		return &settings.OpenRouter{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+func (r *SettingsRepo) SaveOpenRouter(ctx context.Context, s *settings.OpenRouter) error {
+	_, err := r.c.UpdateOne(ctx, bson.M{"_id": openRouterSettingsID}, bson.M{"$set": s}, options.Update().SetUpsert(true))
+	return err
+}

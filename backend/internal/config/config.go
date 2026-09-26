@@ -37,6 +37,9 @@ type Config struct {
 	PocketAPIKey        string // Pocket API key ("pk_…") for downloading audio
 	PocketAPIURL        string
 
+	// OpenRouterAPIURL is the OpenRouter endpoint (the API key and models are set in the UI).
+	OpenRouterAPIURL string
+
 	// Uploads.
 	UploadDir       string        // local spool for in-flight and not yet archived WAV files
 	MaxUploadBytes  int64         // largest accepted WAV file
@@ -64,6 +67,7 @@ func Load() Config {
 		PocketWebhookSecret: env("POCKET_WEBHOOK_SECRET", ""),
 		PocketAPIKey:        env("POCKET_API_KEY", ""),
 		PocketAPIURL:        env("POCKET_API_URL", "https://public.heypocketai.com/api/v1"),
+		OpenRouterAPIURL:    env("OPENROUTER_API_URL", "https://openrouter.ai/api/v1"),
 		UploadDir:           env("UPLOAD_DIR", "./data/uploads"),
 		MaxUploadBytes:      envInt64("MAX_UPLOAD_BYTES", 4<<30), // WAV's 32-bit sizes cap files at 4 GiB
 		UploadTTL:           envDuration("UPLOAD_TTL", 48*time.Hour),

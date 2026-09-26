@@ -175,6 +175,38 @@ Pocket's transcripts, summaries and action items in the webhook payload are not 
 **Log messages:** `pocket recording queued`, `pocket audio fetched`, and
 `pocket webhook rejected` (signature problems, with the reason).
 
+## AI processing (OpenRouter)
+
+Every archived recording is transcribed and then summarized through
+[OpenRouter](https://openrouter.ai). This is configured in the web UI, not with environment
+variables:
+
+1. Create an API key at [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys)
+   (and add credit to the OpenRouter account).
+2. In knowpod, open **Settings**, paste the key, choose a **transcription model** (only
+   models that accept audio are offered) and a **summary model**, and save.
+
+Recordings that arrived before this wait in `stored` and are processed as soon as the
+settings are saved. Usage is billed by OpenRouter per token; the Settings page shows each
+model's price per million tokens.
+
+**How audio is sent.** OpenRouter takes audio base64-encoded inside the request. FLAC
+recordings (all device uploads) are decoded, mixed to mono, reduced to 16 kHz and sent in
+5-minute WAV pieces, whose transcripts are joined. Recordings kept in another format
+(MP3, M4A from Pocket) are sent in one piece and are limited to 20 MB (roughly 40 minutes of
+MP3 at 64 kbit/s); larger ones fail with a clear error.
+
+**The API key** is stored in the MongoDB `settings` collection. It is never sent back to the
+browser (the UI shows only its last four characters), but anyone with database access can
+read it; protect database backups accordingly, and remove the key in Settings if it leaks.
+
+**When a step fails**, it is retried like the other stages and the recording ends in
+`failed` after `WORKER_MAX_ATTEMPTS`, with the reason shown on the conversation page. Fix the
+cause (credit, model choice) and use **Re-transcribe** or **Re-summarize** there.
+
+Log messages: `recording transcribed` (model, length, duration) and `recording summarized`
+(model, title).
+
 ## Provisioning devices
 
 **In the web UI**, open **Devices**:
@@ -258,8 +290,11 @@ wipe it while `received` recordings exist.
 
 - Single instance only (see [Scaling](#scaling-and-the-spool)).
 - One web UI account (the admin); there is no user management.
-- The web UI covers sign-in, password change, devices and the Status page; recordings are
-  only accessible through the admin API.
+- Pocket or other compressed audio above 20 MB can't be transcribed (it is sent in one
+  piece; splitting it would need an MP3/AAC decoder).
+- Speaker labels ("Speaker 1") are assigned per 5-minute piece and may not match across
+  pieces of long recordings.
+- The conversation list loads the newest 200 recordings.
 - The client IP for the login rate limit is taken from `X-Forwarded-For` / `X-Real-IP`.
   Without a proxy that sets these, clients can spoof them and bypass the limit.
 - No API to delete recordings or their objects.

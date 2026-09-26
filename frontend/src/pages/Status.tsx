@@ -1,6 +1,7 @@
-import { Fragment, ReactNode, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, Health, Info, Integrations, OpenAPIOperation, OpenAPISpec } from '../api/client';
 import { CopyButton } from '../components/CopyButton';
+import { inline, Markdown } from '../components/Markdown';
 
 const METHODS = ['get', 'post', 'put', 'patch', 'delete'];
 
@@ -20,43 +21,6 @@ interface Endpoint {
 function authLabel(op: OpenAPIOperation): string {
   if (!op.security || op.security.length === 0) return 'Public';
   return op.security.map((req) => Object.keys(req).map((k) => AUTH_LABELS[k] ?? k).join(' + ')).join(' or ');
-}
-
-// inline renders `code` and **bold** spans of the spec's Markdown descriptions.
-function inline(text: string): ReactNode[] {
-  return text.split(/(`[^`]+`|\*\*[^*]+\*\*)/).map((part, i) => {
-    if (part.startsWith('`') && part.endsWith('`')) return <code key={i}>{part.slice(1, -1)}</code>;
-    if (part.startsWith('**') && part.endsWith('**')) return <strong key={i}>{part.slice(2, -2)}</strong>;
-    return <Fragment key={i}>{part}</Fragment>;
-  });
-}
-
-// Markdown renders the small Markdown subset used in openapi.yaml: paragraphs and numbered
-// lists with inline code and bold.
-function Markdown({ text }: { text: string }) {
-  const blocks = text.trim().split(/\n\s*\n/);
-  return (
-    <>
-      {blocks.map((block, i) => {
-        const lines = block.split('\n');
-        if (/^\d+\.\s/.test(lines[0])) {
-          const items: string[] = [];
-          for (const line of lines) {
-            if (/^\d+\.\s/.test(line)) items.push(line.replace(/^\d+\.\s+/, ''));
-            else items[items.length - 1] += ' ' + line.trim();
-          }
-          return (
-            <ol key={i}>
-              {items.map((item, j) => (
-                <li key={j}>{inline(item)}</li>
-              ))}
-            </ol>
-          );
-        }
-        return <p key={i}>{inline(lines.map((l) => l.trim()).join(' '))}</p>;
-      })}
-    </>
-  );
 }
 
 function ConfigState({ ok, name }: { ok: boolean; name: string }) {

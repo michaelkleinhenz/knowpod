@@ -1,10 +1,12 @@
 import { ReactNode } from 'react';
-import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
 
 export function Layout({ children }: { children: ReactNode }) {
   const { account, logout } = useAuth();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const onConversations = pathname === '/' || pathname.startsWith('/conversations/');
 
   async function handleLogout() {
     await logout();
@@ -19,10 +21,11 @@ export function Layout({ children }: { children: ReactNode }) {
         </Link>
         {account && (
           <nav className="nav">
-            <NavLink to="/" end>
-              Home
+            <NavLink to="/" className={() => (onConversations ? 'active' : '')}>
+              Conversations
             </NavLink>
             <NavLink to="/devices">Devices</NavLink>
+            <NavLink to="/settings">Settings</NavLink>
             <NavLink to="/status">Status</NavLink>
             <NavLink to="/account">Account</NavLink>
             <span className="nav-user">{account.email}</span>

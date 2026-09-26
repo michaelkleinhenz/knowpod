@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -66,8 +67,16 @@ func (s *Store) Put(ctx context.Context, key string, body io.Reader, size int64,
 	return err
 }
 
-func (s *Store) Get(ctx context.Context, key string) (io.ReadCloser, error) {
-	out, err := s.client.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(s.prefix + key)})
+func (s *Store) Get(ctx context.Context, key string, offset, length int64) (io.ReadCloser, error) {
+	in := &s3.GetObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(s.prefix + key)}
+	if offset > 0 || length >= 0 {
+		rng := fmt.Sprintf("bytes=%d-", offset)
+		if length >= 0 {
+			rng += strconv.FormatInt(offset+length-1, 10)
+		}
+		in.Range = aws.String(rng)
+	}
+	out, err := s.client.GetObject(ctx, in)
 	if err != nil {
 		var nsk *types.NoSuchKey
 		if errors.As(err, &nsk) {

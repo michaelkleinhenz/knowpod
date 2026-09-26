@@ -10,6 +10,7 @@ import (
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/device"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/settings"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/user"
 )
 
@@ -86,6 +87,16 @@ func (m *Recordings) List(_ context.Context, f recording.ListFilter) ([]*recordi
 	out = out[f.Offset:]
 	if f.Limit > 0 && len(out) > f.Limit {
 		out = out[:f.Limit]
+	}
+	if f.Brief {
+		for _, r := range out {
+			r.Transcript = nil
+			if r.Summary != nil {
+				s := *r.Summary
+				s.Markdown = ""
+				r.Summary = &s
+			}
+		}
 	}
 	return out, nil
 }
@@ -277,4 +288,27 @@ func (m *Sessions) Count() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return len(m.sessions)
+}
+
+// Settings is an in-memory ports.SettingsRepository.
+type Settings struct {
+	mu         sync.Mutex
+	openRouter settings.OpenRouter
+}
+
+// NewSettings builds an empty repository.
+func NewSettings() *Settings { return &Settings{} }
+
+func (m *Settings) OpenRouter(context.Context) (*settings.OpenRouter, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.openRouter
+	return &s, nil
+}
+
+func (m *Settings) SaveOpenRouter(_ context.Context, s *settings.OpenRouter) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.openRouter = *s
+	return nil
 }

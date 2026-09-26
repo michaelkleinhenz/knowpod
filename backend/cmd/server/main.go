@@ -16,6 +16,7 @@ import (
 
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/config"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/openrouter"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/pocket"
 	repo "github.com/michaelkleinhenz/knowpod-service/backend/internal/repository/mongo"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/service"
@@ -48,6 +49,7 @@ func main() {
 	devices := repo.NewDeviceRepo(store)
 	users := repo.NewUserRepo(store)
 	sessions := repo.NewSessionRepo(store)
+	settingsRepo := repo.NewSettingsRepo(store)
 
 	// Object storage.
 	objects, err := s3store.New(ctx, s3store.Options{
@@ -77,23 +79,40 @@ func main() {
 	if cfg.PocketWebhookSecret == "" || cfg.PocketAPIKey == "" {
 		log.Info("Pocket integration disabled: set POCKET_WEBHOOK_SECRET and POCKET_API_KEY to enable it")
 	}
+	var wakeAI func() // set below, once the AI worker exists
 	pipeline := worker.New(recordings, []worker.Stage{
 		{Name: "pocket-fetch", From: recording.StatusRemote, To: recording.StatusReceived, Run: pocketSvc.Fetch},
-		{Name: "archive", From: recording.StatusReceived, To: recording.StatusStored, Run: archiver.Run, Cleanup: archiver.Cleanup},
+		{Name: "archive", From: recording.StatusReceived, To: recording.StatusStored, Run: archiver.Run,
+			Cleanup: func(rec *recording.Recording) { archiver.Cleanup(rec); wakeAI() }},
 	}, worker.Options{PollInterval: cfg.WorkerPollInterval, MaxAttempts: cfg.WorkerMaxAttempts}, log)
 	uploadSvc.OnReceived = pipeline.Wake
 	pocketSvc.OnQueued = pipeline.Wake
 
+	// AI processing (transcription, summaries) runs in its own worker so that slow model
+	// calls never delay archiving. Its stages wait until OpenRouter is configured.
+	aiSvc := service.NewAIService(settingsRepo, objects, openrouter.NewClient(cfg.OpenRouterAPIURL, cfg.FrontendURL), cfg.UploadDir, log)
+	aiPipeline := worker.New(recordings, []worker.Stage{
+		{Name: "transcribe", From: recording.StatusStored, To: recording.StatusTranscribed,
+			Run: aiSvc.Transcribe, Enabled: aiSvc.CanTranscribe, Lease: time.Hour},
+		{Name: "summarize", From: recording.StatusTranscribed, To: recording.StatusSummarized,
+			Run: aiSvc.Summarize, Enabled: aiSvc.CanSummarize},
+	}, worker.Options{PollInterval: cfg.WorkerPollInterval, MaxAttempts: cfg.WorkerMaxAttempts}, log)
+	aiSvc.OnSettingsChanged = aiPipeline.Wake
+	actions := service.NewRecordingService(recordings, objects, spool)
+	actions.OnRequeued = aiPipeline.Wake
+	wakeAI = aiPipeline.Wake // archived recordings move on to transcription right away
+
 	jobCtx, jobCancel := context.WithCancel(ctx)
 	var jobs sync.WaitGroup
-	jobs.Add(2)
+	jobs.Add(3)
 	go func() { defer jobs.Done(); pipeline.Start(jobCtx) }()
+	go func() { defer jobs.Done(); aiPipeline.Start(jobCtx) }()
 	go func() { defer jobs.Done(); purgeStaleUploads(jobCtx, uploadSvc, cfg.UploadTTL, log) }()
 
 	// HTTP server.
 	srv := httpx.NewServer(httpx.Deps{
 		Cfg: cfg, Log: log, DB: store, Auth: authSvc, Devices: deviceSvc, Uploads: uploadSvc,
-		Recordings: recordings, Objects: objects, Pocket: pocketSvc,
+		Recordings: recordings, Objects: objects, Pocket: pocketSvc, AI: aiSvc, Actions: actions,
 	})
 	httpServer := &http.Server{
 		Addr:              ":" + cfg.Port,

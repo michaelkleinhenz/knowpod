@@ -38,6 +38,8 @@ type Server struct {
 	recordings ports.RecordingRepository
 	objects    ports.ObjectStore
 	pocket     *service.PocketService
+	ai         *service.AIService
+	actions    *service.RecordingService
 	now        func() time.Time
 }
 
@@ -52,6 +54,8 @@ type Deps struct {
 	Recordings ports.RecordingRepository
 	Objects    ports.ObjectStore
 	Pocket     *service.PocketService // optional; the Pocket webhook answers 503 without it
+	AI         *service.AIService
+	Actions    *service.RecordingService
 }
 
 // NewServer builds the server.
@@ -62,7 +66,7 @@ func NewServer(d Deps) *Server {
 	}
 	return &Server{
 		cfg: d.Cfg, log: log, db: d.DB, auth: d.Auth, devices: d.Devices, uploads: d.Uploads,
-		recordings: d.Recordings, objects: d.Objects, pocket: d.Pocket, now: time.Now,
+		recordings: d.Recordings, objects: d.Objects, pocket: d.Pocket, ai: d.AI, actions: d.Actions, now: time.Now,
 	}
 }
 
@@ -119,6 +123,12 @@ func (s *Server) Router() http.Handler {
 			a.Get("/recordings", s.handleListRecordings)
 			a.Get("/recordings/{id}", s.handleGetRecording)
 			a.Get("/recordings/{id}/audio", s.handleRecordingAudio)
+			a.Delete("/recordings/{id}", s.handleDeleteRecording)
+			a.Post("/recordings/{id}/retranscribe", s.handleRetranscribe)
+			a.Post("/recordings/{id}/resummarize", s.handleResummarize)
+			a.Get("/settings/openrouter", s.handleGetOpenRouterSettings)
+			a.Put("/settings/openrouter", s.handleUpdateOpenRouterSettings)
+			a.Get("/openrouter/models", s.handleOpenRouterModels)
 			a.Get("/integrations", s.handleIntegrations)
 		})
 	})

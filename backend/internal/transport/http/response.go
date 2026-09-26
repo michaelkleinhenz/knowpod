@@ -44,7 +44,7 @@ func (s *Server) writeErr(w http.ResponseWriter, err error) {
 		status = http.StatusUnauthorized
 	case errors.Is(err, service.ErrWrongPassword):
 		status = http.StatusForbidden
-	case errors.Is(err, service.ErrConflict):
+	case errors.Is(err, service.ErrConflict), errors.Is(err, service.ErrNotReady):
 		status = http.StatusConflict
 	case errors.Is(err, service.ErrTooLarge):
 		status = http.StatusRequestEntityTooLarge

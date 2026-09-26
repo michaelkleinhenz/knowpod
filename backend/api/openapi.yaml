@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: knowpod-service API
-  version: 0.4.0
+  version: 0.5.0
   description: |
     Backend for the knowpod AI audio recorder.
 
@@ -20,6 +20,10 @@ info:
     **Pocket** — recordings from a Pocket recorder (heypocketai.com) arrive through the
     `POST /webhooks/pocket` webhook; the audio is then downloaded from the Pocket API and
     archived like device uploads.
+
+    **AI processing** — every archived recording is transcribed and then summarized through
+    OpenRouter, with the API key and models set by an administrator
+    (`PUT /admin/settings/openrouter`). Recordings wait in `stored` until that is configured.
 
     **Web UI sign-in** — email and password, answered with an HttpOnly session cookie. The
     default login comes from `ADMIN_EMAIL`/`ADMIN_PASSWORD`; a password changed via
@@ -43,6 +47,8 @@ tags:
     description: Inspect recordings and download the archived audio. Web UI session or ADMIN_TOKEN.
   - name: Integrations
     description: Webhooks from external recorders and their configuration.
+  - name: "Admin: AI settings"
+    description: OpenRouter API key and the models used to transcribe and summarize recordings.
 paths:
   /info:
     get:
@@ -390,6 +396,10 @@ paths:
         - { name: status, in: query, schema: { $ref: "#/components/schemas/Status" } }
         - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 200 } }
         - { name: offset, in: query, schema: { type: integer, default: 0 } }
+        - name: full
+          in: query
+          description: Include transcript and summary text (left out by default to keep lists small)
+          schema: { type: boolean }
       responses:
         "200":
           description: Recordings
@@ -397,7 +407,102 @@ paths:
             application/json:
               schema: { type: array, items: { $ref: "#/components/schemas/Recording" } }
 
+  /admin/recordings/{recordingId}/retranscribe:
+    post:
+      tags: ["Admin: recordings"]
+      summary: Transcribe again
+      description: Discards the transcript and summary; the recording is transcribed and summarized anew.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Queued
+          content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
+        "404": { $ref: "#/components/responses/Error" }
+        "409":
+          description: The audio has not been archived yet
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /admin/recordings/{recordingId}/resummarize:
+    post:
+      tags: ["Admin: recordings"]
+      summary: Summarize again
+      description: Discards the summary and summarizes the existing transcript anew.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Queued
+          content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
+        "404": { $ref: "#/components/responses/Error" }
+        "409":
+          description: The recording has no transcript yet
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /admin/settings/openrouter:
+    get:
+      tags: ["Admin: AI settings"]
+      summary: OpenRouter settings
+      description: The API key is never returned; `apiKeyHint` shows its last characters.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      responses:
+        "200":
+          description: Settings
+          content: { application/json: { schema: { $ref: "#/components/schemas/OpenRouterSettings" } } }
+    put:
+      tags: ["Admin: AI settings"]
+      summary: Change OpenRouter settings
+      description: Fields left out stay unchanged; an empty `apiKey` removes the key.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                apiKey: { type: string, example: sk-or-v1-… }
+                transcriptionModel: { type: string, example: google/gemini-2.5-flash }
+                summaryModel: { type: string, example: google/gemini-2.5-flash }
+      responses:
+        "200":
+          description: Saved
+          content: { application/json: { schema: { $ref: "#/components/schemas/OpenRouterSettings" } } }
+        "400": { $ref: "#/components/responses/Error" }
+
+  /admin/openrouter/models:
+    get:
+      tags: ["Admin: AI settings"]
+      summary: Models available for transcription and summaries
+      description: From OpenRouter's model list. Transcription needs audio input; summaries need text input.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      responses:
+        "200":
+          description: Model options
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transcription: { type: array, items: { $ref: "#/components/schemas/ModelOption" } }
+                  summary: { type: array, items: { $ref: "#/components/schemas/ModelOption" } }
+        "502":
+          description: OpenRouter could not be reached
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
   /admin/recordings/{recordingId}:
+    delete:
+      tags: ["Admin: recordings"]
+      summary: Delete a recording
+      description: Removes the recording, its transcript and summary, and its audio from storage.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/Error" }
     get:
       tags: ["Admin: recordings"]
       summary: Get a recording
@@ -413,14 +518,21 @@ paths:
   /admin/recordings/{recordingId}/audio:
     get:
       tags: ["Admin: recordings"]
-      summary: Download the archived audio
-      description: FLAC for uploaded WAV recordings; the original format (e.g. MP3, M4A) for recordings fetched from Pocket.
+      summary: Stream or download the archived audio
+      description: |
+        FLAC for uploaded WAV recordings; the original format (e.g. MP3, M4A) for recordings
+        fetched from Pocket. Supports a single `Range` for seeking; `?download=1` sends it as
+        an attachment.
       security: [{ sessionCookie: [] }, { adminToken: [] }]
       parameters:
         - { name: recordingId, in: path, required: true, schema: { type: string } }
+        - { name: download, in: query, schema: { type: boolean } }
+        - { name: Range, in: header, schema: { type: string, example: bytes=0-1023 } }
       responses:
+        "206": { description: Partial content for a Range request }
+        "416": { description: Range outside the file }
         "200":
-          description: FLAC audio
+          description: Audio
           content:
             audio/flac:
               schema: { type: string, format: binary }
@@ -465,7 +577,7 @@ components:
 
     Status:
       type: string
-      enum: [remote, uploading, received, stored, failed]
+      enum: [remote, uploading, received, stored, transcribed, summarized, failed]
 
     CreateUpload:
       type: object
@@ -521,12 +633,44 @@ components:
             durationMs: { type: integer, format: int64 }
         audio: { $ref: "#/components/schemas/Object" }
         original: { $ref: "#/components/schemas/Object" }
+        transcript:
+          type: object
+          properties:
+            text: { type: string }
+            model: { type: string }
+            createdAt: { type: string, format: date-time }
+        summary:
+          type: object
+          properties:
+            title: { type: string }
+            markdown: { type: string, description: Left out in lists }
+            model: { type: string }
+            createdAt: { type: string, format: date-time }
         attempts: { type: integer }
         lastError: { type: string }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
         receivedAt: { type: string, format: date-time }
         storedAt: { type: string, format: date-time }
+
+    OpenRouterSettings:
+      type: object
+      properties:
+        apiKeyConfigured: { type: boolean }
+        apiKeyHint: { type: string, example: …a1b2 }
+        transcriptionModel: { type: string }
+        summaryModel: { type: string }
+        updatedAt: { type: string, format: date-time }
+
+    ModelOption:
+      type: object
+      properties:
+        id: { type: string, example: google/gemini-2.5-flash }
+        name: { type: string }
+        contextLength: { type: integer }
+        promptPrice: { type: string, description: USD per input token }
+        completionPrice: { type: string, description: USD per output token }
+        audioPrice: { type: string }
 
     Object:
       type: object

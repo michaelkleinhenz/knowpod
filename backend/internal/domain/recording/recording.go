@@ -15,8 +15,12 @@ const (
 	// StatusReceived: the audio file is complete (uploaded and verified, or fetched); it
 	// waits in the local spool for background processing.
 	StatusReceived Status = "received"
-	// StatusStored: the audio has been transcoded to FLAC and archived in object storage.
+	// StatusStored: the audio has been archived in object storage and waits to be transcribed.
 	StatusStored Status = "stored"
+	// StatusTranscribed: the transcript exists and the summary is pending.
+	StatusTranscribed Status = "transcribed"
+	// StatusSummarized: fully processed.
+	StatusSummarized Status = "summarized"
 	// StatusFailed: the recording was rejected or processing gave up after retries.
 	StatusFailed Status = "failed"
 )
@@ -72,6 +76,9 @@ type Recording struct {
 	Audio             *Object    `bson:"audio,omitempty" json:"audio,omitempty"`       // archived FLAC
 	Original          *Object    `bson:"original,omitempty" json:"original,omitempty"` // archived WAV, if kept
 
+	Transcript *Transcript `bson:"transcript,omitempty" json:"transcript,omitempty"`
+	Summary    *Summary    `bson:"summary,omitempty" json:"summary,omitempty"`
+
 	// Background processing bookkeeping. NotBefore is both the retry backoff and the lease of
 	// the worker currently processing the recording.
 	Attempts  int       `bson:"attempts" json:"attempts"`
@@ -84,10 +91,28 @@ type Recording struct {
 	StoredAt   *time.Time `bson:"storedAt,omitempty" json:"storedAt,omitempty"`
 }
 
+// Transcript is the text of a recording, produced by a speech model.
+type Transcript struct {
+	Text      string    `bson:"text" json:"text"`
+	Model     string    `bson:"model" json:"model"`
+	CreatedAt time.Time `bson:"createdAt" json:"createdAt"`
+}
+
+// Summary is an AI summary of the transcript. Its Title names the conversation in the UI.
+type Summary struct {
+	Title     string    `bson:"title" json:"title"`
+	Markdown  string    `bson:"markdown,omitempty" json:"markdown,omitempty"`
+	Model     string    `bson:"model" json:"model"`
+	CreatedAt time.Time `bson:"createdAt" json:"createdAt"`
+}
+
 // ListFilter selects recordings for listing. Zero values mean "no restriction".
 type ListFilter struct {
 	DeviceID string
 	Status   Status
 	Limit    int
 	Offset   int
+	// Brief leaves out the transcript and the summary text (the summary title is kept),
+	// for lists.
+	Brief bool
 }

@@ -44,12 +44,16 @@ func (s *Store) Put(_ context.Context, key string, body io.Reader, size int64, c
 	return nil
 }
 
-func (s *Store) Get(_ context.Context, key string) (io.ReadCloser, error) {
+func (s *Store) Get(_ context.Context, key string, offset, length int64) (io.ReadCloser, error) {
 	o, ok := s.Object(key)
 	if !ok {
 		return nil, domain.ErrNotFound
 	}
-	return io.NopCloser(bytes.NewReader(o.Data)), nil
+	data := o.Data[min(offset, int64(len(o.Data))):]
+	if length >= 0 && length < int64(len(data)) {
+		data = data[:length]
+	}
+	return io.NopCloser(bytes.NewReader(data)), nil
 }
 
 func (s *Store) Delete(_ context.Context, key string) error {

@@ -56,6 +56,49 @@ export interface DeviceWithToken {
   token: string;
 }
 
+export type RecordingStatus =
+  | 'remote'
+  | 'uploading'
+  | 'received'
+  | 'stored'
+  | 'transcribed'
+  | 'summarized'
+  | 'failed';
+
+export interface Recording {
+  id: string;
+  deviceId: string;
+  source?: 'pocket';
+  title?: string;
+  recordingId: string;
+  status: RecordingStatus;
+  size: number;
+  recordedAt?: string;
+  createdAt: string;
+  format?: { sampleRate: number; channels: number; bitsPerSample: number; durationMs: number };
+  audio?: { key: string; contentType: string; size: number };
+  transcript?: { text: string; model: string; createdAt: string };
+  summary?: { title: string; markdown?: string; model: string; createdAt: string };
+  lastError?: string;
+}
+
+export interface OpenRouterSettings {
+  apiKeyConfigured: boolean;
+  apiKeyHint?: string;
+  transcriptionModel: string;
+  summaryModel: string;
+  updatedAt?: string;
+}
+
+export interface ModelOption {
+  id: string;
+  name: string;
+  contextLength: number;
+  promptPrice: string;
+  completionPrice: string;
+  audioPrice?: string;
+}
+
 export interface Integrations {
   pocket: {
     webhookPath: string;
@@ -99,6 +142,17 @@ export const api = {
   openapi: () => request<OpenAPISpec>('GET', '/openapi.json'),
   devices: () => request<Device[]>('GET', '/admin/devices'),
   integrations: () => request<Integrations>('GET', '/admin/integrations'),
+  recordings: () => request<Recording[]>('GET', '/admin/recordings?limit=200'),
+  recording: (id: string) => request<Recording>('GET', `/admin/recordings/${encodeURIComponent(id)}`),
+  deleteRecording: (id: string) => request<void>('DELETE', `/admin/recordings/${encodeURIComponent(id)}`),
+  retranscribe: (id: string) => request<Recording>('POST', `/admin/recordings/${encodeURIComponent(id)}/retranscribe`),
+  resummarize: (id: string) => request<Recording>('POST', `/admin/recordings/${encodeURIComponent(id)}/resummarize`),
+  audioURL: (id: string, download = false) =>
+    `/api/v1/admin/recordings/${encodeURIComponent(id)}/audio${download ? '?download=1' : ''}`,
+  openRouterSettings: () => request<OpenRouterSettings>('GET', '/admin/settings/openrouter'),
+  saveOpenRouterSettings: (u: { apiKey?: string; transcriptionModel?: string; summaryModel?: string }) =>
+    request<OpenRouterSettings>('PUT', '/admin/settings/openrouter', u),
+  openRouterModels: () => request<{ transcription: ModelOption[]; summary: ModelOption[] }>('GET', '/admin/openrouter/models'),
   createDevice: (name: string) => request<DeviceWithToken>('POST', '/admin/devices', { name }),
   rotateDeviceToken: (id: string) => request<DeviceWithToken>('POST', `/admin/devices/${encodeURIComponent(id)}/token`),
   removeDevice: (id: string) => request<void>('DELETE', `/admin/devices/${encodeURIComponent(id)}`),
