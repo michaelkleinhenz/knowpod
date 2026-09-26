@@ -69,9 +69,10 @@ function OptionList(props: {
   );
 }
 
-// SummaryDetails is the "Summary details" menu of a conversation: it shows and changes the
-// language, model and theme of the summary, and regenerates it.
-export function SummaryDetails({ rec, onRegenerated }: { rec: Recording; onRegenerated: () => void }) {
+// SummaryDetails is the "Summary details" menu of a note: it shows and changes the language,
+// model and theme of the summary, and regenerates it. onRegenerate runs the request; the
+// page asks for confirmation and makes sure pending edits aren't saved over the new summary.
+export function SummaryDetails({ rec, onRegenerate }: { rec: Recording; onRegenerate: (request: () => Promise<unknown>) => Promise<void> }) {
   const { t } = useTranslation();
   const themeText = useThemeText();
   const current: SummaryOptions = {
@@ -124,13 +125,11 @@ export function SummaryDetails({ rec, onRegenerated }: { rec: Recording; onRegen
   }
 
   async function regenerate() {
-    if (!window.confirm(rec.summary?.editedAt ? t('editor.regenerateEditedConfirm') : t('details.regenerateConfirm'))) return;
     setBusy(true);
     setError(null);
     try {
-      await api.resummarize(rec.id, pending);
       setOpen(false);
-      onRegenerated();
+      await onRegenerate(() => api.resummarize(rec.id, pending));
     } catch (err) {
       setError(errorText(err, t));
     } finally {

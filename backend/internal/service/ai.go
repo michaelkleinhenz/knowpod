@@ -10,7 +10,9 @@ import (
 	"log/slog"
 	"os"
 	"path"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -37,8 +39,24 @@ const (
 )
 
 const transcriptionPrompt = `Transcribe this audio recording verbatim in its original language. Do not translate, summarize or comment.
-When more than one person speaks, start each speaker's turn on a new line with a label such as "Speaker 1:".
+Start each speaker's turn on a new line with its start time in the form [m:ss] (minutes and seconds from the start of this audio), followed by a speaker label such as "Speaker 1:" when more than one person speaks, e.g. "[1:05] Speaker 2: …". In long turns, start a new line with a new time stamp at least every 30 seconds.
 Output only the transcript. If there is no speech, output nothing.`
+
+// timestampPattern matches the [m:ss] / [h:mm:ss] time stamps in transcripts.
+var timestampPattern = regexp.MustCompile(`\[(?:(\d{1,2}):)?(\d{1,3}):(\d{2})\]`)
+
+// shiftTimestamps adds offset to the time stamps in a transcript piece, so that the
+// pieces of a long recording carry times relative to the whole recording.
+func shiftTimestamps(text string, offset time.Duration) string {
+	return timestampPattern.ReplaceAllStringFunc(text, func(m string) string {
+		p := timestampPattern.FindStringSubmatch(m)
+		h, _ := strconv.Atoi(p[1])
+		min, _ := strconv.Atoi(p[2])
+		sec, _ := strconv.Atoi(p[3])
+		d := time.Duration(h)*time.Hour + time.Duration(min)*time.Minute + time.Duration(sec)*time.Second + offset
+		return "[" + formatOffset(d.Milliseconds()) + "]"
+	})
+}
 
 // summaryPrompt is completed with the theme's structure and the output language.
 const summaryPrompt = `You summarize transcripts of recorded conversations and voice notes.
@@ -48,12 +66,21 @@ Reply with a JSON object with exactly two string fields:
 %s
 %s Reply with the JSON object only.`
 
-// summarySystemPrompt builds the instructions for a theme and a language ("auto" or a key
-// of SummaryLanguages).
-func summarySystemPrompt(instructions, language string) string {
+// summarySystemPrompt builds the instructions for a theme, a language ("auto" or a key of
+// SummaryLanguages) and the highlights the user marked.
+func summarySystemPrompt(instructions, language string, highlights []recording.Highlight) string {
 	lang := "Write the title and the summary in the language of the transcript."
 	if name, ok := SummaryLanguages[language]; ok {
 		lang = "Write the title and the summary in " + name + ", regardless of the transcript's language."
+	}
+	if len(highlights) > 0 {
+		times := make([]string, len(highlights))
+		for i, h := range highlights {
+			times[i] = formatOffset(h.OffsetMs)
+		}
+		instructions += "\n\nWhile recording, the user marked these moments as highlights: " + strings.Join(times, ", ") +
+			". End the summary with a section \"## Highlights\" (heading translated into the summary's language): a bullet list with one item per highlight, in order, starting with the time in bold (e.g. **" + times[0] +
+			"**), followed by one sentence on what was being said or decided at that moment. Use the [m:ss] time stamps in the transcript to find it."
 	}
 	return fmt.Sprintf(summaryPrompt, instructions, lang)
 }
@@ -258,7 +285,7 @@ func (s *AIService) Transcribe(ctx context.Context, rec *recording.Recording) er
 			return fmt.Errorf("transcribe part %d: %w", part, err)
 		}
 		if t := strings.TrimSpace(text); t != "" {
-			parts = append(parts, t)
+			parts = append(parts, shiftTimestamps(t, time.Duration(part-1)*transcriptionChunk))
 		}
 		return nil
 	}
@@ -330,7 +357,7 @@ func (s *AIService) Summarize(ctx context.Context, rec *recording.Recording) err
 		Model: model,
 		JSON:  true,
 		Messages: []openrouter.Message{
-			{Role: "system", Content: summarySystemPrompt(th.Instructions, language)},
+			{Role: "system", Content: summarySystemPrompt(th.Instructions, language, rec.Highlights)},
 			{Role: "user", Content: meta.String() + "\nTranscript:\n\n" + rec.Transcript.Text},
 		},
 	})

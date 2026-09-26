@@ -210,22 +210,27 @@ On a note, **Summary details** (next to the summary heading) sets:
 **Regenerate summary** stores these choices with the recording (they also apply to later
 re-summaries and re-transcriptions) and summarizes it again.
 
-**Editing.** **Edit** (next to Summary details) opens the summary in a rich text editor:
-title, bold, italic, strikethrough, code, headings, bulleted and numbered lists (nested with
-Tab), quotes and links. Summaries are stored as Markdown; the editor reads and writes
-Markdown, so nothing else changes. Edited summaries show "Edited <date>".
+**Layout.** On desktop, the notes list stays in a sidebar on the left and the open note is
+shown next to it; on phones the list and a note are separate screens.
+
+**Editing.** A note's summary is always editable, like a document in a word processor:
+clicking into the text places the cursor there, and the title at the top of the page is
+edited in place. A formatting toolbar sits above the text (bold, italic, strikethrough,
+code, headings, bulleted and numbered lists (nested with Tab), quotes, links, undo/redo);
+Ctrl/Cmd+S saves immediately and Ctrl/Cmd+click opens a link. Summaries are stored as
+Markdown; the editor reads and writes Markdown, so nothing else changes. Edited summaries
+show "Edited <date>"; just viewing a note never changes it.
 
 Changes are **saved automatically** 2 seconds after typing stops, and at least every 10
-seconds while typing continues; **Done** saves what is left and closes the editor. The sync
-state is always shown above the editor: *All changes saved*, *Unsaved changes*, *Saving…*,
-or *Not saved* / *Offline* with a **Retry** link. Failed saves are retried every 10 seconds
-and as soon as the browser is online again; closing the tab with unsaved changes asks first.
+seconds while typing continues. The sync state is always shown under the title: *All
+changes saved*, *Unsaved changes*, *Saving…*, or *Not saved* / *Offline* with a **Retry**
+link. Failed saves are retried every 10 seconds and as soon as the browser is online again;
+leaving the note saves what's left, and closing the tab with unsaved changes asks first.
 
-**Regenerating asks first.** Re-summarize and Regenerate summary always ask for
-confirmation (with an explicit warning when the summary was edited), and they are disabled
-while the editor is open, so edits can't be lost by accident. The summary records which
-theme, language and model it was made with. Deleting a theme doesn't change existing
-summaries; regenerating them then uses Auto.
+**Regenerating asks first.** Re-summarize, Regenerate summary and Re-transcribe always ask
+for confirmation (with an explicit warning when the summary was edited or has unsaved
+changes). After confirming, pending changes are dropped rather than saved over the new
+summary.
 
 ## Settings
 
@@ -240,6 +245,24 @@ language; each user then chooses a language under **Settings → General**, whic
 with the account and applies on every device. API error responses carry a stable `code`
 (e.g. `invalid_login`, `email_taken`) that the UI translates; the `error` text stays
 English. The API reference on the Status page is shown in English.
+
+## Highlights and downloads
+
+**Highlights.** Recorders can send the moments the user marked while recording (see
+[Device upload protocol](device-protocol.md#highlights)). They are stored with the note,
+shown on the **Source** tab as markers on a timeline and as a list (click to play from
+there), and passed to the summarizer, which adds a "Highlights" section describing what was
+said at each moment. Transcripts carry `[m:ss]` time stamps per speaker turn for this; in
+the web app they are clickable and play the audio from that point.
+
+**Downloads.** The web app has **Download** links for the summary (Markdown) and the
+transcript (text). Through the API (session or `ADMIN_TOKEN`):
+
+```bash
+curl -H "Authorization: Bearer $ADMIN_TOKEN" -OJ $API/recordings/<id>/summary      # "<title> - summary.md"
+curl -H "Authorization: Bearer $ADMIN_TOKEN" -OJ $API/recordings/<id>/transcript   # "<title> - transcript.txt"
+curl -H "Authorization: Bearer $ADMIN_TOKEN" "$API/recordings/<id>/summary?format=json"
+```
 
 ## Uploading audio files
 

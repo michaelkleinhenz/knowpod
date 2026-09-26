@@ -1,13 +1,13 @@
-import { ChangeEvent, DragEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ChangeEvent, DragEvent, useMemo, useRef, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { api, Recording } from '../api/client';
+import { useNotes } from '../context/NotesContext';
 import { useAuth } from '../auth';
-import { DocIcon, RefreshIcon, SearchIcon, UploadIcon } from '../components/Icons';
+import { DocIcon, RefreshIcon, SearchIcon, UploadIcon } from './Icons';
 import { errorText } from '../lib/errors';
-import { dayKey, dayLabel, formatTime, processing, statusLabel, title, when } from '../lib/recordings';
+import { dayKey, dayLabel, formatTime, statusLabel, title, when } from '../lib/recordings';
 
-const POLL_MS = 10_000;
 const ACCEPT = '.wav,.mp3,audio/wav,audio/x-wav,audio/wave,audio/mpeg';
 
 interface UploadState {
@@ -18,45 +18,17 @@ interface UploadState {
   done?: boolean;
 }
 
-// Conversations lists the user's recordings, newest first, grouped by day, and accepts
-// WAV/MP3 uploads (button or drag and drop). While anything is still being processed, the
-// list refreshes itself.
-export function Conversations() {
+// NotesList lists the user's notes, newest first, grouped by day, and accepts WAV/MP3
+// uploads (button or drag and drop). On desktop it is the sidebar next to the open note;
+// on phones it is the start page.
+export function NotesList({ activeId }: { activeId?: string }) {
   const { t } = useTranslation();
   const { account } = useAuth();
-  const [recordings, setRecordings] = useState<Recording[] | null>(null);
-  const [aiReady, setAIReady] = useState(true);
+  const { recordings, aiReady, error, refreshing, reload: load } = useNotes();
   const [query, setQuery] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
   const [uploads, setUploads] = useState<UploadState[]>([]);
   const [dragging, setDragging] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
-
-  const load = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      const [list, ai] = await Promise.all([api.recordings(), api.aiStatus()]);
-      setRecordings(list);
-      setAIReady(ai.transcription && ai.summary);
-      setError(null);
-    } catch (err) {
-      setError(errorText(err, t));
-    } finally {
-      setRefreshing(false);
-    }
-  }, [t]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const busy = recordings?.some(processing) ?? false;
-  useEffect(() => {
-    if (!busy) return;
-    const t = setInterval(load, POLL_MS);
-    return () => clearInterval(t);
-  }, [busy, load]);
 
   async function upload(files: File[]) {
     for (const file of files) {
@@ -103,7 +75,7 @@ export function Conversations() {
 
   return (
     <section
-      className={`conversations${dragging ? ' dragging' : ''}`}
+      className={`conversations notes-list${dragging ? ' dragging' : ''}`}
       onDragOver={(e) => {
         if (e.dataTransfer.types.includes('Files')) {
           e.preventDefault();
@@ -198,7 +170,11 @@ export function Conversations() {
                 const state = statusLabel(r, aiReady);
                 return (
                   <li key={r.id}>
-                    <Link to={`/conversations/${r.id}`} className="conversation-item">
+                    <Link
+                      to={`/conversations/${r.id}`}
+                      className={`conversation-item${r.id === activeId ? ' active' : ''}`}
+                      aria-current={r.id === activeId ? 'page' : undefined}
+                    >
                       <DocIcon />
                       <span className="conversation-title">
                         {title(r)}

@@ -36,6 +36,10 @@ AI worker ─────────────▶ transcript (status: transcr
   **Account** page: recordings arrive through the user's personal webhook and their audio is
   downloaded with the user's Pocket API key.
 - WAV and MP3 files can be uploaded from the browser on **Notes**.
+- Recorders can send **highlights** (moments marked with a button while recording); they
+  are shown on the note's timeline and described in the summary.
+- Summaries and transcripts can be downloaded as Markdown and text files, in the web app and
+  through the API.
 - Uploads are idempotent (the gadget names each recording), resumable after dropped
   connections, and checked against a SHA-256 the gadget declares up front.
 - Transcoding and archiving run in a background worker with retries and backoff.
@@ -43,10 +47,10 @@ AI worker ─────────────▶ transcript (status: transcr
   [OpenRouter](https://openrouter.ai). The API key and both models are chosen by an admin
   on the web UI's **Settings** page.
 - The web UI's **Notes** page (a note per recording) lists your recordings by the title of
-  their summary;
+  their summary; on desktop the list stays in a sidebar next to the open note;
   each note shows its summary, transcript and audio, and can be re-transcribed,
-  re-summarized or deleted. Summaries can be edited in a rich text editor that saves
-  automatically (stored as Markdown). Under **Summary details** each summary's language, model and
+  re-summarized or deleted. Summaries are always editable in place, like a document,
+  and save automatically (stored as Markdown). Under **Summary details** each summary's language, model and
   **theme** (its structure, e.g. meeting or call notes) can be changed and regenerated.
   Users adjust the built-in themes and add their own on the **Settings** page.
 - The web UI is available in English and German; each user picks the language in
@@ -189,8 +193,11 @@ frontend/src/
   api/client.ts        API client
   auth.tsx             sign-in state (AuthProvider, useAuth)
   components/          reusable UI components
-  pages/               Conversations/Conversation (the Notes list and a note), Devices, Users,
-                       Settings (tabs), Status, Account, Login
+  pages/               NotesLayout (list sidebar + open note), Conversation (a note), Devices,
+                       Users, Settings (tabs), Status, Account, Login
+  components/NotesList the notes list (sidebar on desktop, start page on phones)
+  context/             NotesContext: the notes list shared by sidebar and open note
+  hooks/useAutosave.ts saving the open note's summary
   i18n/                translations (en.ts, de.ts) and language setup
   lib/                 display helpers (recordings, themes, error texts)
 ```

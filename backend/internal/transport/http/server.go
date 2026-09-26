@@ -108,6 +108,7 @@ func (s *Server) Router() http.Handler {
 			d.Post("/uploads", s.handleCreateUpload)
 			d.Get("/uploads/{id}", s.handleGetUpload)
 			d.Patch("/uploads/{id}", s.handleAppendUpload)
+			d.Put("/uploads/{id}/highlights", s.handleSetHighlights)
 		})
 
 		// --- webhooks from external services (authenticated by their signatures) ---
@@ -143,6 +144,8 @@ func (s *Server) Router() http.Handler {
 			u.Post("/recordings/{id}/retranscribe", s.handleRetranscribe)
 			u.Post("/recordings/{id}/resummarize", s.handleResummarize)
 			u.Put("/recordings/{id}/summary", s.handleEditSummary)
+			u.Get("/recordings/{id}/summary", s.handleDownloadSummary)
+			u.Get("/recordings/{id}/transcript", s.handleDownloadTranscript)
 		})
 
 		// --- administration (admins, or ADMIN_TOKEN) ---

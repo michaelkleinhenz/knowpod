@@ -136,6 +136,7 @@ export interface Recording {
     createdAt: string;
   };
   summaryOptions?: SummaryOptions;
+  highlights?: { offsetMs: number; at?: string }[];
   lastError?: string;
 }
 
@@ -228,6 +229,7 @@ export const api = {
     request<Recording>('POST', `/recordings/${encodeURIComponent(id)}/resummarize`, opts),
   editSummary: (id: string, title: string, markdown: string) =>
     request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/summary`, { title, markdown }),
+  downloadURL: (id: string, kind: 'summary' | 'transcript') => `/api/v1/recordings/${encodeURIComponent(id)}/${kind}`,
   audioURL: (id: string, download = false) => `/api/v1/recordings/${encodeURIComponent(id)}/audio${download ? '?download=1' : ''}`,
   uploadRecording,
   users: () => request<User[]>('GET', '/admin/users'),

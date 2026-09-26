@@ -80,6 +80,8 @@ type Recording struct {
 	Audio             *Object    `bson:"audio,omitempty" json:"audio,omitempty"`       // archived FLAC
 	Original          *Object    `bson:"original,omitempty" json:"original,omitempty"` // archived WAV, if kept
 
+	// Highlights are moments the user marked on the device while recording.
+	Highlights     []Highlight    `bson:"highlights,omitempty" json:"highlights,omitempty"`
 	Transcript     *Transcript    `bson:"transcript,omitempty" json:"transcript,omitempty"`
 	Summary        *Summary       `bson:"summary,omitempty" json:"summary,omitempty"`
 	SummaryOptions SummaryOptions `bson:"summaryOptions,omitempty" json:"summaryOptions"`
@@ -94,6 +96,14 @@ type Recording struct {
 	UpdatedAt  time.Time  `bson:"updatedAt" json:"updatedAt"`
 	ReceivedAt *time.Time `bson:"receivedAt,omitempty" json:"receivedAt,omitempty"`
 	StoredAt   *time.Time `bson:"storedAt,omitempty" json:"storedAt,omitempty"`
+}
+
+// Highlight is a moment the user marked while recording (e.g. with a button on the device).
+type Highlight struct {
+	// OffsetMs is the position in the recording, in milliseconds from its start.
+	OffsetMs int64 `bson:"offsetMs" json:"offsetMs"`
+	// At is the wall-clock time, when the device reported one.
+	At *time.Time `bson:"at,omitempty" json:"at,omitempty"`
 }
 
 // Transcript is the text of a recording, produced by a speech model.

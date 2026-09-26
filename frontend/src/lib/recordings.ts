@@ -48,6 +48,15 @@ export function formatDuration(ms?: number): string {
   return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
 }
 
+// formatClock formats a position in a recording as m:ss, or h:mm:ss from one hour on.
+export function formatClock(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = String(s % 60).padStart(2, '0');
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
+}
+
 export function formatBytes(n: number): string {
   const nf = new Intl.NumberFormat(locale(), { maximumFractionDigits: 1 });
   if (n < 1024) return `${nf.format(n)} B`;

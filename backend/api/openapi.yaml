@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: knowpod-service API
-  version: 0.9.0
+  version: 0.10.0
   description: |
     Backend for the knowpod AI audio recorder.
 
@@ -400,6 +400,40 @@ paths:
         "204": { description: Deleted }
         "404": { $ref: "#/components/responses/Error" }
 
+  /uploads/{uploadId}/highlights:
+    put:
+      tags: ["Device uploads"]
+      summary: Set the highlights of a recording
+      description: |
+        Replaces the highlights (moments the user marked while recording). Can be called at
+        any time after the upload was created. A summary that already exists is not
+        regenerated automatically; new summaries include a "Highlights" section.
+      security: [{ deviceToken: [] }]
+      parameters:
+        - { name: uploadId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [highlights]
+              properties:
+                highlights: { type: array, maxItems: 1000, items: { $ref: "#/components/schemas/HighlightInput" } }
+      responses:
+        "200":
+          description: Saved (sorted, duplicates removed)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uploadId: { type: string }
+                  highlights: { type: array, items: { $ref: "#/components/schemas/Highlight" } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
   /webhooks/pocket/{webhookId}:
     post:
       tags: ["Integrations"]
@@ -675,7 +709,62 @@ paths:
           description: The recording has no transcript yet
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
+  /recordings/{recordingId}/transcript:
+    get:
+      tags: ["Recordings"]
+      summary: Download the transcript
+      description: A text file (with `[m:ss]` time stamps per speaker turn for recordings transcribed since they were introduced), or JSON with `?format=json`.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+        - { name: format, in: query, schema: { type: string, enum: [text, json], default: text } }
+      responses:
+        "200":
+          description: The transcript
+          content:
+            text/plain: { schema: { type: string } }
+            application/json:
+              schema:
+                type: object
+                properties:
+                  text: { type: string }
+                  model: { type: string }
+                  createdAt: { type: string, format: date-time }
+        "404": { $ref: "#/components/responses/Error" }
+        "409":
+          description: No transcript yet
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
   /recordings/{recordingId}/summary:
+    get:
+      tags: ["Recordings"]
+      summary: Download the summary
+      description: A Markdown file with the title as the first heading, or JSON with `?format=json`.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+        - { name: format, in: query, schema: { type: string, enum: [markdown, json], default: markdown } }
+      responses:
+        "200":
+          description: The summary
+          content:
+            text/markdown: { schema: { type: string } }
+            application/json:
+              schema:
+                type: object
+                properties:
+                  title: { type: string }
+                  markdown: { type: string }
+                  model: { type: string }
+                  language: { type: string }
+                  themeId: { type: string }
+                  themeName: { type: string }
+                  editedAt: { type: string, format: date-time }
+                  createdAt: { type: string, format: date-time }
+        "404": { $ref: "#/components/responses/Error" }
+        "409":
+          description: No summary yet
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
     put:
       tags: ["Recordings"]
       summary: Edit the summary
@@ -873,6 +962,24 @@ components:
         size: { type: integer, format: int64, minimum: 44, description: Total WAV size in bytes }
         sha256: { type: string, pattern: "^[0-9a-fA-F]{64}$", description: Hex SHA-256 of the WAV file }
         recordedAt: { type: string, format: date-time }
+        highlights:
+          type: array
+          maxItems: 1000
+          description: Moments marked while recording. A repeated create with highlights replaces them.
+          items: { $ref: "#/components/schemas/HighlightInput" }
+
+    HighlightInput:
+      type: object
+      description: Give exactly one of `offsetMs` (from the start of the recording) or `at` (wall-clock time; needs the upload's `recordedAt`).
+      properties:
+        offsetMs: { type: integer, format: int64, minimum: 0, example: 184000 }
+        at: { type: string, format: date-time }
+
+    Highlight:
+      type: object
+      properties:
+        offsetMs: { type: integer, format: int64, description: Milliseconds from the start of the recording }
+        at: { type: string, format: date-time, description: Wall-clock time, if the device sent one }
 
     Upload:
       type: object
@@ -918,6 +1025,7 @@ components:
         audio: { $ref: "#/components/schemas/Object" }
         original: { $ref: "#/components/schemas/Object" }
         summaryOptions: { $ref: "#/components/schemas/SummaryOptions" }
+        highlights: { type: array, items: { $ref: "#/components/schemas/Highlight" } }
         transcript:
           type: object
           properties:

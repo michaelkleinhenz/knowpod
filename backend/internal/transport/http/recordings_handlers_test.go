@@ -6,11 +6,15 @@ import (
 	"encoding/hex"
 	"net/url"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/audio/audiotest"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/service"
 )
+
+func ptr64(v int64) *int64 { return &v }
 
 func TestDeviceUploadEndToEnd(t *testing.T) {
 	f := newAPIFixture(t)
@@ -24,7 +28,8 @@ func TestDeviceUploadEndToEnd(t *testing.T) {
 
 	wav := audiotest.WAV(16000, 16, audiotest.Samples(1, 16000, 16))
 	sum := sha256.Sum256(wav)
-	create := createUploadRequest{RecordingID: "2026-09-26T10-00-00", Size: int64(len(wav)), SHA256: hex.EncodeToString(sum[:])}
+	create := createUploadRequest{RecordingID: "2026-09-26T10-00-00", Size: int64(len(wav)), SHA256: hex.EncodeToString(sum[:]),
+		Highlights: []service.HighlightInput{{OffsetMs: ptr64(300)}}}
 
 	var up uploadResponse
 	if res := dev.do("POST", "/api/v1/uploads", create, nil, &up); res.StatusCode != 201 || up.Offset != 0 {
@@ -60,6 +65,18 @@ func TestDeviceUploadEndToEnd(t *testing.T) {
 	}
 	if n := f.worker.RunOnce(context.Background()); n != 1 {
 		t.Fatalf("worker processed %d", n)
+	}
+	// The device replaces the highlights after the upload.
+	var hl struct {
+		Highlights []recording.Highlight `json:"highlights"`
+	}
+	if res := dev.do("PUT", path+"/highlights", map[string]any{"highlights": []map[string]int64{{"offsetMs": 900}, {"offsetMs": 100}}}, nil, &hl); res.StatusCode != 200 ||
+		len(hl.Highlights) != 2 || hl.Highlights[0].OffsetMs != 100 {
+		t.Fatalf("set highlights: %d %+v", res.StatusCode, hl)
+	}
+	var e2 errResponse
+	if res := dev.do("PUT", path+"/highlights", map[string]any{"highlights": []map[string]int64{{"offsetMs": -5}}}, nil, &e2); res.StatusCode != 400 || e2.Code != "invalid_input" {
+		t.Fatalf("invalid highlight: %d %+v", res.StatusCode, e2)
 	}
 	var rec recording.Recording
 	if res := admin.do("GET", "/api/v1/recordings/"+id, nil, nil, &rec); res.StatusCode != 200 || rec.Status != recording.StatusStored || rec.OwnerID == "" {
@@ -145,6 +162,39 @@ func TestManualUploadAndIsolation(t *testing.T) {
 	if res := bob.do("PUT", "/api/v1/recordings/"+rec.ID+"/summary", map[string]string{"title": "My title", "markdown": "## Mine\n- point"}, nil, &rec); res.StatusCode != 200 ||
 		rec.Summary.Title != "My title" || rec.Summary.EditedAt == nil {
 		t.Fatalf("edit: %d %+v", res.StatusCode, rec.Summary)
+	}
+
+	// Downloads: Markdown/text files, or JSON.
+	if res := bob.do("GET", "/api/v1/recordings/"+rec.ID+"/transcript", nil, nil, &e); res.StatusCode != 409 || e.Code != "not_ready" {
+		t.Fatalf("transcript before transcription: %d %+v", res.StatusCode, e)
+	}
+	stored, _ = f.recs.Get(context.Background(), rec.ID)
+	stored.Transcript = &recording.Transcript{Text: "[0:01] Speaker 1: Hallo", Model: "m"}
+	_ = f.recs.Update(context.Background(), stored)
+	var md []byte
+	res = bob.do("GET", "/api/v1/recordings/"+rec.ID+"/summary", nil, nil, &md)
+	if res.StatusCode != 200 || !strings.HasPrefix(res.Header.Get("Content-Type"), "text/markdown") ||
+		string(md) != "# My title\n\n## Mine\n- point\n" || !strings.Contains(res.Header.Get("Content-Disposition"), `filename="My title - summary.md"`) {
+		t.Fatalf("summary download: %d %q %v", res.StatusCode, md, res.Header)
+	}
+	var txt []byte
+	res = bob.do("GET", "/api/v1/recordings/"+rec.ID+"/transcript", nil, nil, &txt)
+	if res.StatusCode != 200 || string(txt) != "[0:01] Speaker 1: Hallo\n" || !strings.HasPrefix(res.Header.Get("Content-Type"), "text/plain") {
+		t.Fatalf("transcript download: %d %q", res.StatusCode, txt)
+	}
+	var tj recording.Transcript
+	if res := bob.do("GET", "/api/v1/recordings/"+rec.ID+"/transcript?format=json", nil, nil, &tj); res.StatusCode != 200 || tj.Model != "m" {
+		t.Fatalf("transcript json: %d %+v", res.StatusCode, tj)
+	}
+	var sj recording.Summary
+	if res := bob.do("GET", "/api/v1/recordings/"+rec.ID+"/summary?format=json", nil, nil, &sj); res.StatusCode != 200 || sj.Title != "My title" {
+		t.Fatalf("summary json: %d %+v", res.StatusCode, sj)
+	}
+	if res := admin.do("GET", "/api/v1/recordings/"+rec.ID+"/summary", nil, nil, nil); res.StatusCode != 404 {
+		t.Fatalf("admin downloading bob's summary: %d", res.StatusCode)
+	}
+	if res := f.script(adminToken).do("GET", "/api/v1/recordings/"+rec.ID+"/transcript", nil, nil, nil); res.StatusCode != 200 {
+		t.Fatalf("script download: %d", res.StatusCode)
 	}
 
 	if res := bob.do("DELETE", "/api/v1/recordings/"+rec.ID, nil, nil, nil); res.StatusCode != 204 {

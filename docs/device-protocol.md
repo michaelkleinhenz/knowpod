@@ -44,6 +44,7 @@ For each recording the gadget needs:
 | `size` | Total file size in bytes, at least 44. Default server maximum is 4 GiB. |
 | `sha256` | SHA-256 of the complete file, 64 hex characters. |
 | `recordedAt` | Optional. Start of the recording, RFC 3339 (`2026-09-26T10:15:00Z`). |
+| `highlights` | Optional. Moments the user marked while recording (see [Highlights](#highlights)). |
 
 Supported audio: integer PCM WAV with 8, 16 or 24 bits per sample, 1–8 channels and any
 common sample rate. Float WAV and compressed formats are rejected. A header whose data
@@ -133,6 +134,41 @@ Authorization: Bearer kpd_…
 A PATCH to an upload that is already complete returns `200` with its final state, so
 retrying the last chunk after a lost response is harmless.
 
+## Highlights
+
+If the user presses the highlight button while recording, send the marked moments with the
+recording. Each highlight is **either** the position in the recording or the wall-clock
+time:
+
+```json
+"highlights": [
+  {"offsetMs": 184000},
+  {"at": "2026-09-26T10:18:04Z"}
+]
+```
+
+- `offsetMs`: milliseconds from the start of the recording (preferred: it doesn't depend on
+  the device clock).
+- `at`: wall-clock time, RFC 3339. It needs `recordedAt` on the upload; the server converts
+  it to an offset.
+
+Put them in the create request (step 1). If the device only knows them later, or wants to
+correct them, it can replace them at any time:
+
+```http
+PUT /api/v1/uploads/35e83419efdebba9f2e42ec8/highlights
+Authorization: Bearer kpd_…
+Content-Type: application/json
+
+{"highlights": [{"offsetMs": 184000}, {"offsetMs": 912500}]}
+```
+
+The response lists the stored highlights, sorted and without duplicates. At most 1000
+highlights per recording; offsets must lie within the first 24 hours. A repeated create
+request with `highlights` also replaces them. The summary gets a "Highlights" section
+describing what was said at each moment; highlights sent after the summary was written
+appear in it after the next re-summarize.
+
 ## Reference client logic
 
 ```text
@@ -151,6 +187,8 @@ for each finished recording R (oldest first):
         on 422 checksum:        up.offset = 0
         on network error/5xx:   wait with backoff; up = GET /uploads/R.uploadId
 
+    if R.highlights changed after the create:
+        PUT /uploads/R.uploadId/highlights {R.highlights}
     if up.status in ("received", "stored"): delete R locally
     if up.status == "failed":               mark R as rejected, move on
 ```

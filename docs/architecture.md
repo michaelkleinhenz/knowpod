@@ -246,6 +246,22 @@ model calls.
 The OpenRouter settings (key and models) live in the `settings` collection and are read on
 every stage run, so changes apply immediately.
 
+### Time stamps and highlights
+
+The transcription prompt asks for a `[m:ss]` time stamp at every speaker turn (and at least
+every 30 s). Long recordings are transcribed in 5-minute pieces whose stamps start at 0:00,
+so `shiftTimestamps` adds each piece's start before the pieces are joined; the transcript's
+stamps are relative to the whole recording.
+
+Highlights (`recording.highlights`: `offsetMs`, optional `at`) come from the device: in the
+create-upload request or via `PUT /uploads/{id}/highlights` (`service/highlights.go`
+validates, converts `at` using `recordedAt`, sorts and removes duplicates). When a recording
+has highlights, `summarySystemPrompt` lists their times and asks for a final "Highlights"
+section that describes each moment using the transcript's stamps.
+
+`GET /recordings/{id}/summary` and `/transcript` return the texts as `.md` / `.txt`
+downloads (`transport/http/downloads_handlers.go`), or JSON with `?format=json`.
+
 ### Themes and summary options (`service/themes.go`)
 
 The summary prompt is assembled per recording (`summarySystemPrompt` in `service/ai.go`):
@@ -260,15 +276,31 @@ summary was made with.
 
 **Editing.** `PUT /recordings/{id}/summary` (`RecordingService.EditSummary`) replaces the
 title and Markdown text and sets `summary.editedAt`; theme, language and model stay for
-reference. Markdown remains the only stored format. In the web app,
+reference. Markdown remains the only stored format.
+
+In the web app the summary is always an editable document (there is no view/edit mode):
 `components/SummaryEditor.tsx` is a TipTap (ProseMirror) editor with the official
-`@tiptap/markdown` extension: it loads the stored Markdown and saves `editor.getMarkdown()`.
-It is lazy-loaded, so its ~150 KB (gzipped) only download when someone edits. It saves
-automatically: a change is sent 2 s after the last keystroke and at least every 10 s;
-saves are serialized (a change made during a save goes out with the next one); failed
-saves are retried every 10 s and on the browser's `online` event; leaving with unsaved
-changes triggers a final save, and closing the tab asks first. The component always shows
-the sync state (saved, unsaved, saving, error/offline with retry). Summaries are
+`@tiptap/markdown` extension, and the page title is an in-place input. Saving lives in
+`hooks/useAutosave.ts`, shared by both:
+
+- The unchanged baseline is the editor's own Markdown right after loading (not the stored
+  text), so normalization (e.g. `*` → `-` bullets) never counts as an edit or triggers a
+  save.
+- A change is sent 2 s after the last keystroke and at least every 10 s; saves are
+  serialized (a change made during a save goes out with the next one); failed saves are
+  retried every 10 s and on the browser's `online` event; leaving the note saves what's
+  left, and closing the tab with unsaved changes asks first.
+- Regenerating or re-transcribing calls `discard()` after the confirmation, so a pending
+  save can't write the old text over the new summary.
+- The note's body is keyed by the summary's `createdAt` (`pages/Conversation.tsx`): own
+  saves keep the editor as it is, a regenerated summary remounts it with the new text. The
+  summary tab stays mounted while other tabs are shown, so unsaved text and undo history
+  survive tab switches.
+
+The editor bundle (~150 KB gzipped) is lazy-loaded; until it arrives, the summary is shown
+with the read-only renderer in `components/Markdown.tsx`, which covers everything the editor
+produces: headings, nested bullet and numbered lists, quotes, rules, code blocks, links
+(http, https and mailto only), bold, italic, strikethrough and code. Summaries are
 displayed with the small, HTML-free renderer in `components/Markdown.tsx`, which covers
 what the editor produces: headings, nested bullet and numbered lists, quotes, rules, code
 blocks, links (http, https and mailto only), bold, italic, strikethrough and code.
@@ -326,7 +358,8 @@ implements the work.
 | `recordedAt` | Optional, from the device |
 | `format` | Sample rate, channels, bits, frames, duration. Set once received. |
 | `audio`, `original` | S3 key, content type and size of the FLAC and the optional WAV |
-| `transcript` | `text`, `model`, `createdAt` |
+| `transcript` | `text` (with `[m:ss]` time stamps per speaker turn), `model`, `createdAt` |
+| `highlights` | Moments marked on the device: `offsetMs` from the start, optional `at` (wall-clock) |
 | `summary` | `title` (the conversation's name in the UI), `markdown`, `model`, `language`, `themeId`, `themeName`, `createdAt`, `editedAt` (set by a person's edit). Lists leave out `transcript` and `summary.markdown`. |
 | `summaryOptions` | `language`, `model`, `themeId` chosen under Summary details (empty = defaults) |
 | `attempts`, `notBefore`, `lastError` | Worker bookkeeping |
@@ -383,6 +416,17 @@ reason MongoDB runs as a replica set). Nothing uses it yet.
 
 The S3 store has no automated test. It has been checked by hand against an S3-compatible
 server.
+
+## Notes view
+
+`pages/NotesLayout.tsx` is a layout route for `/` and `/conversations/:id`: the notes list
+(`components/NotesList.tsx`) as a sidebar and the open note (`pages/Conversation.tsx`, or a
+placeholder) in the main area. `context/NotesContext.tsx` holds the list for both: it polls
+while any note is processing, and the open note pushes its changes into it (`upsert`, e.g.
+a renamed title after an autosave) and removes itself when deleted. Below 900 px the layout
+shows one pane at a time with CSS only: the list at `/`, the note (with a back link) when
+one is open. Responses for a note that is no longer open are ignored, so switching notes
+quickly can't show the wrong one.
 
 ## Errors
 

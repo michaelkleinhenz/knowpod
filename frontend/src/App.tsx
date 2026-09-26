@@ -6,8 +6,8 @@ import { Layout } from './components/Layout';
 import { Account } from './pages/Account';
 import { Devices } from './pages/Devices';
 import { Conversation } from './pages/Conversation';
-import { Conversations } from './pages/Conversations';
 import { Login } from './pages/Login';
+import { NotesHome, NotesLayout } from './pages/NotesLayout';
 import { Settings } from './pages/Settings';
 import { Users } from './pages/Users';
 import { Status } from './pages/Status';
@@ -30,21 +30,15 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route
-          path="/"
           element={
             <RequireLogin>
-              <Conversations />
+              <NotesLayout />
             </RequireLogin>
           }
-        />
-        <Route
-          path="/conversations/:id"
-          element={
-            <RequireLogin>
-              <Conversation />
-            </RequireLogin>
-          }
-        />
+        >
+          <Route path="/" element={<NotesHome />} />
+          <Route path="/conversations/:id" element={<Conversation />} />
+        </Route>
         <Route
           path="/settings"
           element={

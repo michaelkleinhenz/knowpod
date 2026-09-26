@@ -58,6 +58,9 @@ type CreateUploadInput struct {
 	Size        int64      // total WAV size in bytes
 	SHA256      string     // hex SHA-256 of the complete WAV file
 	RecordedAt  *time.Time // optional
+	// Highlights marked while recording; optional. Sent again with a repeated create, they
+	// replace the stored ones.
+	Highlights []HighlightInput
 }
 
 // Create starts an upload, or returns the existing one when the device already created an
@@ -75,9 +78,18 @@ func (s *UploadService) Create(ctx context.Context, dev *device.Device, in Creat
 	case !sha256Pattern.MatchString(in.SHA256):
 		return nil, false, invalid("sha256 must be 64 hex characters")
 	}
+	highlights, err := normalizeHighlights(in.Highlights, in.RecordedAt)
+	if err != nil {
+		return nil, false, err
+	}
 
 	if existing, err := s.recs.GetByClientID(ctx, dev.ID, in.RecordingID); err == nil {
 		up, err := s.existing(existing, in)
+		if err == nil && len(in.Highlights) > 0 {
+			existing.Highlights = highlights
+			existing.UpdatedAt = s.clock().UTC()
+			err = s.recs.Update(ctx, existing)
+		}
 		return up, false, err
 	} else if !errors.Is(err, ErrNotFound) {
 		return nil, false, err
@@ -86,7 +98,7 @@ func (s *UploadService) Create(ctx context.Context, dev *device.Device, in Creat
 	now := s.clock().UTC()
 	rec := &recording.Recording{
 		ID: newID(), OwnerID: dev.OwnerID, DeviceID: dev.ID, ClientID: in.RecordingID, Status: recording.StatusUploading,
-		Size: in.Size, SHA256: in.SHA256, RecordedAt: in.RecordedAt,
+		Size: in.Size, SHA256: in.SHA256, RecordedAt: in.RecordedAt, Highlights: highlights,
 		NotBefore: now, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.recs.Create(ctx, rec); err != nil {
@@ -109,6 +121,26 @@ func (s *UploadService) existing(rec *recording.Recording, in CreateUploadInput)
 		return nil, ErrConflict
 	}
 	return s.state(rec)
+}
+
+// SetHighlights replaces the highlights of one of the device's recordings, e.g. when the
+// device sends them after the upload. It can be called in any state; a summary that
+// already exists is not regenerated automatically.
+func (s *UploadService) SetHighlights(ctx context.Context, dev *device.Device, id string, in []HighlightInput) (*recording.Recording, error) {
+	rec, err := s.load(ctx, dev, id)
+	if err != nil {
+		return nil, err
+	}
+	highlights, err := normalizeHighlights(in, rec.RecordedAt)
+	if err != nil {
+		return nil, err
+	}
+	rec.Highlights = highlights
+	rec.UpdatedAt = s.clock().UTC()
+	if err := s.recs.Update(ctx, rec); err != nil {
+		return nil, err
+	}
+	return rec, nil
 }
 
 // Get returns the state of one of the device's uploads.

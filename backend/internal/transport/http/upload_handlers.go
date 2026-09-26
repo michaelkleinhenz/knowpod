@@ -19,6 +19,12 @@ type createUploadRequest struct {
 	Size        int64      `json:"size"`
 	SHA256      string     `json:"sha256"`
 	RecordedAt  *time.Time `json:"recordedAt,omitempty"`
+	// Highlights marked while recording (offsetMs or at each).
+	Highlights []service.HighlightInput `json:"highlights,omitempty"`
+}
+
+type highlightsRequest struct {
+	Highlights []service.HighlightInput `json:"highlights"`
 }
 
 type uploadResponse struct {
@@ -47,6 +53,7 @@ func (s *Server) handleCreateUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	up, created, err := s.uploads.Create(r.Context(), deviceFrom(r.Context()), service.CreateUploadInput{
 		RecordingID: req.RecordingID, Size: req.Size, SHA256: req.SHA256, RecordedAt: req.RecordedAt,
+		Highlights: req.Highlights,
 	})
 	if err != nil {
 		s.writeErr(w, err)
@@ -57,6 +64,20 @@ func (s *Server) handleCreateUpload(w http.ResponseWriter, r *http.Request) {
 		status = http.StatusCreated
 	}
 	writeUpload(w, status, up)
+}
+
+// handleSetHighlights replaces the highlights of one of the device's recordings.
+func (s *Server) handleSetHighlights(w http.ResponseWriter, r *http.Request) {
+	var req highlightsRequest
+	if !decode(w, r, &req) {
+		return
+	}
+	rec, err := s.uploads.SetHighlights(r.Context(), deviceFrom(r.Context()), chi.URLParam(r, "id"), req.Highlights)
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"uploadId": rec.ID, "highlights": rec.Highlights})
 }
 
 func (s *Server) handleGetUpload(w http.ResponseWriter, r *http.Request) {

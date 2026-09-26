@@ -1,72 +1,162 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { lazy, ReactNode, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, Recording } from '../api/client';
 import { CopyButton } from '../components/CopyButton';
 import { inline, Markdown } from '../components/Markdown';
 import { SummaryDetails } from '../components/SummaryDetails';
+import { useNotes } from '../context/NotesContext';
+import { Sync, useAutosave } from '../hooks/useAutosave';
 import { locale } from '../i18n';
 import { errorText } from '../lib/errors';
-import { formatBytes, formatDate, formatDuration, processing, statusLabel, title, when } from '../lib/recordings';
+import { formatBytes, formatClock, formatDate, formatDuration, processing, statusLabel, title as titleOf, when } from '../lib/recordings';
 
-// The rich text editor is only downloaded when a summary is edited.
+// The rich text editor is downloaded on first use; the summary is shown read-only meanwhile.
 const SummaryEditor = lazy(() => import('../components/SummaryEditor'));
 
 type Tab = 'summary' | 'transcript' | 'source';
 const TABS: Tab[] = ['summary', 'transcript', 'source'];
 const POLL_MS = 5_000;
 
-// Transcript shows the transcript line by line, with speaker labels ("Speaker 1:") set off.
-function Transcript({ text }: { text: string }) {
+const TIME = /^\[(?:(\d{1,2}):)?(\d{1,3}):(\d{2})\]\s*/;
+
+// Transcript shows the transcript line by line. Time stamps ("[1:05]") become buttons that
+// play the audio from there; speaker labels ("Speaker 1:") are set off.
+function Transcript({ text, onSeek }: { text: string; onSeek: (ms: number) => void }) {
+  const { t } = useTranslation();
   return (
     <div className="transcript">
-      {text.split('\n').map((line, i) => {
+      {text.split('\n').map((raw, i) => {
+        if (!raw.trim()) return <br key={i} />;
+        let line = raw;
+        let time: ReactNode = null;
+        const ts = TIME.exec(line);
+        if (ts) {
+          const ms = ((Number(ts[1] ?? 0) * 60 + Number(ts[2])) * 60 + Number(ts[3])) * 1000;
+          line = line.slice(ts[0].length);
+          time = (
+            <button type="button" className="time-link" title={t('conversation.playFrom', { time: formatClock(ms) })} onClick={() => onSeek(ms)}>
+              {formatClock(ms)}
+            </button>
+          );
+        }
         const m = /^([^:]{1,40}):\s(.*)$/.exec(line);
-        if (!line.trim()) return <br key={i} />;
-        return m ? (
+        return (
           <p key={i}>
-            <span className="speaker">{m[1]}</span> {m[2]}
+            {time}
+            {m ? (
+              <>
+                <span className="speaker">{m[1]}</span> {m[2]}
+              </>
+            ) : (
+              line
+            )}
           </p>
-        ) : (
-          <p key={i}>{line}</p>
         );
       })}
     </div>
   );
 }
 
-export function Conversation() {
+// Highlights shows the recording's highlights as markers on a timeline and as a list; both
+// play the audio from the marked moment.
+function Highlights({ highlights, durationMs, onSeek }: { highlights: { offsetMs: number }[]; durationMs: number; onSeek: (ms: number) => void }) {
   const { t } = useTranslation();
-  const { id = '' } = useParams();
+  return (
+    <div className="highlights">
+      <h3>{t('conversation.highlights')}</h3>
+      <p className="muted field-note">{t('conversation.highlightsHint')}</p>
+      {durationMs > 0 && (
+        <div className="timeline" role="group" aria-label={t('conversation.timeline')}>
+          {highlights.map((h) => (
+            <button
+              key={h.offsetMs}
+              type="button"
+              className="timeline-marker"
+              style={{ left: `${Math.min(100, (h.offsetMs / durationMs) * 100)}%` }}
+              title={t('conversation.highlightAt', { time: formatClock(h.offsetMs) })}
+              aria-label={t('conversation.highlightAt', { time: formatClock(h.offsetMs) })}
+              onClick={() => onSeek(h.offsetMs)}
+            />
+          ))}
+        </div>
+      )}
+      <ul className="highlight-list">
+        {highlights.map((h, i) => (
+          <li key={h.offsetMs}>
+            <button type="button" className="time-link" onClick={() => onSeek(h.offsetMs)}>
+              {formatClock(h.offsetMs)}
+            </button>
+            <span className="muted">{t('conversation.highlightN', { n: i + 1 })}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function SyncState({ sync, error, onRetry }: { sync: Sync; error: string | null; onRetry: () => void }) {
+  const { t } = useTranslation();
+  const text =
+    sync === 'saved'
+      ? t('editor.sync.saved')
+      : sync === 'dirty'
+        ? t('editor.sync.dirty')
+        : sync === 'saving'
+          ? t('editor.sync.saving')
+          : sync === 'offline'
+            ? t('editor.sync.offline')
+            : t('editor.sync.error', { error: error ?? '' });
+  return (
+    <span className={`sync-state ${sync}`} role="status" aria-live="polite">
+      <span className="sync-dot" aria-hidden="true" />
+      <span>{text}</span>
+      {(sync === 'error' || sync === 'offline') && (
+        <button type="button" className="link-button" onClick={onRetry}>
+          {t('editor.sync.retry')}
+        </button>
+      )}
+    </span>
+  );
+}
+
+interface BodyProps {
+  rec: Recording;
+  aiReady: boolean;
+  tab: Tab;
+  setTab: (t: Tab) => void;
+  setRec: (r: Recording) => void;
+  reload: () => Promise<void>;
+}
+
+// NoteBody is a note's page below the back link. It is re-created when a new summary
+// arrives (see the key in Conversation), so the editor always starts from the stored text.
+function NoteBody({ rec, aiReady, tab, setTab, setRec, reload }: BodyProps) {
+  const { t } = useTranslation();
   const navigate = useNavigate();
-  const [rec, setRec] = useState<Recording | null>(null);
-  const [aiReady, setAIReady] = useState(true);
-  const [tab, setTab] = useState<Tab>('summary');
+  const notes = useNotes();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [editing, setEditing] = useState(false);
+  const summary = rec.summary;
+  const editable = !!summary;
+  const audio = useRef<HTMLAudioElement>(null);
+  const [seek, setSeek] = useState<number | null>(null);
+  const [durationMs, setDurationMs] = useState(rec.format?.durationMs ?? 0);
+  const highlights = rec.highlights ?? [];
 
-  const load = useCallback(async () => {
-    try {
-      const [r, ai] = await Promise.all([api.recording(id), api.aiStatus()]);
-      setRec(r);
-      setAIReady(ai.transcription && ai.summary);
-      setError(null);
-    } catch (err) {
-      setError(errorText(err, t));
-    }
-  }, [id, t]);
-
+  // Play from a moment: switch to the audio and start there once it is on the page.
+  const seekTo = (ms: number) => {
+    setTab('source');
+    setSeek(ms);
+  };
   useEffect(() => {
-    load();
-  }, [load]);
-
-  const inProgress = rec ? processing(rec) : false;
-  useEffect(() => {
-    if (!inProgress) return;
-    const timer = setInterval(load, POLL_MS);
-    return () => clearInterval(timer);
-  }, [inProgress, load]);
+    const el = audio.current;
+    if (seek === null || tab !== 'source' || !el) return;
+    el.currentTime = seek / 1000;
+    void el.play().catch(() => undefined); // autoplay may be refused; the position is set anyway
+    setSeek(null);
+  }, [seek, tab]);
+  const autosave = useAutosave(rec.id, summary?.title ?? titleOf(rec), setRec);
 
   async function act(action: () => Promise<unknown>, confirmText?: string) {
     if (confirmText && !window.confirm(confirmText)) return;
@@ -74,7 +164,7 @@ export function Conversation() {
     setError(null);
     try {
       await action();
-      await load();
+      await reload();
     } catch (err) {
       setError(errorText(err, t));
     } finally {
@@ -82,27 +172,28 @@ export function Conversation() {
     }
   }
 
+  // Regenerating replaces the summary, so pending edits are dropped (after the user
+  // confirmed) instead of being saved over the new summary later.
+  const regenerate = (fn: () => Promise<unknown>) => {
+    const confirmText = summary?.editedAt || autosave.sync !== 'saved' ? t('editor.regenerateEditedConfirm') : t('details.regenerateConfirm');
+    return act(async () => {
+      autosave.discard();
+      await fn();
+    }, confirmText);
+  };
+
   async function handleDelete() {
-    if (!rec || !window.confirm(t('conversation.deleteConfirm', { title: title(rec) }))) return;
+    if (!window.confirm(t('conversation.deleteConfirm', { title: autosave.title || titleOf(rec) }))) return;
     setBusy(true);
     try {
+      autosave.discard();
       await api.deleteRecording(rec.id);
+      notes.remove(rec.id);
       navigate('/', { replace: true });
     } catch (err) {
       setError(errorText(err, t));
       setBusy(false);
     }
-  }
-
-  if (!rec) {
-    return (
-      <section className="conversation">
-        <Link to="/" className="back-link">
-          {t('conversation.back')}
-        </Link>
-        {error ? <p className="error">{error}</p> : <p className="muted">{t('common.loading')}</p>}
-      </section>
-    );
   }
 
   const state = statusLabel(rec, aiReady);
@@ -120,14 +211,23 @@ export function Conversation() {
   const sourceBadge = rec.source === 'pocket' ? t('conversation.sourcePocket') : rec.source === 'upload' ? t('conversation.sourceUpload') : '';
 
   return (
-    <section className="conversation">
-      <Link to="/" className="back-link">
-        {t('conversation.back')}
-      </Link>
-
+    <>
       <div className="conversation-header">
-        <div>
-          <h1>{title(rec)}</h1>
+        <div className="title-block">
+          {editable ? (
+            <input
+              className="title-input"
+              aria-label={t('editor.title')}
+              maxLength={200}
+              value={autosave.title}
+              onChange={(e) => autosave.setTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+              }}
+            />
+          ) : (
+            <h1>{titleOf(rec)}</h1>
+          )}
           <p className="conversation-meta muted">
             {d.toLocaleDateString(locale(), { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })},{' '}
             {d.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' })}
@@ -135,27 +235,29 @@ export function Conversation() {
             {sourceBadge && ` · ${sourceBadge}`}
             {state && <span className={`state-pill${rec.status === 'failed' ? ' bad' : ''}`}>{state}</span>}
           </p>
+          {editable && <SyncState sync={autosave.sync} error={autosave.error} onRetry={() => void autosave.save()} />}
         </div>
         <div className="conversation-actions">
           <button
             type="button"
             className="small-button"
-            disabled={busy || editing || !rec.transcript}
-            title={editing ? t('conversation.finishEditing') : rec.transcript ? undefined : t('conversation.needsTranscript')}
-            onClick={() =>
-              act(() => api.resummarize(rec.id), rec.summary?.editedAt ? t('editor.regenerateEditedConfirm') : t('details.regenerateConfirm'))
-            }
+            disabled={busy || !rec.transcript}
+            title={rec.transcript ? undefined : t('conversation.needsTranscript')}
+            onClick={() => regenerate(() => api.resummarize(rec.id))}
           >
             {t('conversation.resummarize')}
           </button>
           <button
             type="button"
             className="small-button"
-            disabled={busy || editing || !rec.audio}
-            title={
-              editing ? t('conversation.finishEditing') : rec.audio ? t('conversation.retranscribeTitle') : t('conversation.notArchived')
+            disabled={busy || !rec.audio}
+            title={rec.audio ? t('conversation.retranscribeTitle') : t('conversation.notArchived')}
+            onClick={() =>
+              act(async () => {
+                autosave.discard();
+                await api.retranscribe(rec.id);
+              }, t('conversation.retranscribeConfirm'))
             }
-            onClick={() => act(() => api.retranscribe(rec.id), t('conversation.retranscribeConfirm'))}
           >
             {t('conversation.retranscribe')}
           </button>
@@ -175,58 +277,71 @@ export function Conversation() {
       </div>
 
       <div className="card conversation-body" role="tabpanel">
-        {tab === 'summary' && editing && rec.summary && (
-          <Suspense fallback={<p className="muted">{t('editor.loading')}</p>}>
-            <SummaryEditor
-              recordingId={rec.id}
-              title={rec.summary.title}
-              markdown={rec.summary.markdown ?? ''}
-              onSaved={setRec}
-              onClose={() => setEditing(false)}
-            />
-          </Suspense>
-        )}
-
-        {tab === 'summary' && !editing && (
-          <>
-            <div className="summary-head">
-              <h2>{t('conversation.summaryHeading')}</h2>
-              <div className="summary-tools">
-                {rec.transcript && <SummaryDetails rec={rec} onRegenerated={load} />}
-                {rec.summary && (
-                  <button type="button" className="ghost-button" onClick={() => setEditing(true)}>
-                    {t('editor.edit')}
-                  </button>
-                )}
-                {rec.summary?.markdown && (
-                  <CopyButton className="ghost-button" text={`# ${rec.summary.title}\n\n${rec.summary.markdown}`} label={t('conversation.copySummary')} />
-                )}
-              </div>
+        {/* The summary stays mounted on other tabs so unsaved edits and the undo history survive. */}
+        <div hidden={tab !== 'summary'}>
+          <div className="summary-head">
+            <h2>{t('conversation.summaryHeading')}</h2>
+            <div className="summary-tools">
+              {rec.transcript && <SummaryDetails rec={rec} onRegenerate={(fn) => regenerate(fn)} />}
+              {summary?.markdown && (
+                <a className="ghost-button" href={api.downloadURL(rec.id, 'summary')} download title={t('conversation.downloadSummary')}>
+                  {t('conversation.download')}
+                </a>
+              )}
+              {summary?.markdown && (
+                <CopyButton
+                  className="ghost-button"
+                  text={`# ${autosave.title}\n\n${summary.markdown}`}
+                  label={t('conversation.copySummary')}
+                />
+              )}
             </div>
-            {rec.summary?.markdown ? (
-              <div className="prose">
-                <Markdown text={rec.summary.markdown} />
-                <p className="model-note">
-                  {rec.summary.model && t('conversation.summarizedWith', { model: rec.summary.model })}
-                  {rec.summary.editedAt && (
-                    <>
-                      {rec.summary.model && ' · '}
-                      {t('editor.edited', { date: formatDate(rec.summary.editedAt, { dateStyle: 'medium', timeStyle: 'short' }) })}
-                    </>
-                  )}
-                </p>
-              </div>
-            ) : (
-              pending(t('conversation.noSummary'))
-            )}
-          </>
-        )}
+          </div>
+          {summary ? (
+            <>
+              <Suspense
+                fallback={
+                  <div className="prose editor-content">
+                    <Markdown text={summary.markdown ?? ''} />
+                  </div>
+                }
+              >
+                <SummaryEditor
+                  markdown={summary.markdown ?? ''}
+                  onReady={autosave.editorReady}
+                  onChange={autosave.changed}
+                  onSaveShortcut={() => void autosave.save()}
+                />
+              </Suspense>
+              <p className="model-note">
+                {summary.model && t('conversation.summarizedWith', { model: summary.model })}
+                {summary.editedAt && (
+                  <>
+                    {summary.model && ' · '}
+                    {t('editor.edited', { date: formatDate(summary.editedAt, { dateStyle: 'medium', timeStyle: 'short' }) })}
+                  </>
+                )}
+              </p>
+            </>
+          ) : (
+            pending(t('conversation.noSummary'))
+          )}
+        </div>
 
         {tab === 'transcript' &&
           (rec.transcript ? (
             <>
-              {rec.transcript.text ? <Transcript text={rec.transcript.text} /> : <p className="muted">{t('conversation.noSpeech')}</p>}
-              <p className="model-note">{t('conversation.transcribedWith', { model: rec.transcript.model })}</p>
+              {rec.transcript.text ? (
+                <Transcript text={rec.transcript.text} onSeek={seekTo} />
+              ) : (
+                <p className="muted">{t('conversation.noSpeech')}</p>
+              )}
+              <p className="model-note">
+                {t('conversation.transcribedWith', { model: rec.transcript.model })} ·{' '}
+                <a href={api.downloadURL(rec.id, 'transcript')} download title={t('conversation.downloadTranscript')}>
+                  {t('conversation.download')}
+                </a>
+              </p>
             </>
           ) : (
             pending(t('conversation.noTranscript'))
@@ -235,9 +350,23 @@ export function Conversation() {
         {tab === 'source' &&
           (rec.audio ? (
             <div className="source">
-              <audio controls preload="metadata" src={api.audioURL(rec.id)}>
+              <audio
+                ref={audio}
+                controls
+                preload="metadata"
+                src={api.audioURL(rec.id)}
+                onLoadedMetadata={(e) => {
+                  const d = e.currentTarget.duration;
+                  if (!durationMs && Number.isFinite(d)) setDurationMs(d * 1000);
+                  if (seek !== null) {
+                    e.currentTarget.currentTime = seek / 1000;
+                    setSeek(null);
+                  }
+                }}
+              >
                 {t('conversation.noAudioSupport')}
               </audio>
+              {highlights.length > 0 && <Highlights highlights={highlights} durationMs={durationMs} onSeek={seekTo} />}
               <dl className="facts">
                 <dt>{t('conversation.file')}</dt>
                 <dd>
@@ -270,6 +399,81 @@ export function Conversation() {
             <p className="muted">{state ?? t('conversation.audioUnavailable')}</p>
           ))}
       </div>
+    </>
+  );
+}
+
+export function Conversation() {
+  const { t } = useTranslation();
+  const { id = '' } = useParams();
+  const notes = useNotes();
+  const [rec, setRecState] = useState<Recording | null>(null);
+  // Changes to the open note (saves, processing progress) also update the sidebar.
+  const { upsert } = notes;
+  const setRec = useCallback(
+    (r: Recording) => {
+      setRecState(r);
+      upsert(r);
+    },
+    [upsert],
+  );
+  const [aiReady, setAIReady] = useState(true);
+  const [tab, setTab] = useState<Tab>('summary');
+  const [error, setError] = useState<string | null>(null);
+
+  // The note that is open now; answers for a note opened earlier are ignored.
+  const openId = useRef(id);
+  openId.current = id;
+
+  const load = useCallback(async () => {
+    try {
+      const [r, ai] = await Promise.all([api.recording(id), api.aiStatus()]);
+      if (openId.current !== id) return;
+      setRec(r);
+      setAIReady(ai.transcription && ai.summary);
+      setError(null);
+    } catch (err) {
+      setError(errorText(err, t));
+    }
+  }, [id, t, setRec]);
+
+  // Opening another note starts on its summary.
+  useEffect(() => {
+    setRecState(null);
+    setTab('summary');
+  }, [id]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const inProgress = rec ? processing(rec) : false;
+  useEffect(() => {
+    if (!inProgress) return;
+    const timer = setInterval(load, POLL_MS);
+    return () => clearInterval(timer);
+  }, [inProgress, load]);
+
+  return (
+    <section className="conversation">
+      <Link to="/" className="back-link">
+        {t('conversation.back')}
+      </Link>
+      {rec ? (
+        <NoteBody
+          key={`${rec.id}:${rec.summary?.createdAt ?? ''}`}
+          rec={rec}
+          aiReady={aiReady}
+          tab={tab}
+          setTab={setTab}
+          setRec={setRec}
+          reload={load}
+        />
+      ) : error ? (
+        <p className="error">{error}</p>
+      ) : (
+        <p className="muted">{t('common.loading')}</p>
+      )}
     </section>
   );
 }
