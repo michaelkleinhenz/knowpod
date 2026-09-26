@@ -29,9 +29,10 @@
 //                              upload recordings to a knowpod-service backend;
 //                              the device token comes from POST /devices there
 //                              (signed in as the user the recordings belong to).
-//                              email/password of that user are only needed with
-//                              "processing": "backend" to download the results
-//                              (the device token can't read recordings).
+//                              email/password: optional fallback for downloading
+//                              results with "processing": "backend" while the
+//                              backend doesn't accept the device token for
+//                              GET /recordings/{id}/transcript and /summary.
 //   "web_enabled": true,       web page and MCP server whenever Wi-Fi is available
 //   "web_password": ""         generated when web access is first enabled
 // }

@@ -151,15 +151,11 @@ private:
             ui_push(make_menu("Processing", {"On device (OpenRouter)", "Backend service"},
                               config_processing_backend() ? 1 : 0, [](int c) {
                 config_set_processing_backend(c == 1);
-                if (c == 1 && (!config_backend_enabled() || config_backend_email().isEmpty() ||
-                               config_backend_password().isEmpty()))
+                if (c == 1 && !config_backend_enabled())
                     ui_push(make_message("Backend processing",
                                          "Recordings are uploaded and transcribed by the backend; the results "
-                                         "are downloaded afterwards.\n\nStill missing in config.json under "
-                                         "\"backend\": " +
-                                         String(!config_backend_enabled() ? "\"token\" " : "") +
-                                         String(config_backend_email().isEmpty() ? "\"email\" " : "") +
-                                         String(config_backend_password().isEmpty() ? "\"password\"" : "")));
+                                         "are downloaded afterwards.\n\nAdd the device token to config.json "
+                                         "under \"backend\": \"token\"."));
                 worker_kick();
             }));
             break;

@@ -36,6 +36,10 @@ Step summarize(const String &id, JsonDocument &meta);
 // or one chunk) per call. Sets meta["upload"]["status"] to "done" at the end.
 Step upload_next(const String &id, JsonDocument &meta, int &percent);
 
+// Sends the highlights of an already uploaded recording (uploaded before
+// highlights were supported). Sets meta["upload"]["highlights_synced"].
+Step upload_highlights(const String &id, JsonDocument &meta);
+
 // With "processing": "backend": downloads the backend's transcript and
 // summary of an uploaded recording into transcript.md / summary.md and
 // advances the state to "transcribed" / "summarized".

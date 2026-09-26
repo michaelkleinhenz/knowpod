@@ -153,6 +153,8 @@ static RecordingInfo info_from_meta(const String &id, const JsonDocument &meta)
     info.upload_error = meta["upload"]["error"] | "";
     size_t size = meta["upload"]["size"] | 0;
     info.upload_percent = info.upload == "done" ? 100 : size ? (int)(100.0 * (meta["upload"]["offset"] | 0L) / size) : 0;
+    info.highlights_unsynced = info.upload == "done" && info.highlights > 0 &&
+                               !(meta["upload"]["highlights_synced"] | false);
     return info;
 }
 

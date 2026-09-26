@@ -5,8 +5,11 @@
 #include "store/recordings.h"
 
 // Resumable upload to a knowpod-service backend (openapi.yaml, "Device uploads"):
-//   POST  /uploads            {recordingId, size, sha256, recordedAt} -> uploadId, offset
+//   POST  /uploads            {recordingId, size, sha256, recordedAt, highlights}
+//                                                                     -> uploadId, offset
 //   PATCH /uploads/{uploadId} Upload-Offset + chunk                   -> new offset, status
+//   PUT   /uploads/{uploadId}/highlights                              (recordings uploaded
+//                                                                      before highlights)
 // Progress lives in meta.json "upload" and is saved after every step, so a
 // reboot or a lost connection resumes at the last confirmed byte.
 
@@ -38,6 +41,14 @@ static Step api_error(const HttpResponse &r, const JsonDocument &body)
     String msg = body["error"] | r.body.substring(0, 200);
     bool retry = r.status == 408 || r.status == 429 || r.status >= 500;
     return {retry ? STEP_RETRY : STEP_FAILED, "Backend HTTP " + String(r.status) + ": " + msg, r.retry_after_s};
+}
+
+// Highlights as the API expects them: [{"offsetMs": ...}]
+static void add_highlights(JsonDocument &req, const JsonDocument &meta)
+{
+    JsonArray list = req["highlights"].to<JsonArray>();
+    for (float h : meta["highlights"].as<JsonArrayConst>())
+        list.add<JsonObject>()["offsetMs"] = (int64_t)lroundf(h * 1000);
 }
 
 static bool sha256_file(File &f, String &hex)
@@ -123,6 +134,7 @@ Step upload_next(const String &id, JsonDocument &meta, int &percent)
             strftime(iso, sizeof(iso), "%Y-%m-%dT%H:%M:%SZ", &utc);
             req["recordedAt"] = iso;
         }
+        add_highlights(req, meta);
         HttpResponse r = http_request(base + "/uploads", "POST", auth_headers(), "application/json",
                                       measureJson(req), [&](Print &out) {
                                           serializeJson(req, out);
@@ -137,6 +149,7 @@ Step upload_next(const String &id, JsonDocument &meta, int &percent)
             return {STEP_FAILED, "Backend rejected the recording: " + String(body["error"] | "")};
 
         up["upload_id"] = body["uploadId"] | "";
+        up["highlights_synced"] = true;  // sent with the create
         apply_state(up, body, r);
         return {STEP_OK, ""};
     }
@@ -200,4 +213,29 @@ Step upload_next(const String &id, JsonDocument &meta, int &percent)
     long now = up["offset"] | 0L;
     percent = up["status"] == "done" ? 100 : size ? (int)(100.0 * now / size) : 0;
     return {STEP_OK, ""};
+}
+
+Step upload_highlights(const String &id, JsonDocument &meta)
+{
+    JsonObject up = meta["upload"];
+    String upload_id = up["upload_id"] | "";
+    if (upload_id.isEmpty()) {
+        up["highlights_synced"] = true;  // nothing to attach them to
+        return {STEP_OK, ""};
+    }
+
+    JsonDocument req;
+    add_highlights(req, meta);
+    HttpResponse r = http_request(config_backend_url() + "/uploads/" + upload_id + "/highlights", "PUT",
+                                  auth_headers(), "application/json", measureJson(req), [&](Print &out) {
+                                      serializeJson(req, out);
+                                      return true;
+                                  }, API_TIMEOUT_MS);
+    JsonDocument body;
+    deserializeJson(body, r.body);
+    if (r.status == 200 || r.status == 404) {  // 404: gone on the backend; nothing to update
+        up["highlights_synced"] = true;
+        return {STEP_OK, ""};
+    }
+    return api_error(r, body);
 }

@@ -139,7 +139,8 @@ static bool needs_processing(const RecordingInfo &r)
 
 static bool needs_upload(const RecordingInfo &r)
 {
-    return r.state != "recording" && r.upload != "done" && r.upload != "failed";
+    if (r.state == "recording" || r.upload == "failed") return false;
+    return r.upload != "done" || r.highlights_unsynced;
 }
 
 // Oldest recording of each lane that can be worked on now; counts the
@@ -193,7 +194,7 @@ static void upload(const RecordingInfo &info)
 
     int percent = 0;
     step_running = true;
-    Step step = upload_next(info.id, meta, percent);
+    Step step = info.upload == "done" ? upload_highlights(info.id, meta) : upload_next(info.id, meta, percent);
     step_running = false;
 
     if (paused && step.result != STEP_OK) return;  // Wi-Fi switched off for a recording

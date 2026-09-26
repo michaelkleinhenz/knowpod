@@ -37,6 +37,7 @@ struct RecordingInfo {
     String   upload;         // backend upload: "" (not started), "uploading", "done", "failed"
     String   upload_error;
     int      upload_percent;
+    bool     highlights_unsynced;   // uploaded, but the backend doesn't have the highlights yet
 };
 
 bool recordings_begin(fs::FS &fs);   // creates /recs and recovers interrupted recordings
