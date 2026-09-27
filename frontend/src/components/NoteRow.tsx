@@ -21,9 +21,10 @@ interface Props {
   onDragStart?: (e: DragEvent) => void;
   // sub is set for a note with sub-notes: how many, and whether they are shown below it.
   sub?: { count: number; open: boolean; onToggle: (e: MouseEvent) => void };
-  // lineProps go on the row itself (e.g. to drop notes onto it); drop highlights it.
+  // lineProps go on the row itself (e.g. to drop notes onto it); drop highlights it, or a
+  // line before or after it (where a dropped note goes).
   lineProps?: HTMLAttributes<HTMLDivElement>;
-  drop?: boolean;
+  drop?: boolean | 'before' | 'after';
   // children are shown below the row (the sub-notes).
   children?: ReactNode;
 }
@@ -38,7 +39,7 @@ export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = t
   const task = isTask(r);
   return (
     <li className={task ? `task-item${r.done ? ' done' : ''}` : undefined}>
-      <div {...lineProps} className={`note-line${drop ? ' drop' : ''}`}>
+      <div {...lineProps} className={`note-line${drop === true ? ' drop' : drop ? ` drop-${drop}` : ''}`}>
         <span className="note-gutter">
           {sub && (
             <button

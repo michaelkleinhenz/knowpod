@@ -3040,6 +3040,17 @@ html:has(.notes-layout) {
   box-shadow: inset 0 0 0 2px var(--color-primary);
 }
 
+/* Where a note or folder dropped onto a row's edge goes: before or after it. */
+.note-line.drop-before,
+.tree-row.drop-before {
+  box-shadow: inset 0 2px 0 var(--color-primary);
+}
+
+.note-line.drop-after,
+.tree-row.drop-after {
+  box-shadow: inset 0 -2px 0 var(--color-primary);
+}
+
 /* In front of every note, so that all icons and times line up: the toggle of its sub-notes
    (if it has any) and the button to add one, each in its own place. */
 .note-gutter {

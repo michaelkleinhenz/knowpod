@@ -24,6 +24,8 @@ var DefaultBoardColumns = []string{"Todo", "In Progress", "Done"}
 type BoardInput struct {
 	Title string           `json:"title"`
 	Board *recording.Board `json:"board,omitempty"`
+	// FolderID is the folder the board goes into; empty for the top level.
+	FolderID string `json:"folderId,omitempty"`
 }
 
 // CreateBoard creates a board note for the account's user. Like a text note it needs no
@@ -49,13 +51,17 @@ func (s *RecordingService) CreateBoard(ctx context.Context, acc *Account, in Boa
 	if err := s.validBoard(ctx, acc.ID, board); err != nil {
 		return nil, err
 	}
+	folderID, err := s.newNoteFolder(ctx, acc.ID, "", in.FolderID)
+	if err != nil {
+		return nil, err
+	}
 	id := newID()
 	now := s.clock().UTC()
 	rec := &recording.Recording{
 		ID: id, OwnerID: acc.ID, DeviceID: recording.BoardDeviceID(acc.ID), ClientID: id,
 		Type: recording.TypeBoard, Status: recording.StatusSummarized,
-		Summary:   &recording.Summary{Title: title, CreatedAt: now},
-		Board:     board,
+		Summary: &recording.Summary{Title: title, CreatedAt: now},
+		Board:   board, FolderID: folderID,
 		NotBefore: now, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.recs.Create(ctx, rec); err != nil {

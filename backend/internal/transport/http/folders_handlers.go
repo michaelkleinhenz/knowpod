@@ -83,3 +83,35 @@ func (s *Server) handleSetNoteParent(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, rec)
 }
+
+// orderInput lists the folders or notes of one place in the order they are shown.
+type orderInput struct {
+	IDs []string `json:"ids"`
+}
+
+// handleReorderFolders orders folders that are in the same place with {"ids": [...]}.
+func (s *Server) handleReorderFolders(w http.ResponseWriter, r *http.Request) {
+	var in orderInput
+	if !decode(w, r, &in) {
+		return
+	}
+	if err := s.folders.Reorder(r.Context(), accountFrom(r.Context()), in.IDs); err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleReorderNotes orders notes that are in the same place (folder or parent note) with
+// {"ids": [...]}.
+func (s *Server) handleReorderNotes(w http.ResponseWriter, r *http.Request) {
+	var in orderInput
+	if !decode(w, r, &in) {
+		return
+	}
+	if err := s.actions.Reorder(r.Context(), accountFrom(r.Context()), in.IDs); err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

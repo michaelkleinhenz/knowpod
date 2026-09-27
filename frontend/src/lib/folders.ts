@@ -1,20 +1,28 @@
 import { Folder, Recording } from '../api/client';
 import { title } from './recordings';
 
-const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true });
+const compareText = (a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true });
 
-// childFolders maps each folder ID ('' for the top level) to its folders, by name.
+// byPosition orders items the user put in order (position 1 up) first, then the others
+// (no position) by text.
+function byPosition<T extends { position?: number }>(text: (x: T) => string) {
+  return (a: T, b: T) => (a.position || Infinity) - (b.position || Infinity) || compareText(text(a), text(b));
+}
+const folderOrder = byPosition<Folder>((f) => f.name);
+const noteOrder = byPosition<Recording>(title);
+
+// childFolders maps each folder ID ('' for the top level) to its folders, in their order.
 export function childFolders(folders: Folder[]): Map<string, Folder[]> {
   const out = new Map<string, Folder[]>();
   for (const f of folders) {
     const key = f.parentId ?? '';
     out.set(key, [...(out.get(key) ?? []), f]);
   }
-  for (const list of out.values()) list.sort(byName);
+  for (const list of out.values()) list.sort(folderOrder);
   return out;
 }
 
-// subNotes maps each note ID to its sub-notes, by title. Notes whose parent is unknown
+// subNotes maps each note ID to its sub-notes, in their order. Notes whose parent is unknown
 // (e.g. deleted meanwhile) are left out; they are shown in their folder instead.
 export function subNotes(notes: Recording[]): Map<string, Recording[]> {
   const ids = new Set(notes.map((r) => r.id));
@@ -22,7 +30,7 @@ export function subNotes(notes: Recording[]): Map<string, Recording[]> {
   for (const r of notes) {
     if (r.parentId && ids.has(r.parentId)) out.set(r.parentId, [...(out.get(r.parentId) ?? []), r]);
   }
-  for (const [k, list] of out) out.set(k, sortByTitle(list));
+  for (const [k, list] of out) out.set(k, sortInPlace(list));
   return out;
 }
 
@@ -72,6 +80,12 @@ export function folderOf(r: Recording, ids: Set<string>): string {
 // sortByTitle sorts notes by title, like files in a folder.
 export function sortByTitle(list: Recording[]): Recording[] {
   return list.slice().sort((a, b) => title(a).localeCompare(title(b), undefined, { sensitivity: 'base', numeric: true }));
+}
+
+// sortInPlace sorts the notes in one place (a folder or under a note) in the order the user
+// put them, the unordered ones last, by title.
+export function sortInPlace(list: Recording[]): Recording[] {
+  return list.slice().sort(noteOrder);
 }
 
 // flatTree lists the folders depth-first, each with its nesting depth (0 at the top level).

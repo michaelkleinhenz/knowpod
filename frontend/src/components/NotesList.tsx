@@ -14,6 +14,7 @@ import { TrashView } from './TrashView';
 import { errorText } from '../lib/errors';
 import { parseFilter, searchMatcher } from '../lib/filterQuery';
 import { dayKey, dayLabel, formatDate, formatTime, when } from '../lib/recordings';
+import { lastFolder } from '../lib/lastFolder';
 
 const ACCEPT = '.wav,.mp3,audio/wav,audio/x-wav,audio/wave,audio/mpeg';
 
@@ -121,12 +122,19 @@ export function NotesList({ activeId }: { activeId?: string }) {
     }
   }
 
+  // newNoteFolder is the folder new notes and boards go into: in the folder view the one last
+  // opened (if it still exists), otherwise the top level.
+  const newNoteFolder = (): string | undefined => {
+    const id = view === 'folders' ? lastFolder() : '';
+    return id && folders?.some((f) => f.id === id) ? id : undefined;
+  };
+
   // createText makes an empty text note and opens it, ready to type its title.
   async function createText() {
     setCreating(true);
     setCreateError(null);
     try {
-      const rec = await api.createTextNote(t('conversations.untitled'), '');
+      const rec = await api.createTextNote(t('conversations.untitled'), '', undefined, undefined, newNoteFolder());
       upsert(rec);
       navigate(`/conversations/${rec.id}`, { state: { created: true } });
     } catch (err) {
@@ -158,7 +166,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
     setCreateError(null);
     try {
       const columns = (['todo', 'inProgress', 'done'] as const).map((k) => ({ id: '', name: t(`board.defaultColumns.${k}`) }));
-      const rec = await api.createBoard(t('board.untitled'), { scope: { kind: '', id: '' }, columns });
+      const rec = await api.createBoard(t('board.untitled'), { scope: { kind: '', id: '' }, columns }, newNoteFolder());
       upsert(rec);
       navigate(`/conversations/${rec.id}`, { state: { created: true } });
     } catch (err) {

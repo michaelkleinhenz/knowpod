@@ -10,7 +10,10 @@ type Folder struct {
 	OwnerID string `bson:"ownerId" json:"-"`
 	Name    string `bson:"name" json:"name"`
 	// ParentID is the folder this one is in; empty at the top level.
-	ParentID  string    `bson:"parentId,omitempty" json:"parentId,omitempty"`
+	ParentID string `bson:"parentId,omitempty" json:"parentId,omitempty"`
+	// Position orders the folder among the folders in the same place, from 1 up; 0 is
+	// unordered: those follow the ordered folders, by name.
+	Position  int       `bson:"position,omitempty" json:"position,omitempty"`
 	CreatedAt time.Time `bson:"createdAt" json:"createdAt"`
 	UpdatedAt time.Time `bson:"updatedAt" json:"updatedAt"`
 }

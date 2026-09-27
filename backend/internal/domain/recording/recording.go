@@ -137,6 +137,9 @@ type Recording struct {
 	// ParentID is the note this one is a sub-note of, like a file in a folder whose head is a
 	// note itself. A sub-note is listed under its parent and is in no folder of its own.
 	ParentID string `bson:"parentId,omitempty" json:"parentId,omitempty"`
+	// Position orders the note among the notes in the same place (folder or parent note),
+	// from 1 up; 0 is unordered: those follow the ordered notes, by title.
+	Position int `bson:"position,omitempty" json:"position,omitempty"`
 
 	// Board is the setup of a board note: its scope and columns.
 	Board *Board `bson:"board,omitempty" json:"board,omitempty"`
@@ -173,12 +176,13 @@ func (r *Recording) IsDocument() bool { return r.Type == TypeDocument }
 func (r *Recording) IsBoard() bool { return r.Type == TypeBoard }
 
 // KeepUserFields copies the fields a person changes at any time (labels, task fields, time
-// estimate and log, folder, parent note) and the note number from the stored version, so that a processing
+// estimate and log, folder, parent note, position) and the note number from the stored version, so that a processing
 // step saving its long-held copy doesn't undo them.
 func (r *Recording) KeepUserFields(stored *Recording) {
 	r.Labels, r.Done, r.FolderID, r.ParentID, r.Number = stored.Labels, stored.Done, stored.FolderID, stored.ParentID, stored.Number
 	r.Due, r.Priority, r.RemindAt = stored.Due, stored.Priority, stored.RemindAt
 	r.Estimate, r.TrackedSeconds = stored.Estimate, stored.TrackedSeconds
+	r.Position = stored.Position
 }
 
 // TextDeviceID returns the DeviceID of a user's text notes. Their ClientID is the note ID.

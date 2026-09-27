@@ -636,3 +636,70 @@ func TestTrash(t *testing.T) {
 		t.Fatalf("left after emptying the trash: %d", n)
 	}
 }
+
+func TestFolderOrder(t *testing.T) {
+	f := newAPIFixture(t)
+	admin := f.signedIn(adminEmail, adminPassword)
+
+	var work, a, b, other folder.Folder
+	admin.do("POST", "/api/v1/folders", service.FolderInput{Name: "Work"}, nil, &work)
+	admin.do("POST", "/api/v1/folders", service.FolderInput{Name: "A", ParentID: work.ID}, nil, &a)
+	admin.do("POST", "/api/v1/folders", service.FolderInput{Name: "B", ParentID: work.ID}, nil, &b)
+	admin.do("POST", "/api/v1/folders", service.FolderInput{Name: "Other"}, nil, &other)
+
+	// Notes and boards are created right in a folder.
+	var n1, n2, board recording.Recording
+	if res := admin.do("POST", "/api/v1/recordings/text", map[string]string{"title": "One", "markdown": "", "folderId": work.ID}, nil, &n1); res.StatusCode != 201 || n1.FolderID != work.ID {
+		t.Fatalf("create in folder: %d %+v", res.StatusCode, n1.FolderID)
+	}
+	admin.do("POST", "/api/v1/recordings/text", map[string]string{"title": "Two", "markdown": "", "folderId": work.ID}, nil, &n2)
+	if res := admin.do("POST", "/api/v1/recordings/board", map[string]string{"title": "Board", "folderId": work.ID}, nil, &board); res.StatusCode != 201 || board.FolderID != work.ID {
+		t.Fatalf("create board in folder: %d %+v", res.StatusCode, board.FolderID)
+	}
+	if res := admin.do("POST", "/api/v1/recordings/text", map[string]string{"title": "X", "markdown": "", "folderId": "nope"}, nil, nil); res.StatusCode != 400 {
+		t.Fatalf("create in unknown folder: %d", res.StatusCode)
+	}
+
+	// Notes are ordered within their folder.
+	if res := admin.do("PUT", "/api/v1/recordings/order", map[string][]string{"ids": {n2.ID, board.ID, n1.ID}}, nil, nil); res.StatusCode != 204 {
+		t.Fatalf("order notes: %d", res.StatusCode)
+	}
+	for id, want := range map[string]int{n2.ID: 1, board.ID: 2, n1.ID: 3} {
+		var r recording.Recording
+		if admin.do("GET", "/api/v1/recordings/"+id, nil, nil, &r); r.Position != want {
+			t.Errorf("note %s: position %d, want %d", id, r.Position, want)
+		}
+	}
+	// Only notes in the same place are ordered together.
+	var top recording.Recording
+	admin.do("POST", "/api/v1/recordings/text", map[string]string{"title": "Top", "markdown": ""}, nil, &top)
+	if res := admin.do("PUT", "/api/v1/recordings/order", map[string][]string{"ids": {n1.ID, top.ID}}, nil, nil); res.StatusCode != 400 {
+		t.Fatalf("order notes in different places: %d", res.StatusCode)
+	}
+	// A note moved elsewhere loses its position.
+	var moved recording.Recording
+	if admin.do("PUT", "/api/v1/recordings/"+n1.ID+"/folder", map[string]string{"folderId": other.ID}, nil, &moved); moved.Position != 0 {
+		t.Fatalf("moved note kept position %d", moved.Position)
+	}
+
+	// Folders are ordered within their parent.
+	if res := admin.do("PUT", "/api/v1/folders/order", map[string][]string{"ids": {b.ID, a.ID}}, nil, nil); res.StatusCode != 204 {
+		t.Fatalf("order folders: %d", res.StatusCode)
+	}
+	var list []folder.Folder
+	admin.do("GET", "/api/v1/folders", nil, nil, &list)
+	for _, x := range list {
+		if want := map[string]int{b.ID: 1, a.ID: 2}[x.ID]; x.Position != want {
+			t.Errorf("folder %s: position %d, want %d", x.Name, x.Position, want)
+		}
+	}
+	for _, ids := range [][]string{{a.ID, other.ID}, {a.ID, a.ID}, {"nope"}} {
+		if res := admin.do("PUT", "/api/v1/folders/order", map[string][]string{"ids": ids}, nil, nil); res.StatusCode == 204 {
+			t.Errorf("order folders %v: %d", ids, res.StatusCode)
+		}
+	}
+	var movedFolder folder.Folder
+	if admin.do("PUT", "/api/v1/folders/"+b.ID, service.FolderInput{Name: "B"}, nil, &movedFolder); movedFolder.Position != 0 {
+		t.Fatalf("moved folder kept position %d", movedFolder.Position)
+	}
+}

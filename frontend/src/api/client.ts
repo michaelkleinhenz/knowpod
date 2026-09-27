@@ -119,6 +119,8 @@ export interface Folder {
   id: string;
   name: string;
   parentId?: string;
+  // Order among the folders in the same place, from 1 up; absent for unordered folders.
+  position?: number;
 }
 
 export interface FolderInput {
@@ -348,6 +350,9 @@ export interface Recording {
   folderId?: string;
   // The note this one is a sub-note of; a sub-note is shown under it, wherever it is.
   parentId?: string;
+  // Order among the notes in the same place (folder or parent note), from 1 up; absent for
+  // unordered notes, which follow by title.
+  position?: number;
   // A board's scope and columns.
   board?: Board;
   // When the note was moved to the trash; it is deleted for good TRASH_DAYS later.
@@ -440,9 +445,11 @@ export const api = {
   retranscribe: (id: string) => request<Recording>('POST', `/recordings/${encodeURIComponent(id)}/retranscribe`),
   resummarize: (id: string, opts?: SummaryOptions) =>
     request<Recording>('POST', `/recordings/${encodeURIComponent(id)}/resummarize`, opts),
-  createTextNote: (title: string, markdown: string, parentId?: string, task?: TaskFields) =>
-    request<Recording>('POST', '/recordings/text', { title, markdown, parentId, ...task }),
-  createBoard: (title: string, board: Board) => request<Recording>('POST', '/recordings/board', { title, board }),
+  // createTextNote creates a note under parentId, or else in folderId (the top level when absent).
+  createTextNote: (title: string, markdown: string, parentId?: string, task?: TaskFields, folderId?: string) =>
+    request<Recording>('POST', '/recordings/text', { title, markdown, parentId, folderId, ...task }),
+  createBoard: (title: string, board: Board, folderId?: string) => request<Recording>('POST', '/recordings/board', { title, board, folderId }),
+  reorderNotes: (ids: string[]) => request<void>('PUT', '/recordings/order', { ids }),
   setBoard: (id: string, board: Board) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/board`, board),
   editSummary: (id: string, title: string, markdown: string) =>
     request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/summary`, { title, markdown }),
@@ -479,6 +486,7 @@ export const api = {
   createFolder: (f: FolderInput) => request<Folder>('POST', '/folders', f),
   updateFolder: (id: string, f: FolderInput) => request<Folder>('PUT', `/folders/${encodeURIComponent(id)}`, f),
   deleteFolder: (id: string) => request<void>('DELETE', `/folders/${encodeURIComponent(id)}`),
+  reorderFolders: (ids: string[]) => request<void>('PUT', '/folders/order', { ids }),
   labels: () => request<Label[]>('GET', '/labels'),
   createLabel: (l: LabelInput) => request<Label>('POST', '/labels', l),
   updateLabel: (id: string, l: LabelInput) => request<Label>('PUT', `/labels/${encodeURIComponent(id)}`, l),

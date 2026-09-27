@@ -261,7 +261,7 @@ export const de: Translation = {
     deleteLabel: '„{{name}}“ löschen',
     deleteConfirm: 'Ordner „{{name}}“ löschen? Seine Einträge und Ordner wandern in den Ordner darüber; kein Eintrag wird gelöscht.',
     empty: 'Noch keine Ordner. Lege mit „Neuer Ordner“ einen an und ziehe Einträge hinein.',
-    dragHint: 'Ziehe Einträge und Ordner auf einen Ordner, um sie zu verschieben, oder hierher für die oberste Ebene. Ziehe einen Eintrag auf einen anderen, um ihn zum Untereintrag zu machen.',
+    dragHint: 'Ziehe Einträge und Ordner auf einen Ordner, um sie zu verschieben, oder hierher für die oberste Ebene. Ziehe einen Eintrag auf einen anderen, um ihn zum Untereintrag zu machen, oder auf dessen oberen oder unteren Rand, um ihn davor oder dahinter einzuordnen (Alt+↑/↓ verschiebt den ausgewählten Eintrag). Neue Einträge landen im zuletzt geöffneten Ordner.',
     move: 'In Ordner verschieben',
     topLevel: 'Kein Ordner (oberste Ebene)',
     noneYet: 'Noch keine Ordner. Lege sie in der Ordneransicht der Liste an.',

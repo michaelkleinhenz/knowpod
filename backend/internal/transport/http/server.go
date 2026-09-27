@@ -174,6 +174,7 @@ func (s *Server) Router() http.Handler {
 
 			u.Get("/folders", s.handleListFolders)
 			u.Post("/folders", s.handleCreateFolder)
+			u.Put("/folders/order", s.handleReorderFolders)
 			u.Put("/folders/{id}", s.handleUpdateFolder)
 			u.Delete("/folders/{id}", s.handleDeleteFolder)
 
@@ -200,6 +201,7 @@ func (s *Server) Router() http.Handler {
 			u.Post("/recordings/text", s.handleCreateTextNote)
 			u.Post("/recordings/board", s.handleCreateBoard)
 			u.Delete("/recordings/trash", s.handleEmptyTrash)
+			u.Put("/recordings/order", s.handleReorderNotes)
 			u.Get("/recordings/{id}", s.handleGetRecording)
 			u.Delete("/recordings/{id}", s.handleDeleteRecording)
 			u.Post("/recordings/{id}/restore", s.handleRestoreRecording)

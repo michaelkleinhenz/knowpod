@@ -524,7 +524,7 @@ paths:
     get:
       tags: ["Folders"]
       summary: List folders
-      description: Your folders, by name. Build the tree from `parentId`.
+      description: Your folders, by name. Build the tree from `parentId`; within each folder show the folders with a `position` first, by it, then the others by name.
       security: [{ sessionCookie: [] }, { adminToken: [] }]
       responses:
         "200":
@@ -545,6 +545,29 @@ paths:
           content: { application/json: { schema: { $ref: "#/components/schemas/Folder" } } }
         "400": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
+
+  /folders/order:
+    put:
+      tags: ["Folders"]
+      summary: Order folders
+      description: |
+        Puts folders that are all in the same place (the same parent folder, or the top level)
+        in the order given, setting their `position` from 1 up. Folders there that aren't
+        listed follow them, by name. A folder moved elsewhere loses its position.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids: { type: array, maxItems: 2000, items: { type: string } }
+      responses:
+        "204": { description: Saved }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
 
   /folders/{folderId}:
     parameters:
@@ -871,6 +894,7 @@ paths:
                 title: { type: string, maxLength: 200 }
                 markdown: { type: string, maxLength: 100000 }
                 parentId: { type: string, description: Creates the note as a sub-note of this note }
+                folderId: { type: string, description: Creates the note in this folder (ignored for a sub-note); empty for the top level }
                 task: { type: boolean, description: Labels the note as a task (implied by `due` or `priority`) }
                 due: { $ref: "#/components/schemas/Due" }
                 priority: { $ref: "#/components/schemas/Priority" }
@@ -902,12 +926,36 @@ paths:
               properties:
                 title: { type: string, maxLength: 200 }
                 board: { $ref: "#/components/schemas/Board" }
+                folderId: { type: string, description: Creates the board in this folder; empty for the top level }
       responses:
         "201":
           description: Created
           content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
         "400": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
+
+  /recordings/order:
+    put:
+      tags: ["Recordings"]
+      summary: Order notes
+      description: |
+        Puts notes that are all in the same place (the same folder, or under the same note) in
+        the order given, setting their `position` from 1 up. Notes there that aren't listed
+        follow them, by title. A note moved elsewhere loses its position.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids: { type: array, maxItems: 2000, items: { type: string } }
+      responses:
+        "204": { description: Saved }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
 
   /recordings/trash:
     delete:
@@ -2016,6 +2064,7 @@ components:
         trackedSeconds: { type: integer, format: int64, description: Time logged on the note with the timer or by hand (finished entries) }
         folderId: { type: string, description: The folder the note is in (see GET /folders); absent at the top level and for sub-notes }
         parentId: { type: string, description: The note this one is a sub-note of; absent otherwise }
+        position: { type: integer, description: Order among the notes in the same place, from 1 up; absent for unordered notes, which follow by title }
         board: { $ref: "#/components/schemas/Board" }
         transcript:
           type: object
@@ -2173,6 +2222,7 @@ components:
         id: { type: string }
         name: { type: string }
         parentId: { type: string, description: The folder this one is in; absent at the top level }
+        position: { type: integer, description: Order among the folders in the same place, from 1 up; absent for unordered folders, which follow by name }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 

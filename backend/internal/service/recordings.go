@@ -242,17 +242,20 @@ func (in SummaryEdit) clean() (title, markdown string, err error) {
 }
 
 // TextNoteInput creates a text note: its title and Markdown text, optionally the note it is
-// a sub-note of, and optionally as a task with a date and priority.
+// a sub-note of or else the folder it goes into, and optionally as a task with a date and
+// priority.
 type TextNoteInput struct {
 	SummaryEdit
 	ParentID string `json:"parentId,omitempty"`
+	FolderID string `json:"folderId,omitempty"`
 	TaskFields
 }
 
 // CreateText creates a text note for the account's user. The title and Markdown text are
 // kept as the note's summary, so the note is shown, edited, copied and downloaded like the
 // summary of a recording. It needs no processing and is stored as summarized. With a
-// ParentID it is created as a sub-note of that note.
+// ParentID it is created as a sub-note of that note, otherwise in folder FolderID (the top
+// level when empty).
 func (s *RecordingService) CreateText(ctx context.Context, acc *Account, in TextNoteInput) (*recording.Recording, error) {
 	if acc.ID == "" {
 		return nil, errors.Join(ErrForbidden, errors.New("notes belong to a user; sign in"))
@@ -265,11 +268,15 @@ func (s *RecordingService) CreateText(ctx context.Context, acc *Account, in Text
 	if err := s.validParent(ctx, acc.ID, "", parentID); err != nil {
 		return nil, err
 	}
+	folderID, err := s.newNoteFolder(ctx, acc.ID, parentID, in.FolderID)
+	if err != nil {
+		return nil, err
+	}
 	id := newID()
 	now := s.clock().UTC()
 	rec := &recording.Recording{
 		ID: id, OwnerID: acc.ID, DeviceID: recording.TextDeviceID(acc.ID), ClientID: id,
-		Type: recording.TypeText, Status: recording.StatusSummarized, ParentID: parentID,
+		Type: recording.TypeText, Status: recording.StatusSummarized, ParentID: parentID, FolderID: folderID,
 		Summary:   &recording.Summary{Title: title, Markdown: markdown, CreatedAt: now},
 		NotBefore: now, CreatedAt: now, UpdatedAt: now,
 	}
@@ -280,6 +287,19 @@ func (s *RecordingService) CreateText(ctx context.Context, acc *Account, in Text
 		return nil, err
 	}
 	return rec, nil
+}
+
+// newNoteFolder checks the folder a new note of ownerID goes into; a sub-note (parentID set)
+// is in no folder of its own.
+func (s *RecordingService) newNoteFolder(ctx context.Context, ownerID, parentID, folderID string) (string, error) {
+	folderID = strings.TrimSpace(folderID)
+	if parentID != "" {
+		return "", nil
+	}
+	if !s.Folders.Usable(ctx, ownerID, folderID) {
+		return "", invalid("unknown folder %q", folderID)
+	}
+	return folderID, nil
 }
 
 // EditSummary replaces the summary's title and Markdown text with the user's version. The
@@ -358,6 +378,10 @@ func (s *RecordingService) SetFolder(ctx context.Context, acc *Account, id, fold
 	if !s.Folders.Usable(ctx, rec.OwnerID, folderID) {
 		return nil, invalid("unknown folder %q", folderID)
 	}
+	if rec.FolderID != folderID || rec.ParentID != "" {
+		// A note moved elsewhere goes after the ordered notes there.
+		rec.Position = 0
+	}
 	rec.FolderID, rec.ParentID = folderID, ""
 	return rec, s.save(ctx, rec)
 }
@@ -377,8 +401,49 @@ func (s *RecordingService) SetParent(ctx context.Context, acc *Account, id, pare
 	if err := s.validParent(ctx, rec.OwnerID, rec.ID, parentID); err != nil {
 		return nil, err
 	}
+	if rec.ParentID != parentID || rec.FolderID != "" {
+		rec.Position = 0
+	}
 	rec.ParentID, rec.FolderID = parentID, ""
 	return rec, s.save(ctx, rec)
+}
+
+// Reorder puts the account's notes ids, which must all be in the same place (the same folder,
+// or under the same note), in this order. Notes there that aren't listed follow them, by
+// title.
+func (s *RecordingService) Reorder(ctx context.Context, acc *Account, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	if len(ids) > maxReorder {
+		return invalid("at most %d notes can be ordered at once", maxReorder)
+	}
+	list := make([]*recording.Recording, 0, len(ids))
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if seen[id] {
+			return invalid("note %q is listed twice", id)
+		}
+		seen[id] = true
+		rec, err := s.Get(ctx, acc, id)
+		if err != nil {
+			return err
+		}
+		if len(list) > 0 && (rec.FolderID != list[0].FolderID || rec.ParentID != list[0].ParentID) {
+			return invalid("the notes to order must be in the same place")
+		}
+		list = append(list, rec)
+	}
+	for i, rec := range list {
+		if rec.Position == i+1 {
+			continue
+		}
+		rec.Position = i + 1
+		if err := s.save(ctx, rec); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // validParent checks that note id of ownerID may be put under parentID ("" is none, id ""

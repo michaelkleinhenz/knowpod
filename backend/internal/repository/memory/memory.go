@@ -104,7 +104,7 @@ func (m *Recordings) MoveFolder(_ context.Context, ownerID, from, to string) err
 			continue
 		}
 		if r.FolderID == from {
-			r.FolderID = to
+			r.FolderID, r.Position = to, 0
 		}
 		if r.Board != nil && r.Board.Scope.Kind == recording.ScopeFolder && r.Board.Scope.ID == from {
 			b := *r.Board
@@ -121,7 +121,7 @@ func (m *Recordings) MoveSubNotes(_ context.Context, ownerID, from, toParent, to
 	defer m.mu.Unlock()
 	for id, r := range m.recs {
 		if r.OwnerID == ownerID && r.ParentID == from {
-			r.ParentID, r.FolderID = toParent, toFolder
+			r.ParentID, r.FolderID, r.Position = toParent, toFolder, 0
 			m.recs[id] = r
 		}
 	}
