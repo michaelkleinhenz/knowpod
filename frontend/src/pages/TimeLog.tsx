@@ -2,7 +2,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { api, TimeEntry } from '../api/client';
-import { DownloadIcon, TrashIcon } from '../components/Icons';
+import { DownloadIcon, NewNoteIcon, TrashIcon } from '../components/Icons';
 import { useNotes } from '../context/NotesContext';
 import { locale } from '../i18n';
 import { isoDate } from '../lib/dateParse';
@@ -73,8 +73,8 @@ function ManualEntry({ day, onAdded }: { day: string; onAdded: () => void }) {
         <span>{t('timeLog.to')}</span>
         <input type="time" required value={end} onChange={(e) => setEnd(e.target.value)} />
       </label>
-      <button type="submit" className="small-button" disabled={busy || !noteId}>
-        {t('timeLog.add')}
+      <button type="submit" className="icon-submit" disabled={busy || !noteId} aria-label={t('timeLog.add')} title={t('timeLog.add')}>
+        <NewNoteIcon />
       </button>
       {error && <p className="error">{error}</p>}
     </form>

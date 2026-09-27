@@ -29,6 +29,10 @@ import (
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/worker"
 )
 
+// version is the app version, set at build time from the VERSION file
+// (-ldflags "-X main.version=…").
+var version = "dev"
+
 // reminderInterval is how often due task reminders are looked for.
 const reminderInterval = 30 * time.Second
 
@@ -36,6 +40,7 @@ func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(log)
 
+	log.Info("starting knowpod", "version", version)
 	cfg := config.Load()
 	if err := cfg.Validate(); err != nil {
 		fatal(log, "invalid configuration", err)

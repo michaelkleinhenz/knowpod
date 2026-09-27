@@ -1,12 +1,27 @@
 # knowpod-service build. The frontend is built separately and embedded into the backend binary so a
 # single artifact serves both the web UI and the API.
 
-.PHONY: build frontend backend test clean desktop-deps desktop-run desktop desktop-linux desktop-windows desktop-mac desktop-all
+.PHONY: build frontend backend test clean version set-version desktop-deps desktop-run desktop desktop-linux desktop-windows desktop-mac desktop-all
 
 # Server the desktop app connects to on its first start, e.g.
 # `make desktop SERVER_URL=https://knowpod.example.com`. Without it the app asks for one.
 SERVER_URL ?=
-DESKTOP_FLAGS = --publish never $(if $(SERVER_URL),-c.extraMetadata.defaultServerUrl=$(SERVER_URL))
+DESKTOP_FLAGS = --publish never -c.extraMetadata.version=$(VERSION) $(if $(SERVER_URL),-c.extraMetadata.defaultServerUrl=$(SERVER_URL))
+
+# The app version, shown in the app's settings and used for the builds and release names. It is
+# kept in the VERSION file; change it there or with `make set-version V=1.2.0`.
+VERSION := $(shell cat VERSION)
+
+# Print the app version.
+version:
+	@echo $(VERSION)
+
+# Set the app version: writes VERSION and keeps the package.json files in step with it.
+set-version:
+	@test -n "$(V)" || { echo 'usage: make set-version V=1.2.0'; exit 1; }
+	echo "$(V)" > VERSION
+	cd frontend && npm version "$(V)" --no-git-tag-version --allow-same-version
+	cd desktop && npm version "$(V)" --no-git-tag-version --allow-same-version
 
 # Build the single self-contained binary (frontend embedded in the backend).
 build: backend
@@ -19,7 +34,7 @@ frontend:
 
 # Compile the backend with the freshly built frontend embedded.
 backend: frontend
-	cd backend && CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/server ./cmd/server
+	cd backend && CGO_ENABLED=0 go build -ldflags="-s -w -X main.version=$(VERSION)" -o bin/server ./cmd/server
 
 # Desktop app (Electron, in desktop/): a native window around the web UI of a knowpod server.
 # Installers land in desktop/dist. Build each platform on its own OS (macOS for desktop-mac,

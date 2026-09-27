@@ -65,6 +65,14 @@ export function NotificationSettings() {
       const { sent } = await api.testNotification();
       setNotice(sent > 0 ? t('notifications.testSent', { count: sent }) : t('notifications.testNone'));
     });
+  // A test goes to every device that receives notifications, so it can be sent from any
+  // device (also the desktop app, which can't receive them itself) as long as one does.
+  const canTest = !!status?.available && (status?.devices.length ?? 0) > 0;
+  const testButton = (
+    <button type="button" className={on ? 'primary-button' : 'secondary-button'} onClick={test} disabled={busy} title={t('notifications.testHint')}>
+      {t('notifications.test')}
+    </button>
+  );
 
   return (
     <div className="notification-settings">
@@ -72,7 +80,10 @@ export function NotificationSettings() {
       {status && !status.available ? (
         <p className="notice">{t('notifications.unavailable')}</p>
       ) : !supported ? (
-        <p className="notice">{isDesktopApp() ? t('notifications.desktop') : isIOS() && !isInstalled() ? t('notifications.iosInstall') : t('notifications.unsupported')}</p>
+        <>
+          <p className="notice">{isDesktopApp() ? t('notifications.desktop') : isIOS() && !isInstalled() ? t('notifications.iosInstall') : t('notifications.unsupported')}</p>
+          {canTest && <div className="button-row">{testButton}</div>}
+        </>
       ) : (
         <>
           <p className="notification-state">
@@ -82,17 +93,18 @@ export function NotificationSettings() {
           <div className="button-row">
             {on ? (
               <>
-                <button type="button" className="primary-button" onClick={test} disabled={busy}>
-                  {t('notifications.test')}
-                </button>
+                {testButton}
                 <button type="button" className="secondary-button" onClick={() => run(unsubscribe)} disabled={busy}>
                   {t('notifications.turnOff')}
                 </button>
               </>
             ) : (
-              <button type="button" className="primary-button" onClick={enable} disabled={busy || !status?.publicKey || permission === 'denied'}>
-                {t('notifications.turnOn')}
-              </button>
+              <>
+                <button type="button" className="primary-button" onClick={enable} disabled={busy || !status?.publicKey || permission === 'denied'}>
+                  {t('notifications.turnOn')}
+                </button>
+                {canTest && testButton}
+              </>
             )}
           </div>
         </>

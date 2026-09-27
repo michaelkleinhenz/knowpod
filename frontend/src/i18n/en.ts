@@ -190,6 +190,7 @@ export const en = {
     turnOn: 'Turn on',
     turnOff: 'Turn off',
     test: 'Send a test',
+    testHint: 'Sends a test notification to all your devices that have notifications on.',
     denied: "Notifications weren't allowed.",
     noServiceWorker: "The app isn't fully loaded yet. Reload the page and try again.",
     testSent_one: 'Sent to {{count}} device.',
@@ -583,6 +584,16 @@ export const en = {
     to: 'To',
     add: 'Add',
   },
+  desktopApp: {
+    title: 'Desktop app',
+    intro: 'knowpod is also available as an app for Windows, macOS and Linux. It opens this server in its own window, with your notes, tasks and offline copies just like here.',
+    server: 'Server address',
+    stepInstall: 'Download the installer for your system from the <1>releases page</1> and install it.',
+    stepServer: 'Start the app. It asks for the server address: paste the address above and choose Connect.',
+    stepSignIn: 'Sign in with the same email and password as here.',
+    notifications: 'To connect to another server later, use File → Change Server… in the app. The desktop app can’t receive notifications; turn them on in your browser or on your phone.',
+    connected: 'You are using the desktop app, connected to <1>{{server}}</1>. To connect to another server, use File → Change Server….',
+  },
   calendar: {
     title: 'Calendar',
     intro: 'Subscribe to your tasks with dates in Google Calendar, Apple Calendar or Outlook. The calendar is read-only and updates by itself (calendar apps check it every few hours).',
@@ -616,6 +627,11 @@ export const en = {
       hint: 'Light or dark colors for the app. It is saved with your account; “System” follows your device’s setting.',
       label: 'Color scheme',
       names: { system: 'System', light: 'Light', dark: 'Dark' },
+    },
+    about: {
+      title: 'About knowpod',
+      version: 'Version',
+      desktopVersion: 'Desktop app',
     },
     themes: {
       title: 'Summary themes',

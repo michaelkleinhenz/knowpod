@@ -191,6 +191,7 @@ export const de: Translation = {
     blocked: 'Benachrichtigungen für knowpod sind in diesem Browser blockiert. Erlaube sie in den Browser- oder Systemeinstellungen.',
     turnOn: 'Einschalten',
     turnOff: 'Ausschalten',
+    testHint: 'Schickt eine Test-Benachrichtigung an alle deine Geräte, auf denen Benachrichtigungen an sind.',
     test: 'Test senden',
     denied: 'Benachrichtigungen wurden nicht erlaubt.',
     noServiceWorker: 'Die App ist noch nicht vollständig geladen. Lade die Seite neu und versuch es noch einmal.',
@@ -585,6 +586,16 @@ export const de: Translation = {
     to: 'Bis',
     add: 'Hinzufügen',
   },
+  desktopApp: {
+    title: 'Desktop-App',
+    intro: 'knowpod gibt es auch als App für Windows, macOS und Linux. Sie öffnet diesen Server in einem eigenen Fenster, mit deinen Notizen, Aufgaben und Offline-Kopien wie hier.',
+    server: 'Server-Adresse',
+    stepInstall: 'Lade das Installationsprogramm für dein System von der <1>Release-Seite</1> herunter und installiere es.',
+    stepServer: 'Starte die App. Sie fragt nach der Server-Adresse („Server address“): Füge die Adresse oben ein und wähle „Connect“.',
+    stepSignIn: 'Melde dich mit derselben E-Mail-Adresse und demselben Passwort an wie hier.',
+    notifications: 'Um dich später mit einem anderen Server zu verbinden, nutze in der App File → Change Server…. Die Desktop-App kann keine Benachrichtigungen empfangen; schalte sie im Browser oder auf deinem Handy ein.',
+    connected: 'Du nutzt die Desktop-App, verbunden mit <1>{{server}}</1>. Um dich mit einem anderen Server zu verbinden, nutze File → Change Server….',
+  },
   calendar: {
     title: 'Kalender',
     intro: 'Abonniere deine Aufgaben mit Datum in Google Kalender, Apple Kalender oder Outlook. Der Kalender ist schreibgeschützt und aktualisiert sich selbst (Kalender-Apps rufen ihn alle paar Stunden ab).',
@@ -618,6 +629,11 @@ export const de: Translation = {
       hint: 'Helle oder dunkle Farben für die App. Sie wird mit deinem Konto gespeichert; „System“ folgt der Einstellung deines Geräts.',
       label: 'Farbschema',
       names: { system: 'System', light: 'Hell', dark: 'Dunkel' },
+    },
+    about: {
+      title: 'Über knowpod',
+      version: 'Version',
+      desktopVersion: 'Desktop-App',
     },
     themes: {
       title: 'Vorlagen für Zusammenfassungen',

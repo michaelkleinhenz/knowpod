@@ -86,6 +86,7 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: true,
       spellcheck: true,
+      additionalArguments: [`--knowpod-version=${app.getVersion()}`],
     },
   });
   if (config.maximized) mainWindow.maximize();

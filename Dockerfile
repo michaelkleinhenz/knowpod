@@ -7,6 +7,8 @@ WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
+# vite.config.ts reads the app version from ../VERSION.
+COPY VERSION /VERSION
 RUN npm run build
 
 # --- Stage 2: build the Go backend with the frontend embedded ---
@@ -19,7 +21,8 @@ COPY backend/ ./
 # directive in internal/web picks these up at build time.
 RUN rm -rf ./internal/web/dist
 COPY --from=frontend /app/dist ./internal/web/dist
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/server ./cmd/server
+COPY VERSION /VERSION
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w -X main.version=$(cat /VERSION)" -o /out/server ./cmd/server
 
 # --- Stage 3: minimal runtime image ---
 FROM alpine:3.20

@@ -6,7 +6,7 @@ import { useNotes } from '../context/NotesContext';
 import { useNow } from '../hooks/useNow';
 import { errorText } from '../lib/errors';
 import { FOCUS_MINUTES, formatClockDuration, formatMinutes, formatSeconds, parseEstimate } from '../lib/timer';
-import { ClockIcon, FocusIcon, PlayIcon, StopIcon, StopwatchIcon } from './Icons';
+import { CheckIcon, ClockIcon, FocusIcon, PlayIcon, StopIcon, StopwatchIcon } from './Icons';
 
 const ESTIMATES = [15, 30, 60, 120, 240];
 
@@ -42,8 +42,8 @@ function EstimatePicker({ rec, save, onClose }: { rec: Recording; save: (minutes
           <span className="sr-only">{t('time.estimate')}</span>
           <input autoFocus value={text} onChange={(e) => setText(e.target.value)} placeholder={t('time.estimatePlaceholder')} aria-invalid={minutes === null} />
         </label>
-        <button type="submit" className="small-button" disabled={minutes === null}>
-          {t('common.save')}
+        <button type="submit" className="icon-submit" disabled={minutes === null} aria-label={t('common.save')} title={t('common.save')}>
+          <CheckIcon />
         </button>
       </form>
       {text.trim() && <p className={minutes === null ? 'error' : 'muted'}>{minutes === null ? t('time.estimateInvalid') : minutes > 0 ? formatMinutes(minutes) : t('time.noEstimate')}</p>}

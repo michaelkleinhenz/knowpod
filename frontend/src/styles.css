@@ -282,6 +282,33 @@ button[type='submit']:disabled,
   cursor: default;
 }
 
+/* The app version under Settings → General. */
+.about-versions {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.3rem 1rem;
+  margin: 0;
+}
+
+.about-versions dt {
+  color: var(--color-muted);
+}
+
+.about-versions dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A compact, icon-only submit button next to a single row of inputs. */
+button.icon-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 2rem;
+  padding: 0;
+}
+
 .muted {
   color: var(--color-muted);
 }
@@ -2118,7 +2145,10 @@ button.sync-state:focus-visible {
 
 .editor-content ul[data-type='taskList'] li > label {
   flex: none;
-  margin-top: 0.3rem;
+  display: flex;
+  align-items: center;
+  /* One text line tall (matches .prose p line-height) so the box centres on the first line. */
+  height: 1.5em;
   user-select: none;
 }
 
@@ -2144,6 +2174,10 @@ button.sync-state:focus-visible {
 .editor-content ul[data-type='taskList'] input[type='checkbox'] {
   margin: 0;
   cursor: pointer;
+}
+
+.prose ul.task-list input[type='checkbox'] {
+  vertical-align: -0.15em;
 }
 
 .editor-content blockquote {
@@ -4527,6 +4561,11 @@ a.note-ref:hover {
   border-radius: 6px;
   background: var(--color-surface);
   max-width: 100%;
+}
+
+.time-manual .icon-submit {
+  width: 2.1rem;
+  height: 2.1rem;
 }
 
 .time-manual .error {
