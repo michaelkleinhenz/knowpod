@@ -2118,7 +2118,10 @@ button.sync-state:focus-visible {
 
 .editor-content ul[data-type='taskList'] li > label {
   flex: none;
-  margin-top: 0.3rem;
+  display: flex;
+  align-items: center;
+  /* One text line tall (matches .prose p line-height) so the box centres on the first line. */
+  height: 1.5em;
   user-select: none;
 }
 
@@ -2144,6 +2147,10 @@ button.sync-state:focus-visible {
 .editor-content ul[data-type='taskList'] input[type='checkbox'] {
   margin: 0;
   cursor: pointer;
+}
+
+.prose ul.task-list input[type='checkbox'] {
+  vertical-align: -0.15em;
 }
 
 .editor-content blockquote {
