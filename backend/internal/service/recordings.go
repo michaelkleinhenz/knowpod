@@ -27,6 +27,9 @@ type RecordingService struct {
 	// Labels checks the labels put on notes. Optional; without it only the built-in labels
 	// can be used.
 	Labels *LabelService
+	// Folders checks the folders notes are moved into. Optional; without it notes stay at
+	// the top level.
+	Folders *FolderService
 	// OnRequeued is called when a recording was sent back into processing. Optional.
 	OnRequeued func()
 }
@@ -224,6 +227,20 @@ func (s *RecordingService) SetDone(ctx context.Context, acc *Account, id string,
 		return nil, invalid("only notes labeled as a task can be checked off")
 	}
 	rec.Done = done
+	return rec, s.save(ctx, rec)
+}
+
+// SetFolder moves the note into one of its owner's folders, or to the top level ("").
+func (s *RecordingService) SetFolder(ctx context.Context, acc *Account, id, folderID string) (*recording.Recording, error) {
+	rec, err := s.Get(ctx, acc, id)
+	if err != nil {
+		return nil, err
+	}
+	folderID = strings.TrimSpace(folderID)
+	if !s.Folders.Usable(ctx, rec.OwnerID, folderID) {
+		return nil, invalid("unknown folder %q", folderID)
+	}
+	rec.FolderID = folderID
 	return rec, s.save(ctx, rec)
 }
 

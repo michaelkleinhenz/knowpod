@@ -43,6 +43,7 @@ type Server struct {
 	ai      *service.AIService
 	themes  *service.ThemeService
 	labels  *service.LabelService
+	folders *service.FolderService
 	now     func() time.Time
 }
 
@@ -63,6 +64,7 @@ type Deps struct {
 	AI      *service.AIService
 	Themes  *service.ThemeService
 	Labels  *service.LabelService
+	Folders *service.FolderService
 }
 
 // NewServer builds the server.
@@ -74,7 +76,7 @@ func NewServer(d Deps) *Server {
 	return &Server{
 		cfg: d.Cfg, log: log, db: d.DB, auth: d.Auth, users: d.Users, devices: d.Devices, uploads: d.Uploads,
 		manual: d.Manual, actions: d.Actions, objects: d.Objects, pocket: d.Pocket, ai: d.AI, themes: d.Themes,
-		labels: d.Labels, now: time.Now,
+		labels: d.Labels, folders: d.Folders, now: time.Now,
 	}
 }
 
@@ -139,6 +141,11 @@ func (s *Server) Router() http.Handler {
 			u.Put("/labels/{id}", s.handleUpdateLabel)
 			u.Delete("/labels/{id}", s.handleDeleteLabel)
 
+			u.Get("/folders", s.handleListFolders)
+			u.Post("/folders", s.handleCreateFolder)
+			u.Put("/folders/{id}", s.handleUpdateFolder)
+			u.Delete("/folders/{id}", s.handleDeleteFolder)
+
 			u.Get("/devices", s.handleListDevices)
 			u.Post("/devices", s.handleRegisterDevice)
 			u.Delete("/devices/{id}", s.handleRevokeDevice)
@@ -155,6 +162,7 @@ func (s *Server) Router() http.Handler {
 			u.Put("/recordings/{id}/summary", s.handleEditSummary)
 			u.Put("/recordings/{id}/labels", s.handleSetNoteLabels)
 			u.Put("/recordings/{id}/done", s.handleSetNoteDone)
+			u.Put("/recordings/{id}/folder", s.handleSetNoteFolder)
 			u.Get("/recordings/{id}/summary", s.handleDownloadSummary)
 			u.Get("/recordings/{id}/transcript", s.handleDownloadTranscript)
 		})

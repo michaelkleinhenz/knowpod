@@ -78,6 +78,19 @@ export interface LabelInput {
   color: string;
 }
 
+// Folder is a folder the user sorts notes into. parentId is the folder it is in; absent at
+// the top level.
+export interface Folder {
+  id: string;
+  name: string;
+  parentId?: string;
+}
+
+export interface FolderInput {
+  name: string;
+  parentId?: string;
+}
+
 export interface SummaryOptions {
   language?: string;
   model?: string;
@@ -159,6 +172,8 @@ export interface Recording {
   // IDs of the note's labels; done is the check mark of a note labeled "task".
   labels?: string[];
   done?: boolean;
+  // The folder the note is in; absent at the top level.
+  folderId?: string;
   lastError?: string;
 }
 
@@ -254,6 +269,11 @@ export const api = {
     request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/summary`, { title, markdown }),
   setNoteLabels: (id: string, labels: string[]) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/labels`, { labels }),
   setNoteDone: (id: string, done: boolean) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/done`, { done }),
+  setNoteFolder: (id: string, folderId: string) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/folder`, { folderId }),
+  folders: () => request<Folder[]>('GET', '/folders'),
+  createFolder: (f: FolderInput) => request<Folder>('POST', '/folders', f),
+  updateFolder: (id: string, f: FolderInput) => request<Folder>('PUT', `/folders/${encodeURIComponent(id)}`, f),
+  deleteFolder: (id: string) => request<void>('DELETE', `/folders/${encodeURIComponent(id)}`),
   labels: () => request<Label[]>('GET', '/labels'),
   createLabel: (l: LabelInput) => request<Label>('POST', '/labels', l),
   updateLabel: (id: string, l: LabelInput) => request<Label>('PUT', `/labels/${encodeURIComponent(id)}`, l),

@@ -52,7 +52,9 @@ type UserService struct {
 	recordings *RecordingService
 	// Labels holds users' labels, removed with the user. Optional.
 	Labels ports.LabelRepository
-	clock  func() time.Time
+	// Folders holds users' folders, removed with the user. Optional.
+	Folders ports.FolderRepository
+	clock   func() time.Time
 }
 
 // NewUserService builds the service.
@@ -217,6 +219,11 @@ func (s *UserService) Delete(ctx context.Context, actor *Account, id string) err
 	}
 	if s.Labels != nil {
 		if err := s.Labels.DeleteByOwner(ctx, u.ID); err != nil {
+			return err
+		}
+	}
+	if s.Folders != nil {
+		if err := s.Folders.DeleteByOwner(ctx, u.ID); err != nil {
 			return err
 		}
 	}

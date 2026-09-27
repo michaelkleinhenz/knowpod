@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/audio/audiotest"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/folder"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/service"
 )
@@ -319,5 +320,69 @@ func TestLabels(t *testing.T) {
 	var cleared recording.Recording
 	if res := admin.do("PUT", path+"/labels", map[string][]string{"labels": {}}, nil, &cleared); res.StatusCode != 200 || cleared.Done || len(cleared.Labels) != 0 {
 		t.Fatalf("clear labels: %d %+v", res.StatusCode, cleared)
+	}
+}
+
+func TestFolders(t *testing.T) {
+	f := newAPIFixture(t)
+	admin := f.signedIn(adminEmail, adminPassword)
+
+	var list []folder.Folder
+	if res := admin.do("GET", "/api/v1/folders", nil, nil, &list); res.StatusCode != 200 || len(list) != 0 {
+		t.Fatalf("list: %d %+v", res.StatusCode, list)
+	}
+	var work, sub folder.Folder
+	if res := admin.do("POST", "/api/v1/folders", service.FolderInput{Name: " Work "}, nil, &work); res.StatusCode != 201 || work.Name != "Work" {
+		t.Fatalf("create: %d %+v", res.StatusCode, work)
+	}
+	for _, in := range []service.FolderInput{{Name: ""}, {Name: "work"}, {Name: "X", ParentID: "nope"}} {
+		if res := admin.do("POST", "/api/v1/folders", in, nil, nil); res.StatusCode != 400 {
+			t.Errorf("create %+v: %d", in, res.StatusCode)
+		}
+	}
+	if res := admin.do("POST", "/api/v1/folders", service.FolderInput{Name: "Work", ParentID: work.ID}, nil, &sub); res.StatusCode != 201 || sub.ParentID != work.ID {
+		t.Fatalf("create sub: %d %+v", res.StatusCode, sub)
+	}
+	// A folder can't be moved into itself or into one of its own folders.
+	for _, parent := range []string{work.ID, sub.ID} {
+		if res := admin.do("PUT", "/api/v1/folders/"+work.ID, service.FolderInput{Name: "Work", ParentID: parent}, nil, nil); res.StatusCode != 400 {
+			t.Errorf("move into %s: %d", parent, res.StatusCode)
+		}
+	}
+
+	var note recording.Recording
+	admin.do("POST", "/api/v1/recordings/text", map[string]string{"title": "Plan", "markdown": ""}, nil, &note)
+	path := "/api/v1/recordings/" + note.ID + "/folder"
+	if res := admin.do("PUT", path, map[string]string{"folderId": "nope"}, nil, nil); res.StatusCode != 400 {
+		t.Fatalf("unknown folder: %d", res.StatusCode)
+	}
+	if res := admin.do("PUT", path, map[string]string{"folderId": sub.ID}, nil, &note); res.StatusCode != 200 || note.FolderID != sub.ID {
+		t.Fatalf("move note: %d %+v", res.StatusCode, note.FolderID)
+	}
+
+	// Deleting a folder moves its notes and folders up into its parent.
+	if res := admin.do("DELETE", "/api/v1/folders/"+sub.ID, nil, nil, nil); res.StatusCode != 204 {
+		t.Fatalf("delete sub: %d", res.StatusCode)
+	}
+	var got recording.Recording
+	if admin.do("GET", "/api/v1/recordings/"+note.ID, nil, nil, &got); got.FolderID != work.ID {
+		t.Fatalf("note after deleting its folder: %q", got.FolderID)
+	}
+	var child folder.Folder
+	admin.do("POST", "/api/v1/folders", service.FolderInput{Name: "Child", ParentID: work.ID}, nil, &child)
+	if res := admin.do("DELETE", "/api/v1/folders/"+work.ID, nil, nil, nil); res.StatusCode != 204 {
+		t.Fatalf("delete: %d", res.StatusCode)
+	}
+	var top recording.Recording
+	if admin.do("GET", "/api/v1/recordings/"+note.ID, nil, nil, &top); top.FolderID != "" {
+		t.Fatalf("note after deleting top folder: %q", got.FolderID)
+	}
+	list = nil
+	if admin.do("GET", "/api/v1/folders", nil, nil, &list); len(list) != 1 || list[0].ID != child.ID || list[0].ParentID != "" {
+		t.Fatalf("folders after delete: %+v", list)
+	}
+	var moved recording.Recording
+	if res := admin.do("PUT", path, map[string]string{"folderId": ""}, nil, &moved); res.StatusCode != 200 || moved.FolderID != "" {
+		t.Fatalf("move to top: %d", res.StatusCode)
 	}
 }

@@ -96,6 +96,16 @@ func (r *RecordingRepo) AssignOwnerless(ctx context.Context, ownerID string) (in
 	return assignOwnerless(ctx, r.c, ownerID)
 }
 
+func (r *RecordingRepo) MoveFolder(ctx context.Context, ownerID, from, to string) error {
+	filter := bson.M{"ownerId": ownerID, "folderId": from}
+	update := bson.M{"$set": bson.M{"folderId": to}}
+	if to == "" {
+		update = bson.M{"$unset": bson.M{"folderId": ""}}
+	}
+	_, err := r.c.UpdateMany(ctx, filter, update)
+	return err
+}
+
 func (r *RecordingRepo) RemoveLabel(ctx context.Context, ownerID, labelID string) error {
 	_, err := r.c.UpdateMany(ctx, bson.M{"ownerId": ownerID, "labels": labelID}, bson.M{"$pull": bson.M{"labels": labelID}})
 	return err

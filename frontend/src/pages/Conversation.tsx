@@ -6,11 +6,13 @@ import { CopyButton } from '../components/CopyButton';
 import { CopyIcon, DownloadIcon, RetranscribeIcon, TrashIcon } from '../components/Icons';
 import { inline, Markdown } from '../components/Markdown';
 import { NoteLabels } from '../components/Labels';
+import { MoveToFolder } from '../components/MoveToFolder';
 import { SummaryDetails } from '../components/SummaryDetails';
 import { useNotes } from '../context/NotesContext';
 import { Sync, useAutosave } from '../hooks/useAutosave';
 import { locale } from '../i18n';
 import { errorText } from '../lib/errors';
+import { folderPath } from '../lib/folders';
 import { formatBytes, formatClock, formatDate, formatDuration, noteType, processing, statusLabel, title as titleOf, when } from '../lib/recordings';
 
 // The rich text editor is downloaded on first use; the summary is shown read-only meanwhile.
@@ -97,6 +99,9 @@ function Highlights({ highlights, durationMs, onSeek }: { highlights: { offsetMs
   );
 }
 
+// SyncState is a colored dot at the far right of the note's toolbar: green when all is saved,
+// amber for unsaved changes, pulsing while saving, red when a save failed (click to retry).
+// The words are its tooltip and are read out by screen readers.
 function SyncState({ sync, error, onRetry }: { sync: Sync; error: string | null; onRetry: () => void }) {
   const { t } = useTranslation();
   const text =
@@ -109,16 +114,22 @@ function SyncState({ sync, error, onRetry }: { sync: Sync; error: string | null;
           : sync === 'offline'
             ? t('editor.sync.offline')
             : t('editor.sync.error', { error: error ?? '' });
+  const failed = sync === 'error' || sync === 'offline';
   return (
-    <span className={`sync-state ${sync}`} role="status" aria-live="polite">
-      <span className="sync-dot" aria-hidden="true" />
-      <span>{text}</span>
-      {(sync === 'error' || sync === 'offline') && (
-        <button type="button" className="link-button" onClick={onRetry}>
-          {t('editor.sync.retry')}
+    <>
+      {failed ? (
+        <button type="button" className={`sync-state ${sync}`} title={`${text} ${t('editor.sync.retryHint')}`} aria-label={`${text} ${t('editor.sync.retry')}`} onClick={onRetry}>
+          <span className="sync-dot" aria-hidden="true" />
         </button>
+      ) : (
+        <span className={`sync-state ${sync}`} title={text}>
+          <span className="sync-dot" aria-hidden="true" />
+        </span>
       )}
-    </span>
+      <span className="sr-only" role="status" aria-live="polite">
+        {text}
+      </span>
+    </>
   );
 }
 
@@ -224,6 +235,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
         : null;
 
   const state = statusLabel(rec, aiReady);
+  const folder = folderPath(rec.folderId, notes.folders);
   const d = when(rec);
   const pending = (empty: string) =>
     rec.status === 'failed' ? (
@@ -267,10 +279,10 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
             {d.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' })}
             {rec.format?.durationMs ? ` · ${formatDuration(rec.format.durationMs)}` : ''}
             {sourceBadge && ` · ${sourceBadge}`}
+            {folder.length > 0 && ` · ${folder.join(' / ')}`}
             {state && <span className={`state-pill${rec.status === 'failed' ? ' bad' : ''}`}>{state}</span>}
           </p>
           <NoteLabels rec={rec} setRec={setRec} />
-          {editable && <SyncState sync={autosave.sync} error={autosave.error} onRetry={() => void autosave.save()} />}
         </div>
       </div>
       {error && <p className="error">{error}</p>}
@@ -312,9 +324,11 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
               <RetranscribeIcon />
             </button>
           )}
+          <MoveToFolder rec={rec} setRec={setRec} />
           <button type="button" className="icon-button danger" disabled={busy} title={t('common.delete')} aria-label={t('common.delete')} onClick={handleDelete}>
             <TrashIcon />
           </button>
+          {editable && <SyncState sync={autosave.sync} error={autosave.error} onRetry={() => void autosave.save()} />}
         </div>
       </div>
 
@@ -465,18 +479,19 @@ export function Conversation() {
     load();
   }, [load]);
 
-  // The check mark and labels can also change in the sidebar; take them over.
+  // The check mark, labels and folder can also change in the sidebar; take them over.
   const listed = notes.recordings?.find((r) => r.id === id);
   const listedLabels = listed?.labels?.join(',') ?? '';
   const listedDone = listed?.done ?? false;
+  const listedFolder = listed?.folderId ?? '';
   useEffect(() => {
     if (!listed) return;
     setRecState((r) =>
-      r && r.id === listed.id && (r.done !== listed.done || (r.labels?.join(',') ?? '') !== listedLabels)
-        ? { ...r, done: listed.done, labels: listed.labels }
+      r && r.id === listed.id && (r.done !== listed.done || (r.labels?.join(',') ?? '') !== listedLabels || (r.folderId ?? '') !== listedFolder)
+        ? { ...r, done: listed.done, labels: listed.labels, folderId: listed.folderId }
         : r,
     );
-  }, [listedLabels, listedDone]);
+  }, [listedLabels, listedDone, listedFolder]);
 
   const inProgress = rec ? processing(rec) : false;
   useEffect(() => {

@@ -17,10 +17,11 @@ const (
 	CollSettings   = "settings"
 	CollThemes     = "themes"
 	CollLabels     = "labels"
+	CollFolders    = "folders"
 )
 
 // collections lists every collection the service owns. Setup creates any that are missing.
-var collections = []string{CollDevices, CollRecordings, CollUsers, CollSessions, CollSettings, CollThemes, CollLabels}
+var collections = []string{CollDevices, CollRecordings, CollUsers, CollSessions, CollSettings, CollThemes, CollLabels, CollFolders}
 
 // indexes lists the indexes per collection. Setup creates them; CreateMany on an existing
 // identical index is a no-op.
@@ -49,6 +50,9 @@ var indexes = map[string][]mongo.IndexModel{
 		{Keys: bson.D{{Key: "ownerId", Value: 1}, {Key: "name", Value: 1}}},
 	},
 	CollLabels: {
+		{Keys: bson.D{{Key: "ownerId", Value: 1}, {Key: "name", Value: 1}}},
+	},
+	CollFolders: {
 		{Keys: bson.D{{Key: "ownerId", Value: 1}, {Key: "name", Value: 1}}},
 	},
 	CollSessions: {
