@@ -90,6 +90,11 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	}, worker.Options{}, log)
 
 	notifications := service.NewNotificationService(memory.NewPushSubscriptions(), users, recs, nil, log)
+	oauthRepo := memory.NewOAuth()
+	userSvc.OAuth = oauthRepo
+	oauthSvc := service.NewOAuthService(oauthRepo, users)
+	mcp := service.NewMCPAccessService(users)
+	mcp.OAuth = oauthSvc
 	s := NewServer(Deps{
 		Cfg: config.Config{AdminToken: adminToken}, Log: log, Auth: auth,
 		Users:   userSvc,
@@ -99,7 +104,7 @@ func newAPIFixture(t *testing.T) *apiFixture {
 		AI:     service.NewAIService(memory.NewSettings(), themes, objects, nil, t.TempDir(), log),
 		Themes: themes, Labels: labels, Folders: folders, Remarkable: rm, Notifications: notifications,
 		Filters: filters, Times: service.NewTimeService(timeRepo, recs, users), Calendar: service.NewCalendarService(users, recs),
-		MCP: service.NewMCPAccessService(users),
+		MCP: mcp, OAuth: oauthSvc,
 	})
 	srv := httptest.NewServer(s.Router())
 	t.Cleanup(srv.Close)

@@ -102,12 +102,13 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
 - **Calendar feed**: **Settings → Account → Calendar** makes a private iCalendar link to
   subscribe to in Google Calendar, Apple Calendar or Outlook. It lists the open tasks with
   dates, repeating like the tasks, with their reminders as alarms.
-- **AI assistants (MCP)**: **Settings → Account → AI assistants** turns on knowpod's
-  [MCP](https://modelcontextprotocol.io) server at `/mcp` for you and makes a personal access
-  token. Add the server to Claude (custom connector, or `claude mcp add` in Claude Code) or
-  ChatGPT (developer mode app) with the token as a bearer token, and the assistant can
-  search, read, create and change your notes and tasks. Only your own notes are reachable,
-  and a new token or **Turn off** cuts the access.
+- **AI assistants (MCP)**: knowpod's [MCP](https://modelcontextprotocol.io) server at `/mcp`
+  lets AI assistants search, read, create and change your notes and tasks. Add the server URL
+  to Claude (custom connector, or `claude mcp add` in Claude Code) or ChatGPT (developer mode
+  app): they sign in through **OAuth**, and you allow them on knowpod's consent page. Only your
+  own notes are reachable; **Settings → Account → AI assistants** lists the connected
+  assistants to disconnect them, and makes a personal access token (bearer token) for tools
+  without OAuth.
 - **Reminders** arrive as push notifications in every browser or installed app they are
   turned on in (**Settings → Account → Notifications**), on phones too (on iPhone: from the Home Screen
   app).

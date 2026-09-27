@@ -12,6 +12,7 @@ import (
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/filter"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/folder"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/label"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/oauth"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/push"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/settings"
@@ -88,6 +89,31 @@ type UserRepository interface {
 	List(ctx context.Context) ([]*user.User, error)
 	Update(ctx context.Context, u *user.User) error
 	Delete(ctx context.Context, id string) error
+}
+
+// OAuthRepository persists the OAuth clients registered for the MCP server and the grants
+// users gave them. Lookups of missing documents return domain.ErrNotFound; grants past their
+// ExpiresAt may still be returned and must be checked by the caller.
+type OAuthRepository interface {
+	CreateClient(ctx context.Context, c *oauth.Client) error
+	GetClient(ctx context.Context, id string) (*oauth.Client, error)
+	CreateGrant(ctx context.Context, g *oauth.Grant) error
+	// ClaimCode atomically takes the grant with the authorization code hash and clears the
+	// code, so each code is exchanged once.
+	ClaimCode(ctx context.Context, codeHash string) (*oauth.Grant, error)
+	GetGrantByAccessHash(ctx context.Context, hash string) (*oauth.Grant, error)
+	GetGrantByRefreshHash(ctx context.Context, hash string) (*oauth.Grant, error)
+	UpdateGrant(ctx context.Context, g *oauth.Grant) error
+	// RotateGrant replaces the grant only while its refresh token hash is still
+	// prevRefreshHash, so each refresh token is used once; otherwise it returns
+	// domain.ErrNotFound.
+	RotateGrant(ctx context.Context, g *oauth.Grant, prevRefreshHash string) error
+	// TouchGrant records when the grant was last used, changing nothing else.
+	TouchGrant(ctx context.Context, id string, at time.Time) error
+	// ListGrants returns the user's grants, newest first.
+	ListGrants(ctx context.Context, userID string) ([]*oauth.Grant, error)
+	DeleteGrant(ctx context.Context, id string) error
+	DeleteGrantsByUser(ctx context.Context, userID string) error
 }
 
 // SessionRepository persists web UI sessions. Get returns domain.ErrNotFound for unknown

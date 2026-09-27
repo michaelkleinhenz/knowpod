@@ -232,6 +232,25 @@ export interface McpSettings {
   token?: string;
 }
 
+// McpApp is an AI assistant the user connected to the MCP server through OAuth.
+export interface McpApp {
+  id: string;
+  name: string;
+  createdAt: string;
+  lastUsedAt?: string;
+}
+
+// OAuthRequest holds the parameters of an OAuth authorization request, named as in OAuth.
+export type OAuthRequest = Record<string, string>;
+
+// OAuthAuthorization says which assistant asks for access, or (redirectTo) where the browser
+// goes back to when the request can't be granted.
+export interface OAuthAuthorization {
+  clientName?: string;
+  redirectUri?: string;
+  redirectTo?: string;
+}
+
 // BoardColumn is a column of a board with the IDs of the notes put into it, in order.
 export interface BoardColumn {
   id: string;
@@ -483,6 +502,12 @@ export const api = {
   mcp: () => request<McpSettings>('GET', '/me/mcp'),
   enableMcp: () => request<McpSettings>('POST', '/me/mcp'),
   disableMcp: () => request<void>('DELETE', '/me/mcp'),
+  mcpApps: () => request<McpApp[]>('GET', '/me/mcp/apps'),
+  disconnectMcpApp: (id: string) => request<void>('DELETE', `/me/mcp/apps/${encodeURIComponent(id)}`),
+  oauthAuthorization: (params: OAuthRequest) =>
+    request<OAuthAuthorization>('GET', `/oauth/authorize?${new URLSearchParams(params).toString()}`),
+  oauthDecide: (params: OAuthRequest, approve: boolean) =>
+    request<{ redirectTo: string }>('POST', '/oauth/authorize', { ...params, approve }),
   createActionItemTask: (id: string, itemId: string) =>
     request<{ task: Recording; note: Recording }>('POST', `/recordings/${encodeURIComponent(id)}/action-items/${encodeURIComponent(itemId)}/task`),
   dismissActionItem: (id: string, itemId: string, dismissed: boolean) =>

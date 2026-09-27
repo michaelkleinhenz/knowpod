@@ -53,7 +53,9 @@ type Server struct {
 	times         *service.TimeService
 	calendar      *service.CalendarService
 	// mcp signs in the AI assistants using the MCP server.
-	mcp     *service.MCPAccessService
+	mcp *service.MCPAccessService
+	// oauth lets AI assistants connect to the MCP server through OAuth.
+	oauth   *service.OAuthService
 	version string
 	now     func() time.Time
 }
@@ -86,6 +88,8 @@ type Deps struct {
 	Calendar *service.CalendarService
 	// MCP is optional in tests that don't use it.
 	MCP *service.MCPAccessService
+	// OAuth is optional in tests that don't use it; without it the OAuth endpoints are off.
+	OAuth *service.OAuthService
 	// Version is the app version, reported by the MCP server.
 	Version string
 }
@@ -100,7 +104,7 @@ func NewServer(d Deps) *Server {
 		cfg: d.Cfg, log: log, db: d.DB, auth: d.Auth, users: d.Users, devices: d.Devices, uploads: d.Uploads,
 		manual: d.Manual, actions: d.Actions, objects: d.Objects, pocket: d.Pocket, ai: d.AI, themes: d.Themes,
 		labels: d.Labels, folders: d.Folders, remarkable: d.Remarkable, notifications: d.Notifications,
-		filters: d.Filters, times: d.Times, calendar: d.Calendar, mcp: d.MCP, version: cmp.Or(d.Version, "dev"),
+		filters: d.Filters, times: d.Times, calendar: d.Calendar, mcp: d.MCP, oauth: d.OAuth, version: cmp.Or(d.Version, "dev"),
 		now: time.Now,
 	}
 }
@@ -113,20 +117,32 @@ func (s *Server) Router() http.Handler {
 	r.Use(middleware.Recoverer)
 	r.Use(securityHeaders)
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{s.cfg.FrontendURL, "http://localhost:5173"},
+		// The web app's origins; AI assistants running in a browser may call the MCP server
+		// and the OAuth endpoints from anywhere.
+		AllowOriginFunc: func(r *http.Request, origin string) bool {
+			return origin == s.cfg.FrontendURL || origin == "http://localhost:5173" || oauthPublicPath(r.URL.Path)
+		},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Authorization", "Content-Type", uploadOffsetHeader},
-		ExposedHeaders:   []string{uploadOffsetHeader},
+		AllowedHeaders:   []string{"Authorization", "Content-Type", uploadOffsetHeader, "Mcp-Protocol-Version"},
+		ExposedHeaders:   []string{uploadOffsetHeader, "WWW-Authenticate"},
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
 
 	r.Get("/healthz", s.handleHealth)
 
-	// --- MCP server for AI assistants (the user's MCP access token) ---
+	// --- MCP server for AI assistants (the user's MCP access token, or OAuth) ---
 	r.Post(service.MCPPath, s.handleMCP)
 	r.Get(service.MCPPath, s.handleMCPNotAllowed)
 	r.Delete(service.MCPPath, s.handleMCPNotAllowed)
+
+	// --- OAuth for the MCP server (the consent page at /oauth/authorize is the web app's) ---
+	r.Get(oauthProtectedResourcePath, s.handleProtectedResourceMetadata)
+	r.Get(oauthProtectedResourcePath+service.MCPPath, s.handleProtectedResourceMetadata)
+	r.Get(oauthServerMetadataPath, s.handleAuthServerMetadata)
+	r.With(httprate.LimitByIP(20, time.Hour)).Post(oauthRegisterPath, s.handleOAuthRegister)
+	r.With(httprate.LimitByIP(60, time.Minute)).Post(oauthTokenPath, s.handleOAuthToken)
+	r.With(httprate.LimitByIP(60, time.Minute)).Post(oauthRevokePath, s.handleOAuthRevoke)
 
 	r.Route("/api/v1", func(api chi.Router) {
 		api.Get("/info", s.handleInfo)
@@ -175,6 +191,10 @@ func (s *Server) Router() http.Handler {
 			u.Get("/me/mcp", s.handleGetMCP)
 			u.Post("/me/mcp", s.handleEnableMCP)
 			u.Delete("/me/mcp", s.handleDisableMCP)
+			u.Get("/me/mcp/apps", s.handleListMCPApps)
+			u.Delete("/me/mcp/apps/{id}", s.handleDisconnectMCPApp)
+			u.Get("/oauth/authorize", s.handleOAuthAuthorizeInfo)
+			u.Post("/oauth/authorize", s.handleOAuthAuthorize)
 			u.Get("/ai/status", s.handleAIStatus)
 			u.Get("/ai/models", s.handleOpenRouterModels)
 			u.Get("/ai/languages", s.handleSummaryLanguages)

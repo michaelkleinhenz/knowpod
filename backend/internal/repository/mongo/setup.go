@@ -27,10 +27,14 @@ const (
 	CollFilters = "filters"
 	// CollTimeEntries holds the time logged on notes.
 	CollTimeEntries = "timeEntries"
+	// CollOAuthClients holds the AI assistants registered for the MCP server; CollOAuthGrants
+	// the access users gave them.
+	CollOAuthClients = "oauthClients"
+	CollOAuthGrants  = "oauthGrants"
 )
 
 // collections lists every collection the service owns. Setup creates any that are missing.
-var collections = []string{CollDevices, CollRecordings, CollUsers, CollSessions, CollSettings, CollThemes, CollLabels, CollFolders, CollTablets, CollCounters, CollPushSubscriptions, CollFilters, CollTimeEntries}
+var collections = []string{CollDevices, CollRecordings, CollUsers, CollSessions, CollSettings, CollThemes, CollLabels, CollFolders, CollTablets, CollCounters, CollPushSubscriptions, CollFilters, CollTimeEntries, CollOAuthClients, CollOAuthGrants}
 
 // indexes lists the indexes per collection. Setup creates them; CreateMany on an existing
 // identical index is a no-op.
@@ -81,6 +85,14 @@ var indexes = map[string][]mongo.IndexModel{
 		// At most one running timer per user.
 		{Keys: bson.D{{Key: "ownerId", Value: 1}}, Options: options.Index().SetName("running_timer").SetUnique(true).
 			SetPartialFilterExpression(bson.M{"running": true})},
+	},
+	CollOAuthGrants: {
+		{Keys: bson.D{{Key: "userId", Value: 1}, {Key: "createdAt", Value: -1}}},
+		{Keys: bson.D{{Key: "codeHash", Value: 1}}, Options: options.Index().SetUnique(true).SetSparse(true)},
+		{Keys: bson.D{{Key: "accessHash", Value: 1}}, Options: options.Index().SetUnique(true).SetSparse(true)},
+		{Keys: bson.D{{Key: "refreshHash", Value: 1}}, Options: options.Index().SetUnique(true).SetSparse(true)},
+		// MongoDB deletes grants once their code or refresh token expired.
+		{Keys: bson.D{{Key: "expiresAt", Value: 1}}, Options: options.Index().SetExpireAfterSeconds(0)},
 	},
 	CollThemes: {
 		{Keys: bson.D{{Key: "ownerId", Value: 1}, {Key: "name", Value: 1}}},

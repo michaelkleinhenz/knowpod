@@ -46,7 +46,7 @@ export default defineConfig({
         navigateFallback: '/index.html',
         // Never answer API calls, audio, the health check or the API description from the
         // app-shell fallback.
-        navigateFallbackDenylist: [/^\/api\//, /^\/healthz/],
+        navigateFallbackDenylist: [/^\/api\//, /^\/healthz/, /^\/mcp$/, /^\/\.well-known\//],
         cleanupOutdatedCaches: true,
       },
     }),

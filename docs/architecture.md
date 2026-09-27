@@ -50,7 +50,7 @@ There are four kinds of callers:
 | Admin in the web UI | Session cookie, user with role `admin` | `requireAdmin` | The above for their own data, plus `/admin/*` (users, OpenRouter) |
 | Script | `ADMIN_TOKEN` (`Authorization: Bearer …`) | `requireUser` / `requireAdmin` | Everything above, acting as the built-in admin, with `All` set: lists and lookups cover every user's data |
 | Pocket | HMAC signature, secret of the user named by the webhook URL | `handlePocketWebhook` | Queue recordings for that user |
-| AI assistant | The user's MCP access token (`Authorization: Bearer kpm_…`) | `handleMCP` → `MCPAccessService.Authenticate` | The MCP server's tools, on that user's own data |
+| AI assistant | An OAuth access token (`Authorization: Bearer kpo_…`), or the user's MCP access token (`kpm_…`) | `handleMCP` → `MCPAccessService.Authenticate` (→ `OAuthService.Authenticate` for `kpo_`) | The MCP server's tools, on that user's own data |
 
 A bearer header on a user/admin route is always treated as a script token; otherwise the
 session cookie decides.
@@ -386,7 +386,8 @@ assistants reach a user's notes through a Model Context Protocol server at `/mcp
 it, and `DELETE /me/mcp` turns access off. The server speaks the Streamable HTTP transport
 in its stateless form: each POST carries one JSON-RPC message (or a batch) and gets one JSON
 response; notifications get `202`, and `GET`/`DELETE` (event streams, sessions) get `405`.
-Without a valid token it answers `401` with `WWW-Authenticate: Bearer`. It implements
+Without a valid token it answers `401` with `WWW-Authenticate: Bearer …, resource_metadata="…"`,
+which starts OAuth in assistants that support it (below). It implements
 `initialize` (agreeing on the client's protocol version when it knows it), `ping`,
 `tools/list` and `tools/call`; the tools (`search_notes`, `get_note`, `list_tasks`,
 `list_folders`, `list_labels`, `create_note`, `update_note`, `update_task`) call the same
@@ -394,6 +395,36 @@ services as the REST API with the token's user as the account, so ownership chec
 unchanged. Notes are named by ID or number, folders and labels by ID or name. Tool failures
 (unknown note, invalid input) come back as results with `isError`, so the assistant can
 correct itself; unexpected errors are logged and reported as "internal error".
+
+**OAuth for the MCP server** (`service/oauth.go`, `transport/http/oauth_handlers.go`,
+`pages/OAuthAuthorize.tsx`). Most assistants (Claude's custom connectors, ChatGPT apps) only
+connect through OAuth, as the MCP authorization spec describes, so knowpod is an OAuth 2.1
+authorization server for its own MCP server:
+
+- `/.well-known/oauth-protected-resource[/mcp]` (RFC 9728) names the resource (`<base>/mcp`)
+  and knowpod itself as its authorization server; `/.well-known/oauth-authorization-server`
+  (RFC 8414) lists the endpoints. The base URL is the request's (`X-Forwarded-Proto` honored).
+- `POST /oauth/register` is dynamic client registration (RFC 7591, 20 per hour and IP).
+  Redirect URIs must be `https`, `http` on loopback (any port matches, RFC 8252) or a native
+  app's custom scheme. Clients authenticating at the token endpoint (`client_secret_basic`,
+  the default, or `client_secret_post`) get a secret (`kps_…`, only its SHA-256 is stored);
+  public clients (`none`) rely on PKCE.
+- `/oauth/authorize` is a page of the web app (behind the sign-in). It checks the request
+  with `GET /api/v1/oauth/authorize`: an unknown client or redirect URI is shown as an error,
+  other problems (no PKCE `S256`, `response_type` not `code`, a `resource` other than this
+  MCP server) go back to the client. The user allows or declines; `POST
+  /api/v1/oauth/authorize` answers the address the browser returns to, with a code (valid 5
+  minutes) or `error=access_denied`, plus the client's `state`.
+- `POST /oauth/token` (form-encoded) exchanges a code (once, atomically, checking client,
+  redirect URI and PKCE verifier) or a refresh token for an access token (`kpo_…`, 1 hour) and
+  a refresh token (`kpr_…`, 90 days). Refresh tokens rotate: each is used once.
+  `POST /oauth/revoke` (RFC 7009) ends a grant.
+- These endpoints and `/mcp` allow any CORS origin (they don't use cookies), for assistants
+  running in a browser.
+
+The user sees the connected assistants under **Settings → Account → AI assistants**
+(`GET /me/mcp/apps`) and can disconnect each (`DELETE /me/mcp/apps/{id}`); deleting a user
+deletes their grants. The personal access token stays for tools without OAuth.
 
 **Labels** (`service/labels.go`). `GET /labels` lists the built-in labels (only `task`,
 named by the UI in its language) and the user's own; `POST`/`PUT`/`DELETE /labels/{id}`
@@ -619,6 +650,17 @@ Indexes: `(deviceId, clientId)` unique; `(status, notBefore)` for claiming;
 | `_id` | SHA-256 of the session token |
 | `userId` | The signed-in user (indexed, to end all their sessions) |
 | `createdAt`, `expiresAt` | TTL index on `expiresAt` deletes expired sessions |
+
+**`oauthClients`**: the assistants registered through dynamic client registration: `_id`
+(the client ID), `name`, `redirectUris`, `authMethod`, `secretHash` (SHA-256; public clients
+have none), `createdAt`.
+
+**`oauthGrants`**: the access users gave assistants: `_id`, `userId` (indexed with
+`createdAt`), `clientId`, `scope`, `redirectUri`, `codeChallenge`, and the SHA-256 of the
+authorization code (`codeHash`, until exchanged), the access token (`accessHash`, expiring at
+`accessExpiresAt`) and the refresh token (`refreshHash`), each in a unique, sparse index;
+`createdAt`, `lastUsedAt`, and `expiresAt` (the code's, then the refresh token's expiry; TTL
+index).
 
 **`themes`**: users' own summary themes: `_id`, `ownerId` (indexed with `name`), `name`,
 `description`, `instructions`, `builtInId` (set for a user's version of a built-in theme),

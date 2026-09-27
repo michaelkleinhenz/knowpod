@@ -108,8 +108,11 @@ tags:
     description: |
       Access for AI assistants (Claude, ChatGPT, …) through the MCP server at `/mcp`, outside
       this API: a Model Context Protocol server (Streamable HTTP, stateless JSON responses)
-      whose tools search, read, create and change your notes and tasks. It authenticates with
-      your MCP access token, `Authorization: Bearer kpm_…`.
+      whose tools search, read, create and change your notes and tasks. Assistants sign in
+      through OAuth 2.1 (MCP authorization: protected resource metadata at
+      `/.well-known/oauth-protected-resource/mcp`, authorization server metadata at
+      `/.well-known/oauth-authorization-server`, dynamic client registration, PKCE), or with
+      your own MCP access token, `Authorization: Bearer kpm_…`.
   - name: "Admin: users"
     description: Create, change and delete users. Administrators only.
   - name: "Admin: AI settings"
@@ -1682,6 +1685,81 @@ paths:
       responses:
         "204": { description: Turned off }
 
+  /me/mcp/apps:
+    get:
+      tags: ["MCP server"]
+      summary: List the AI assistants connected through OAuth
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: Connected assistants, newest first
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/MCPApp" } } } }
+
+  /me/mcp/apps/{id}:
+    delete:
+      tags: ["MCP server"]
+      summary: Disconnect an AI assistant
+      description: Its tokens stop working.
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Disconnected }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /oauth/authorize:
+    get:
+      tags: ["MCP server"]
+      summary: Check an OAuth authorization request
+      description: |
+        Used by the web app's consent page at `/oauth/authorize`, which AI assistants open
+        with the parameters of an OAuth authorization request. Answers who asks, or in
+        `redirectTo` where to send the browser back to when the request can't be granted. An
+        unknown client or redirect URI is an error (code `invalid_client` or
+        `invalid_redirect_uri`).
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: client_id, in: query, required: true, schema: { type: string } }
+        - { name: redirect_uri, in: query, required: true, schema: { type: string } }
+        - { name: response_type, in: query, required: true, schema: { type: string, enum: [code] } }
+        - { name: code_challenge, in: query, required: true, schema: { type: string } }
+        - { name: code_challenge_method, in: query, required: true, schema: { type: string, enum: [S256] } }
+        - { name: scope, in: query, schema: { type: string } }
+        - { name: state, in: query, schema: { type: string } }
+        - { name: resource, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: The request
+          content: { application/json: { schema: { $ref: "#/components/schemas/OAuthAuthorization" } } }
+        "400": { $ref: "#/components/responses/Error" }
+    post:
+      tags: ["MCP server"]
+      summary: Allow or decline an OAuth authorization request
+      description: Answers the address the browser goes back to the assistant with, holding an authorization code or the refusal.
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: The authorization request's parameters (as in the GET), and the decision.
+              properties:
+                client_id: { type: string }
+                redirect_uri: { type: string }
+                response_type: { type: string }
+                code_challenge: { type: string }
+                code_challenge_method: { type: string }
+                scope: { type: string }
+                state: { type: string }
+                resource: { type: string }
+                approve: { type: boolean }
+      responses:
+        "200":
+          description: Where the browser goes
+          content: { application/json: { schema: { type: object, properties: { redirectTo: { type: string } } } } }
+        "400": { $ref: "#/components/responses/Error" }
+
   /calendar/{token}.ics:
     get:
       tags: ["Calendar"]
@@ -2254,6 +2332,21 @@ components:
         enabled: { type: boolean }
         createdAt: { type: string, format: date-time, description: When the current token was made }
         token: { type: string, example: kpm_abc, description: 'Only right after the token was made: the bearer token for the MCP server' }
+
+    MCPApp:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string, example: Claude, description: The name the assistant registered with }
+        createdAt: { type: string, format: date-time, description: When it was allowed }
+        lastUsedAt: { type: string, format: date-time }
+
+    OAuthAuthorization:
+      type: object
+      properties:
+        clientName: { type: string, example: Claude }
+        redirectUri: { type: string }
+        redirectTo: { type: string, description: 'Set instead when the request fails: send the browser here' }
 
     Folder:
       type: object

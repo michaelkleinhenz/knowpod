@@ -8,6 +8,7 @@ import { Conversation } from './pages/Conversation';
 import { Login } from './pages/Login';
 import { NoteByNumber } from './pages/NoteByNumber';
 import { NotesHome, NotesLayout } from './pages/NotesLayout';
+import { OAuthAuthorize } from './pages/OAuthAuthorize';
 import { Settings } from './pages/Settings';
 import { TimeLog } from './pages/TimeLog';
 
@@ -18,7 +19,7 @@ function RequireLogin({ children, admin = false }: { children: ReactNode; admin?
   const { account, loading } = useAuth();
   const location = useLocation();
   if (loading) return <p className="muted">{t('common.loading')}</p>;
-  if (!account) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  if (!account) return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
   if (admin && account.role !== 'admin') return <Navigate to="/" replace />;
   return <>{children}</>;
 }
@@ -45,6 +46,14 @@ export default function App() {
           element={
             <RequireLogin>
               <Settings />
+            </RequireLogin>
+          }
+        />
+        <Route
+          path="/oauth/authorize"
+          element={
+            <RequireLogin>
+              <OAuthAuthorize />
             </RequireLogin>
           }
         />

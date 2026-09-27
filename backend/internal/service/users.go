@@ -61,6 +61,8 @@ type UserService struct {
 	// Push holds the browsers that receive users' notifications, removed with the user.
 	// Optional.
 	Push ports.PushSubscriptionRepository
+	// OAuth holds the access users gave AI assistants, removed with the user. Optional.
+	OAuth ports.OAuthRepository
 	// Remarkable forgets users' reMarkable links with the user. Optional.
 	Remarkable interface {
 		DeleteByOwner(ctx context.Context, userID string) error
@@ -255,6 +257,11 @@ func (s *UserService) Delete(ctx context.Context, actor *Account, id string) err
 	}
 	if s.Push != nil {
 		if err := s.Push.DeleteByUser(ctx, u.ID); err != nil {
+			return err
+		}
+	}
+	if s.OAuth != nil {
+		if err := s.OAuth.DeleteGrantsByUser(ctx, u.ID); err != nil {
 			return err
 		}
 	}

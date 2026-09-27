@@ -69,6 +69,7 @@ func main() {
 	pushRepo := repo.NewPushSubscriptionRepo(store)
 	filterRepo := repo.NewFilterRepo(store)
 	timeRepo := repo.NewTimeEntryRepo(store)
+	oauthRepo := repo.NewOAuthRepo(store)
 
 	// Object storage.
 	objects, err := s3store.New(ctx, s3store.Options{
@@ -160,6 +161,9 @@ func main() {
 	timeSvc := service.NewTimeService(timeRepo, recordings, users)
 	calendarSvc := service.NewCalendarService(users, recordings)
 	mcpSvc := service.NewMCPAccessService(users)
+	oauthSvc := service.NewOAuthService(oauthRepo, users)
+	mcpSvc.OAuth = oauthSvc
+	userSvc.OAuth = oauthRepo
 	userSvc.Push = pushRepo
 	actions.Users = users
 	authSvc.OnTimeZoneChanged = actions.RescheduleReminders
@@ -191,7 +195,7 @@ func main() {
 		Cfg: cfg, Log: log, DB: store, Auth: authSvc, Users: userSvc, Devices: deviceSvc, Uploads: uploadSvc,
 		Manual: manualSvc, Actions: actions, Objects: objects, Pocket: pocketSvc, AI: aiSvc, Themes: themeSvc,
 		Labels: labelSvc, Folders: folderSvc, Remarkable: remarkableSvc, Notifications: notifySvc,
-		Filters: filterSvc, Times: timeSvc, Calendar: calendarSvc, MCP: mcpSvc, Version: version,
+		Filters: filterSvc, Times: timeSvc, Calendar: calendarSvc, MCP: mcpSvc, OAuth: oauthSvc, Version: version,
 	})
 	httpServer := &http.Server{
 		Addr:              ":" + cfg.Port,

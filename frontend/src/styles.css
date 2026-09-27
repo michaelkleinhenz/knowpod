@@ -4842,3 +4842,20 @@ a.note-ref:hover {
 .trash-view-head .day-heading {
   margin: 0;
 }
+
+/* The AI assistants connected to the MCP server, each with its Disconnect button. */
+.mcp-apps {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+}
+
+.mcp-apps li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0;
+  border-top: 1px solid var(--color-border);
+  font-size: 0.9rem;
+}
