@@ -620,8 +620,8 @@ A note's page (`pages/Conversation.tsx`) puts its icon actions on the row with i
 labels, and its save state in the top right corner. Notes other than boards get a sidebar
 (`.note-aside`) with the icon actions, task, labels and details; a CSS container query on
 the note's own width (`.conversation.with-aside`) shows it only when there is room, and then
-hides the icon actions, labels, date and the other repeated details from the header. Both
-places render the same components, so either one edits the note.
+hides the icon actions, labels, number, date and the other repeated details from the header.
+Both places render the same components, so either one edits the note.
 
 The list switches (remembered per browser) between **By time**, notes grouped by day, and
 **Folders** (`components/FolderTree.tsx`), a tree of folders with notes sorted by title.

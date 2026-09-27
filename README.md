@@ -76,7 +76,7 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
   icon actions; a dot in the top right corner shows whether its edits are saved. On wide
   screens a sidebar next to the note (not on boards) holds its icon actions, task (check
   box, date, priority), labels and details (date, type, duration, folder, boards, status,
-  model), and the header keeps only the title and number; on narrower screens they stay in
+  model), and the header keeps only the title; on narrower screens they stay in
   the header.
 - Notes can carry **labels**: colored chips on the note's page, with your own labels
   defined on the spot or under **Settings → Labels**. The built-in **Task** label adds a

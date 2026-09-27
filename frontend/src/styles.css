@@ -3862,11 +3862,16 @@ a.note-ref:hover {
     display: block;
   }
 
-  /* The sidebar shows these; the header keeps the number and state. */
+  /* The sidebar shows these; the header keeps only a processing state. */
   .note-layout .header-labels,
   .note-layout .header-tools,
-  .note-layout .meta-extra {
+  .note-layout .meta-extra,
+  .note-layout .note-meta-row:not(:has(.state-pill)) {
     display: none;
+  }
+
+  .note-layout .conversation-meta .state-pill {
+    margin-left: 0;
   }
 }
 

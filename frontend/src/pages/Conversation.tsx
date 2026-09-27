@@ -479,7 +479,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
           {/* The date and labels share a row with the note's icon actions when there is room. */}
           <div className="note-meta-row">
             <p className="conversation-meta muted">
-              {rec.number ? <span className="note-number">#{rec.number}</span> : null}
+              {rec.number ? <span className="note-number meta-extra">#{rec.number}</span> : null}
               <span className="meta-item meta-extra">{whenText}</span>
               {rec.format?.durationMs ? <span className="meta-item meta-extra">{formatDuration(rec.format.durationMs)}</span> : null}
               {isDocument && rec.pages ? <span className="meta-item meta-extra">{t('conversation.pages', { count: rec.pages })}</span> : null}
