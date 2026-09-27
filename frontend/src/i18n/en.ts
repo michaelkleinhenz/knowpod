@@ -462,7 +462,7 @@ export const en = {
     tabs: { general: 'General', themes: 'Themes', labels: 'Labels', ai: 'AI processing' },
     language: {
       title: 'Language',
-      hint: 'The language of the app. It is saved with your account.',
+      hint: 'The language of the app. It is saved with your account, and new transcripts and summaries are written in it.',
       label: 'App language',
       names: { en: 'English', de: 'Deutsch' },
     },

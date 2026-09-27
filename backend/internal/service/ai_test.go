@@ -15,6 +15,7 @@ import (
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/audio"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/audio/audiotest"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/user"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/openrouter"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/repository/memory"
 	memstore "github.com/michaelkleinhenz/knowpod-service/backend/internal/storage/memory"
@@ -216,5 +217,67 @@ func TestRecordingActions(t *testing.T) {
 	}
 	if _, err := recs.Get(ctx, "r1"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("recording not deleted: %v", err)
+	}
+}
+
+func TestInLanguage(t *testing.T) {
+	for _, p := range []string{transcriptionPrompt, notebookPrompt, pdfPrompt} {
+		if inLanguage(p, "") != p {
+			t.Fatal("no language changed the prompt")
+		}
+		got := inLanguage(p, "German")
+		if strings.Contains(got, "original language") || strings.Contains(got, "Do not translate") ||
+			!strings.Contains(got, "in German, translating anything in another language into German. Do not summarize") {
+			t.Fatalf("prompt = %q", got)
+		}
+	}
+}
+
+func TestOwnerLanguage(t *testing.T) {
+	ctx := context.Background()
+	ai := &fakeAI{answer: `{"title": "Standup", "summary": "Done."}`}
+	s, objects := newAI(t, ai)
+	users := memory.NewUsers()
+	_ = users.Create(ctx, &user.User{ID: "u1", Email: "a@example.com", Role: user.RoleUser, Language: "de"})
+	_ = users.Create(ctx, &user.User{ID: "u2", Email: "b@example.com", Role: user.RoleUser})
+	s.Users = users
+	mp3 := []byte("ID3\x04\x00 fake mp3")
+	_ = objects.Put(ctx, "recordings/pocket/r1.mp3", bytes.NewReader(mp3), int64(len(mp3)), "audio/mpeg")
+	newRec := func(owner string) *recording.Recording {
+		return &recording.Recording{ID: "r1", OwnerID: owner, Transcript: &recording.Transcript{Text: "Speaker 1: hello"},
+			Audio: &recording.Object{Key: "recordings/pocket/r1.mp3", ContentType: "audio/mpeg", Size: int64(len(mp3))}}
+	}
+	lastPrompt := func() string {
+		r := ai.requests[len(ai.requests)-1]
+		if c, ok := r.Messages[0].Content.(string); ok {
+			return c
+		}
+		return r.Messages[0].Content.([]any)[0].(openrouter.TextPart).Text
+	}
+
+	// The owner chose German: the transcript and the summary are written in German.
+	rec := newRec("u1")
+	if err := s.Transcribe(ctx, rec); err != nil || !strings.Contains(lastPrompt(), "in German, translating") {
+		t.Fatalf("transcription prompt = %q, %v", lastPrompt(), err)
+	}
+	rec.Transcript.Text = "Speaker 1: hello"
+	if err := s.Summarize(ctx, rec); err != nil || rec.Summary.Language != "de-DE" || !strings.Contains(lastPrompt(), "in German, regardless") {
+		t.Fatalf("summary language %q, prompt %q, %v", rec.Summary.Language, lastPrompt(), err)
+	}
+
+	// A language chosen for the recording still wins.
+	rec.SummaryOptions.Language = "fr-FR"
+	if err := s.Summarize(ctx, rec); err != nil || rec.Summary.Language != "fr-FR" || !strings.Contains(lastPrompt(), "in French") {
+		t.Fatalf("summary language %q, %v", rec.Summary.Language, err)
+	}
+
+	// Without a language setting, the recording's own language is kept.
+	rec = newRec("u2")
+	if err := s.Transcribe(ctx, rec); err != nil || !strings.Contains(lastPrompt(), "in its original language") {
+		t.Fatalf("transcription prompt = %q, %v", lastPrompt(), err)
+	}
+	rec.Transcript.Text = "Speaker 1: hello"
+	if err := s.Summarize(ctx, rec); err != nil || rec.Summary.Language != "auto" || !strings.Contains(lastPrompt(), "language of the transcript") {
+		t.Fatalf("summary language %q, %v", rec.Summary.Language, err)
 	}
 }

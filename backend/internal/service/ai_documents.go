@@ -38,8 +38,9 @@ Output only the Markdown. If the document holds no text, output nothing.`
 
 // readDocument is the stage stored → transcribed for documents: a vision model reads the
 // pages (notebook pages as images, PDFs as they are) and the text becomes the transcript.
-// EPUBs are not read.
-func (s *AIService) readDocument(ctx context.Context, st *settings.OpenRouter, rec *recording.Recording) error {
+// EPUBs are not read. A non-empty language (e.g. "German") is the language the text is
+// written down in.
+func (s *AIService) readDocument(ctx context.Context, st *settings.OpenRouter, rec *recording.Recording, language string) error {
 	if rec.Original == nil {
 		return errors.New("the document's files have not been stored")
 	}
@@ -72,9 +73,9 @@ func (s *AIService) readDocument(ctx context.Context, st *settings.OpenRouter, r
 	var text string
 	switch a.Kind() {
 	case remarkable.KindNotebook:
-		text, err = s.readNotebook(ctx, st.APIKey, model, a)
+		text, err = s.readNotebook(ctx, st.APIKey, model, language, a)
 	case remarkable.KindPDF:
-		text, err = s.readPDF(ctx, st.APIKey, model, a, rec.Pages)
+		text, err = s.readPDF(ctx, st.APIKey, model, language, a, rec.Pages)
 	default:
 		model = "" // EPUBs aren't read
 	}
@@ -89,7 +90,7 @@ func (s *AIService) readDocument(ctx context.Context, st *settings.OpenRouter, r
 
 // readNotebook renders the pages with writing on them and has the model read them, a few
 // pages per request.
-func (s *AIService) readNotebook(ctx context.Context, apiKey, model string, a *remarkable.Archive) (string, error) {
+func (s *AIService) readNotebook(ctx context.Context, apiKey, model, language string, a *remarkable.Archive) (string, error) {
 	pages, err := a.Pages()
 	if err != nil {
 		return "", err
@@ -105,12 +106,13 @@ func (s *AIService) readNotebook(ctx context.Context, apiKey, model string, a *r
 		skipped = len(written) - maxDocumentPages
 		written = written[:maxDocumentPages]
 	}
+	prompt := inLanguage(notebookPrompt, language)
 	var parts []string
 	for from := 0; from < len(written); from += pagesPerRequest {
 		chunk := written[from:min(from+pagesPerRequest, len(written))]
-		content := []any{openrouter.Text(notebookPrompt)}
+		content := []any{openrouter.Text(prompt)}
 		if len(written) > len(chunk) {
-			content[0] = openrouter.Text(notebookPrompt + fmt.Sprintf("\nThese are pages %d to %d of a longer notebook; continue where the previous pages left off.",
+			content[0] = openrouter.Text(prompt + fmt.Sprintf("\nThese are pages %d to %d of a longer notebook; continue where the previous pages left off.",
 				chunk[0]+1, chunk[len(chunk)-1]+1))
 		}
 		for _, i := range chunk {
@@ -138,7 +140,7 @@ func (s *AIService) readNotebook(ctx context.Context, apiKey, model string, a *r
 }
 
 // readPDF sends the PDF to the model as it is.
-func (s *AIService) readPDF(ctx context.Context, apiKey, model string, a *remarkable.Archive, pages int) (string, error) {
+func (s *AIService) readPDF(ctx context.Context, apiKey, model, language string, a *remarkable.Archive, pages int) (string, error) {
 	body, size, err := a.Original()
 	if err != nil {
 		return "", err
@@ -152,7 +154,7 @@ func (s *AIService) readPDF(ctx context.Context, apiKey, model string, a *remark
 	if err != nil {
 		return "", err
 	}
-	prompt := pdfPrompt
+	prompt := inLanguage(pdfPrompt, language)
 	if pages > maxDocumentPages {
 		prompt += fmt.Sprintf("\nOnly read the first %d pages.", maxDocumentPages)
 	}
