@@ -1,4 +1,4 @@
-import { DragEvent, HTMLAttributes, ReactNode } from 'react';
+import { DragEvent, HTMLAttributes, MouseEvent, ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { Recording } from '../api/client';
@@ -15,7 +15,7 @@ interface Props {
   onSetDone: (r: Recording, done: boolean) => void;
   onDragStart?: (e: DragEvent) => void;
   // sub is set for a note with sub-notes: how many, and whether they are shown below it.
-  sub?: { count: number; open: boolean; onToggle: () => void };
+  sub?: { count: number; open: boolean; onToggle: (e: MouseEvent) => void };
   // lineProps go on the row itself (e.g. to drop notes onto it); drop highlights it.
   lineProps?: HTMLAttributes<HTMLDivElement>;
   drop?: boolean;
@@ -61,7 +61,7 @@ export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, onDragStart,
             type="button"
             className="note-sub-toggle"
             aria-expanded={sub.open}
-            title={t(sub.open ? 'subNotes.hide' : 'subNotes.show')}
+            title={`${t(sub.open ? 'subNotes.hide' : 'subNotes.show')} (${t('subNotes.allHint')})`}
             aria-label={t(sub.open ? 'subNotes.hideLabel' : 'subNotes.showLabel', { title: title(r), count: sub.count })}
             onClick={sub.onToggle}
           >

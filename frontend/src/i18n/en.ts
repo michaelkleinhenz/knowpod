@@ -160,6 +160,9 @@ export const en = {
     hide: 'Hide sub-notes',
     showLabel: 'Show the {{count}} sub-notes of “{{title}}”',
     hideLabel: 'Hide the sub-notes of “{{title}}”',
+    allHint: 'Alt+click: all levels',
+    expandAll: 'Expand all',
+    collapseAll: 'Collapse all',
     moveOut: 'Move out of “{{title}}”',
   },
   conversation: {

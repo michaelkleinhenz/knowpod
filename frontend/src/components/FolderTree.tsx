@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { api, Folder, Recording } from '../api/client';
 import { useNotes } from '../context/NotesContext';
 import { errorText } from '../lib/errors';
-import { childFolders, folderOf, isInside, isUnderNote, sortByTitle, subNotes } from '../lib/folders';
+import { childFolders, folderOf, isInside, isUnderNote, notePath, sortByTitle, subNotes, withSubNotes } from '../lib/folders';
+import { setOpen, useOpen } from '../lib/treeOpen';
 import { formatDate, when } from '../lib/recordings';
 import { ChevronIcon, FolderIcon, NewFolderIcon, PencilIcon, TrashIcon } from './Icons';
 import { NoteRow } from './NoteRow';
@@ -11,19 +12,10 @@ import { NoteRow } from './NoteRow';
 // Drag data types; the browser only reveals the types (not the data) while dragging over.
 const NOTE_TYPE = 'application/x-knowpod-note';
 const FOLDER_TYPE = 'application/x-knowpod-folder';
-const OPEN_KEY = 'knowpod.openFolders';
 const NO_FOLDERS: Folder[] = [];
 
 // Editing is the inline name field: renaming folder id, or a new folder in parentId.
 type Editing = { id?: string; parentId: string; name: string };
-
-function loadOpen(): Set<string> {
-  try {
-    return new Set(JSON.parse(localStorage.getItem(OPEN_KEY) ?? '[]') as string[]);
-  } catch {
-    return new Set();
-  }
-}
 
 function dragged(e: DragEvent): 'note' | 'folder' | null {
   const types = e.dataTransfer.types;
@@ -47,19 +39,11 @@ interface Props {
 export function FolderTree({ notes, query, activeId, aiReady, onSetDone, newFolder }: Props) {
   const { t } = useTranslation();
   const { folders, recordings, reloadFolders, reload, upsert } = useNotes();
-  const [open, setOpen] = useState(loadOpen);
+  const open = useOpen();
   const [editing, setEditing] = useState<Editing | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const saving = useRef(false);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(OPEN_KEY, JSON.stringify([...open]));
-    } catch {
-      // Private mode or storage full: the tree just starts collapsed next time.
-    }
-  }, [open]);
 
   // Before paint, so the name field is there (and focused) for the first key typed.
   useLayoutEffect(() => {
@@ -104,13 +88,20 @@ export function FolderTree({ notes, query, activeId, aiReady, onSetDone, newFold
     return { children, notesIn, subs, counts, shown };
   }, [all, allNotes, notes]);
 
-  const toggle = (id: string, on = !open.has(id)) =>
-    setOpen((s) => {
-      const next = new Set(s);
-      if (on) next.add(id);
-      else next.delete(id);
-      return next;
-    });
+  const toggle = (id: string, on = !open.has(id)) => setOpen([id], on);
+
+  // The open note is shown: the folders and notes above it open when it is opened.
+  const revealed = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const r = activeId ? allNotes.find((n) => n.id === activeId) : undefined;
+    if (!r || !folders || revealed.current === activeId) return;
+    revealed.current = activeId;
+    const parents = notePath(r, allNotes);
+    const ids = parents.map((p) => p.id);
+    const byId = new Map(folders.map((f) => [f.id, f]));
+    for (let f = byId.get((parents[0] ?? r).folderId ?? ''); f && ids.length < 64; f = f.parentId ? byId.get(f.parentId) : undefined) ids.push(f.id);
+    setOpen(ids, true);
+  }, [activeId, allNotes, folders]);
 
   async function run(fn: () => Promise<void>) {
     setError(null);
@@ -274,7 +265,16 @@ export function FolderTree({ notes, query, activeId, aiReady, onSetDone, newFold
             e.dataTransfer.setData(NOTE_TYPE, r.id);
             e.dataTransfer.effectAllowed = 'move';
           }}
-          sub={kids.length > 0 ? { count: kids.length, open: isOpen, onToggle: () => toggle(r.id) } : undefined}
+          sub={
+            kids.length > 0
+              ? {
+                  count: kids.length,
+                  open: isOpen,
+                  // Alt+click opens or closes the note's whole tree.
+                  onToggle: (e) => (e.altKey ? setOpen(withSubNotes(r.id, subs), !isOpen) : toggle(r.id)),
+                }
+              : undefined
+          }
           lineProps={noteDropProps(r.id)}
           drop={dropTarget === `note:${r.id}`}
         >

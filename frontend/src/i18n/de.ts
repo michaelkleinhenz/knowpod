@@ -162,6 +162,9 @@ export const de: Translation = {
     hide: 'Unternotizen ausblenden',
     showLabel: 'Die {{count}} Unternotizen von „{{title}}“ zeigen',
     hideLabel: 'Die Unternotizen von „{{title}}“ ausblenden',
+    allHint: 'Alt+Klick: alle Ebenen',
+    expandAll: 'Alle aufklappen',
+    collapseAll: 'Alle zuklappen',
     moveOut: 'Aus „{{title}}“ herausnehmen',
   },
   conversation: {

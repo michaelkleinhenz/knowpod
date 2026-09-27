@@ -26,6 +26,19 @@ export function subNotes(notes: Recording[]): Map<string, Recording[]> {
   return out;
 }
 
+// withSubNotes lists note id and all notes below it that have sub-notes of their own (the
+// notes that open and close), to open or close a whole tree at once.
+export function withSubNotes(id: string, subs: Map<string, Recording[]>): string[] {
+  const out: string[] = [];
+  const walk = (n: string) => {
+    if (out.includes(n) || !subs.has(n) || out.length > 1000) return;
+    out.push(n);
+    for (const c of subs.get(n) ?? []) walk(c.id);
+  };
+  walk(id);
+  return out;
+}
+
 // parentOf returns the note a note is shown under, if it is a sub-note of a known note.
 export function parentOf(r: Recording, byId: Map<string, Recording>): Recording | undefined {
   return r.parentId ? byId.get(r.parentId) : undefined;

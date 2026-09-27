@@ -60,8 +60,9 @@ AI worker ─────────────▶ transcript (status: transcr
   notes and folders onto a folder to move them, or use the note's **Move to folder** button.
 - Notes can hold **sub-notes**, like a folder whose head is a note itself: **New sub-note**
   below a note creates one, and dropping a note onto another note in the folder view moves
-  it under that note. Sub-notes open and close under their parent in the folder view, the
-  note's header shows the notes above it, and deleting a note moves its sub-notes up (nothing
+  it under that note. Sub-notes open and close under their parent, in the folder view and in
+  the note's own sub-notes list (Alt+click opens or closes a whole tree; opening a note
+  unfolds the notes above it in the sidebar). The note's header shows the notes above it, and deleting a note moves its sub-notes up (nothing
   else is lost). Moving a sub-note into a folder takes it out from under its parent.
 - Recorders can send **highlights** (moments marked with a button while recording); they
   are shown on the note's timeline and described in the summary.
