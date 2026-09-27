@@ -9,7 +9,8 @@ import { setOpen, useOpen } from '../lib/treeOpen';
 import { NoteRow } from './NoteRow';
 
 // SubNotes lists the sub-notes of the open note below it, like the files of a folder whose
-// head is the note itself; new ones are added with the + on the note's row in the sidebar.
+// head is the note itself; new ones are added from the note's toolbar or the + on its row in
+// the sidebar. Without sub-notes it shows nothing.
 // Sub-notes with sub-notes of their own open and close like in the sidebar (and together
 // with it).
 export function SubNotes({ rec }: { rec: Recording }) {
@@ -33,6 +34,8 @@ export function SubNotes({ rec }: { rec: Recording }) {
       setError(errorText(err, t));
     }
   }
+
+  if (kids.length === 0) return null;
 
   const rows = (list: Recording[], depth: number): ReactNode =>
     list.map((r) => {
@@ -61,7 +64,7 @@ export function SubNotes({ rec }: { rec: Recording }) {
     <section className="sub-notes" aria-label={t('subNotes.title')}>
       <div className="sub-notes-head">
         <h2>
-          {t('subNotes.title')} {kids.length > 0 && <span className="tree-count">{kids.length}</span>}
+          {t('subNotes.title')} <span className="tree-count">{kids.length}</span>
         </h2>
         <div className="head-actions">
           {nested.length > 0 && (
@@ -72,13 +75,7 @@ export function SubNotes({ rec }: { rec: Recording }) {
         </div>
       </div>
       {error && <p className="error">{error}</p>}
-      {kids.length > 0 ? (
-        <ul className="conversation-list">
-          {rows(kids, 0)}
-        </ul>
-      ) : (
-        <p className="muted sub-notes-empty">{t('subNotes.empty')}</p>
-      )}
+      <ul className="conversation-list">{rows(kids, 0)}</ul>
     </section>
   );
 }

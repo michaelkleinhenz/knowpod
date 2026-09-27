@@ -4,7 +4,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api, Recording } from '../api/client';
 import { Board } from '../components/Board';
 import { CopyButton } from '../components/CopyButton';
-import { BackIcon, CalendarIcon, CopyIcon, DownloadIcon, RetranscribeIcon, TrashIcon } from '../components/Icons';
+import { BackIcon, CalendarIcon, CopyIcon, DownloadIcon, NewNoteIcon, RetranscribeIcon, TrashIcon } from '../components/Icons';
 import { inline, Markdown } from '../components/Markdown';
 import { NoteLabels } from '../components/Labels';
 import { ActionItems } from '../components/ActionItems';
@@ -210,6 +210,21 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
     }
   }
 
+  // createSub makes an empty text note under this one and opens it, ready to type its title.
+  async function createSub() {
+    setBusy(true);
+    setError(null);
+    try {
+      const sub = await api.createTextNote(t('conversations.untitled'), '', rec.id);
+      notes.upsert(sub);
+      navigate(`/conversations/${sub.id}`, { state: { created: true } });
+    } catch (err) {
+      setError(errorText(err, t));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   // Regenerating replaces the summary, so pending edits are dropped (after the user
   // confirmed) instead of being saved over the new summary later.
   const regenerate = (fn: () => Promise<unknown>) => {
@@ -342,8 +357,8 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
           )}
           <p className="conversation-meta muted">
             {rec.number ? <span className="note-number">#{rec.number}</span> : null}
-            {d.toLocaleDateString(locale(), { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })},{' '}
-            {d.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' })}
+            <span className="nowrap">{d.toLocaleDateString(locale(), { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })},</span>{' '}
+            <span className="nowrap">{d.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' })}</span>
             {rec.format?.durationMs ? ` · ${formatDuration(rec.format.durationMs)}` : ''}
             {isDocument && rec.pages ? ` · ${t('conversation.pages', { count: rec.pages })}` : ''}
             {sourceBadge && ` · ${sourceBadge}`}
@@ -414,6 +429,9 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
               <RetranscribeIcon />
             </button>
           )}
+          <button type="button" className="icon-button" disabled={busy} title={t('subNotes.new')} aria-label={t('subNotes.newLabel', { title: titleOf(rec) })} onClick={() => void createSub()}>
+            <NewNoteIcon />
+          </button>
           <MoveToFolder rec={rec} setRec={setRec} />
           <button type="button" className="icon-button danger" disabled={busy} title={t('common.delete')} aria-label={t('common.delete')} onClick={handleDelete}>
             <TrashIcon />

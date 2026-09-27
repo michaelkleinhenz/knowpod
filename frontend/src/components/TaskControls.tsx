@@ -1,10 +1,10 @@
-import { KeyboardEvent, useEffect, useMemo, useState } from 'react';
+import { KeyboardEvent, MouseEvent as ReactMouseEvent, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, Due, Priority, Recording, Repeat } from '../api/client';
 import { errorText } from '../lib/errors';
 import { isoDate, parseTask } from '../lib/dateParse';
 import { dueDate, formatDue, formatReminder, formatRepeat, overdue, REMINDERS } from '../lib/tasks';
-import { BellIcon, CalendarIcon, FlagIcon, RepeatIcon } from './Icons';
+import { BellIcon, CalendarIcon, ClockIcon, FlagIcon, RepeatIcon } from './Icons';
 
 export const PRIORITIES: Priority[] = [1, 2, 3];
 
@@ -79,6 +79,15 @@ function withRepeat(due: Due, key: string): Due {
   else next.repeat = picked.unit === 'month' ? { ...picked, monthDay: dueDate(due).getDate() } : { ...picked };
   return next;
 }
+
+// openPicker opens a date or time input's native picker on click, as the fields hide its icon.
+const openPicker = (e: ReactMouseEvent<HTMLInputElement>) => {
+  try {
+    e.currentTarget.showPicker?.();
+  } catch {
+    // Not allowed here (or unsupported); the field still takes typed input.
+  }
+};
 
 // TaskPicker is a popover that sets a task's date (typed like "tomorrow 3pm" or "every
 // monday", or picked), time, repeat rule, reminder and priority. Changes are saved at once.
@@ -162,14 +171,17 @@ function TaskPicker({ rec, save, onClose }: { rec: Recording; save: (fn: () => P
       </div>
 
       <div className="task-fields">
-        <label>
-          {t('tasks.date')}
-          <input type="date" value={due?.date ?? ''} onChange={(e) => e.target.value && void setDate(e.target.value)} />
+        <label title={t('tasks.date')}>
+          <CalendarIcon size={12} />
+          <span className="sr-only">{t('tasks.date')}</span>
+          <input type="date" onClick={openPicker} value={due?.date ?? ''} onChange={(e) => e.target.value && void setDate(e.target.value)} />
         </label>
-        <label>
-          {t('tasks.time')}
+        <label title={t('tasks.time')}>
+          <ClockIcon />
+          <span className="sr-only">{t('tasks.time')}</span>
           <input
             type="time"
+            onClick={openPicker}
             value={due?.time ?? ''}
             disabled={!due}
             onChange={(e) => {
@@ -180,10 +192,9 @@ function TaskPicker({ rec, save, onClose }: { rec: Recording; save: (fn: () => P
             }}
           />
         </label>
-        <label>
-          <span>
-            <RepeatIcon /> {t('tasks.repeatLabel')}
-          </span>
+        <label title={t('tasks.repeatLabel')}>
+          <RepeatIcon />
+          <span className="sr-only">{t('tasks.repeatLabel')}</span>
           <select value={repeatKey(due?.repeat)} disabled={!due} onChange={(e) => due && void setDue(withRepeat(due, e.target.value))}>
             {REPEATS.map((r) => (
               <option key={r.key} value={r.key}>
@@ -193,10 +204,9 @@ function TaskPicker({ rec, save, onClose }: { rec: Recording; save: (fn: () => P
             {repeatKey(due?.repeat) === 'custom' && due?.repeat && <option value="custom">{formatRepeat(due.repeat)}</option>}
           </select>
         </label>
-        <label>
-          <span>
-            <BellIcon /> {t('tasks.reminder')}
-          </span>
+        <label title={t('tasks.reminder')}>
+          <BellIcon />
+          <span className="sr-only">{t('tasks.reminder')}</span>
           <select
             value={due?.remind === undefined ? 'none' : String(due.remind)}
             disabled={!due}
