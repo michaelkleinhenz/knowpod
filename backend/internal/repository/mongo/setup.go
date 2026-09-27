@@ -62,6 +62,11 @@ var indexes = map[string][]mongo.IndexModel{
 		// Reminders due to be sent.
 		{Keys: bson.D{{Key: "remindAt", Value: 1}},
 			Options: options.Index().SetPartialFilterExpression(bson.M{"remindAt": bson.M{"$exists": true}})},
+		// Notes shared with a user, and their members' reminders.
+		{Keys: bson.D{{Key: "members.userId", Value: 1}},
+			Options: options.Index().SetPartialFilterExpression(bson.M{"members": bson.M{"$exists": true}})},
+		{Keys: bson.D{{Key: "members.remindAt", Value: 1}},
+			Options: options.Index().SetPartialFilterExpression(bson.M{"members.remindAt": bson.M{"$exists": true}})},
 		// Note numbers are unique per user.
 		{Keys: bson.D{{Key: "ownerId", Value: 1}, {Key: "number", Value: 1}},
 			Options: options.Index().SetUnique(true).SetPartialFilterExpression(bson.M{"number": bson.M{"$exists": true}})},

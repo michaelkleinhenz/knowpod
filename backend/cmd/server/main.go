@@ -20,6 +20,7 @@ import (
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/settings"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/openrouter"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/pocket"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/ports"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/remarkable"
 	repo "github.com/michaelkleinhenz/knowpod-service/backend/internal/repository/mongo"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/service"
@@ -101,15 +102,18 @@ func main() {
 	} else if n > 0 {
 		log.Info("numbered existing notes", "notes", n)
 	}
+	// Every change of a note reaches the open apps of everyone who sees it.
+	events := service.NewNoteEvents()
+	var recs ports.RecordingRepository = events.Watch(recordings)
 	deviceSvc := service.NewDeviceService(devices)
-	uploadSvc := service.NewUploadService(recordings, spool, cfg.MaxUploadBytes)
+	uploadSvc := service.NewUploadService(recs, spool, cfg.MaxUploadBytes)
 	archiver := service.NewArchiver(spool, objects, cfg.KeepOriginalWAV, log)
-	pocketSvc := service.NewPocketService(recordings, users, pocket.NewClient(cfg.PocketAPIURL), spool, cfg.MaxUploadBytes, log)
-	manualSvc := service.NewManualUploadService(recordings, spool, cfg.MaxUploadBytes)
-	remarkableSvc := service.NewRemarkableService(tabletRepo, recordings, folderRepo, objects,
+	pocketSvc := service.NewPocketService(recs, users, pocket.NewClient(cfg.PocketAPIURL), spool, cfg.MaxUploadBytes, log)
+	manualSvc := service.NewManualUploadService(recs, spool, cfg.MaxUploadBytes)
+	remarkableSvc := service.NewRemarkableService(tabletRepo, recs, folderRepo, objects,
 		remarkable.NewClient(cfg.RemarkableAuthURL, cfg.RemarkableSyncURL), spool, cfg.MaxUploadBytes, log)
 	var wakeAI func() // set below, once the AI worker exists
-	pipeline := worker.New(recordings, []worker.Stage{
+	pipeline := worker.New(recs, []worker.Stage{
 		// Audio from Pocket and documents from the reMarkable cloud are fetched first.
 		{Name: "fetch", From: recording.StatusRemote, To: recording.StatusReceived,
 			Run: func(ctx context.Context, rec *recording.Recording) error {
@@ -136,7 +140,7 @@ func main() {
 	// calls never delay archiving. Its stages wait until OpenRouter is configured.
 	themeSvc := service.NewThemeService(themeRepo)
 	aiSvc := service.NewAIService(settingsRepo, themeSvc, objects, openrouter.NewClient(cfg.OpenRouterAPIURL, cfg.FrontendURL), cfg.UploadDir, log)
-	aiPipeline := worker.New(recordings, []worker.Stage{
+	aiPipeline := worker.New(recs, []worker.Stage{
 		{Name: "transcribe", From: recording.StatusStored, To: recording.StatusTranscribed,
 			Run: aiSvc.Transcribe, Enabled: aiSvc.CanTranscribe, Lease: time.Hour},
 		{Name: "summarize", From: recording.StatusTranscribed, To: recording.StatusSummarized,
@@ -144,22 +148,22 @@ func main() {
 	}, worker.Options{PollInterval: cfg.WorkerPollInterval, MaxAttempts: cfg.WorkerMaxAttempts}, log)
 	aiSvc.OnSettingsChanged = aiPipeline.Wake
 	aiSvc.Users = users
-	actions := service.NewRecordingService(recordings, objects, spool, themeSvc)
-	userSvc := service.NewUserService(users, sessions, devices, recordings, themeRepo, authSvc, actions)
-	labelSvc := service.NewLabelService(labelRepo, recordings)
+	actions := service.NewRecordingService(recs, objects, spool, themeSvc)
+	userSvc := service.NewUserService(users, sessions, devices, recs, themeRepo, authSvc, actions)
+	labelSvc := service.NewLabelService(labelRepo, recs)
 	actions.Labels = labelSvc
 	userSvc.Labels = labelRepo
-	folderSvc := service.NewFolderService(folderRepo, recordings)
+	folderSvc := service.NewFolderService(folderRepo, recs)
 	actions.Folders = folderSvc
 	userSvc.Folders = folderRepo
 	userSvc.Remarkable = remarkableSvc
-	filterSvc := service.NewFilterService(filterRepo, recordings)
+	filterSvc := service.NewFilterService(filterRepo, recs)
 	actions.Filters = filterSvc
 	actions.TimeEntries = timeRepo
 	userSvc.Filters = filterRepo
 	userSvc.TimeEntries = timeRepo
-	timeSvc := service.NewTimeService(timeRepo, recordings, users)
-	calendarSvc := service.NewCalendarService(users, recordings)
+	timeSvc := service.NewTimeService(timeRepo, recs, users)
+	calendarSvc := service.NewCalendarService(users, recs)
 	mcpSvc := service.NewMCPAccessService(users)
 	oauthSvc := service.NewOAuthService(oauthRepo, users)
 	mcpSvc.OAuth = oauthSvc
@@ -176,8 +180,9 @@ func main() {
 	if sender != nil {
 		pusher = sender
 	}
-	notifySvc := service.NewNotificationService(pushRepo, users, recordings, pusher, log)
+	notifySvc := service.NewNotificationService(pushRepo, users, recs, pusher, log)
 	actions.OnRequeued = aiPipeline.Wake
+	actions.Events = events
 	wakeAI = aiPipeline.Wake // archived recordings move on to transcription right away
 
 	jobCtx, jobCancel := context.WithCancel(ctx)
@@ -195,7 +200,7 @@ func main() {
 		Cfg: cfg, Log: log, DB: store, Auth: authSvc, Users: userSvc, Devices: deviceSvc, Uploads: uploadSvc,
 		Manual: manualSvc, Actions: actions, Objects: objects, Pocket: pocketSvc, AI: aiSvc, Themes: themeSvc,
 		Labels: labelSvc, Folders: folderSvc, Remarkable: remarkableSvc, Notifications: notifySvc,
-		Filters: filterSvc, Times: timeSvc, Calendar: calendarSvc, MCP: mcpSvc, OAuth: oauthSvc, Version: version,
+		Filters: filterSvc, Times: timeSvc, Calendar: calendarSvc, MCP: mcpSvc, OAuth: oauthSvc, Events: events, Version: version,
 	})
 	httpServer := &http.Server{
 		Addr:              ":" + cfg.Port,
@@ -205,6 +210,7 @@ func main() {
 	}
 	// Shutdown waits for requests to finish; live notification streams never would.
 	httpServer.RegisterOnShutdown(notifySvc.Shutdown)
+	httpServer.RegisterOnShutdown(events.Shutdown)
 
 	go func() {
 		log.Info("server listening", "port", cfg.Port)

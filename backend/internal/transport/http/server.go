@@ -55,7 +55,9 @@ type Server struct {
 	// mcp signs in the AI assistants using the MCP server.
 	mcp *service.MCPAccessService
 	// oauth lets AI assistants connect to the MCP server through OAuth.
-	oauth   *service.OAuthService
+	oauth *service.OAuthService
+	// events tells the web app about note changes as they happen.
+	events  *service.NoteEvents
 	version string
 	now     func() time.Time
 }
@@ -90,6 +92,8 @@ type Deps struct {
 	MCP *service.MCPAccessService
 	// OAuth is optional in tests that don't use it; without it the OAuth endpoints are off.
 	OAuth *service.OAuthService
+	// Events is optional in tests that don't use it; without it live updates are off.
+	Events *service.NoteEvents
 	// Version is the app version, reported by the MCP server.
 	Version string
 }
@@ -104,7 +108,7 @@ func NewServer(d Deps) *Server {
 		cfg: d.Cfg, log: log, db: d.DB, auth: d.Auth, users: d.Users, devices: d.Devices, uploads: d.Uploads,
 		manual: d.Manual, actions: d.Actions, objects: d.Objects, pocket: d.Pocket, ai: d.AI, themes: d.Themes,
 		labels: d.Labels, folders: d.Folders, remarkable: d.Remarkable, notifications: d.Notifications,
-		filters: d.Filters, times: d.Times, calendar: d.Calendar, mcp: d.MCP, oauth: d.OAuth, version: cmp.Or(d.Version, "dev"),
+		filters: d.Filters, times: d.Times, calendar: d.Calendar, mcp: d.MCP, oauth: d.OAuth, events: d.Events, version: cmp.Or(d.Version, "dev"),
 		now: time.Now,
 	}
 }
@@ -185,6 +189,7 @@ func (s *Server) Router() http.Handler {
 			u.Delete("/me/notifications/subscriptions/{id}", s.handleUnsubscribePush)
 			u.Post("/me/notifications/test", s.handleTestNotification)
 			u.Get("/me/notifications/stream", s.handleNotificationStream)
+			u.Get("/me/events", s.handleNoteEvents)
 			u.Get("/me/calendar", s.handleGetCalendar)
 			u.Post("/me/calendar", s.handleEnableCalendar)
 			u.Delete("/me/calendar", s.handleDisableCalendar)
@@ -257,6 +262,10 @@ func (s *Server) Router() http.Handler {
 			u.Put("/recordings/{id}/folder", s.handleSetNoteFolder)
 			u.Put("/recordings/{id}/parent", s.handleSetNoteParent)
 			u.Put("/recordings/{id}/board", s.handleSetBoard)
+			u.Get("/recordings/{id}/shares", s.handleGetSharing)
+			u.Post("/recordings/{id}/shares", s.handleShareNote)
+			u.Put("/recordings/{id}/shares/{userId}", s.handleSetShareRole)
+			u.Delete("/recordings/{id}/shares/{userId}", s.handleUnshareNote)
 			u.Get("/recordings/{id}/summary", s.handleDownloadSummary)
 			u.Get("/recordings/{id}/transcript", s.handleDownloadTranscript)
 		})

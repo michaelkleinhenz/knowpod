@@ -8,6 +8,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 )
 
@@ -101,15 +102,38 @@ func (r *RecordingRepo) GetByClientID(ctx context.Context, deviceID, clientID st
 	return r.findOne(ctx, bson.M{"deviceId": deviceID, "clientId": clientID})
 }
 
+// Update replaces the recording while it is still at rec.Version (recordings from before
+// versions have none, which counts as 0) and counts the version up.
 func (r *RecordingRepo) Update(ctx context.Context, rec *recording.Recording) error {
-	res, err := r.c.ReplaceOne(ctx, bson.M{"_id": rec.ID}, rec)
+	filter := bson.M{"_id": rec.ID, "version": rec.Version}
+	if rec.Version == 0 {
+		filter["version"] = bson.M{"$in": bson.A{nil, int64(0)}}
+	}
+	rec.Version++
+	res, err := r.c.ReplaceOne(ctx, filter, rec)
 	if err != nil {
+		rec.Version--
 		return mapErr(err)
 	}
 	if res.MatchedCount == 0 {
+		rec.Version--
+		n, err := r.c.CountDocuments(ctx, bson.M{"_id": rec.ID})
+		if err != nil {
+			return err
+		}
+		if n > 0 {
+			return domain.ErrChanged
+		}
 		return ErrNotFound
 	}
 	return nil
+}
+
+// bump makes an update also count up the version, so that copies read before it can't be
+// saved over it.
+func bump(update bson.M) bson.M {
+	update["$inc"] = bson.M{"version": int64(1)}
+	return update
 }
 
 func (r *RecordingRepo) Delete(ctx context.Context, id string) error {
@@ -127,6 +151,12 @@ func (r *RecordingRepo) List(ctx context.Context, f recording.ListFilter) ([]*re
 	filter := bson.M{}
 	if f.OwnerID != "" {
 		filter["ownerId"] = f.OwnerID
+	}
+	if f.UserID != "" {
+		filter["$or"] = bson.A{bson.M{"ownerId": f.UserID}, bson.M{"members.userId": f.UserID}}
+	}
+	if f.ParentID != "" {
+		filter["parentId"] = f.ParentID
 	}
 	if f.DeviceID != "" {
 		filter["deviceId"] = f.DeviceID
@@ -157,7 +187,7 @@ func (r *RecordingRepo) Claim(ctx context.Context, status recording.Status, now,
 	var rec recording.Recording
 	err := r.c.FindOneAndUpdate(ctx,
 		bson.M{"status": status, "notBefore": bson.M{"$lte": now}},
-		bson.M{"$set": bson.M{"notBefore": leaseUntil, "updatedAt": now}, "$inc": bson.M{"attempts": 1}},
+		bson.M{"$set": bson.M{"notBefore": leaseUntil, "updatedAt": now}, "$inc": bson.M{"attempts": 1, "version": int64(1)}},
 		options.FindOneAndUpdate().SetSort(bson.D{{Key: "notBefore", Value: 1}}).SetReturnDocument(options.After),
 	).Decode(&rec)
 	if err != nil {
@@ -171,7 +201,7 @@ func (r *RecordingRepo) SetRemindAt(ctx context.Context, id string, at *time.Tim
 	if at != nil {
 		update = bson.M{"$set": bson.M{"remindAt": *at}}
 	}
-	res, err := r.c.UpdateOne(ctx, bson.M{"_id": id}, update)
+	res, err := r.c.UpdateOne(ctx, bson.M{"_id": id}, bump(update))
 	if err != nil {
 		return err
 	}
@@ -185,7 +215,7 @@ func (r *RecordingRepo) ClaimReminder(ctx context.Context, now time.Time) (*reco
 	var rec recording.Recording
 	err := r.c.FindOneAndUpdate(ctx,
 		bson.M{"remindAt": bson.M{"$lte": now}},
-		bson.M{"$unset": bson.M{"remindAt": ""}},
+		bump(bson.M{"$unset": bson.M{"remindAt": ""}}),
 		options.FindOneAndUpdate().SetSort(bson.D{{Key: "remindAt", Value: 1}}).
 			SetProjection(bson.M{"transcript": 0, "summary.markdown": 0, "summary.actionItems": 0}),
 	).Decode(&rec)
@@ -193,6 +223,59 @@ func (r *RecordingRepo) ClaimReminder(ctx context.Context, now time.Time) (*reco
 		return nil, mapErr(err)
 	}
 	return &rec, nil
+}
+
+func (r *RecordingRepo) SetMemberRemindAt(ctx context.Context, id, userID string, at *time.Time) error {
+	update := bson.M{"$unset": bson.M{"members.$.remindAt": ""}}
+	if at != nil {
+		update = bson.M{"$set": bson.M{"members.$.remindAt": *at}}
+	}
+	res, err := r.c.UpdateOne(ctx, bson.M{"_id": id, "members.userId": userID}, bump(update))
+	if err != nil {
+		return err
+	}
+	if res.MatchedCount == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (r *RecordingRepo) ClaimMemberReminder(ctx context.Context, now time.Time) (*recording.Recording, string, error) {
+	due := bson.M{"remindAt": bson.M{"$lte": now}}
+	var rec recording.Recording
+	// The positional operator clears the first member matching the query, which is the
+	// first one due in the document as it was before.
+	err := r.c.FindOneAndUpdate(ctx,
+		bson.M{"members": bson.M{"$elemMatch": due}},
+		bump(bson.M{"$unset": bson.M{"members.$.remindAt": ""}}),
+		options.FindOneAndUpdate().SetReturnDocument(options.Before).
+			SetProjection(bson.M{"transcript": 0, "summary.markdown": 0, "summary.actionItems": 0}),
+	).Decode(&rec)
+	if err != nil {
+		return nil, "", mapErr(err)
+	}
+	for _, m := range rec.Members {
+		if m.RemindAt != nil && !m.RemindAt.After(now) {
+			return &rec, m.UserID, nil
+		}
+	}
+	return nil, "", ErrNotFound
+}
+
+func (r *RecordingRepo) RemoveMember(ctx context.Context, userID string) error {
+	_, err := r.c.UpdateMany(ctx,
+		bson.M{"$or": bson.A{bson.M{"members.userId": userID}, bson.M{"shares.userId": userID}}},
+		bump(bson.M{"$pull": bson.M{"members": bson.M{"userId": userID}, "shares": bson.M{"userId": userID}}}))
+	return err
+}
+
+// memberOf selects the member entry of userID in an update with array filters.
+func memberOf(userID string, match bson.M) *options.UpdateOptions {
+	f := bson.M{"m.userId": userID}
+	for k, v := range match {
+		f["m."+k] = v
+	}
+	return options.Update().SetArrayFilters(options.ArrayFilters{Filters: []interface{}{f}})
 }
 
 func (r *RecordingRepo) ListStale(ctx context.Context, status recording.Status, before time.Time, limit int) ([]*recording.Recording, error) {
@@ -214,13 +297,22 @@ func (r *RecordingRepo) MoveFolder(ctx context.Context, ownerID, from, to string
 	if to == "" {
 		update = bson.M{"$unset": bson.M{"folderId": "", "position": ""}}
 	}
-	if _, err := r.c.UpdateMany(ctx, filter, update); err != nil {
+	if _, err := r.c.UpdateMany(ctx, filter, bump(update)); err != nil {
+		return err
+	}
+	// Shared notes the user put into the folder as a member.
+	update = bson.M{"$set": bson.M{"members.$[m].folderId": to}, "$unset": bson.M{"members.$[m].position": ""}}
+	if to == "" {
+		update = bson.M{"$unset": bson.M{"members.$[m].folderId": "", "members.$[m].position": ""}}
+	}
+	if _, err := r.c.UpdateMany(ctx, bson.M{"members": bson.M{"$elemMatch": bson.M{"userId": ownerID, "folderId": from}}},
+		bump(update), memberOf(ownerID, bson.M{"folderId": from})); err != nil {
 		return err
 	}
 	// Boards showing the folder show the one its notes moved into.
 	_, err := r.c.UpdateMany(ctx,
 		bson.M{"ownerId": ownerID, "board.scope.kind": recording.ScopeFolder, "board.scope.id": from},
-		bson.M{"$set": bson.M{"board.scope.id": to}})
+		bump(bson.M{"$set": bson.M{"board.scope.id": to}}))
 	return err
 }
 
@@ -238,30 +330,35 @@ func (r *RecordingRepo) MoveSubNotes(ctx context.Context, ownerID, from, toParen
 	if len(set) > 0 {
 		update["$set"] = set
 	}
-	_, err := r.c.UpdateMany(ctx, bson.M{"ownerId": ownerID, "parentId": from}, update)
+	_, err := r.c.UpdateMany(ctx, bson.M{"ownerId": ownerID, "parentId": from}, bump(update))
 	return err
 }
 
 func (r *RecordingRepo) RemoveLabel(ctx context.Context, ownerID, labelID string) error {
-	if _, err := r.c.UpdateMany(ctx, bson.M{"ownerId": ownerID, "labels": labelID}, bson.M{"$pull": bson.M{"labels": labelID}}); err != nil {
+	if _, err := r.c.UpdateMany(ctx, bson.M{"ownerId": ownerID, "labels": labelID}, bump(bson.M{"$pull": bson.M{"labels": labelID}})); err != nil {
+		return err
+	}
+	// Shared notes the user labeled as a member.
+	if _, err := r.c.UpdateMany(ctx, bson.M{"members": bson.M{"$elemMatch": bson.M{"userId": ownerID, "labels": labelID}}},
+		bump(bson.M{"$pull": bson.M{"members.$[m].labels": labelID}}), memberOf(ownerID, nil)); err != nil {
 		return err
 	}
 	// Boards showing the label show nothing until another scope is chosen.
 	_, err := r.c.UpdateMany(ctx,
 		bson.M{"ownerId": ownerID, "board.scope.kind": recording.ScopeLabel, "board.scope.id": labelID},
-		bson.M{"$set": bson.M{"board.scope": recording.BoardScope{}}})
+		bump(bson.M{"$set": bson.M{"board.scope": recording.BoardScope{}}}))
 	return err
 }
 
 func (r *RecordingRepo) ClearBoardScope(ctx context.Context, ownerID string, scope recording.BoardScope) error {
 	_, err := r.c.UpdateMany(ctx,
 		bson.M{"ownerId": ownerID, "board.scope.kind": scope.Kind, "board.scope.id": scope.ID},
-		bson.M{"$set": bson.M{"board.scope": recording.BoardScope{}}})
+		bump(bson.M{"$set": bson.M{"board.scope": recording.BoardScope{}}}))
 	return err
 }
 
 func (r *RecordingRepo) AddTrackedSeconds(ctx context.Context, id string, seconds int64) error {
-	res, err := r.c.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$inc": bson.M{"trackedSeconds": seconds}})
+	res, err := r.c.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$inc": bson.M{"trackedSeconds": seconds, "version": int64(1)}})
 	if err != nil {
 		return err
 	}

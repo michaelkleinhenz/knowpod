@@ -41,6 +41,8 @@ type apiFixture struct {
 	remarkable *service.RemarkableService
 	// notifications has no Web Push; it only reaches live connections.
 	notifications *service.NotificationService
+	// events tells the web app about note changes.
+	events *service.NoteEvents
 }
 
 func newAPIFixture(t *testing.T) *apiFixture {
@@ -58,7 +60,9 @@ func newAPIFixture(t *testing.T) *apiFixture {
 		t.Fatal(err)
 	}
 	themes := service.NewThemeService(memory.NewThemes())
-	actions := service.NewRecordingService(recs, objects, spool, themes)
+	events := service.NewNoteEvents()
+	actions := service.NewRecordingService(events.Watch(recs), objects, spool, themes)
+	actions.Users, actions.Events = users, events
 	labelRepo := memory.NewLabels()
 	labels := service.NewLabelService(labelRepo, recs)
 	actions.Labels = labels
@@ -104,12 +108,13 @@ func newAPIFixture(t *testing.T) *apiFixture {
 		AI:     service.NewAIService(memory.NewSettings(), themes, objects, nil, t.TempDir(), log),
 		Themes: themes, Labels: labels, Folders: folders, Remarkable: rm, Notifications: notifications,
 		Filters: filters, Times: service.NewTimeService(timeRepo, recs, users), Calendar: service.NewCalendarService(users, recs),
-		MCP: mcp, OAuth: oauthSvc,
+		MCP: mcp, OAuth: oauthSvc, Events: events,
 	})
 	srv := httptest.NewServer(s.Router())
 	t.Cleanup(srv.Close)
 	t.Cleanup(notifications.Shutdown) // before srv.Close, which waits for open streams
-	return &apiFixture{t: t, srv: srv, recs: recs, users: users, worker: w, cloud: cloud, remarkable: rm, notifications: notifications}
+	t.Cleanup(events.Shutdown)
+	return &apiFixture{t: t, srv: srv, recs: recs, users: users, worker: w, cloud: cloud, remarkable: rm, notifications: notifications, events: events}
 }
 
 // client is an HTTP client with its own cookie jar, i.e. one browser.

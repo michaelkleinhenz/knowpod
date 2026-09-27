@@ -88,7 +88,7 @@ func (s *UploadService) Create(ctx context.Context, dev *device.Device, in Creat
 		if err == nil && len(in.Highlights) > 0 {
 			existing.Highlights = highlights
 			existing.UpdatedAt = s.clock().UTC()
-			err = s.recs.Update(ctx, existing)
+			err = ports.SaveProcessed(ctx, s.recs, existing)
 		}
 		return up, false, err
 	} else if !errors.Is(err, ErrNotFound) {
@@ -137,7 +137,7 @@ func (s *UploadService) SetHighlights(ctx context.Context, dev *device.Device, i
 	}
 	rec.Highlights = highlights
 	rec.UpdatedAt = s.clock().UTC()
-	if err := s.recs.Update(ctx, rec); err != nil {
+	if err := ports.SaveProcessed(ctx, s.recs, rec); err != nil {
 		return nil, err
 	}
 	return rec, nil
@@ -178,11 +178,11 @@ func (s *UploadService) Append(ctx context.Context, dev *device.Device, id strin
 	rec.UpdatedAt = s.clock().UTC()
 	if werr != nil {
 		// Keep what arrived; the device resumes from the new offset.
-		_ = s.recs.Update(ctx, rec)
+		_ = ports.SaveProcessed(ctx, s.recs, rec)
 		return nil, fmt.Errorf("receiving chunk: %w", werr)
 	}
 	if cur+n < rec.Size {
-		if err := s.recs.Update(ctx, rec); err != nil {
+		if err := ports.SaveProcessed(ctx, s.recs, rec); err != nil {
 			return nil, err
 		}
 		return &Upload{Recording: rec, Offset: cur + n}, nil
@@ -201,7 +201,7 @@ func (s *UploadService) finish(ctx context.Context, rec *recording.Recording) (*
 		if err := s.spool.Remove(rec.ID); err != nil {
 			return nil, err
 		}
-		if err := s.recs.Update(ctx, rec); err != nil {
+		if err := ports.SaveProcessed(ctx, s.recs, rec); err != nil {
 			return nil, err
 		}
 		return nil, ErrChecksumMismatch
@@ -217,7 +217,7 @@ func (s *UploadService) finish(ctx context.Context, rec *recording.Recording) (*
 		if rerr := s.spool.Remove(rec.ID); rerr != nil {
 			return nil, rerr
 		}
-		if uerr := s.recs.Update(ctx, rec); uerr != nil {
+		if uerr := ports.SaveProcessed(ctx, s.recs, rec); uerr != nil {
 			return nil, uerr
 		}
 		return nil, fmt.Errorf("%w: %v", ErrInvalidAudio, err)
@@ -228,7 +228,7 @@ func (s *UploadService) finish(ctx context.Context, rec *recording.Recording) (*
 	rec.ReceivedAt = &now
 	rec.NotBefore = now
 	rec.Attempts = 0
-	if err := s.recs.Update(ctx, rec); err != nil {
+	if err := ports.SaveProcessed(ctx, s.recs, rec); err != nil {
 		return nil, err
 	}
 	if s.OnReceived != nil {

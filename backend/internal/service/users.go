@@ -225,6 +225,10 @@ func (s *UserService) Delete(ctx context.Context, actor *Account, id string) err
 			}
 		}
 	}
+	// Notes shared with the user are no longer.
+	if err := s.recs.RemoveMember(ctx, u.ID); err != nil {
+		return err
+	}
 	if s.themes != nil {
 		if err := s.themes.DeleteByOwner(ctx, u.ID); err != nil {
 			return err

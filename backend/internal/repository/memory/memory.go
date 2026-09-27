@@ -72,7 +72,21 @@ func clone(r *recording.Recording) recording.Recording {
 		c.Summary = &s
 	}
 	c.Labels = slices.Clone(r.Labels)
+	c.Shares = slices.Clone(r.Shares)
+	if r.Members != nil {
+		c.Members = make([]recording.Member, len(r.Members))
+		for i, m := range r.Members {
+			m.Labels = slices.Clone(m.Labels)
+			c.Members[i] = m
+		}
+	}
 	return c
+}
+
+// bumped stores a changed recording with its version counted up.
+func (m *Recordings) bumped(r recording.Recording) {
+	r.Version++
+	m.recs[r.ID] = r
 }
 
 func (m *Recordings) Get(_ context.Context, id string) (*recording.Recording, error) {
@@ -100,7 +114,7 @@ func (m *Recordings) GetByClientID(_ context.Context, deviceID, clientID string)
 func (m *Recordings) MoveFolder(_ context.Context, ownerID, from, to string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for id, r := range m.recs {
+	for _, r := range m.recs {
 		if r.OwnerID != ownerID {
 			continue
 		}
@@ -112,7 +126,15 @@ func (m *Recordings) MoveFolder(_ context.Context, ownerID, from, to string) err
 			b.Scope.ID = to
 			r.Board = &b
 		}
-		m.recs[id] = r
+		m.bumped(r)
+	}
+	// Shared notes the user put into the folder as a member.
+	for _, r := range m.recs {
+		r = clone(&r)
+		if mem := r.Member(ownerID); mem != nil && mem.FolderID == from {
+			mem.FolderID, mem.Position = to, 0
+			m.bumped(r)
+		}
 	}
 	return nil
 }
@@ -120,10 +142,10 @@ func (m *Recordings) MoveFolder(_ context.Context, ownerID, from, to string) err
 func (m *Recordings) MoveSubNotes(_ context.Context, ownerID, from, toParent, toFolder string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for id, r := range m.recs {
+	for _, r := range m.recs {
 		if r.OwnerID == ownerID && r.ParentID == from {
 			r.ParentID, r.FolderID, r.Position = toParent, toFolder, 0
-			m.recs[id] = r
+			m.bumped(r)
 		}
 	}
 	return nil
@@ -132,17 +154,23 @@ func (m *Recordings) MoveSubNotes(_ context.Context, ownerID, from, toParent, to
 func (m *Recordings) RemoveLabel(_ context.Context, ownerID, labelID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for id, r := range m.recs {
+	for _, r := range m.recs {
+		r = clone(&r)
+		if mem := r.Member(ownerID); mem != nil && slices.Contains(mem.Labels, labelID) {
+			mem.Labels = slices.DeleteFunc(mem.Labels, func(l string) bool { return l == labelID })
+			m.bumped(r)
+			continue
+		}
 		if r.OwnerID != ownerID {
 			continue
 		}
-		r.Labels = slices.DeleteFunc(slices.Clone(r.Labels), func(l string) bool { return l == labelID })
+		r.Labels = slices.DeleteFunc(r.Labels, func(l string) bool { return l == labelID })
 		if r.Board != nil && r.Board.Scope.Kind == recording.ScopeLabel && r.Board.Scope.ID == labelID {
 			b := *r.Board
 			b.Scope = recording.BoardScope{}
 			r.Board = &b
 		}
-		m.recs[id] = r
+		m.bumped(r)
 	}
 	return nil
 }
@@ -150,12 +178,12 @@ func (m *Recordings) RemoveLabel(_ context.Context, ownerID, labelID string) err
 func (m *Recordings) ClearBoardScope(_ context.Context, ownerID string, scope recording.BoardScope) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for id, r := range m.recs {
+	for _, r := range m.recs {
 		if r.OwnerID == ownerID && r.Board != nil && r.Board.Scope == scope {
 			b := *r.Board
 			b.Scope = recording.BoardScope{}
 			r.Board = &b
-			m.recs[id] = r
+			m.bumped(r)
 		}
 	}
 	return nil
@@ -169,16 +197,21 @@ func (m *Recordings) AddTrackedSeconds(_ context.Context, id string, seconds int
 		return domain.ErrNotFound
 	}
 	r.TrackedSeconds += seconds
-	m.recs[id] = r
+	m.bumped(r)
 	return nil
 }
 
 func (m *Recordings) Update(_ context.Context, r *recording.Recording) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if _, ok := m.recs[r.ID]; !ok {
+	stored, ok := m.recs[r.ID]
+	if !ok {
 		return domain.ErrNotFound
 	}
+	if stored.Version != r.Version {
+		return domain.ErrChanged
+	}
+	r.Version++
 	m.recs[r.ID] = clone(r)
 	return nil
 }
@@ -195,7 +228,8 @@ func (m *Recordings) Delete(_ context.Context, id string) error {
 
 func (m *Recordings) List(_ context.Context, f recording.ListFilter) ([]*recording.Recording, error) {
 	out := m.filter(func(r *recording.Recording) bool {
-		return (f.OwnerID == "" || r.OwnerID == f.OwnerID) && (f.DeviceID == "" || r.DeviceID == f.DeviceID) && (f.Status == "" || r.Status == f.Status) && (f.Number == 0 || r.Number == f.Number) &&
+		return (f.OwnerID == "" || r.OwnerID == f.OwnerID) && (f.UserID == "" || r.OwnerID == f.UserID || r.Member(f.UserID) != nil) &&
+			(f.ParentID == "" || r.ParentID == f.ParentID) && (f.DeviceID == "" || r.DeviceID == f.DeviceID) && (f.Status == "" || r.Status == f.Status) && (f.Number == 0 || r.Number == f.Number) &&
 			(f.Trash == recording.TrashAny || (f.Trash == recording.TrashOnly) == (r.DeletedAt != nil))
 	})
 	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
@@ -235,6 +269,7 @@ func (m *Recordings) Claim(_ context.Context, status recording.Status, now, leas
 	best.NotBefore = leaseUntil
 	best.UpdatedAt = now
 	best.Attempts++
+	best.Version++
 	m.recs[best.ID] = *best
 	out := *best
 	return &out, nil
@@ -291,7 +326,56 @@ func (m *Recordings) SetRemindAt(_ context.Context, id string, at *time.Time) er
 		return domain.ErrNotFound
 	}
 	r.RemindAt = at
-	m.recs[id] = r
+	m.bumped(r)
+	return nil
+}
+
+func (m *Recordings) SetMemberRemindAt(_ context.Context, id, userID string, at *time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r, ok := m.recs[id]
+	if !ok {
+		return domain.ErrNotFound
+	}
+	r = clone(&r)
+	mem := r.Member(userID)
+	if mem == nil {
+		return domain.ErrNotFound
+	}
+	mem.RemindAt = at
+	m.bumped(r)
+	return nil
+}
+
+func (m *Recordings) ClaimMemberReminder(_ context.Context, now time.Time) (*recording.Recording, string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, r := range m.recs {
+		for _, mem := range r.Members {
+			if mem.RemindAt != nil && !mem.RemindAt.After(now) {
+				out := clone(&r)
+				stored := clone(&r)
+				stored.Member(mem.UserID).RemindAt = nil
+				m.bumped(stored)
+				return &out, mem.UserID, nil
+			}
+		}
+	}
+	return nil, "", domain.ErrNotFound
+}
+
+func (m *Recordings) RemoveMember(_ context.Context, userID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, r := range m.recs {
+		if r.Member(userID) == nil && r.Share(userID) == nil {
+			continue
+		}
+		r = clone(&r)
+		r.Members = slices.DeleteFunc(r.Members, func(x recording.Member) bool { return x.UserID == userID })
+		r.Shares = slices.DeleteFunc(r.Shares, func(x recording.Share) bool { return x.UserID == userID })
+		m.bumped(r)
+	}
 	return nil
 }
 
@@ -310,7 +394,7 @@ func (m *Recordings) ClaimReminder(_ context.Context, now time.Time) (*recording
 	}
 	stored := m.recs[best.ID]
 	stored.RemindAt = nil
-	m.recs[best.ID] = stored
+	m.bumped(stored)
 	return best, nil
 }
 

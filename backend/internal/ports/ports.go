@@ -5,9 +5,11 @@ package ports
 
 import (
 	"context"
+	"errors"
 	"io"
 	"time"
 
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/device"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/filter"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/folder"
@@ -24,11 +26,13 @@ import (
 
 // RecordingRepository persists recordings. Lookups of missing documents return
 // domain.ErrNotFound; Create returns domain.ErrDuplicate when the device already has a
-// recording with the same client ID.
+// recording with the same client ID. Every change counts up the recording's Version.
 type RecordingRepository interface {
 	Create(ctx context.Context, r *recording.Recording) error
 	Get(ctx context.Context, id string) (*recording.Recording, error)
 	GetByClientID(ctx context.Context, deviceID, clientID string) (*recording.Recording, error)
+	// Update replaces the stored recording only while it is still at r.Version, and then
+	// counts r.Version up; otherwise it returns domain.ErrChanged and changes nothing.
 	Update(ctx context.Context, r *recording.Recording) error
 	Delete(ctx context.Context, id string) error
 	List(ctx context.Context, f recording.ListFilter) ([]*recording.Recording, error)
@@ -42,8 +46,8 @@ type RecordingRepository interface {
 	ListTrashed(ctx context.Context, before time.Time, limit int) ([]*recording.Recording, error)
 	// AssignOwnerless gives recordings without an owner to ownerID (data from before users).
 	AssignOwnerless(ctx context.Context, ownerID string) (int, error)
-	// RemoveLabel takes the label off all of ownerID's recordings and clears the scope of
-	// boards showing it.
+	// RemoveLabel takes the label off all of ownerID's recordings (also the shared ones
+	// ownerID labeled as a member) and clears the scope of boards showing it.
 	RemoveLabel(ctx context.Context, ownerID, labelID string) error
 	// ClearBoardScope makes ownerID's boards showing the scope show nothing until another
 	// scope is chosen (e.g. after a saved filter was deleted).
@@ -51,7 +55,8 @@ type RecordingRepository interface {
 	// AddTrackedSeconds adds to the time logged on the recording (negative: takes off).
 	AddTrackedSeconds(ctx context.Context, id string, seconds int64) error
 	// MoveFolder moves all of ownerID's recordings in folder from into folder to ("" is the
-	// top level), and points boards showing folder from at folder to.
+	// top level), also the shared ones ownerID put there as a member, and points boards
+	// showing folder from at folder to.
 	MoveFolder(ctx context.Context, ownerID, from, to string) error
 	// MoveSubNotes moves all of ownerID's sub-notes of note from to where that note was:
 	// under parent toParent, or into folder toFolder when toParent is empty.
@@ -62,6 +67,36 @@ type RecordingRepository interface {
 	// clears its RemindAt, so each reminder is sent once. Returns domain.ErrNotFound when
 	// none is due.
 	ClaimReminder(ctx context.Context, now time.Time) (*recording.Recording, error)
+	// SetMemberRemindAt changes only when a member's next reminder of the recording is sent
+	// (nil: none).
+	SetMemberRemindAt(ctx context.Context, id, userID string, at *time.Time) error
+	// ClaimMemberReminder is ClaimReminder for the members' reminders: it takes a recording
+	// with a member whose reminder is due, clears that member's RemindAt and returns the
+	// member's user ID.
+	ClaimMemberReminder(ctx context.Context, now time.Time) (*recording.Recording, string, error)
+	// RemoveMember takes the user off the shares and members of all recordings (when the
+	// user is deleted).
+	RemoveMember(ctx context.Context, userID string) error
+}
+
+// maxSaveAttempts bounds how often SaveProcessed tries again.
+const maxSaveAttempts = 5
+
+// SaveProcessed saves a recording that a background step (processing, an upload) held on
+// to for a while. When a person changed the recording meanwhile, their changes
+// (recording.KeepUserFields) are kept and the save is tried again.
+func SaveProcessed(ctx context.Context, recs RecordingRepository, rec *recording.Recording) error {
+	for attempt := 1; ; attempt++ {
+		err := recs.Update(ctx, rec)
+		if !errors.Is(err, domain.ErrChanged) || attempt >= maxSaveAttempts {
+			return err
+		}
+		stored, err := recs.Get(ctx, rec.ID)
+		if err != nil {
+			return err
+		}
+		rec.KeepUserFields(stored)
+	}
 }
 
 // DeviceRepository persists devices. Lookups of missing documents return domain.ErrNotFound.

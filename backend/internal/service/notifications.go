@@ -11,7 +11,6 @@ import (
 	"log/slog"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/push"
@@ -54,8 +53,8 @@ const maxPushSubscriptions = 20
 // reminderTTL is how long a push service keeps a reminder for a device that is offline.
 const reminderTTL = 24 * time.Hour
 
-// maxListeners bounds the apps of one user that receive notifications over a live
-// connection at the same time.
+// maxListeners bounds the apps of one user that receive notifications (or note events)
+// over a live connection at the same time.
 const maxListeners = 10
 
 // NotificationService sends users' notifications (task reminders) to the browsers and
@@ -70,18 +69,15 @@ type NotificationService struct {
 	clock func() time.Time
 	// allowHost says which push services subscriptions may point to.
 	allowHost func(host string) bool
-
-	mu sync.Mutex
-	// listeners are the live connections per user; closed says Shutdown ran.
-	listeners map[string]map[chan Message]struct{}
-	closed    bool
+	// live are the connections that receive notifications as they happen.
+	live *hub[Message]
 }
 
 // NewNotificationService builds the service. Without a pusher, notifications are off.
 func NewNotificationService(subs ports.PushSubscriptionRepository, users ports.UserRepository, recs ports.RecordingRepository, p Pusher, log *slog.Logger) *NotificationService {
 	return &NotificationService{
 		subs: subs, users: users, recs: recs, push: p, log: log, clock: time.Now, allowHost: knownPushService,
-		listeners: map[string]map[chan Message]struct{}{},
+		live: newHub[Message](),
 	}
 }
 
@@ -92,78 +88,18 @@ func (s *NotificationService) Listen(acc *Account) (msgs <-chan Message, stop fu
 	if acc.ID == "" {
 		return nil, nil, errors.Join(ErrForbidden, errors.New("notifications belong to a user; sign in"))
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed {
-		return nil, nil, errors.Join(ErrNotReady, errors.New("the server is shutting down"))
-	}
-	ls := s.listeners[acc.ID]
-	if ls == nil {
-		ls = map[chan Message]struct{}{}
-		s.listeners[acc.ID] = ls
-	}
-	for len(ls) >= maxListeners {
-		for c := range ls {
-			delete(ls, c)
-			close(c)
-			break
-		}
-	}
-	c := make(chan Message, 8)
-	ls[c] = struct{}{}
-	return c, func() { s.unlisten(acc.ID, c) }, nil
-}
-
-func (s *NotificationService) unlisten(userID string, c chan Message) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	ls := s.listeners[userID]
-	if _, ok := ls[c]; !ok {
-		return
-	}
-	delete(ls, c)
-	close(c)
-	if len(ls) == 0 {
-		delete(s.listeners, userID)
-	}
+	return s.live.listen(acc.ID)
 }
 
 // Shutdown ends all live connections (for the HTTP server's shutdown, which doesn't end
 // long-lived requests by itself).
-func (s *NotificationService) Shutdown() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.closed = true
-	for id, ls := range s.listeners {
-		for c := range ls {
-			close(c)
-		}
-		delete(s.listeners, id)
-	}
-}
+func (s *NotificationService) Shutdown() { s.live.shutdown() }
 
 // listening says how many live connections receive the user's notifications.
-func (s *NotificationService) listening(userID string) int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return len(s.listeners[userID])
-}
+func (s *NotificationService) listening(userID string) int { return s.live.count(userID) }
 
 // notifyLive hands a message to the user's live connections and returns how many took it.
-// A connection that is too far behind misses it rather than holding up the others.
-func (s *NotificationService) notifyLive(userID string, m Message) int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	n := 0
-	for c := range s.listeners[userID] {
-		select {
-		case c <- m:
-			n++
-		default:
-		}
-	}
-	return n
-}
+func (s *NotificationService) notifyLive(userID string, m Message) int { return s.live.send(userID, m) }
 
 // PushDevice is a browser that receives the user's notifications.
 type PushDevice struct {
@@ -356,20 +292,46 @@ func (s *NotificationService) SendDueReminders(ctx context.Context) (int, error)
 		if err != nil {
 			return n, err
 		}
-		if rec.Done || rec.Due == nil {
-			continue
+		if s.remind(ctx, rec, rec.OwnerID) {
+			n++
 		}
-		u, err := s.users.Get(ctx, rec.OwnerID)
-		if err != nil {
-			continue
-		}
-		if _, err := s.Notify(ctx, u.ID, reminderMessage(rec, u, s.clock()), reminderTTL); err != nil {
-			s.log.Warn("sending a reminder failed", "id", rec.ID, "err", err)
-			continue
-		}
-		n++
 	}
 	return n, ctx.Err()
+}
+
+// SendDueMemberReminders sends the reminders that are due to the users tasks are shared
+// with, like SendDueReminders.
+func (s *NotificationService) SendDueMemberReminders(ctx context.Context) (int, error) {
+	n := 0
+	for ctx.Err() == nil {
+		rec, userID, err := s.recs.ClaimMemberReminder(ctx, s.clock())
+		if errors.Is(err, ErrNotFound) {
+			return n, nil
+		}
+		if err != nil {
+			return n, err
+		}
+		if s.remind(ctx, rec, userID) {
+			n++
+		}
+	}
+	return n, ctx.Err()
+}
+
+// remind sends the reminder of a task to a user and reports whether it went out.
+func (s *NotificationService) remind(ctx context.Context, rec *recording.Recording, userID string) bool {
+	if rec.Done || rec.Due == nil || rec.DeletedAt != nil {
+		return false
+	}
+	u, err := s.users.Get(ctx, userID)
+	if err != nil {
+		return false
+	}
+	if _, err := s.Notify(ctx, u.ID, reminderMessage(rec, u, s.clock()), reminderTTL); err != nil {
+		s.log.Warn("sending a reminder failed", "id", rec.ID, "err", err)
+		return false
+	}
+	return true
 }
 
 // Run sends due reminders every interval until ctx ends.
@@ -377,7 +339,13 @@ func (s *NotificationService) Run(ctx context.Context, every time.Duration) {
 	ticker := time.NewTicker(every)
 	defer ticker.Stop()
 	for {
-		if n, err := s.SendDueReminders(ctx); err != nil && ctx.Err() == nil {
+		n, err := s.SendDueReminders(ctx)
+		if err == nil {
+			var m int
+			m, err = s.SendDueMemberReminders(ctx)
+			n += m
+		}
+		if err != nil && ctx.Err() == nil {
 			s.log.Error("sending reminders failed", "err", err)
 		} else if n > 0 {
 			s.log.Info("sent reminders", "count", n)

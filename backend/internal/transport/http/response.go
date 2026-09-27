@@ -37,6 +37,7 @@ var errorCodes = []struct {
 	code   string
 }{
 	{service.ErrNotFound, http.StatusNotFound, "not_found"},
+	{service.ErrChanged, http.StatusConflict, "changed"},
 	{service.ErrWeakPassword, http.StatusBadRequest, "weak_password"},
 	{service.ErrInvalidInput, http.StatusBadRequest, "invalid_input"},
 	{service.ErrInvalidLogin, http.StatusUnauthorized, "invalid_login"},

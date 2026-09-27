@@ -66,7 +66,13 @@ func (s *Server) handleNotificationStream(w http.ResponseWriter, r *http.Request
 		return
 	}
 	defer stop()
+	streamEvents(w, r, msgs, func(service.Message) string { return "notification" })
+}
 
+// streamEvents sends messages as server-sent events, named by name, until the request ends
+// or the channel is closed (the connection was replaced by a newer one, or the server is
+// shutting down).
+func streamEvents[T any](w http.ResponseWriter, r *http.Request, msgs <-chan T, name func(T) string) {
 	rc := http.NewResponseController(w)
 	h := w.Header()
 	h.Set("Content-Type", "text/event-stream")
@@ -77,7 +83,6 @@ func (s *Server) handleNotificationStream(w http.ResponseWriter, r *http.Request
 	if _, err := io.WriteString(w, "retry: 5000\n\n"); err != nil || rc.Flush() != nil {
 		return
 	}
-
 	heartbeat := time.NewTicker(streamHeartbeat)
 	defer heartbeat.Stop()
 	for {
@@ -87,13 +92,13 @@ func (s *Server) handleNotificationStream(w http.ResponseWriter, r *http.Request
 			return
 		case m, ok := <-msgs:
 			if !ok {
-				return // replaced by a newer connection, or the server is shutting down
+				return
 			}
 			data, err := json.Marshal(m)
 			if err != nil {
 				continue
 			}
-			chunk = "event: notification\ndata: " + string(data) + "\n\n"
+			chunk = "event: " + name(m) + "\ndata: " + string(data) + "\n\n"
 		case <-heartbeat.C:
 			chunk = ": ping\n\n"
 		}
