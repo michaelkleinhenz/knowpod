@@ -37,12 +37,22 @@ type User struct {
 	Appearance string `bson:"appearance,omitempty"`
 	// Calendar is the user's calendar feed of their tasks.
 	Calendar Calendar `bson:"calendar"`
+	// MCP is the user's access for AI assistants through the MCP server.
+	MCP MCP `bson:"mcp"`
 }
 
 // Calendar is a user's read-only iCalendar feed of their tasks with dates. Its URL holds a
 // random token; only the token's SHA-256 is stored, so the link is shown once and can be
 // replaced.
 type Calendar struct {
+	TokenHash string     `bson:"tokenHash,omitempty"`
+	CreatedAt *time.Time `bson:"createdAt,omitempty"`
+}
+
+// MCP is a user's access token for the MCP server, which AI assistants (Claude, ChatGPT)
+// use to work with the user's notes. Only the token's SHA-256 is stored, so the token is
+// shown once and can be replaced.
+type MCP struct {
 	TokenHash string     `bson:"tokenHash,omitempty"`
 	CreatedAt *time.Time `bson:"createdAt,omitempty"`
 }

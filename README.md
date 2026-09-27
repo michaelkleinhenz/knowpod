@@ -29,6 +29,7 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
   | Audio files | WAV and MP3 uploads from the browser |
   | AI models ([OpenRouter](https://openrouter.ai)) | Transcripts, titles, summaries and action items |
   | Scripts and your own tools | The full [REST API](backend/api/openapi.yaml), downloads as Markdown and text |
+  | AI assistants (Claude, ChatGPT) | Your notes and tasks through an MCP server |
 
 - **Everywhere you work.** A responsive web app, installable on phones and desktops (PWA),
   and a native [desktop app](#desktop-app); English and German, light and dark.
@@ -101,6 +102,12 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
 - **Calendar feed**: **Settings → Account → Calendar** makes a private iCalendar link to
   subscribe to in Google Calendar, Apple Calendar or Outlook. It lists the open tasks with
   dates, repeating like the tasks, with their reminders as alarms.
+- **AI assistants (MCP)**: **Settings → Account → AI assistants** turns on knowpod's
+  [MCP](https://modelcontextprotocol.io) server at `/mcp` for you and makes a personal access
+  token. Add the server to Claude (custom connector, or `claude mcp add` in Claude Code) or
+  ChatGPT (developer mode app) with the token as a bearer token, and the assistant can
+  search, read, create and change your notes and tasks. Only your own notes are reachable,
+  and a new token or **Turn off** cuts the access.
 - **Reminders** arrive as push notifications in every browser or installed app they are
   turned on in (**Settings → Account → Notifications**), on phones too (on iPhone: from the Home Screen
   app).

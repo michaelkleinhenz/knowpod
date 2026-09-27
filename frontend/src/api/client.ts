@@ -224,6 +224,14 @@ export interface CalendarSettings {
   feedPath?: string;
 }
 
+// McpSettings is the state of the user's MCP server access; token is only returned right
+// after it was made.
+export interface McpSettings {
+  enabled: boolean;
+  createdAt?: string;
+  token?: string;
+}
+
 // BoardColumn is a column of a board with the IDs of the notes put into it, in order.
 export interface BoardColumn {
   id: string;
@@ -472,6 +480,9 @@ export const api = {
   calendar: () => request<CalendarSettings>('GET', '/me/calendar'),
   enableCalendar: () => request<CalendarSettings>('POST', '/me/calendar'),
   disableCalendar: () => request<void>('DELETE', '/me/calendar'),
+  mcp: () => request<McpSettings>('GET', '/me/mcp'),
+  enableMcp: () => request<McpSettings>('POST', '/me/mcp'),
+  disableMcp: () => request<void>('DELETE', '/me/mcp'),
   createActionItemTask: (id: string, itemId: string) =>
     request<{ task: Recording; note: Recording }>('POST', `/recordings/${encodeURIComponent(id)}/action-items/${encodeURIComponent(itemId)}/task`),
   dismissActionItem: (id: string, itemId: string, dismissed: boolean) =>

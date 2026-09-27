@@ -417,7 +417,8 @@ func (m *Users) Create(_ context.Context, u *user.User) error {
 	defer m.mu.Unlock()
 	for _, x := range m.users {
 		if x.ID == u.ID || x.Email == u.Email || (u.Pocket.WebhookID != "" && x.Pocket.WebhookID == u.Pocket.WebhookID) ||
-			(u.Calendar.TokenHash != "" && x.Calendar.TokenHash == u.Calendar.TokenHash) {
+			(u.Calendar.TokenHash != "" && x.Calendar.TokenHash == u.Calendar.TokenHash) ||
+			(u.MCP.TokenHash != "" && x.MCP.TokenHash == u.MCP.TokenHash) {
 			return domain.ErrDuplicate
 		}
 	}
@@ -441,6 +442,10 @@ func (m *Users) GetByCalendarTokenHash(_ context.Context, hash string) (*user.Us
 	return m.find(func(u *user.User) bool { return hash != "" && u.Calendar.TokenHash == hash })
 }
 
+func (m *Users) GetByMCPTokenHash(_ context.Context, hash string) (*user.User, error) {
+	return m.find(func(u *user.User) bool { return hash != "" && u.MCP.TokenHash == hash })
+}
+
 func (m *Users) List(context.Context) ([]*user.User, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -461,7 +466,8 @@ func (m *Users) Update(_ context.Context, u *user.User) error {
 	}
 	for _, x := range m.users {
 		if x.ID != u.ID && (x.Email == u.Email || (u.Pocket.WebhookID != "" && x.Pocket.WebhookID == u.Pocket.WebhookID) ||
-			(u.Calendar.TokenHash != "" && x.Calendar.TokenHash == u.Calendar.TokenHash)) {
+			(u.Calendar.TokenHash != "" && x.Calendar.TokenHash == u.Calendar.TokenHash) ||
+			(u.MCP.TokenHash != "" && x.MCP.TokenHash == u.MCP.TokenHash)) {
 			return domain.ErrDuplicate
 		}
 	}

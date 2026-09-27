@@ -84,6 +84,7 @@ type UserRepository interface {
 	GetByEmail(ctx context.Context, email string) (*user.User, error)
 	GetByPocketWebhookID(ctx context.Context, webhookID string) (*user.User, error)
 	GetByCalendarTokenHash(ctx context.Context, hash string) (*user.User, error)
+	GetByMCPTokenHash(ctx context.Context, hash string) (*user.User, error)
 	List(ctx context.Context) ([]*user.User, error)
 	Update(ctx context.Context, u *user.User) error
 	Delete(ctx context.Context, id string) error

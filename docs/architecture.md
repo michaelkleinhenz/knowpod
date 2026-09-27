@@ -50,6 +50,7 @@ There are four kinds of callers:
 | Admin in the web UI | Session cookie, user with role `admin` | `requireAdmin` | The above for their own data, plus `/admin/*` (users, OpenRouter) |
 | Script | `ADMIN_TOKEN` (`Authorization: Bearer …`) | `requireUser` / `requireAdmin` | Everything above, acting as the built-in admin, with `All` set: lists and lookups cover every user's data |
 | Pocket | HMAC signature, secret of the user named by the webhook URL | `handlePocketWebhook` | Queue recordings for that user |
+| AI assistant | The user's MCP access token (`Authorization: Bearer kpm_…`) | `handleMCP` → `MCPAccessService.Authenticate` | The MCP server's tools, on that user's own data |
 
 A bearer header on a user/admin route is always treated as a script token; otherwise the
 session cookie decides.
@@ -378,6 +379,22 @@ without one) and are written in UTC, or with `TZID` of the user's time zone when
 start on Sunday as in `Repeat.Next`; the 29th–31st of a month use `BYSETPOS=-1` to fall on
 short months' last day), reminders become VALARMs, and each event links to its note.
 
+**MCP server** (`service/mcp.go`, `transport/http/mcp_handlers.go`, `mcp_tools.go`). AI
+assistants reach a user's notes through a Model Context Protocol server at `/mcp` (outside
+`/api/v1`). `POST /me/mcp` makes a random token (`kpm_…`) and stores its SHA-256 in
+`users.mcp.tokenHash` (unique, sparse index); the token is returned once, a new one replaces
+it, and `DELETE /me/mcp` turns access off. The server speaks the Streamable HTTP transport
+in its stateless form: each POST carries one JSON-RPC message (or a batch) and gets one JSON
+response; notifications get `202`, and `GET`/`DELETE` (event streams, sessions) get `405`.
+Without a valid token it answers `401` with `WWW-Authenticate: Bearer`. It implements
+`initialize` (agreeing on the client's protocol version when it knows it), `ping`,
+`tools/list` and `tools/call`; the tools (`search_notes`, `get_note`, `list_tasks`,
+`list_folders`, `list_labels`, `create_note`, `update_note`, `update_task`) call the same
+services as the REST API with the token's user as the account, so ownership checks apply
+unchanged. Notes are named by ID or number, folders and labels by ID or name. Tool failures
+(unknown note, invalid input) come back as results with `isError`, so the assistant can
+correct itself; unexpected errors are logged and reported as "internal error".
+
 **Labels** (`service/labels.go`). `GET /labels` lists the built-in labels (only `task`,
 named by the UI in its language) and the user's own; `POST`/`PUT`/`DELETE /labels/{id}`
 manage their own (built-in ones can't be changed). `PUT /recordings/{id}/labels` replaces a
@@ -592,6 +609,7 @@ Indexes: `(deviceId, clientId)` unique; `(status, notBefore)` for claiming;
 | `pocket.webhookId` | Random part of the user's webhook URL (unique, sparse index) |
 | `pocket.webhookSecret`, `pocket.apiKey` | The user's Pocket credentials; never returned by the API |
 | `calendar.tokenHash`, `calendar.createdAt` | SHA-256 of the calendar feed token (unique, sparse index) and when it was made |
+| `mcp.tokenHash`, `mcp.createdAt` | SHA-256 of the MCP access token (unique, sparse index) and when it was made |
 | `createdAt`, `passwordChangedAt` | Timestamps (UTC) |
 
 **`sessions`**

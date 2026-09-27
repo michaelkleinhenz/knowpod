@@ -159,6 +159,7 @@ func main() {
 	userSvc.TimeEntries = timeRepo
 	timeSvc := service.NewTimeService(timeRepo, recordings, users)
 	calendarSvc := service.NewCalendarService(users, recordings)
+	mcpSvc := service.NewMCPAccessService(users)
 	userSvc.Push = pushRepo
 	actions.Users = users
 	authSvc.OnTimeZoneChanged = actions.RescheduleReminders
@@ -190,7 +191,7 @@ func main() {
 		Cfg: cfg, Log: log, DB: store, Auth: authSvc, Users: userSvc, Devices: deviceSvc, Uploads: uploadSvc,
 		Manual: manualSvc, Actions: actions, Objects: objects, Pocket: pocketSvc, AI: aiSvc, Themes: themeSvc,
 		Labels: labelSvc, Folders: folderSvc, Remarkable: remarkableSvc, Notifications: notifySvc,
-		Filters: filterSvc, Times: timeSvc, Calendar: calendarSvc,
+		Filters: filterSvc, Times: timeSvc, Calendar: calendarSvc, MCP: mcpSvc, Version: version,
 	})
 	httpServer := &http.Server{
 		Addr:              ":" + cfg.Port,

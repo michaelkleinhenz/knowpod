@@ -131,12 +131,13 @@ export function NotesList({ activeId }: { activeId?: string }) {
     return id && folders?.some((f) => f.id === id) ? id : undefined;
   };
 
-  // createText makes an empty text note and opens it, ready to type its title.
-  async function createText() {
+  // createText makes an empty text note (in folderId, or else the folder new notes go into)
+  // and opens it, ready to type its title.
+  async function createText(folderId?: string) {
     setCreating(true);
     setCreateError(null);
     try {
-      const rec = await api.createTextNote(t('conversations.untitled'), '', undefined, undefined, newNoteFolder());
+      const rec = await api.createTextNote(t('conversations.untitled'), '', undefined, undefined, folderId ?? newNoteFolder());
       upsert(rec);
       navigate(`/conversations/${rec.id}`, { state: { created: true } });
     } catch (err) {
@@ -255,7 +256,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
         <div className="conversations-head">
           <h1>{t('conversations.title')}</h1>
           <div className="head-actions">
-            <button type="button" className="pill-button icon-only-mobile" onClick={createText} disabled={creating} aria-label={t('conversations.newNote')}>
+            <button type="button" className="pill-button icon-only-mobile" onClick={() => void createText()} disabled={creating} aria-label={t('conversations.newNote')}>
               <NewNoteIcon /> <span>{t('conversations.newNote')}</span>
             </button>
             <button
@@ -292,10 +293,24 @@ export function NotesList({ activeId }: { activeId?: string }) {
 
       <TimerBar />
 
-      <label className="search">
-        <SearchIcon />
-        <input type="search" placeholder={t('common.search')} value={query} onChange={(e) => setQuery(e.target.value)} aria-label={t('conversations.searchLabel')} />
-      </label>
+      {/* The new folder button is always there, so the view switch below keeps its width;
+          it works in the folder view only. */}
+      <div className="search-row">
+        <label className="search">
+          <SearchIcon />
+          <input type="search" placeholder={t('common.search')} value={query} onChange={(e) => setQuery(e.target.value)} aria-label={t('conversations.searchLabel')} />
+        </label>
+        <button
+          type="button"
+          className="pill-button icon-only-mobile"
+          title={t('folders.new')}
+          aria-label={t('folders.new')}
+          disabled={showTrash || view !== 'folders'}
+          onClick={() => setNewFolder((n) => n + 1)}
+        >
+          <NewFolderIcon /> <span>{t('folders.new')}</span>
+        </button>
+      </div>
       <FilterBar query={query} setQuery={setQuery} active={activeFilter?.id ?? null} setActive={setActiveFilter} />
 
       {!showTrash && (
@@ -307,11 +322,6 @@ export function NotesList({ activeId }: { activeId?: string }) {
               </button>
             ))}
           </div>
-          {view === 'folders' && (
-            <button type="button" className="pill-button" title={t('folders.new')} aria-label={t('folders.new')} onClick={() => setNewFolder((n) => n + 1)}>
-              <NewFolderIcon /> <span>{t('folders.new')}</span>
-            </button>
-          )}
         </div>
       )}
       </div>
@@ -357,7 +367,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
               <Trans i18nKey="conversations.emptyHint" components={{ 1: <Link to="/settings?tab=devices" />, 3: <Link to="/settings?tab=account" /> }} />
             </p>
             <div className="empty-actions">
-              <button type="button" onClick={createText} disabled={creating}>
+              <button type="button" onClick={() => void createText()} disabled={creating}>
                 {t('conversations.newNote')}
               </button>
               <button type="button" className="secondary-button" onClick={() => fileInput.current?.click()}>
@@ -385,6 +395,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
             aiReady={aiReady}
             onSetDone={(r, d) => void setDone(r, d)}
             onNewSub={creating ? undefined : (r) => void createSub(r)}
+            onNewInFolder={creating ? undefined : (id) => void createText(id)}
             newFolder={newFolder}
           />
         )}

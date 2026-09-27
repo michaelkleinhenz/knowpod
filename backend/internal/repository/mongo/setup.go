@@ -68,6 +68,8 @@ var indexes = map[string][]mongo.IndexModel{
 		{Keys: bson.D{{Key: "pocket.webhookId", Value: 1}}, Options: options.Index().SetUnique(true).SetSparse(true)},
 		// Calendar feed lookup; users without a feed have no token hash.
 		{Keys: bson.D{{Key: "calendar.tokenHash", Value: 1}}, Options: options.Index().SetUnique(true).SetSparse(true)},
+		// MCP server sign-in; users without MCP access have no token hash.
+		{Keys: bson.D{{Key: "mcp.tokenHash", Value: 1}}, Options: options.Index().SetUnique(true).SetSparse(true)},
 	},
 	CollFilters: {
 		{Keys: bson.D{{Key: "ownerId", Value: 1}, {Key: "name", Value: 1}}},
