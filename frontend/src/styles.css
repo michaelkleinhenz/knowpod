@@ -2071,9 +2071,53 @@ button.sync-state:focus-visible {
 
 .notes-layout {
   display: grid;
-  grid-template-columns: minmax(17rem, 22rem) minmax(0, 1fr);
+  grid-template-columns: var(--sidebar-width, 20rem) minmax(0, 1fr);
+  position: relative;
   align-items: start;
   min-height: calc(100vh - 3.5rem - env(safe-area-inset-top));
+}
+
+/* The handle on the sidebar's right edge that drags it wider or narrower. */
+.sidebar-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--sidebar-width, 20rem) - 4px);
+  z-index: 5;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.sidebar-resizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+.sidebar-resizer:hover::after,
+.sidebar-resizer:focus-visible::after,
+.notes-layout.resizing .sidebar-resizer::after {
+  background: var(--color-primary);
+}
+
+.sidebar-resizer:focus-visible {
+  outline: none;
+}
+
+/* No text selection or hover effects while dragging. */
+.notes-layout.resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.notes-layout.resizing > :not(.sidebar-resizer) {
+  pointer-events: none;
 }
 
 .notes-sidebar {
@@ -2167,6 +2211,10 @@ html:has(.notes-layout) {
 @media (max-width: 900px) {
   .notes-layout {
     display: block;
+  }
+
+  .sidebar-resizer {
+    display: none;
   }
 
   .notes-sidebar {
