@@ -1,6 +1,6 @@
-import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api, Folder, Label, Recording, RECORDINGS_LIMIT, SavedFilter, TimeEntry } from '../api/client';
+import { api, ApiError, Folder, Label, NoteEvent, Recording, RECORDINGS_LIMIT, SavedFilter, TimeEntry } from '../api/client';
 import { forgetNote, isOffline, syncNotes, useOffline, writeOffline } from '../api/offline';
 import { errorText } from '../lib/errors';
 import { FilterContext } from '../lib/filterQuery';
@@ -169,6 +169,49 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   const remove = useCallback((id: string) => {
     setRecordings((list) => list?.filter((r) => r.id !== id) ?? list);
   }, []);
+
+  // Live updates: changes of the notes the user sees, made by anyone (people the notes are
+  // shared with, the user in another window, the processing), arrive as events. A changed
+  // note is loaded again unless the list has that version already; one that can't be
+  // loaded any more is gone for the user (deleted, or no longer shared).
+  const listRef = useRef(recordings);
+  listRef.current = recordings;
+  const refetch = useCallback(
+    async (id: string) => {
+      try {
+        const rec = await api.recording(id);
+        if (rec.deletedAt) {
+          remove(id);
+          void reload(); // the trash changed
+        } else upsert(rec);
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 404) {
+          remove(id);
+          void forgetNote(id);
+        }
+      }
+    },
+    [remove, upsert, reload],
+  );
+  useEffect(() => {
+    if (typeof EventSource === 'undefined') return;
+    const source = new EventSource(api.eventsURL, { withCredentials: true });
+    let opened = false;
+    source.addEventListener('open', () => {
+      // After a reconnect, changes made meanwhile were missed.
+      if (opened) void reload();
+      opened = true;
+    });
+    source.addEventListener('note', (e) => {
+      const ev = JSON.parse((e as MessageEvent<string>).data) as NoteEvent;
+      if (!ev.id) return;
+      const known = listRef.current?.find((r) => r.id === ev.id);
+      if (known && ev.version && (known.version ?? 0) >= ev.version) return;
+      void refetch(ev.id);
+    });
+    source.addEventListener('reload', () => void reload());
+    return () => source.close();
+  }, [refetch, reload]);
 
   const moveToTrash = useCallback(
     async (rec: Recording) => {

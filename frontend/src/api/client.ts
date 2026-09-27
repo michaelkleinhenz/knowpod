@@ -385,6 +385,43 @@ export interface Recording {
   // When the note was moved to the trash; it is deleted for good TRASH_DAYS later.
   deletedAt?: string;
   lastError?: string;
+  // The note's owner, and who made it when that was someone else (in a shared note).
+  ownerId?: string;
+  createdBy?: string;
+  // What the user may do with the note, and whether it is shared with anyone. A shared
+  // note shows the user's own folder, labels, order and reminder.
+  access?: ShareAccess;
+  shared?: boolean;
+  // version counts every change of the note; revision the changes of its title and text,
+  // sent back when editing them so that someone else's edit is never undone.
+  version?: number;
+  revision?: number;
+}
+
+// ShareRole is what a user a note is shared with may do: read it, or also change it.
+export type ShareRole = 'viewer' | 'editor';
+export type ShareAccess = ShareRole | 'owner';
+
+export interface ShareUser {
+  userId: string;
+  email: string;
+  role: ShareAccess;
+  // Shared through a note this one is under; changed there.
+  inherited?: boolean;
+}
+
+// Sharing says who a note is shared with.
+export interface Sharing {
+  owner: ShareUser;
+  members: ShareUser[];
+  access: ShareAccess;
+}
+
+// NoteEvent is a change of a note the user sees, sent over GET /me/events.
+export interface NoteEvent {
+  type: 'note' | 'reload';
+  id?: string;
+  version?: number;
 }
 
 export interface OpenRouterSettings {
@@ -478,8 +515,19 @@ export const api = {
   createBoard: (title: string, board: Board, folderId?: string) => request<Recording>('POST', '/recordings/board', { title, board, folderId }),
   reorderNotes: (ids: string[]) => request<void>('PUT', '/recordings/order', { ids }),
   setBoard: (id: string, board: Board) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/board`, board),
-  editSummary: (id: string, title: string, markdown: string) =>
-    request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/summary`, { title, markdown }),
+  // editSummary saves the title and text; with baseRevision it fails with the code
+  // "changed" when someone else edited them since.
+  editSummary: (id: string, title: string, markdown: string, baseRevision?: number) =>
+    request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/summary`, { title, markdown, baseRevision }),
+  sharing: (id: string) => request<Sharing>('GET', `/recordings/${encodeURIComponent(id)}/shares`),
+  share: (id: string, email: string, role: ShareRole) => request<Sharing>('POST', `/recordings/${encodeURIComponent(id)}/shares`, { email, role }),
+  setShareRole: (id: string, userId: string, role: ShareRole) =>
+    request<Sharing>('PUT', `/recordings/${encodeURIComponent(id)}/shares/${encodeURIComponent(userId)}`, { role }),
+  // unshare stops sharing the note with a user; for the user themselves (leaving it) the
+  // answer is empty.
+  unshare: (id: string, userId: string) =>
+    request<Sharing | null>('DELETE', `/recordings/${encodeURIComponent(id)}/shares/${encodeURIComponent(userId)}`),
+  eventsURL: '/api/v1/me/events',
   setNoteLabels: (id: string, labels: string[]) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/labels`, { labels }),
   setNoteDone: (id: string, done: boolean) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/done`, { done }),
   setNoteDue: (id: string, due: Due | null) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/due`, { due }),

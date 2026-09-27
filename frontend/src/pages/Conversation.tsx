@@ -14,6 +14,7 @@ import { TimeControls } from '../components/TimeControls';
 import { useTaskParse } from '../lib/useTaskParse';
 import { formatDue, formatRepeat } from '../lib/tasks';
 import { MoveToFolder } from '../components/MoveToFolder';
+import { ShareNote } from '../components/ShareNote';
 import { SubNotes } from '../components/SubNotes';
 import { SummaryDetails } from '../components/SummaryDetails';
 import { useNotes } from '../context/NotesContext';
@@ -122,7 +123,9 @@ function SyncState({ sync, error, onRetry }: { sync: Sync; error: string | null;
           ? t('editor.sync.saving')
           : sync === 'offline'
             ? t('editor.sync.offline')
-            : t('editor.sync.error', { error: error ?? '' });
+            : sync === 'conflict'
+              ? t('editor.sync.conflict')
+              : t('editor.sync.error', { error: error ?? '' });
   const failed = sync === 'error' || sync === 'offline';
   return (
     <>
@@ -151,12 +154,14 @@ interface BodyProps {
   reload: () => Promise<void>;
   // created is set for a note that was just made; its title is selected for typing.
   created: boolean;
+  // restart shows the note afresh, with the text as stored (e.g. after someone else changed it).
+  restart: () => void;
 }
 
 // NoteBody is a note's page below the back link. It is re-created when a new summary
 // arrives (see the key in Conversation), so the editor always starts from the stored text.
 // Text notes show only their text (kept as the summary): no transcript, source or AI actions.
-function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyProps) {
+function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart }: BodyProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const notes = useNotes();
@@ -164,6 +169,10 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
   const [busy, setBusy] = useState(false);
   const summary = rec.summary;
   const editable = !!summary;
+  // A note shared for viewing is read-only; only its owner shares, deletes and reprocesses it.
+  const access = rec.access ?? 'owner';
+  const readOnly = access === 'viewer';
+  const isOwner = access === 'owner';
   const audio = useRef<HTMLAudioElement>(null);
   const [seek, setSeek] = useState<number | null>(null);
   const [durationMs, setDurationMs] = useState(rec.format?.durationMs ?? 0);
@@ -191,7 +200,21 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
     void el.play().catch(() => undefined); // autoplay may be refused; the position is set anyway
     setSeek(null);
   }, [seek, tab]);
-  const autosave = useAutosave(rec.id, summary?.title ?? titleOf(rec), setRec);
+  const autosave = useAutosave(rec.id, summary?.title ?? titleOf(rec), rec.revision, setRec);
+  // Someone else changed the text: show their version, unless there are unsaved changes
+  // here; then the user decides which one stays. A save under way may be what changed it.
+  const { known, dirty, settled, conflict } = autosave;
+  useEffect(() => {
+    let stale = false;
+    void settled().then(() => {
+      if (stale || known(rec.revision)) return;
+      if (dirty()) conflict();
+      else restart();
+    });
+    return () => {
+      stale = true;
+    };
+  }, [rec.revision, known, dirty, settled, conflict, restart]);
   // A date typed into the title is offered as the note's due date.
   const { parsed: typedDate, onKeyDown: titleKey } = useTaskParse(autosave.title, titleTyped && !isBoard);
   // A board has no text; only its title is saved like a summary's.
@@ -387,7 +410,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
   // note. They sit in the header, or at the top of the sidebar when it is shown.
   const tools = (
     <div className="note-tools">
-      {tab === 'summary' && rec.transcript && <SummaryDetails rec={rec} onRegenerate={(fn) => regenerate(fn)} />}
+      {tab === 'summary' && rec.transcript && isOwner && <SummaryDetails rec={rec} onRegenerate={(fn) => regenerate(fn)} />}
       {download && (
         <a className="icon-button" href={download.href} download title={download.label} aria-label={download.label}>
           <DownloadIcon />
@@ -395,7 +418,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
       )}
       {copy && <CopyButton className="icon-button" icon={<CopyIcon />} text={copy.text} label={copy.label} />}
       {!isBoard && <span className="tool-divider" aria-hidden="true" />}
-      {!isText && !isBoard && (
+      {!isText && !isBoard && isOwner && (
         <button
           type="button"
           className="icon-button"
@@ -423,11 +446,14 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
           <RetranscribeIcon />
         </button>
       )}
-      <button type="button" className="icon-button" disabled={busy} title={t('subNotes.new')} aria-label={t('subNotes.newLabel', { title: titleOf(rec) })} onClick={() => void createSub()}>
-        <NewNoteIcon />
-      </button>
+      {!readOnly && (
+        <button type="button" className="icon-button" disabled={busy} title={t('subNotes.new')} aria-label={t('subNotes.newLabel', { title: titleOf(rec) })} onClick={() => void createSub()}>
+          <NewNoteIcon />
+        </button>
+      )}
       <MoveToFolder rec={rec} setRec={setRec} />
-      {!rec.deletedAt && (
+      {!rec.deletedAt && <ShareNote rec={rec} setRec={setRec} />}
+      {!rec.deletedAt && !readOnly && (
         <button type="button" className="icon-button danger" disabled={busy} title={t('conversation.moveToTrash')} aria-label={t('conversation.moveToTrash')} onClick={handleDelete}>
           <TrashIcon />
         </button>
@@ -451,6 +477,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
                 className="title-input"
                 aria-label={t('editor.title')}
                 maxLength={200}
+                readOnly={readOnly}
                 value={autosave.title}
                 onChange={(e) => {
                   autosave.setTitle(e.target.value);
@@ -509,6 +536,27 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
             </div>
           </div>
         )}
+        {autosave.sync === 'conflict' && (
+          <div className="notice bad conflict-notice" role="alert">
+            <p>{t('editor.conflict.text')}</p>
+            <div className="trash-actions">
+              <button
+                type="button"
+                className="pill-button"
+                onClick={() => {
+                  autosave.discard();
+                  restart();
+                }}
+              >
+                {t('editor.conflict.theirs')}
+              </button>
+              <button type="button" className="pill-button" onClick={() => void autosave.keepMine()}>
+                {t('editor.conflict.mine')}
+              </button>
+            </div>
+          </div>
+        )}
+        {readOnly && <p className="notice view-only-notice">{t('sharing.viewOnly')}</p>}
         {error && <p className="error">{error}</p>}
 
         {!isText && !isBoard && (
@@ -544,6 +592,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
                     onReady={autosave.editorReady}
                     onChange={autosave.changed}
                     onSaveShortcut={() => void autosave.save()}
+                    readOnly={readOnly}
                   />
                 </Suspense>
                 {!isText && <ActionItems rec={rec} setRec={setRec} />}
@@ -684,10 +733,10 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
           {tools}
           <section>
             <h2>{t('noteInfo.task')}</h2>
-            <div className="note-aside-task">
+            <fieldset className="note-aside-task view-only-fieldset" disabled={readOnly}>
               <NoteDone rec={rec} setRec={setRec} />
               <TaskControls rec={rec} setRec={setRec} />
-            </div>
+            </fieldset>
           </section>
           <section>
             <h2>{t('noteInfo.time')}</h2>
@@ -787,6 +836,9 @@ export function Conversation() {
     [upsert],
   );
   const [aiReady, setAIReady] = useState(true);
+  // generation counts the restarts of the open note (see NoteBody's restart).
+  const [generation, setGeneration] = useState(0);
+  const restart = useCallback(() => setGeneration((g) => g + 1), []);
   const [tab, setTab] = useState<Tab>('summary');
   const [error, setError] = useState<string | null>(null);
   const created = !!(useLocation().state as { created?: boolean } | null)?.created;
@@ -836,6 +888,14 @@ export function Conversation() {
     );
   }, [listedLabels, listedDone, listedFolder, listedParent, listedTask]);
 
+  // A newer version of the open note arrived in the list (changed by someone else, or in
+  // another window): load it in full.
+  const listedVersion = listed?.version ?? 0;
+  const openVersion = rec?.id === id ? (rec.version ?? 0) : 0;
+  useEffect(() => {
+    if (openVersion && listedVersion > openVersion) void load();
+  }, [listedVersion, openVersion, load]);
+
   const inProgress = rec ? processing(rec) : false;
   useEffect(() => {
     if (!inProgress) return;
@@ -851,7 +911,7 @@ export function Conversation() {
       </Link>
       {rec ? (
         <NoteBody
-          key={`${rec.id}:${rec.summary?.createdAt ?? ''}`}
+          key={`${rec.id}:${rec.summary?.createdAt ?? ''}:${generation}`}
           rec={rec}
           aiReady={aiReady}
           tab={tab}
@@ -859,6 +919,7 @@ export function Conversation() {
           setRec={setRec}
           reload={load}
           created={created}
+          restart={restart}
         />
       ) : error ? (
         <p className="error">{error}</p>
