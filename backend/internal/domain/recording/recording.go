@@ -137,6 +137,10 @@ type Recording struct {
 	// Board is the setup of a board note: its scope and columns.
 	Board *Board `bson:"board,omitempty" json:"board,omitempty"`
 
+	// DeletedAt is when the note was moved to the trash; nil when it isn't in the trash.
+	// Notes in the trash are left out of lists and deleted for good after TrashRetention.
+	DeletedAt *time.Time `bson:"deletedAt,omitempty" json:"deletedAt,omitempty"`
+
 	// Highlights are moments the user marked on the device while recording.
 	Highlights     []Highlight    `bson:"highlights,omitempty" json:"highlights,omitempty"`
 	Transcript     *Transcript    `bson:"transcript,omitempty" json:"transcript,omitempty"`
@@ -249,7 +253,23 @@ type SummaryOptions struct {
 	ThemeID  string `bson:"themeId,omitempty" json:"themeId,omitempty"`
 }
 
-// ListFilter selects recordings for listing. Zero values mean "no restriction".
+// TrashRetention is how long notes stay in the trash before they are deleted for good.
+const TrashRetention = 14 * 24 * time.Hour
+
+// Trash selects notes by whether they are in the trash.
+type Trash string
+
+const (
+	// TrashExclude leaves out the notes in the trash (the default).
+	TrashExclude Trash = ""
+	// TrashOnly lists only the notes in the trash.
+	TrashOnly Trash = "only"
+	// TrashAny lists the notes whether they are in the trash or not.
+	TrashAny Trash = "any"
+)
+
+// ListFilter selects recordings for listing. Zero values mean "no restriction", except that
+// notes in the trash are left out unless Trash says otherwise.
 type ListFilter struct {
 	OwnerID  string
 	DeviceID string
@@ -261,4 +281,6 @@ type ListFilter struct {
 	// Brief leaves out the transcript and the summary text (the summary title is kept),
 	// for lists.
 	Brief bool
+	// Trash selects notes in or out of the trash.
+	Trash Trash
 }

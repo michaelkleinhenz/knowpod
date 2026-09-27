@@ -2,6 +2,7 @@ import { lazy, ReactNode, Suspense, useCallback, useEffect, useRef, useState } f
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api, Recording } from '../api/client';
+import { purgeDate } from '../lib/trash';
 import { Board, boardLanes } from '../components/Board';
 import { CopyButton } from '../components/CopyButton';
 import { BackIcon, CalendarIcon, CopyIcon, DownloadIcon, NewNoteIcon, RetranscribeIcon, TrashIcon } from '../components/Icons';
@@ -235,16 +236,40 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
     }, confirmText);
   };
 
+  // Deleting moves the note to the trash, where it can be restored for TRASH_DAYS.
   async function handleDelete() {
-    const confirmKey = isText ? 'conversation.deleteTextConfirm' : isBoard ? 'conversation.deleteBoardConfirm' : isDocument ? 'conversation.deleteDocumentConfirm' : 'conversation.deleteConfirm';
+    setBusy(true);
+    try {
+      // Pending edits go with it, so they are there when it is restored.
+      await autosave.save();
+      await notes.moveToTrash(rec);
+      autosave.discard();
+      navigate('/', { replace: true });
+    } catch (err) {
+      setError(errorText(err, t));
+      setBusy(false);
+    }
+  }
+
+  async function handleRestore() {
+    setBusy(true);
+    setError(null);
+    try {
+      setRec(await notes.restore(rec));
+    } catch (err) {
+      setError(errorText(err, t));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDeleteForever() {
+    const confirmKey = isBoard ? 'conversation.deleteBoardConfirm' : isDocument ? 'conversation.deleteDocumentConfirm' : isText ? 'conversation.deleteTextConfirm' : 'conversation.deleteConfirm';
     if (!window.confirm(t(confirmKey, { title: autosave.title || titleOf(rec) }))) return;
     setBusy(true);
     try {
       autosave.discard();
-      await api.deleteRecording(rec.id);
-      notes.remove(rec.id);
-      // Its sub-notes moved up to where it was.
-      if (notes.recordings?.some((r) => r.parentId === rec.id)) void notes.reload();
+      await notes.deleteForever(rec);
       navigate('/', { replace: true });
     } catch (err) {
       setError(errorText(err, t));
@@ -393,6 +418,19 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
           <NoteLabels rec={rec} setRec={setRec} />
         </div>
       </div>
+      {rec.deletedAt && (
+        <div className="notice trash-notice">
+          <p>{t('conversation.inTrash', { date: formatDate(purgeDate(rec.deletedAt)) })}</p>
+          <div className="trash-actions">
+            <button type="button" className="pill-button" disabled={busy} onClick={() => void handleRestore()}>
+              {t('conversation.restore')}
+            </button>
+            <button type="button" className="pill-button danger" disabled={busy} onClick={() => void handleDeleteForever()}>
+              {t('conversation.deleteForever')}
+            </button>
+          </div>
+        </div>
+      )}
       {error && <p className="error">{error}</p>}
 
       <div className="note-bar">
@@ -447,9 +485,11 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
             <NewNoteIcon />
           </button>
           <MoveToFolder rec={rec} setRec={setRec} />
-          <button type="button" className="icon-button danger" disabled={busy} title={t('common.delete')} aria-label={t('common.delete')} onClick={handleDelete}>
-            <TrashIcon />
-          </button>
+          {!rec.deletedAt && (
+            <button type="button" className="icon-button danger" disabled={busy} title={t('conversation.moveToTrash')} aria-label={t('conversation.moveToTrash')} onClick={handleDelete}>
+              <TrashIcon />
+            </button>
+          )}
         </div>
       </div>
 

@@ -206,7 +206,7 @@ func (s *UserService) Delete(ctx context.Context, actor *Account, id string) err
 		}
 	}
 	for {
-		recs, err := s.recs.List(ctx, recording.ListFilter{OwnerID: u.ID, Limit: 100, Brief: true})
+		recs, err := s.recs.List(ctx, recording.ListFilter{OwnerID: u.ID, Limit: 100, Brief: true, Trash: recording.TrashAny})
 		if err != nil {
 			return err
 		}

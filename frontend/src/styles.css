@@ -647,6 +647,30 @@ a {
   font-size: 0.92rem;
 }
 
+/* A note in the trash: when it goes, and buttons to restore or delete it now. */
+.trash-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.trash-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.pill-button.danger {
+  color: var(--color-error);
+}
+
+.pill-button.danger:hover {
+  border-color: var(--color-error);
+}
+
 .notice.bad {
   background: #fbe9e7;
   border-color: #f1c4bd;
@@ -2716,6 +2740,18 @@ html:has(.notes-layout) {
   color: var(--color-primary);
 }
 
+/* The trash sits below the folders and notes, set apart by a line. */
+.trash-folder {
+  margin-top: 0.4rem;
+  border-top: 1px solid var(--color-border);
+  padding-top: 0.25rem;
+}
+
+.trash-folder .tree-toggle > svg:not(.tree-chevron) {
+  flex: none;
+  color: var(--color-muted);
+}
+
 .tree-chevron {
   flex: none;
   color: var(--color-muted);
@@ -2971,7 +3007,9 @@ html:has(.notes-layout) {
 }
 
 .board-column {
-  flex: 0 0 270px;
+  /* Columns share the width of the view; with many, they keep 270px and the board scrolls. */
+  flex: 1 0 270px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   min-height: 8rem;

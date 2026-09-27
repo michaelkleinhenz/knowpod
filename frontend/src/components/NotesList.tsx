@@ -44,7 +44,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
   const { t } = useTranslation();
   const { account } = useAuth();
   const navigate = useNavigate();
-  const { recordings, folders, aiReady, error, refreshing, reload: load, upsert } = useNotes();
+  const { recordings, folders, trash, aiReady, error, refreshing, reload: load, upsert } = useNotes();
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -283,7 +283,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
         <p className="muted empty">{t('conversations.noMatch', { query })}</p>
       )}
 
-      {view === 'folders' && recordings && (recordings.length > 0 || !!folders?.length || newFolder > 0) && (
+      {view === 'folders' && recordings && (recordings.length > 0 || !!folders?.length || !!trash?.length || newFolder > 0) && (
         <FolderTree notes={matches} query={query} activeId={activeId} aiReady={aiReady} onSetDone={(r, d) => void setDone(r, d)} onNewSub={creating ? undefined : (r) => void createSub(r)} newFolder={newFolder} />
       )}
 

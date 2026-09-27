@@ -48,6 +48,9 @@ var indexes = map[string][]mongo.IndexModel{
 		// Sub-notes of a note.
 		{Keys: bson.D{{Key: "ownerId", Value: 1}, {Key: "parentId", Value: 1}},
 			Options: options.Index().SetPartialFilterExpression(bson.M{"parentId": bson.M{"$exists": true}})},
+		// Notes in the trash, deleted for good when they have been there long enough.
+		{Keys: bson.D{{Key: "deletedAt", Value: 1}},
+			Options: options.Index().SetPartialFilterExpression(bson.M{"deletedAt": bson.M{"$exists": true}})},
 		// Reminders due to be sent.
 		{Keys: bson.D{{Key: "remindAt", Value: 1}},
 			Options: options.Index().SetPartialFilterExpression(bson.M{"remindAt": bson.M{"$exists": true}})},

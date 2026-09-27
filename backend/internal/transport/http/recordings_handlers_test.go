@@ -198,7 +198,7 @@ func TestManualUploadAndIsolation(t *testing.T) {
 		t.Fatalf("script download: %d", res.StatusCode)
 	}
 
-	if res := bob.do("DELETE", "/api/v1/recordings/"+rec.ID, nil, nil, nil); res.StatusCode != 204 {
+	if res := bob.do("DELETE", "/api/v1/recordings/"+rec.ID+"?permanent=1", nil, nil, nil); res.StatusCode != 204 {
 		t.Fatalf("delete own: %d", res.StatusCode)
 	}
 }
@@ -252,7 +252,7 @@ func TestTextNotes(t *testing.T) {
 		}
 	}
 
-	if res := admin.do("DELETE", path, nil, nil, nil); res.StatusCode != 204 {
+	if res := admin.do("DELETE", path+"?permanent=1", nil, nil, nil); res.StatusCode != 204 {
 		t.Fatalf("delete: %d", res.StatusCode)
 	}
 	if res := admin.do("GET", path, nil, nil, nil); res.StatusCode != 404 {
@@ -420,14 +420,14 @@ func TestSubNotes(t *testing.T) {
 	}
 
 	// Deleting a note moves its sub-notes up to where it was.
-	if res := admin.do("DELETE", "/api/v1/recordings/"+sub.ID, nil, nil, nil); res.StatusCode != 204 {
+	if res := admin.do("DELETE", "/api/v1/recordings/"+sub.ID, nil, nil, nil); res.StatusCode != 200 {
 		t.Fatalf("delete sub-note: %d", res.StatusCode)
 	}
 	var got recording.Recording
 	if admin.do("GET", "/api/v1/recordings/"+subsub.ID, nil, nil, &got); got.ParentID != head.ID || got.FolderID != "" {
 		t.Fatalf("after deleting its parent: %+v %+v", got.ParentID, got.FolderID)
 	}
-	if res := admin.do("DELETE", "/api/v1/recordings/"+head.ID, nil, nil, nil); res.StatusCode != 204 {
+	if res := admin.do("DELETE", "/api/v1/recordings/"+head.ID, nil, nil, nil); res.StatusCode != 200 {
 		t.Fatalf("delete head: %d", res.StatusCode)
 	}
 	var up recording.Recording
@@ -601,5 +601,38 @@ func TestTaskEndpoints(t *testing.T) {
 	}
 	if res := f.browser().do("PUT", "/api/v1/recordings/"+note.ID+"/priority", map[string]int{"priority": 1}, nil, nil); res.StatusCode != 401 {
 		t.Errorf("signed out: %d", res.StatusCode)
+	}
+}
+
+func TestTrash(t *testing.T) {
+	f := newAPIFixture(t)
+	admin := f.signedIn(adminEmail, adminPassword)
+
+	var a, b recording.Recording
+	admin.do("POST", "/api/v1/recordings/text", map[string]string{"title": "A", "markdown": ""}, nil, &a)
+	admin.do("POST", "/api/v1/recordings/text", map[string]string{"title": "B", "markdown": ""}, nil, &b)
+	var trashed recording.Recording
+	if res := admin.do("DELETE", "/api/v1/recordings/"+a.ID, nil, nil, &trashed); res.StatusCode != 200 || trashed.DeletedAt == nil {
+		t.Fatalf("trash: %d %+v", res.StatusCode, trashed.DeletedAt)
+	}
+	count := func(query string) int {
+		var list []recording.Recording
+		admin.do("GET", "/api/v1/recordings"+query, nil, nil, &list)
+		return len(list)
+	}
+	if n, inTrash := count(""), count("?trash=only"); n != 1 || inTrash != 1 {
+		t.Fatalf("listed %d, in the trash %d", n, inTrash)
+	}
+	var restored recording.Recording
+	if res := admin.do("POST", "/api/v1/recordings/"+a.ID+"/restore", nil, nil, &restored); res.StatusCode != 200 || restored.DeletedAt != nil {
+		t.Fatalf("restore: %d %+v", res.StatusCode, restored.DeletedAt)
+	}
+	admin.do("DELETE", "/api/v1/recordings/"+a.ID, nil, nil, nil)
+	admin.do("DELETE", "/api/v1/recordings/"+b.ID, nil, nil, nil)
+	if res := admin.do("DELETE", "/api/v1/recordings/trash", nil, nil, nil); res.StatusCode != 204 {
+		t.Fatalf("empty trash: %d", res.StatusCode)
+	}
+	if n := count("?trash=any"); n != 0 {
+		t.Fatalf("left after emptying the trash: %d", n)
 	}
 }

@@ -28,9 +28,10 @@ function newColumnID(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 }
 
-// inScope reports whether the board shows the note. Boards never show boards.
+// inScope reports whether the board shows the note. Boards never show boards, nor notes in
+// the trash.
 function inScope(r: Recording, scope: BoardScope, folderIds: Set<string>): boolean {
-  if (r.type === 'board') return false;
+  if (r.type === 'board' || r.deletedAt) return false;
   switch (scope.kind) {
     case 'folder':
       return folderOf(r, folderIds) === scope.id;

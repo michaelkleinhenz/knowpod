@@ -261,6 +261,9 @@ export interface NotificationStatus {
 // RECORDINGS_LIMIT is how many notes the list loads.
 export const RECORDINGS_LIMIT = 200;
 
+// TRASH_DAYS is how long notes stay in the trash before they are deleted for good.
+export const TRASH_DAYS = 14;
+
 export interface Recording {
   id: string;
   deviceId: string;
@@ -309,6 +312,8 @@ export interface Recording {
   parentId?: string;
   // A board's scope and columns.
   board?: Board;
+  // When the note was moved to the trash; it is deleted for good TRASH_DAYS later.
+  deletedAt?: string;
   lastError?: string;
 }
 
@@ -415,10 +420,15 @@ export const api = {
   recordings: () => request<Recording[]>('GET', `/recordings?limit=${RECORDINGS_LIMIT}`),
   recordingByNumber: (n: number) => request<Recording[]>('GET', `/recordings?number=${n}`),
   recording: (id: string) => request<Recording>('GET', notePath(id)),
-  deleteRecording: async (id: string) => {
-    await request<void>('DELETE', `/recordings/${encodeURIComponent(id)}`);
+  // trashNote moves a note to the trash; deleteNote deletes it for good.
+  trashNote: (id: string) => request<Recording>('DELETE', `/recordings/${encodeURIComponent(id)}`),
+  restoreNote: (id: string) => request<Recording>('POST', `/recordings/${encodeURIComponent(id)}/restore`),
+  deleteNote: async (id: string) => {
+    await request<void>('DELETE', `/recordings/${encodeURIComponent(id)}?permanent=1`);
     await forgetNote(id);
   },
+  trash: () => request<Recording[]>('GET', `/recordings?trash=only&limit=${RECORDINGS_LIMIT}`),
+  emptyTrash: () => request<void>('DELETE', '/recordings/trash'),
   // allRecordings loads the notes list with each note's text, for keeping them offline.
   allRecordings: () => request<Recording[]>('GET', `/recordings?limit=${RECORDINGS_LIMIT}&full=1`),
   retranscribe: (id: string) => request<Recording>('POST', `/recordings/${encodeURIComponent(id)}/retranscribe`),

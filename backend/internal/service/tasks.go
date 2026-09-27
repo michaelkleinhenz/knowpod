@@ -70,10 +70,10 @@ func cleanDue(d *recording.Due) (*recording.Due, error) {
 }
 
 // scheduleReminder sets when the task's next reminder is sent: only for an open task, and
-// only for a moment still to come (a date set in the past sends none).
+// only for a moment still to come (a date set in the past sends none), and not in the trash.
 func (s *RecordingService) scheduleReminder(rec *recording.Recording, loc *time.Location) {
 	rec.RemindAt = nil
-	if rec.Done || rec.Due == nil {
+	if rec.Done || rec.Due == nil || rec.DeletedAt != nil {
 		return
 	}
 	if at := rec.Due.ReminderAt(loc); at != nil && at.After(s.clock()) {

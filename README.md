@@ -75,6 +75,10 @@ AI worker ─────────────▶ transcript (status: transcr
   the note's own sub-notes list (Alt+click opens or closes a whole tree; opening a note
   unfolds the notes above it in the sidebar). The note's header shows the notes above it, and deleting a note moves its sub-notes up (nothing
   else is lost). Moving a sub-note into a folder takes it out from under its parent.
+- Deleted notes go to the **Trash**, the last folder in the folder view (dropping a note
+  onto it deletes it too). They stay there for 14 days and can be restored from the note's
+  page; after that they are deleted for good. **Delete for good** and **Empty trash** don't
+  wait.
 - The web app works **offline**: it is installable and keeps a copy of every note in the
   list (text, summaries, transcripts, labels and folders) in the browser, synced in the
   background whenever it is online. Without a connection the header shows **Offline** and the

@@ -174,6 +174,15 @@ export function TagIcon() {
   );
 }
 
+// EmptyTrashIcon is a trash can with a cross, for deleting everything in the trash.
+export function EmptyTrashIcon() {
+  return (
+    <ToolIcon>
+      <path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 12.5h9l1-12.5M10 11l4 5M14 11l-4 5" />
+    </ToolIcon>
+  );
+}
+
 export function FolderIcon({ open = false }: { open?: boolean }) {
   return (
     <svg className="folder-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true">

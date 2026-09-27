@@ -163,12 +163,13 @@ func main() {
 
 	jobCtx, jobCancel := context.WithCancel(ctx)
 	var jobs sync.WaitGroup
-	jobs.Add(5)
+	jobs.Add(6)
 	go func() { defer jobs.Done(); pipeline.Start(jobCtx) }()
 	go func() { defer jobs.Done(); aiPipeline.Start(jobCtx) }()
 	go func() { defer jobs.Done(); purgeStaleUploads(jobCtx, uploadSvc, cfg.UploadTTL, log) }()
 	go func() { defer jobs.Done(); pullRemarkable(jobCtx, remarkableSvc, cfg.RemarkablePullInterval, log) }()
 	go func() { defer jobs.Done(); notifySvc.Run(jobCtx, reminderInterval) }()
+	go func() { defer jobs.Done(); purgeTrash(jobCtx, actions, log) }()
 
 	// HTTP server.
 	srv := httpx.NewServer(httpx.Deps{
@@ -252,6 +253,24 @@ func purgeStaleUploads(ctx context.Context, uploads *service.UploadService, ttl 
 			log.Error("purging stale uploads failed", "err", err)
 		} else if n > 0 {
 			log.Info("purged stale uploads", "count", n)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+// purgeTrash periodically deletes the notes that have been in the trash long enough.
+func purgeTrash(ctx context.Context, actions *service.RecordingService, log *slog.Logger) {
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	for {
+		if n, err := actions.PurgeTrash(ctx); err != nil {
+			log.Error("emptying the trash failed", "err", err)
+		} else if n > 0 {
+			log.Info("deleted notes from the trash", "count", n)
 		}
 		select {
 		case <-ctx.Done():

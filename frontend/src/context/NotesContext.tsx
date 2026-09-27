@@ -1,7 +1,7 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, Folder, Label, Recording, RECORDINGS_LIMIT } from '../api/client';
-import { isOffline, syncNotes, useOffline, writeOffline } from '../api/offline';
+import { forgetNote, isOffline, syncNotes, useOffline, writeOffline } from '../api/offline';
 import { errorText } from '../lib/errors';
 import { processing } from '../lib/recordings';
 
@@ -26,6 +26,18 @@ interface NotesState {
   // upsert puts a changed recording into the list (e.g. after the open note was saved).
   upsert: (rec: Recording) => void;
   remove: (id: string) => void;
+  // trash holds the notes in the trash, newest deletion first.
+  trash: Recording[] | null;
+  // moveToTrash, restore, deleteForever and emptyTrash change the trash and the list alike.
+  moveToTrash: (rec: Recording) => Promise<void>;
+  restore: (rec: Recording) => Promise<Recording>;
+  deleteForever: (rec: Recording) => Promise<void>;
+  emptyTrash: () => Promise<void>;
+}
+
+// byDeletion sorts notes in the trash by when they were deleted, newest first.
+function byDeletion(list: Recording[]): Recording[] {
+  return list.slice().sort((a, b) => (b.deletedAt ?? '').localeCompare(a.deletedAt ?? ''));
 }
 
 const NotesContext = createContext<NotesState | null>(null);
@@ -41,12 +53,14 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   const [aiReady, setAIReady] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [trash, setTrash] = useState<Recording[] | null>(null);
 
   const reload = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [list, ai] = await Promise.all([api.recordings(), api.aiStatus()]);
+      const [list, ai, trashed] = await Promise.all([api.recordings(), api.aiStatus(), api.trash().catch(() => null)]);
       setRecordings(list);
+      if (trashed) setTrash(byDeletion(trashed));
       setAIReady(ai.transcription && ai.summary);
       setError(null);
       if (!isOffline()) void syncNotes(list, (r) => !processing(r), loadNote);
@@ -123,8 +137,52 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     setRecordings((list) => list?.filter((r) => r.id !== id) ?? list);
   }, []);
 
+  const moveToTrash = useCallback(
+    async (rec: Recording) => {
+      const trashed = await api.trashNote(rec.id);
+      remove(rec.id);
+      setTrash((list) => byDeletion([trashed, ...(list ?? []).filter((r) => r.id !== rec.id)]));
+      // Its sub-notes moved up to where it was.
+      if (recordings?.some((r) => r.parentId === rec.id)) void reload();
+    },
+    [recordings, reload, remove],
+  );
+
+  const restore = useCallback(
+    async (rec: Recording) => {
+      const back = await api.restoreNote(rec.id);
+      setTrash((list) => list?.filter((r) => r.id !== rec.id) ?? list);
+      upsert(back);
+      return back;
+    },
+    [upsert],
+  );
+
+  const deleteForever = useCallback(
+    async (rec: Recording) => {
+      await api.deleteNote(rec.id);
+      setTrash((list) => list?.filter((r) => r.id !== rec.id) ?? list);
+      if (!rec.deletedAt) {
+        remove(rec.id);
+        if (recordings?.some((r) => r.parentId === rec.id)) void reload();
+      }
+    },
+    [recordings, reload, remove],
+  );
+
+  const emptyTrash = useCallback(async () => {
+    const gone = trash ?? [];
+    await api.emptyTrash();
+    setTrash([]);
+    await Promise.all(gone.map((r) => forgetNote(r.id)));
+  }, [trash]);
+
   return (
-    <NotesContext.Provider value={{ recordings, labels, reloadLabels, folders, reloadFolders, aiReady, error, refreshing, reload, upsert, remove }}>{children}</NotesContext.Provider>
+    <NotesContext.Provider
+      value={{ recordings, labels, reloadLabels, folders, reloadFolders, aiReady, error, refreshing, reload, upsert, remove, trash, moveToTrash, restore, deleteForever, emptyTrash }}
+    >
+      {children}
+    </NotesContext.Provider>
   );
 }
 
