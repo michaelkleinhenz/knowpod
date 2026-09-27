@@ -1,6 +1,5 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
 import { api, Device } from '../api/client';
 import { CopyButton } from '../components/CopyButton';
 import { errorText } from '../lib/errors';
@@ -80,14 +79,14 @@ export function Devices() {
   const uploadsURL = `${window.location.origin}/api/v1/uploads`;
 
   return (
-    <div className="page">
+    <>
       <section className="card">
-        <h1>{t('devices.title')}</h1>
+        <h2 className="card-title">{t('devices.title')}</h2>
         <p className="muted">
           <Trans
             i18nKey="devices.intro"
             values={{ url: uploadsURL }}
-            components={{ 1: <code />, 3: <code />, 5: <Link to="/status" /> }}
+            components={{ 1: <code />, 3: <code />, 5: <a href="/api/v1/openapi.yaml" target="_blank" rel="noreferrer" /> }}
           />
         </p>
 
@@ -154,6 +153,6 @@ export function Devices() {
           </ul>
         )}
       </section>
-    </div>
+    </>
   );
 }

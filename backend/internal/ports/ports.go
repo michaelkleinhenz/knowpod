@@ -35,6 +35,8 @@ type RecordingRepository interface {
 	Claim(ctx context.Context, status recording.Status, now, leaseUntil time.Time) (*recording.Recording, error)
 	// ListStale returns recordings in the given status not updated since before.
 	ListStale(ctx context.Context, status recording.Status, before time.Time, limit int) ([]*recording.Recording, error)
+	// ListTrashed returns recordings moved to the trash before the given time.
+	ListTrashed(ctx context.Context, before time.Time, limit int) ([]*recording.Recording, error)
 	// AssignOwnerless gives recordings without an owner to ownerID (data from before users).
 	AssignOwnerless(ctx context.Context, ownerID string) (int, error)
 	// RemoveLabel takes the label off all of ownerID's recordings and clears the scope of

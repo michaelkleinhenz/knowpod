@@ -44,7 +44,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
   const { t } = useTranslation();
   const { account } = useAuth();
   const navigate = useNavigate();
-  const { recordings, folders, aiReady, error, refreshing, reload: load, upsert } = useNotes();
+  const { recordings, folders, trash, aiReady, error, refreshing, reload: load, upsert } = useNotes();
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -252,7 +252,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
       {!aiReady && recordings && recordings.length > 0 && (
         <p className="notice">
           {account?.role === 'admin' ? (
-            <Trans i18nKey="conversations.aiOffAdmin" components={{ 1: <Link to="/settings" /> }} />
+            <Trans i18nKey="conversations.aiOffAdmin" components={{ 1: <Link to="/admin?tab=general" /> }} />
           ) : (
             t('conversations.aiOff')
           )}
@@ -265,7 +265,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
         <div className="empty">
           <p className="muted">{t('conversations.empty')}</p>
           <p className="muted">
-            <Trans i18nKey="conversations.emptyHint" components={{ 1: <Link to="/devices" />, 3: <Link to="/account" /> }} />
+            <Trans i18nKey="conversations.emptyHint" components={{ 1: <Link to="/settings?tab=devices" />, 3: <Link to="/settings?tab=account" /> }} />
           </p>
           <div className="empty-actions">
             <button type="button" onClick={createText} disabled={creating}>
@@ -283,7 +283,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
         <p className="muted empty">{t('conversations.noMatch', { query })}</p>
       )}
 
-      {view === 'folders' && recordings && (recordings.length > 0 || !!folders?.length || newFolder > 0) && (
+      {view === 'folders' && recordings && (recordings.length > 0 || !!folders?.length || !!trash?.length || newFolder > 0) && (
         <FolderTree notes={matches} query={query} activeId={activeId} aiReady={aiReady} onSetDone={(r, d) => void setDone(r, d)} onNewSub={creating ? undefined : (r) => void createSub(r)} newFolder={newFolder} />
       )}
 

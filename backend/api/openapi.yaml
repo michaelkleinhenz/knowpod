@@ -786,6 +786,10 @@ paths:
           in: query
           description: Include transcript and summary text (left out by default to keep lists small)
           schema: { type: boolean }
+        - name: trash
+          in: query
+          description: '"only" lists the notes in the trash, "any" all notes; by default notes in the trash are left out'
+          schema: { type: string, enum: [only, any] }
       responses:
         "200":
           description: Recordings
@@ -885,16 +889,32 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
 
+  /recordings/trash:
+    delete:
+      tags: ["Recordings"]
+      summary: Empty the trash
+      description: Deletes all your notes in the trash for good.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      responses:
+        "204": { description: Deleted }
+
   /recordings/{recordingId}:
     delete:
       tags: ["Recordings"]
-      summary: Delete a recording
-      description: Removes the recording, its transcript and summary, and its audio from storage.
+      summary: Move a note to the trash, or delete it
+      description: |
+        Moves the note to the trash (its sub-notes move up to where it was). Notes stay in the
+        trash for 14 days and are then deleted for good. With `permanent`, the note, its
+        transcript and summary, and its audio are removed from storage right away.
       security: [{ sessionCookie: [] }, { adminToken: [] }]
       parameters:
         - { name: recordingId, in: path, required: true, schema: { type: string } }
+        - { name: permanent, in: query, description: Delete for good instead of moving to the trash, schema: { type: boolean } }
       responses:
-        "204": { description: Deleted }
+        "200":
+          description: Moved to the trash
+          content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
+        "204": { description: Deleted for good }
         "404": { $ref: "#/components/responses/Error" }
     get:
       tags: ["Recordings"]
@@ -962,6 +982,20 @@ paths:
         "409":
           description: Not stored yet, or the note is not a document
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /recordings/{recordingId}/restore:
+    post:
+      tags: ["Recordings"]
+      summary: Restore a note from the trash
+      description: Takes the note out of the trash. When the note it was a sub-note of is gone or in the trash, it comes back at the top level.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Restored
+          content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
+        "404": { $ref: "#/components/responses/Error" }
 
   /recordings/{recordingId}/retranscribe:
     post:
@@ -1675,6 +1709,7 @@ components:
         title: { type: string, description: Title from the source (Pocket, the document's name on the reMarkable) }
         recordingId: { type: string, description: Device-assigned ID, the Pocket recording ID, or the reMarkable document ID }
         status: { $ref: "#/components/schemas/Status" }
+        deletedAt: { type: string, format: date-time, description: When the note was moved to the trash; absent when it isn't in the trash. Notes are deleted for good 14 days later. }
         size: { type: integer, format: int64 }
         sha256: { type: string }
         sourceContentType: { type: string, description: Media type of audio fetched from Pocket }

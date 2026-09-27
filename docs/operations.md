@@ -114,17 +114,17 @@ a user, and each user sees only their own notes and devices.
 
 | Role | Can |
 |---|---|
-| **User** | Use Notes (including uploads and summary details), Devices, Status, Account (own password, own Pocket integration, own reMarkable link) and Settings (language, own themes). |
-| **Admin** | Everything a user can, plus **Users** (create, edit, set passwords, delete) and the OpenRouter section of **Settings**. |
+| **User** | Use Notes (including uploads and summary details) and **Settings**, which hold only the user's own settings: language, account (own password, notifications, own Pocket integration, own reMarkable link), devices, own themes and labels. |
+| **Admin** | Everything a user can, plus **Admin**, which holds what applies to all users: **Users** (create, edit, set passwords, delete) and **General** (OpenRouter). |
 
 **The built-in admin** is `ADMIN_EMAIL`. Its record is created at startup; until a password
-is set for it in the UI (by itself under **Account**, or by another admin under **Users**),
+is set for it in the UI (by itself under **Settings → Account**, or by another admin under **Admin → Users**),
 its password is `ADMIN_PASSWORD` from the environment. After that, the stored password
 applies and `ADMIN_PASSWORD` no longer works. The built-in admin can't be deleted or
 demoted, so there is always a way in; it also owns everything created before there were
 users (assigned once at startup).
 
-**Managing users** (admins, **Users** page): create a user with an initial password and a
+**Managing users** (admins, **Admin → Users**): create a user with an initial password and a
 role, change a user's email or role, set a new password (the user is signed out
 everywhere), or delete a user. Deleting removes the user **with all their devices,
 notes, audio and themes**. Admins can't delete themselves, and the last admin can't be
@@ -136,7 +136,7 @@ cookie is `HttpOnly` and `SameSite=Strict`, and `Secure` when the request came i
 (directly, or with `X-Forwarded-Proto: https` from the proxy). Login attempts are limited to
 10 per minute per client IP.
 
-**Forgotten password.** Another admin sets a new one under **Users**. For the built-in admin
+**Forgotten password.** Another admin sets a new one under **Admin → Users**. For the built-in admin
 without any other admin, clear its stored password; `ADMIN_PASSWORD` then works again:
 
 ```js
@@ -144,7 +144,7 @@ db.users.updateOne({ email: "admin@example.com" }, { $set: { passwordHash: "" } 
 ```
 
 **Changing `ADMIN_EMAIL`** creates a new built-in admin at the next start. The old account
-stays as a normal admin with its stored password; delete it under **Users** if it shouldn't.
+stays as a normal admin with its stored password; delete it under **Admin → Users** if it shouldn't.
 
 ## Pocket integration
 
@@ -153,10 +153,9 @@ user's personal webhook whenever something happens to a recording; knowpod then 
 the audio with that user's Pocket API key and archives it in S3 like the other recordings.
 The recordings belong to that user.
 
-**Setup** (each user, **Account** page → Pocket integration):
+**Setup** (each user, **Settings → Account** → Pocket integration):
 
 1. Copy **Your webhook URL** (`https://<your domain>/api/v1/webhooks/pocket/<random id>`).
-   The Status page shows it too.
 2. In the Pocket app's integrations settings, add a webhook with that URL. Pocket shows the
    webhook's **signing secret** once; paste it into **Webhook signing secret**.
 3. Create a Pocket **API key** (`pk_…`), paste it into **Pocket API key**, and save.
@@ -196,7 +195,7 @@ which is created with the first import. Inside it, the account's folders are mir
 each reMarkable folder has a knowpod folder of the same name in the same place. It only
 reads: nothing on the tablet or in the cloud is changed, moved or deleted.
 
-**Setup** (each user, **Account** page → reMarkable):
+**Setup** (each user, **Settings → Account** → reMarkable):
 
 1. Get a one-time code at
    [my.remarkable.com/device/browser/connect](https://my.remarkable.com/device/browser/connect).
@@ -289,9 +288,14 @@ summary.
 
 ## Settings
 
-**Settings** is organized in tabs: **General** (app language), **Themes** (built-in and own
-summary themes) and, for admins, **AI processing** (OpenRouter). The open tab is part of the
-URL (e.g. `/settings?tab=themes`).
+**Settings** holds each user's own settings, in tabs: **General** (app language), **Account**
+(password, notifications, Pocket, reMarkable), **Devices**, **Themes** (built-in and own
+summary themes) and **Labels**. Nothing there changes anything for other users.
+
+**Admin** (only for admins) holds what applies to all users, in tabs: **Users** and
+**General** (AI processing with OpenRouter). The open tab is part of the URL (e.g.
+`/settings?tab=themes`, `/admin?tab=general`); the former pages `/account`, `/devices`,
+`/users` and `/status` lead to their new places.
 
 ## Language of the app
 
@@ -302,7 +306,7 @@ summaries are written in: speech or handwriting in another language is translate
 summary follows it unless another language is set under **Summary details**. Without a chosen
 language (following the browser), transcripts keep the recording's language. API error responses carry a stable `code`
 (e.g. `invalid_login`, `email_taken`) that the UI translates; the `error` text stays
-English. The API reference on the Status page is shown in English.
+English. The API description (`openapi.yaml`) is in English.
 
 ## Highlights and downloads
 
@@ -343,7 +347,7 @@ its day, minus the chosen lead time.
 ## Notifications
 
 Reminders are sent as push notifications (Web Push) to every browser or installed app in
-which the user turned them on under **Account → Notifications**; **Send a test** checks the
+which the user turned them on under **Settings → Account → Notifications**; **Send a test** checks the
 setup. The server generates its VAPID key pair on the first start and keeps it in the
 `settings` collection; there is nothing to configure. `WEBPUSH_SUBJECT` (a `mailto:` or
 `https:` URL, default `mailto:` + `ADMIN_EMAIL`) tells the browsers' push services whom to
@@ -390,7 +394,7 @@ variables:
 
 1. Create an API key at [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys)
    (and add credit to the OpenRouter account).
-2. In knowpod, open **Settings** (as an admin), paste the key under **AI processing**,
+2. In knowpod, open **Admin → General** (as an admin), paste the key under **AI processing**,
    choose a **transcription model** (only models that accept audio are offered) and a
    **default summary model**, and save. Users can pick another summary model per note.
    Optionally choose a **document model** for reading reMarkable documents (only models that
@@ -424,7 +428,7 @@ Log messages: `recording transcribed` (model, length, duration) and `recording s
 
 ## Provisioning devices
 
-Each user manages their own recorders on the **Devices** page; uploads from a device belong
+Each user manages their own recorders under **Settings → Devices**; uploads from a device belong
 to its owner.
 
 - **Add device:** enter a name. The device's API token appears in its row with a copy
@@ -460,7 +464,7 @@ curl -s -X DELETE -H "$ADMIN" $API/devices/<deviceId>
 ## Monitoring
 
 - **`GET /healthz`** returns `200` when MongoDB answers and `503` otherwise. It doesn't
-  check S3. The **Status** page in the web UI shows the same result.
+  check S3.
 - **Logs** are JSON lines on stdout. Useful messages:
 
   | Message | Meaning |

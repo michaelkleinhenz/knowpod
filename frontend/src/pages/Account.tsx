@@ -81,9 +81,9 @@ export function Account() {
   const { t } = useTranslation();
   const { account } = useAuth();
   return (
-    <div className="page">
+    <>
       <section className="card">
-        <h1>{t('account.title')}</h1>
+        <h2 className="card-title">{t('account.title')}</h2>
         <p className="muted">
           <Trans i18nKey="account.signedInAs" values={{ email: account?.email }} components={{ 1: <strong /> }} />
           {account?.role === 'admin' && <span className="role-pill">{t('common.admin')}</span>}
@@ -103,6 +103,6 @@ export function Account() {
         <h2 className="card-title">{t('account.remarkableTitle')}</h2>
         <RemarkableSetup />
       </section>
-    </div>
+    </>
   );
 }

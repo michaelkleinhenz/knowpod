@@ -137,6 +137,12 @@ func (r *RecordingRepo) List(ctx context.Context, f recording.ListFilter) ([]*re
 	if f.Number != 0 {
 		filter["number"] = f.Number
 	}
+	switch f.Trash {
+	case recording.TrashExclude:
+		filter["deletedAt"] = bson.M{"$exists": false}
+	case recording.TrashOnly:
+		filter["deletedAt"] = bson.M{"$exists": true}
+	}
 	opts := options.Find().SetSort(bson.D{{Key: "createdAt", Value: -1}}).SetSkip(int64(f.Offset))
 	if f.Brief {
 		opts.SetProjection(bson.M{"transcript": 0, "summary.markdown": 0, "summary.actionItems": 0})
@@ -191,6 +197,10 @@ func (r *RecordingRepo) ClaimReminder(ctx context.Context, now time.Time) (*reco
 
 func (r *RecordingRepo) ListStale(ctx context.Context, status recording.Status, before time.Time, limit int) ([]*recording.Recording, error) {
 	return r.find(ctx, bson.M{"status": status, "updatedAt": bson.M{"$lt": before}}, options.Find().SetLimit(int64(limit)))
+}
+
+func (r *RecordingRepo) ListTrashed(ctx context.Context, before time.Time, limit int) ([]*recording.Recording, error) {
+	return r.find(ctx, bson.M{"deletedAt": bson.M{"$lt": before}}, options.Find().SetLimit(int64(limit)))
 }
 
 func (r *RecordingRepo) AssignOwnerless(ctx context.Context, ownerID string) (int, error) {

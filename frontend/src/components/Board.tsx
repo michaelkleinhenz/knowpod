@@ -28,9 +28,10 @@ function newColumnID(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 }
 
-// inScope reports whether the board shows the note. Boards never show boards.
+// inScope reports whether the board shows the note. Boards never show boards, nor notes in
+// the trash.
 function inScope(r: Recording, scope: BoardScope, folderIds: Set<string>): boolean {
-  if (r.type === 'board') return false;
+  if (r.type === 'board' || r.deletedAt) return false;
   switch (scope.kind) {
     case 'folder':
       return folderOf(r, folderIds) === scope.id;
@@ -58,6 +59,18 @@ function layout(board: BoardSetup, notes: Recording[], folders: Folder[]): Recor
   const rest = [...shown.values()].filter((r) => !placed.has(r.id)).sort((a, b) => when(b).getTime() - when(a).getTime());
   cols[0]?.push(...rest);
   return cols;
+}
+
+// boardLanes finds the boards that show the note and the column it is in on each: the one it
+// was put into, or the first column when it is in none (as the board shows it).
+export function boardLanes(rec: Recording, notes: Recording[], folders: Folder[]): { board: Recording; lane: string }[] {
+  const folderIds = new Set(folders.map((f) => f.id));
+  return notes.flatMap((b) => {
+    const setup = b.board;
+    if (b.type !== 'board' || !setup || setup.columns.length === 0 || !inScope(rec, setup.scope, folderIds)) return [];
+    const column = setup.columns.find((c) => c.notes?.includes(rec.id)) ?? setup.columns[0];
+    return [{ board: b, lane: column.name }];
+  });
 }
 
 function scopeValue(s: BoardScope): string {

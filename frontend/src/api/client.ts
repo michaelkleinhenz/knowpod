@@ -71,11 +71,6 @@ async function request<T>(method: string, path: string, body?: unknown, fallback
 const isRecording = (v: unknown): v is Recording =>
   !!v && typeof v === 'object' && typeof (v as Recording).id === 'string' && typeof (v as Recording).status === 'string' && 'recordingId' in v;
 
-export interface Info {
-  service: string;
-  apiVersion: string;
-}
-
 export type Role = 'admin' | 'user';
 
 export interface Account {
@@ -261,6 +256,9 @@ export interface NotificationStatus {
 // RECORDINGS_LIMIT is how many notes the list loads.
 export const RECORDINGS_LIMIT = 200;
 
+// TRASH_DAYS is how long notes stay in the trash before they are deleted for good.
+export const TRASH_DAYS = 14;
+
 export interface Recording {
   id: string;
   deviceId: string;
@@ -309,6 +307,8 @@ export interface Recording {
   parentId?: string;
   // A board's scope and columns.
   board?: Board;
+  // When the note was moved to the trash; it is deleted for good TRASH_DAYS later.
+  deletedAt?: string;
   lastError?: string;
 }
 
@@ -344,35 +344,6 @@ export interface ModelOption {
   audioPrice?: string;
 }
 
-export interface Health {
-  status: string;
-  service: string;
-}
-
-// The subset of an OpenAPI 3 document that the Status page displays.
-export interface OpenAPIOperation {
-  tags?: string[];
-  summary?: string;
-  description?: string;
-  security?: Record<string, string[]>[];
-  parameters?: { name: string; in: string; required?: boolean; description?: string }[];
-  requestBody?: { content?: Record<string, unknown> };
-  responses?: Record<string, { description?: string }>;
-}
-
-export interface OpenAPISpec {
-  info: { title: string; version: string; description?: string };
-  tags?: { name: string; description?: string }[];
-  paths: Record<string, Record<string, OpenAPIOperation | unknown>>;
-}
-
-// health reads /healthz, which lives outside /api/v1 and answers 503 with a JSON body when
-// the database is unreachable.
-async function health(): Promise<Health> {
-  const res = await fetch('/healthz', { credentials: 'same-origin' });
-  return (await res.json()) as Health;
-}
-
 // uploadRecording sends an audio file as the request body and reports progress (0..1). It
 // uses XMLHttpRequest because fetch can't report upload progress.
 function uploadRecording(file: File, onProgress: (fraction: number) => void): Promise<Recording> {
@@ -401,9 +372,6 @@ function uploadRecording(file: File, onProgress: (fraction: number) => void): Pr
 }
 
 export const api = {
-  info: () => request<Info>('GET', '/info'),
-  health,
-  openapi: () => request<OpenAPISpec>('GET', '/openapi.json'),
   devices: () => request<Device[]>('GET', '/devices'),
   pocket: () => request<PocketSettings>('GET', '/me/pocket'),
   savePocket: (u: { webhookSecret?: string; apiKey?: string }) => request<PocketSettings>('PUT', '/me/pocket', u),
@@ -415,10 +383,15 @@ export const api = {
   recordings: () => request<Recording[]>('GET', `/recordings?limit=${RECORDINGS_LIMIT}`),
   recordingByNumber: (n: number) => request<Recording[]>('GET', `/recordings?number=${n}`),
   recording: (id: string) => request<Recording>('GET', notePath(id)),
-  deleteRecording: async (id: string) => {
-    await request<void>('DELETE', `/recordings/${encodeURIComponent(id)}`);
+  // trashNote moves a note to the trash; deleteNote deletes it for good.
+  trashNote: (id: string) => request<Recording>('DELETE', `/recordings/${encodeURIComponent(id)}`),
+  restoreNote: (id: string) => request<Recording>('POST', `/recordings/${encodeURIComponent(id)}/restore`),
+  deleteNote: async (id: string) => {
+    await request<void>('DELETE', `/recordings/${encodeURIComponent(id)}?permanent=1`);
     await forgetNote(id);
   },
+  trash: () => request<Recording[]>('GET', `/recordings?trash=only&limit=${RECORDINGS_LIMIT}`),
+  emptyTrash: () => request<void>('DELETE', '/recordings/trash'),
   // allRecordings loads the notes list with each note's text, for keeping them offline.
   allRecordings: () => request<Recording[]>('GET', `/recordings?limit=${RECORDINGS_LIMIT}&full=1`),
   retranscribe: (id: string) => request<Recording>('POST', `/recordings/${encodeURIComponent(id)}/retranscribe`),

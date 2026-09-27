@@ -59,17 +59,98 @@ func (s *RecordingService) List(ctx context.Context, acc *Account, f recording.L
 	return s.recs.List(ctx, f)
 }
 
-// Delete removes a recording, its archived audio and any spooled files. Its sub-notes move
-// up to where it was, so nothing else is lost.
+// Trash moves a note to the trash, where it stays for recording.TrashRetention before it is
+// deleted for good. Its sub-notes move up to where it was, so they stay in place, and its
+// reminder is dropped until it is restored.
+func (s *RecordingService) Trash(ctx context.Context, acc *Account, id string) (*recording.Recording, error) {
+	rec, err := s.Get(ctx, acc, id)
+	if err != nil {
+		return nil, err
+	}
+	if rec.DeletedAt != nil {
+		return rec, nil
+	}
+	if err := s.recs.MoveSubNotes(ctx, rec.OwnerID, rec.ID, rec.ParentID, rec.FolderID); err != nil {
+		return nil, err
+	}
+	now := s.clock().UTC()
+	rec.DeletedAt, rec.RemindAt = &now, nil
+	return rec, s.save(ctx, rec)
+}
+
+// Restore takes a note out of the trash. When the note it was a sub-note of is gone or in
+// the trash itself, it comes back at the top level.
+func (s *RecordingService) Restore(ctx context.Context, acc *Account, id string) (*recording.Recording, error) {
+	rec, err := s.Get(ctx, acc, id)
+	if err != nil {
+		return nil, err
+	}
+	if rec.DeletedAt == nil {
+		return rec, nil
+	}
+	if rec.ParentID != "" {
+		parent, err := s.recs.Get(ctx, rec.ParentID)
+		switch {
+		case errors.Is(err, ErrNotFound) || (err == nil && parent.DeletedAt != nil):
+			rec.ParentID = ""
+		case err != nil:
+			return nil, err
+		}
+	}
+	rec.DeletedAt = nil
+	s.scheduleReminder(rec, s.location(ctx, rec.OwnerID))
+	return rec, s.save(ctx, rec)
+}
+
+// Delete removes a note for good: the recording, its archived audio and any spooled files.
+// A note that isn't in the trash yet has its sub-notes moved up to where it was first, so
+// nothing else is lost.
 func (s *RecordingService) Delete(ctx context.Context, acc *Account, id string) error {
 	rec, err := s.Get(ctx, acc, id)
 	if err != nil {
 		return err
 	}
-	if err := s.recs.MoveSubNotes(ctx, rec.OwnerID, rec.ID, rec.ParentID, rec.FolderID); err != nil {
-		return err
+	if rec.DeletedAt == nil {
+		if err := s.recs.MoveSubNotes(ctx, rec.OwnerID, rec.ID, rec.ParentID, rec.FolderID); err != nil {
+			return err
+		}
 	}
 	return s.delete(ctx, rec)
+}
+
+// EmptyTrash deletes all the account's notes in the trash for good and returns how many.
+func (s *RecordingService) EmptyTrash(ctx context.Context, acc *Account) (int, error) {
+	n := 0
+	for {
+		list, err := s.recs.List(ctx, recording.ListFilter{OwnerID: acc.OwnerFilter(), Trash: recording.TrashOnly, Limit: 100, Brief: true})
+		if err != nil || len(list) == 0 {
+			return n, err
+		}
+		for _, rec := range list {
+			if err := s.delete(ctx, rec); err != nil && !errors.Is(err, ErrNotFound) {
+				return n, err
+			}
+			n++
+		}
+	}
+}
+
+// PurgeTrash deletes the notes that have been in the trash for longer than
+// recording.TrashRetention, and returns how many.
+func (s *RecordingService) PurgeTrash(ctx context.Context) (int, error) {
+	n := 0
+	for {
+		list, err := s.recs.ListTrashed(ctx, s.clock().Add(-recording.TrashRetention), 100)
+		if err != nil || len(list) == 0 {
+			return n, err
+		}
+		for _, rec := range list {
+			if err := s.delete(ctx, rec); err != nil && !errors.Is(err, ErrNotFound) {
+				return n, err
+			}
+			n++
+		}
+	}
 }
 
 func (s *RecordingService) delete(ctx context.Context, rec *recording.Recording) error {
@@ -308,6 +389,9 @@ func (s *RecordingService) validParent(ctx context.Context, ownerID, id, parentI
 		}
 		if err != nil {
 			return err
+		}
+		if parent.DeletedAt != nil {
+			return invalid("note %q is in the trash", p)
 		}
 		p = parent.ParentID
 	}

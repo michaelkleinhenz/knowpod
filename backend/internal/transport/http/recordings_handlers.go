@@ -29,7 +29,7 @@ func (s *Server) handleListRecordings(w http.ResponseWriter, r *http.Request) {
 	list, err := s.actions.List(r.Context(), accountFrom(r.Context()), recording.ListFilter{
 		Number:   max(number, 0),
 		DeviceID: q.Get("deviceId"), Status: recording.Status(q.Get("status")), Limit: limit, Offset: max(offset, 0),
-		Brief: q.Get("full") == "",
+		Brief: q.Get("full") == "", Trash: trashFilter(q.Get("trash")),
 	})
 	if err != nil {
 		s.writeErr(w, err)
@@ -174,8 +174,48 @@ func parseRange(header string, size int64) (offset, length int64, partial, ok bo
 }
 
 // handleDeleteRecording removes a recording with its audio.
+// trashFilter reads the trash query parameter: "only" lists the notes in the trash, "any" all
+// notes; anything else leaves out the notes in the trash.
+func trashFilter(v string) recording.Trash {
+	switch t := recording.Trash(v); t {
+	case recording.TrashOnly, recording.TrashAny:
+		return t
+	}
+	return recording.TrashExclude
+}
+
+// handleDeleteRecording moves a note to the trash, or deletes it for good with ?permanent=1.
 func (s *Server) handleDeleteRecording(w http.ResponseWriter, r *http.Request) {
-	if err := s.actions.Delete(r.Context(), accountFrom(r.Context()), chi.URLParam(r, "id")); err != nil {
+	acc, id := accountFrom(r.Context()), chi.URLParam(r, "id")
+	if permanent, _ := strconv.ParseBool(r.URL.Query().Get("permanent")); permanent {
+		if err := s.actions.Delete(r.Context(), acc, id); err != nil {
+			s.writeErr(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	rec, err := s.actions.Trash(r.Context(), acc, id)
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, rec)
+}
+
+// handleRestoreRecording takes a note out of the trash.
+func (s *Server) handleRestoreRecording(w http.ResponseWriter, r *http.Request) {
+	rec, err := s.actions.Restore(r.Context(), accountFrom(r.Context()), chi.URLParam(r, "id"))
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, rec)
+}
+
+// handleEmptyTrash deletes all notes in the trash for good.
+func (s *Server) handleEmptyTrash(w http.ResponseWriter, r *http.Request) {
+	if _, err := s.actions.EmptyTrash(r.Context(), accountFrom(r.Context())); err != nil {
 		s.writeErr(w, err)
 		return
 	}

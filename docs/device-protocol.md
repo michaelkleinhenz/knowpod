@@ -17,7 +17,7 @@ upload stands (`GET /api/v1/uploads/{uploadId}`) and continue from there.
 
 ## Authentication
 
-Each gadget has its own token, created on the web UI's **Devices** page (see
+Each gadget has its own token, created in the web UI under **Settings → Devices** (see
 [Operations](operations.md#provisioning-devices)). It looks like `kpd_` followed by 43
 URL-safe characters. Send it on every request:
 

@@ -166,7 +166,8 @@ func (m *Recordings) Delete(_ context.Context, id string) error {
 
 func (m *Recordings) List(_ context.Context, f recording.ListFilter) ([]*recording.Recording, error) {
 	out := m.filter(func(r *recording.Recording) bool {
-		return (f.OwnerID == "" || r.OwnerID == f.OwnerID) && (f.DeviceID == "" || r.DeviceID == f.DeviceID) && (f.Status == "" || r.Status == f.Status) && (f.Number == 0 || r.Number == f.Number)
+		return (f.OwnerID == "" || r.OwnerID == f.OwnerID) && (f.DeviceID == "" || r.DeviceID == f.DeviceID) && (f.Status == "" || r.Status == f.Status) && (f.Number == 0 || r.Number == f.Number) &&
+			(f.Trash == recording.TrashAny || (f.Trash == recording.TrashOnly) == (r.DeletedAt != nil))
 	})
 	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
 	if f.Offset >= len(out) {
@@ -212,6 +213,14 @@ func (m *Recordings) Claim(_ context.Context, status recording.Status, now, leas
 
 func (m *Recordings) ListStale(_ context.Context, status recording.Status, before time.Time, limit int) ([]*recording.Recording, error) {
 	out := m.filter(func(r *recording.Recording) bool { return r.Status == status && r.UpdatedAt.Before(before) })
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+func (m *Recordings) ListTrashed(_ context.Context, before time.Time, limit int) ([]*recording.Recording, error) {
+	out := m.filter(func(r *recording.Recording) bool { return r.DeletedAt != nil && r.DeletedAt.Before(before) })
 	if len(out) > limit {
 		out = out[:limit]
 	}
