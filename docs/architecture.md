@@ -38,8 +38,52 @@ The code is layered so that the application logic depends only on interfaces:
 ## Users, ownership and authentication
 
 Every recording and device has an `ownerId`: the user it belongs to. Users see and act only
-on their own data; the services check this with `Account.Owns` / `Account.OwnerFilter`
-(`service/auth.go`), and anything owned by someone else answers `404`, as if it didn't exist.
+on their own data and the notes shared with them (see **Sharing** below); the services check
+this with `Account.Owns` / `Account.OwnerFilter` (`service/auth.go`) and, for notes,
+`RecordingService.load` (`service/sharing.go`). Anything the user can't see answers `404`, as
+if it didn't exist.
+
+### Sharing (`service/sharing.go`, `domain/recording/share.go`)
+
+An owner shares a note with other users as `viewer` or `editor`; everything under the note
+is shared with it. The note's `shares` hold its own shares; its `members` are everyone it is
+shared with: its own shares merged with the members of the note it is under (the higher role
+wins), computed by `recording.ComputeMembers`. `syncMembers` recomputes them down the
+sub-notes whenever shares change or a note moves (`SetParent`, `SetFolder`, trash, restore,
+delete). Lists query `members.userId`, so no walk up the tree is needed.
+
+Each member entry also holds that member's own view of the note: the folder they put it in
+(only for a `root` note, one shared by itself rather than through its parent), their labels,
+their order and their reminder (`remindAt`, in their own time zone, sent by
+`SendDueMemberReminders`). `present` shows a member the note that way; built-in labels (the
+task label) stay the note's. Deleting a folder or label reaches the member entries too
+(`MoveFolder`, `RemoveLabel`), and deleting a user takes them off every note (`RemoveMember`).
+
+Viewers read; editors also change the text and task fields, and add, move (within the owner's
+notes they can edit) and trash notes under the shared note (new ones belong to the owner, with
+`createdBy` set). Only the owner shares, trashes the shared note itself, deletes for good,
+restores and reprocesses. A member can leave a note shared with them directly.
+
+### Concurrent changes
+
+Every note has a `version`, counted up by each change. `RecordingRepository.Update` replaces
+the note only while it is still at the version that was read, and answers `ErrChanged`
+otherwise; targeted updates (`$set`, `$inc`, …) count the version up too. User actions go
+through `RecordingService.change`, which applies the change again to the newer copy; the
+worker and uploads use `ports.SaveProcessed`, which keeps the user's fields
+(`KeepUserFields`) and tries again. Title and text edits also carry the `revision` they were
+made on (`baseRevision`); when someone else edited the text since, the edit is refused with
+409 `changed` and the web app asks which version stays.
+
+### Live updates (`service/events.go`)
+
+`NoteEvents.Watch` wraps the recording repository, so every change of a note (by people, the
+workers or imports) is published to its owner and members; `GET /me/events` streams them as
+server-sent events (`note` with the ID and version, `reload` for bulk changes). The web app
+loads a changed note again, updates the list and the open note, and restarts the editor on
+the new text unless there are unsaved changes (then it shows the conflict). Like the
+notification stream, the hub lives in the process: running several server instances would
+need a shared channel (e.g. MongoDB change streams) instead.
 
 There are four kinds of callers:
 
@@ -613,6 +657,9 @@ implements the work.
 | `labels`, `done` | IDs of the note's labels (see below) and the check mark of a `task` note |
 | `estimate`, `trackedSeconds` | A task's estimate in minutes, and the time logged on the note (finished entries) |
 | `folderId` | The folder the note is in; absent at the top level |
+| `shares`, `members` | Direct shares (`userId`, `role`, `createdAt`) and all members (`userId`, `role`, `root`, and the member's own `folderId`, `labels`, `position`, `remindAt`); see **Sharing** |
+| `createdBy` | The editor who made the note in someone else's shared note |
+| `version`, `revision` | Counted up by every change, and by every change of the title and text; see **Concurrent changes** |
 | `status` | `uploading`, `received`, `stored` or `failed` |
 | `size`, `sha256` | Declared by the device at create |
 | `recordedAt` | Optional, from the device |
@@ -626,7 +673,8 @@ implements the work.
 | `createdAt`, `updatedAt`, `receivedAt`, `storedAt` | Timestamps (UTC) |
 
 Indexes: `(deviceId, clientId)` unique; `(status, notBefore)` for claiming;
-`(status, updatedAt)` for stale uploads; `createdAt` for listing.
+`(status, updatedAt)` for stale uploads; `createdAt` for listing; `members.userId` for the
+notes shared with a user and `members.remindAt` for their reminders.
 
 **`users`**
 

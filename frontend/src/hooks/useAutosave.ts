@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api, Recording } from '../api/client';
+import { api, ApiError, Recording } from '../api/client';
 import { errorText } from '../lib/errors';
 
 // Changes are saved this long after the last change …
@@ -10,12 +10,18 @@ const AUTOSAVE_MAX_WAIT_MS = 10_000;
 // A failed save is retried after this long (or as soon as the browser is back online).
 const RETRY_MS = 10_000;
 
-export type Sync = 'saved' | 'dirty' | 'saving' | 'error' | 'offline';
+// conflict: someone else changed the text since it was loaded, and there are unsaved
+// changes here; the user decides which version stays (resolve).
+export type Sync = 'saved' | 'dirty' | 'saving' | 'error' | 'offline' | 'conflict';
 
 // useAutosave keeps a note's summary (title and Markdown text) in sync with the server.
 // The Markdown comes from the editor once it is ready (editorReady); until then nothing can
 // change. Saves never overlap: a change made during a save is sent by the next one.
-export function useAutosave(recordingId: string, savedTitle: string, onSaved: (rec: Recording) => void) {
+//
+// Each save says which revision of the text it was made on (savedRevision at first, then
+// the revision each save returns). When someone else saved the text in between, the server
+// refuses it and the sync state becomes "conflict" rather than undoing their edit.
+export function useAutosave(recordingId: string, savedTitle: string, savedRevision: number | undefined, onSaved: (rec: Recording) => void) {
   const { t } = useTranslation();
   const [title, setTitleState] = useState(savedTitle);
   const [sync, setSync] = useState<Sync>('saved');
@@ -28,6 +34,10 @@ export function useAutosave(recordingId: string, savedTitle: string, onSaved: (r
   const baseline = useRef<{ title: string; markdown: string | null }>({ title: savedTitle, markdown: null });
   const inFlight = useRef<Promise<boolean> | null>(null);
   const discarded = useRef(false);
+  // The revision of the text the editor holds; undefined sends no check.
+  const revision = useRef(savedRevision);
+  // Set while the user has to resolve a conflict; nothing is saved meanwhile.
+  const conflicted = useRef(false);
   const timers = useRef<{ debounce?: number; maxWait?: number; retry?: number }>({});
   const onSavedRef = useRef(onSaved);
   onSavedRef.current = onSaved;
@@ -49,11 +59,12 @@ export function useAutosave(recordingId: string, savedTitle: string, onSaved: (r
     return c.title !== baseline.current.title.trim() || c.markdown !== baseline.current.markdown;
   };
 
-  const save = useCallback(async (): Promise<boolean> => {
+  const save = useCallback(async (overwrite = false): Promise<boolean> => {
     clearTimers();
     if (inFlight.current) {
       await inFlight.current;
     }
+    if (conflicted.current && !overwrite) return false;
     if (!isDirty()) {
       if (!discarded.current) setSync('saved');
       return true;
@@ -68,12 +79,20 @@ export function useAutosave(recordingId: string, savedTitle: string, onSaved: (r
     setError(null);
     const run = (async () => {
       try {
-        const rec = await api.editSummary(recordingId, c.title, c.markdown ?? '');
+        const rec = await api.editSummary(recordingId, c.title, c.markdown ?? '', overwrite ? undefined : revision.current);
         baseline.current = { title: c.title, markdown: c.markdown };
+        revision.current = rec.revision;
+        conflicted.current = false;
         if (!discarded.current) onSavedRef.current(rec);
         return true;
       } catch (err) {
         if (discarded.current) return false;
+        if (err instanceof ApiError && err.code === 'changed') {
+          conflicted.current = true;
+          setSync('conflict');
+          setError(null);
+          return false;
+        }
         const offline = !navigator.onLine;
         setSync(offline ? 'offline' : 'error');
         setError(offline ? null : errorText(err, t));
@@ -84,7 +103,7 @@ export function useAutosave(recordingId: string, savedTitle: string, onSaved: (r
     inFlight.current = run;
     const ok = await run;
     inFlight.current = null;
-    if (!ok) return false;
+    if (!ok || conflicted.current) return false;
     if (isDirty()) {
       setSync('dirty');
       schedule(); // changed during the save
@@ -103,6 +122,7 @@ export function useAutosave(recordingId: string, savedTitle: string, onSaved: (r
 
   // changed is called on every edit.
   const changed = useCallback(() => {
+    if (conflicted.current) return;
     if (!isDirty()) {
       if (!inFlight.current) setSync('saved');
       return;
@@ -134,10 +154,32 @@ export function useAutosave(recordingId: string, savedTitle: string, onSaved: (r
     clearTimers();
   }, []);
 
+  // dirty says whether there are changes here that aren't saved yet; settled waits for a
+  // save that is under way.
+  const dirty = useCallback(() => isDirty(), []);
+  const settled = useCallback(async () => {
+    await inFlight.current;
+  }, []);
+  // known says whether the editor holds this revision of the text (it is ours).
+  const known = useCallback((rev: number | undefined) => rev === undefined || rev === revision.current, []);
+
+  // conflict marks that someone else changed the text while there are unsaved changes here.
+  const conflict = useCallback(() => {
+    conflicted.current = true;
+    clearTimers();
+    setSync('conflict');
+  }, []);
+
+  // keepMine saves the text here over the other version.
+  const keepMine = useCallback(() => {
+    conflicted.current = false;
+    return save(true);
+  }, [save]);
+
   // Retry when the connection comes back; ask before closing the tab with unsaved changes;
   // save what's left when the note is left.
   useEffect(() => {
-    const online = () => isDirty() && void save();
+    const online = () => isDirty() && !conflicted.current && void save();
     const beforeUnload = (e: BeforeUnloadEvent) => {
       if (isDirty() || inFlight.current) e.preventDefault();
     };
@@ -151,12 +193,12 @@ export function useAutosave(recordingId: string, savedTitle: string, onSaved: (r
   }, [save]);
   useEffect(
     () => () => {
-      if (isDirty()) void save();
+      if (isDirty() && !conflicted.current) void save();
       clearTimers();
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
 
-  return { title, setTitle, sync, error, changed, editorReady, save, discard };
+  return { title, setTitle, sync, error, changed, editorReady, save: () => save(), discard, dirty, settled, known, conflict, keepMine };
 }

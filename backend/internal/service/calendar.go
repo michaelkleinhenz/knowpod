@@ -99,7 +99,8 @@ func (s *CalendarService) Feed(ctx context.Context, token, baseURL string) ([]by
 	if err != nil {
 		return nil, err
 	}
-	list, err := s.recs.List(ctx, recording.ListFilter{OwnerID: u.ID, Brief: true})
+	// The user's tasks and those shared with them.
+	list, err := s.recs.List(ctx, recording.ListFilter{UserID: u.ID, Brief: true})
 	if err != nil {
 		return nil, err
 	}

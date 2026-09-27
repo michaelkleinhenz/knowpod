@@ -29,6 +29,8 @@ interface Props {
   noteId?: string;
   // onOpenNote opens the note with the number ("#12" is Ctrl/Cmd+clicked).
   onOpenNote?: (n: number) => void;
+  // readOnly shows the text without letting it be changed (a note shared for viewing).
+  readOnly?: boolean;
 }
 
 // cleanMarkdown drops the "&nbsp;" lines that empty paragraphs become: Markdown has no
@@ -331,7 +333,7 @@ function BubbleButton(props: { label: string; active?: boolean; onClick: () => v
 // at the start of a line opens a block menu, and selecting text shows a formatting bubble.
 // The text is loaded from and read as Markdown, which is how summaries are stored; saving
 // is done by the caller (useAutosave). It is loaded on demand (see Conversation.tsx).
-export default function SummaryEditor({ markdown, onReady, onChange, onSaveShortcut, notes, noteId, onOpenNote }: Props) {
+export default function SummaryEditor({ markdown, onReady, onChange, onSaveShortcut, notes, noteId, onOpenNote, readOnly = false }: Props) {
   const { t } = useTranslation();
   const slash = useMenuBridge<SlashItem>();
   const noteMenu = useMenuBridge<Recording>();
@@ -359,6 +361,7 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
     ],
     content: markdown,
     contentType: 'markdown',
+    editable: !readOnly,
     editorProps: {
       attributes: { class: 'prose editor-content', 'aria-label': t('editor.content') },
       handleDOMEvents: {
@@ -389,6 +392,11 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
     onCreate: ({ editor: e }) => onReady(() => cleanMarkdown(e.getMarkdown())),
     onUpdate: () => onChange(),
   });
+
+  // The owner can make a note editable or read-only for the user while it is open.
+  useEffect(() => {
+    if (!editor.isDestroyed && editor.isEditable === readOnly) editor.setEditable(!readOnly, false);
+  }, [editor, readOnly]);
 
   // Redraw the "#12" links when the notes (their titles, which exist) change.
   const notesKey = (notes ?? []).map((r) => `${r.number}:${title(r)}`).join('|');

@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { Recording } from '../api/client';
 import { isTask } from '../lib/labels';
 import { noteType, statusLabel, title } from '../lib/recordings';
-import { ChevronIcon, NewNoteIcon, NoteIcon } from './Icons';
+import { ChevronIcon, NewNoteIcon, NoteIcon, ShareIcon } from './Icons';
 import { TaskMeta } from './TaskControls';
 
 interface Props {
@@ -71,6 +71,11 @@ export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = t
           <span className="conversation-title">
             <span className="note-title-line">
               <span className="note-title-text">{title(r)}</span>
+              {r.shared && (
+                <span className="note-row-shared" title={t('sharing.badge')} aria-label={t('sharing.badge')}>
+                  <ShareIcon size={12} />
+                </span>
+              )}
               {r.number ? <span className="note-row-number">#{r.number}</span> : null}
               {sub && <span className="tree-count note-sub-count">{sub.count}</span>}
             </span>

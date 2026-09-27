@@ -49,7 +49,12 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
 ## Features
 
 - **Users** sign in with email and password and each see only their own notes and
-  devices. Admins manage users and the AI settings. The built-in admin is `ADMIN_EMAIL`,
+  devices, plus the notes others shared with them. Admins manage users and the AI settings.
+- **Sharing.** Any note (a todo list, say) can be shared with other users, together with
+  everything under it, for viewing or editing. Changes show up for everyone right away;
+  each person files a shared note in their own folder, with their own labels and reminders.
+  Edits made at the same time never undo each other: a conflicting text edit asks which
+  version stays. The built-in admin is `ADMIN_EMAIL`,
   whose password is `ADMIN_PASSWORD` until one is set in the UI.
 - Each gadget authenticates with its own revocable token, created on the web UI's
   **Settings → Devices** tab.

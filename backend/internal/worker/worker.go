@@ -138,7 +138,7 @@ func (w *Worker) process(ctx context.Context, st Stage, rec *recording.Recording
 		rec.Attempts = 0
 		rec.LastError = ""
 		rec.NotBefore = now
-		if uerr := w.recs.Update(ctx, rec); uerr != nil {
+		if uerr := ports.SaveProcessed(ctx, w.recs, rec); uerr != nil {
 			// The lease expires and the stage is retried.
 			w.log.Error("saving stage result failed", "stage", st.Name, "id", rec.ID, "err", uerr)
 			return
@@ -163,7 +163,7 @@ func (w *Worker) process(ctx context.Context, st Stage, rec *recording.Recording
 		w.log.Warn("stage failed, will retry", "stage", st.Name, "id", rec.ID, "attempts", rec.Attempts,
 			"retryAt", rec.NotBefore, "err", err)
 	}
-	if uerr := w.recs.Update(ctx, rec); uerr != nil {
+	if uerr := ports.SaveProcessed(ctx, w.recs, rec); uerr != nil {
 		w.log.Error("saving stage failure failed", "stage", st.Name, "id", rec.ID, "err", uerr)
 	}
 }

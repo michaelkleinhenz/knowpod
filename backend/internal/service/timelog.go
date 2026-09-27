@@ -299,7 +299,7 @@ func csvSafe(s string) string {
 	return s
 }
 
-// note returns one of the account's notes.
+// note returns one of the notes the account sees: its own, or one shared with it.
 func (s *TimeService) note(ctx context.Context, acc *Account, id string) (*recording.Recording, error) {
 	if id == "" {
 		return nil, invalid("noteId is required")
@@ -308,7 +308,7 @@ func (s *TimeService) note(ctx context.Context, acc *Account, id string) (*recor
 	if err != nil {
 		return nil, err
 	}
-	if !acc.Owns(rec.OwnerID) {
+	if role := roleOf(acc, rec); role == "" || (role != recording.RoleOwner && rec.DeletedAt != nil) {
 		return nil, ErrNotFound
 	}
 	return rec, nil
@@ -353,18 +353,16 @@ func noteTitle(r *recording.Recording) string {
 // SetEstimate sets how many minutes a task is expected to take (0 clears it). A note gets
 // the task label when an estimate is set.
 func (s *RecordingService) SetEstimate(ctx context.Context, acc *Account, id string, minutes int) (*recording.Recording, error) {
-	rec, err := s.Get(ctx, acc, id)
-	if err != nil {
-		return nil, err
-	}
 	if minutes < 0 || minutes > maxEstimateMinutes {
 		return nil, invalid("an estimate is 0 (none) to %d minutes", maxEstimateMinutes)
 	}
-	if minutes > 0 {
-		if err := makeTask(rec); err != nil {
-			return nil, err
+	return s.change(ctx, acc, id, recording.RoleEditor, func(rec *recording.Recording, _ recording.Role) error {
+		if minutes > 0 {
+			if err := makeTask(rec); err != nil {
+				return err
+			}
 		}
-	}
-	rec.Estimate = minutes
-	return rec, s.save(ctx, rec)
+		rec.Estimate = minutes
+		return nil
+	})
 }

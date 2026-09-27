@@ -96,6 +96,18 @@ tags:
     description: Folders the notes are sorted into; folders can hold folders.
   - name: Tasks
     description: Due dates, repeat rules, reminders and priorities of notes labeled as tasks, and tasks made from action items.
+  - name: Sharing
+    description: |
+      Share a note, together with everything under it, with other users. Viewers see the
+      notes; editors also change their title, text and task fields and add, move and delete
+      the notes under them. Each member files a shared note for themselves: their own folder
+      (for a note shared by itself), labels, order and reminders. Only the owner shares,
+      deletes the shared note itself, and sends it back into processing.
+
+      Every note carries a `version`, counted up by each change. Changes made at the same time
+      never undo each other: a text edit made on an older `revision` is refused with 409
+      `changed` when `baseRevision` is given. `GET /me/events` tells open apps about changes
+      as they happen.
   - name: Notifications
     description: Task reminders sent through Web Push to your browsers and installed apps.
   - name: Filters
@@ -1188,15 +1200,101 @@ paths:
               properties:
                 title: { type: string, maxLength: 200 }
                 markdown: { type: string, maxLength: 100000 }
+                baseRevision: { type: integer, format: int64, description: 'The note''s `revision` the edit was made on. When the title or text changed since (someone else edited them), the edit is refused with 409 `changed` instead of undoing theirs.' }
       responses:
         "200":
           description: Saved
           content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
         "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
         "409":
-          description: The recording has no summary yet
+          description: The recording has no summary yet (`not_ready`), or its text changed since `baseRevision` (`changed`)
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /recordings/{recordingId}/shares:
+    get:
+      tags: ["Sharing"]
+      summary: Who a note is shared with
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The note's owner and members
+          content: { application/json: { schema: { $ref: "#/components/schemas/Sharing" } } }
+        "404": { $ref: "#/components/responses/Error" }
+    post:
+      tags: ["Sharing"]
+      summary: Share a note
+      description: |
+        Shares the note and everything under it with the user signing in with `email`, or
+        changes their role. Only the owner shares; boards and notes in the trash can't be
+        shared.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, role]
+              properties:
+                email: { type: string }
+                role: { $ref: "#/components/schemas/ShareRole" }
+      responses:
+        "200":
+          description: Shared
+          content: { application/json: { schema: { $ref: "#/components/schemas/Sharing" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /recordings/{recordingId}/shares/{userId}:
+    put:
+      tags: ["Sharing"]
+      summary: Change a member's role
+      description: Only for users the note is shared with directly (not through a note it is under).
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+        - { name: userId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: { $ref: "#/components/schemas/ShareRole" }
+      responses:
+        "200":
+          description: Changed
+          content: { application/json: { schema: { $ref: "#/components/schemas/Sharing" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: ["Sharing"]
+      summary: Stop sharing a note with a user
+      description: |
+        The owner can take anyone off a note shared with them directly; members can take
+        themselves off (leave the note), which answers 204.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+        - { name: userId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: No longer shared with the user
+          content: { application/json: { schema: { $ref: "#/components/schemas/Sharing" } } }
+        "204": { description: You left the note }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
 
   /recordings/{recordingId}/labels:
     put:
@@ -1858,6 +1956,24 @@ paths:
           content: { text/event-stream: { schema: { type: string } } }
         "403": { $ref: "#/components/responses/Error" }
 
+  /me/events:
+    get:
+      tags: ["Sharing"]
+      summary: Receive note changes over a live connection
+      description: |
+        Server-sent events about the notes you see (yours and those shared with you), made by
+        anyone, in any app, or by the processing: `note` (data `{type, id, version}`: load the
+        note again unless you have this version; it is gone for you when that fails) and
+        `reload` (data `{type}`: many notes changed; load the list again). A comment is sent
+        every 25 seconds. A user can have 10 such connections; opening another ends one of the
+        others.
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: The event stream
+          content: { text/event-stream: { schema: { type: string } } }
+        "403": { $ref: "#/components/responses/Error" }
+
   /admin/users:
     get:
       tags: ["Admin: users"]
@@ -2012,6 +2128,25 @@ components:
       content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
   schemas:
+    ShareRole:
+      type: string
+      enum: [viewer, editor]
+
+    Sharing:
+      type: object
+      properties:
+        owner: { $ref: "#/components/schemas/ShareUser" }
+        members: { type: array, items: { $ref: "#/components/schemas/ShareUser" } }
+        access: { type: string, enum: [owner, editor, viewer], description: What you may do with the note }
+
+    ShareUser:
+      type: object
+      properties:
+        userId: { type: string }
+        email: { type: string }
+        role: { type: string, enum: [owner, editor, viewer] }
+        inherited: { type: boolean, description: Shared through a note this one is under; the sharing is changed there }
+
     Status:
       type: string
       enum: [remote, uploading, received, stored, transcribed, summarized, failed]
@@ -2176,6 +2311,11 @@ components:
         parentId: { type: string, description: The note this one is a sub-note of; absent otherwise }
         position: { type: integer, description: Order among the notes in the same place, from 1 up; absent for unordered notes, which follow by title }
         board: { $ref: "#/components/schemas/Board" }
+        access: { type: string, enum: [owner, editor, viewer], description: What you may do with the note }
+        shared: { type: boolean, description: The note is shared with anyone; absent otherwise }
+        createdBy: { type: string, description: 'The user who made the note, when it isn''t its owner (an editor of the note it is under)' }
+        version: { type: integer, format: int64, description: Counted up by every change of the note }
+        revision: { type: integer, format: int64, description: Counted up by every change of the title and text; send it as `baseRevision` when editing them }
         transcript:
           type: object
           properties:

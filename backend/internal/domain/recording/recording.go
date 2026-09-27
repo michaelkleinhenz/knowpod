@@ -141,6 +141,29 @@ type Recording struct {
 	// from 1 up; 0 is unordered: those follow the ordered notes, by title.
 	Position int `bson:"position,omitempty" json:"position,omitempty"`
 
+	// CreatedBy is the user who made the note when it isn't its owner: someone the owner
+	// shared the note it is under with. Empty for the owner's own notes.
+	CreatedBy string `bson:"createdBy,omitempty" json:"createdBy,omitempty"`
+	// Shares are the users the owner shared this note with directly, together with its
+	// sub-notes.
+	Shares []Share `bson:"shares,omitempty" json:"-"`
+	// Members are everyone the note is shared with: the users of its own Shares and the
+	// members of the note it is under. It is derived from the shares (see ComputeMembers)
+	// and holds each member's own place, labels and reminder of the note.
+	Members []Member `bson:"members,omitempty" json:"-"`
+	// Access is what the user a note is shown to may do with it (only in responses).
+	Access Role `bson:"-" json:"access,omitempty"`
+	// Shared says the note is shared with anyone (only in responses).
+	Shared bool `bson:"-" json:"shared,omitempty"`
+
+	// Version counts the saves of the note. Saving a copy of an older version fails with
+	// domain.ErrChanged, so that changes made at the same time never undo each other.
+	Version int64 `bson:"version" json:"version"`
+	// Revision counts the changes people made to the title and text (and regenerating
+	// them). An edit made on an older revision is refused rather than undoing someone
+	// else's edit.
+	Revision int64 `bson:"revision,omitempty" json:"revision"`
+
 	// Board is the setup of a board note: its scope and columns.
 	Board *Board `bson:"board,omitempty" json:"board,omitempty"`
 
@@ -176,13 +199,16 @@ func (r *Recording) IsDocument() bool { return r.Type == TypeDocument }
 func (r *Recording) IsBoard() bool { return r.Type == TypeBoard }
 
 // KeepUserFields copies the fields a person changes at any time (labels, task fields, time
-// estimate and log, folder, parent note, position) and the note number from the stored version, so that a processing
-// step saving its long-held copy doesn't undo them.
+// estimate and log, folder, parent note, position, trash, sharing), the note number and the
+// version from the stored copy, so that a processing step saving its long-held copy doesn't
+// undo them.
 func (r *Recording) KeepUserFields(stored *Recording) {
 	r.Labels, r.Done, r.FolderID, r.ParentID, r.Number = stored.Labels, stored.Done, stored.FolderID, stored.ParentID, stored.Number
 	r.Due, r.Priority, r.RemindAt = stored.Due, stored.Priority, stored.RemindAt
 	r.Estimate, r.TrackedSeconds = stored.Estimate, stored.TrackedSeconds
-	r.Position = stored.Position
+	r.Position, r.DeletedAt = stored.Position, stored.DeletedAt
+	r.Shares, r.Members, r.CreatedBy = stored.Shares, stored.Members, stored.CreatedBy
+	r.Version, r.Revision = stored.Version, stored.Revision
 }
 
 // TextDeviceID returns the DeviceID of a user's text notes. Their ClientID is the note ID.
@@ -282,7 +308,11 @@ const (
 // ListFilter selects recordings for listing. Zero values mean "no restriction", except that
 // notes in the trash are left out unless Trash says otherwise.
 type ListFilter struct {
-	OwnerID  string
+	OwnerID string
+	// UserID selects the notes the user owns or is a member of.
+	UserID string
+	// ParentID selects the sub-notes of a note.
+	ParentID string
 	DeviceID string
 	Status   Status
 	// Number selects the owner's note with this number.

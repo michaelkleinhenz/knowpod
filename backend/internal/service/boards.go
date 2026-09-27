@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -73,18 +74,18 @@ func (s *RecordingService) CreateBoard(ctx context.Context, acc *Account, in Boa
 // SetBoard replaces a board's setup: its scope, its columns (renamed, added, removed or
 // reordered) and which notes are in which column.
 func (s *RecordingService) SetBoard(ctx context.Context, acc *Account, id string, board recording.Board) (*recording.Recording, error) {
-	rec, err := s.Get(ctx, acc, id)
-	if err != nil {
-		return nil, err
-	}
-	if !rec.IsBoard() {
-		return nil, invalid("only boards have columns")
-	}
-	if err := s.validBoard(ctx, rec.OwnerID, &board); err != nil {
-		return nil, err
-	}
-	rec.Board = &board
-	return rec, s.save(ctx, rec)
+	return s.change(ctx, acc, id, recording.RoleOwner, func(rec *recording.Recording, _ recording.Role) error {
+		if !rec.IsBoard() {
+			return invalid("only boards have columns")
+		}
+		b := board
+		b.Columns = slices.Clone(board.Columns)
+		if err := s.validBoard(ctx, rec.OwnerID, &b); err != nil {
+			return err
+		}
+		rec.Board = &b
+		return nil
+	})
 }
 
 // validBoard normalizes a board's setup and checks it: the scope must be one of the owner's

@@ -384,3 +384,14 @@ export function PinIcon({ size = 14, filled = false }: { size?: number; filled?:
     </InlineIcon>
   );
 }
+
+// ShareIcon is two people: the note is (or can be) shared with others.
+export function ShareIcon({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="9" cy="8" r="3.2" />
+      <path d="M3 19.5c.6-3.3 3-5.2 6-5.2s5.4 1.9 6 5.2" />
+      <path d="M15.5 5.2a3 3 0 0 1 0 5.6M17.5 14.6c1.8.7 3 2.4 3.4 4.9" />
+    </svg>
+  );
+}
