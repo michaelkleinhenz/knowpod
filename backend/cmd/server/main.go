@@ -85,7 +85,7 @@ func main() {
 	archiver := service.NewArchiver(spool, objects, cfg.KeepOriginalWAV, log)
 	pocketSvc := service.NewPocketService(recordings, users, pocket.NewClient(cfg.PocketAPIURL), spool, cfg.MaxUploadBytes, log)
 	manualSvc := service.NewManualUploadService(recordings, spool, cfg.MaxUploadBytes)
-	remarkableSvc := service.NewRemarkableService(tabletRepo, recordings, objects,
+	remarkableSvc := service.NewRemarkableService(tabletRepo, recordings, folderRepo, objects,
 		remarkable.NewClient(cfg.RemarkableAuthURL, cfg.RemarkableSyncURL), spool, cfg.MaxUploadBytes, log)
 	var wakeAI func() // set below, once the AI worker exists
 	pipeline := worker.New(recordings, []worker.Stage{

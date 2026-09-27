@@ -190,17 +190,16 @@ Pocket's transcripts, summaries and action items in the webhook payload are not 
 
 ## reMarkable
 
-Each user can pair their own reMarkable cloud account. knowpod then imports the documents
-in the account's top-level folder **reMarkable** (and its subfolders) as notes. It only
+Each user can pair their own reMarkable cloud account. knowpod then imports all documents
+of the account (except those in the trash) as notes into the knowpod folder **reMarkable**,
+which is created with the first import. It only
 reads: nothing on the tablet or in the cloud is changed, moved or deleted.
 
 **Setup** (each user, **Account** page → reMarkable):
 
-1. On the reMarkable or in its app, create a folder named `reMarkable` at the top level and
-   put documents into it.
-2. Get a one-time code at
+1. Get a one-time code at
    [my.remarkable.com/device/browser/connect](https://my.remarkable.com/device/browser/connect).
-3. Enter the 8-character code and press **Pair**. The first import starts right away.
+2. Enter the 8-character code and press **Pair**. The first import starts right away.
 
 Pairing registers knowpod as a device of the reMarkable account and stores its device
 token in the `tablets` collection; the token is never shown. **Unpair** forgets the token;
@@ -212,14 +211,15 @@ the device stays listed under "Connected devices" at my.remarkable.com until rem
 - Every `REMARKABLE_PULL_INTERVAL` (default 15 minutes), and on **Import now**, knowpod
   reads the account's root. When nothing changed, that costs two requests; otherwise only
   the changed documents' metadata is read again.
-- Each document in the folder becomes one note (`type` `document`, `source` `remarkable`,
+- Each document becomes one note (`type` `document`, `source` `remarkable`,
   `deviceId` `remarkable:<userId>`, the document's ID as `recordingId`, its name as
   `title`). The pipeline then downloads the document's files, stores the PDF (notebooks are
   rendered to a vector PDF from their strokes; PDFs and EPUBs are kept as they are), and a
   vision model reads the pages into Markdown, which is summarized like a transcript.
 - When a document's content changes, the note is queued again (a rename only changes its
   `title`). A summary the user edited is kept; **Read again** on the note replaces it.
-- Notes stay when documents are deleted or moved out of the folder on the reMarkable.
+- Notes stay when documents are deleted on the reMarkable. The knowpod folder can be renamed
+  or moved; notes moved out of it stay where they are put.
 
 **Log messages:** `remarkable paired`, `reMarkable documents queued`,
 `reMarkable document fetched`, `reMarkable document stored`, `document read`, and

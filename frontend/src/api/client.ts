@@ -201,7 +201,7 @@ export interface RemarkableSettings {
   connectUrl: string;
   lastPullAt?: string;
   lastError?: string;
-  lastResult?: { folderFound: boolean; documents: number; imported: number; updated: number };
+  lastResult?: { documents: number; imported: number; updated: number };
 }
 
 export interface ModelOption {

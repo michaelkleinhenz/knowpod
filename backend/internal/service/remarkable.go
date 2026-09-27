@@ -12,13 +12,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/folder"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/tablet"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/ports"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/remarkable"
 )
 
-// RemarkableFolder is the top-level folder in the reMarkable cloud whose documents are read.
+// RemarkableFolder is the name of the knowpod folder that imported documents are put into.
 const RemarkableFolder = "reMarkable"
 
 var (
@@ -36,12 +37,14 @@ var (
 const itemReaders = 8
 
 // RemarkableService reads documents from users' reMarkable clouds. Users pair their account
-// with a one-time code; pulls then import the documents in the top-level "reMarkable"
-// folder as notes, and import a document again when it changed. Nothing is ever written to
-// the cloud, and notes stay when documents are deleted or moved there.
+// with a one-time code; pulls then import all documents of the account (except those in
+// the trash) as notes in the knowpod folder "reMarkable", and import a document again when
+// it changed. Nothing is ever written to the cloud, and notes stay when documents are
+// deleted there.
 type RemarkableService struct {
 	links   ports.TabletLinkRepository
 	recs    ports.RecordingRepository
+	folders ports.FolderRepository
 	objects ports.ObjectStore
 	cloud   *remarkable.Client
 	spool   *Spool
@@ -56,8 +59,8 @@ type RemarkableService struct {
 }
 
 // NewRemarkableService builds the service.
-func NewRemarkableService(links ports.TabletLinkRepository, recs ports.RecordingRepository, objects ports.ObjectStore, cloud *remarkable.Client, spool *Spool, maxSize int64, log *slog.Logger) *RemarkableService {
-	return &RemarkableService{links: links, recs: recs, objects: objects, cloud: cloud, spool: spool, maxSize: maxSize,
+func NewRemarkableService(links ports.TabletLinkRepository, recs ports.RecordingRepository, folders ports.FolderRepository, objects ports.ObjectStore, cloud *remarkable.Client, spool *Spool, maxSize int64, log *slog.Logger) *RemarkableService {
+	return &RemarkableService{links: links, recs: recs, folders: folders, objects: objects, cloud: cloud, spool: spool, maxSize: maxSize,
 		log: log, clock: time.Now, locks: map[string]*sync.Mutex{}}
 }
 
@@ -219,8 +222,7 @@ func (s *RemarkableService) PullAll(ctx context.Context) {
 	}
 }
 
-// pull reads the account's documents and queues the new and changed ones in the folder. The
-// outcome is saved on the link. The caller holds the user's lock.
+// pull reads the account's documents and queues the new and changed ones. The outcome is saved on the link. The caller holds the user's lock.
 func (s *RemarkableService) pull(ctx context.Context, l *tablet.Link) error {
 	res, err := s.sync(ctx, l)
 	now := s.clock().UTC()
@@ -263,10 +265,10 @@ func (s *RemarkableService) sync(ctx context.Context, l *tablet.Link) (*tablet.P
 		l.RootHash, l.Items = root.Hash, items
 	}
 
-	docs, found := folderDocuments(l.Items)
-	res := &tablet.PullResult{FolderFound: found, Documents: len(docs)}
+	docs := documents(l.Items)
+	res := &tablet.PullResult{Documents: len(docs)}
 	for _, d := range docs {
-		queued, isNew, err := s.queue(ctx, l.UserID, d)
+		queued, isNew, err := s.queue(ctx, l, d)
 		if err != nil {
 			return nil, err
 		}
@@ -351,56 +353,80 @@ func (s *RemarkableService) readItems(ctx context.Context, sess *remarkable.Sess
 	return items, nil
 }
 
-// folderDocuments returns the documents in the top-level reMarkable folder and its
-// subfolders. found is false when there is no such folder.
-func folderDocuments(items []tablet.Item) (docs []tablet.Item, found bool) {
+// documents returns the account's documents, leaving out deleted ones and those in the
+// trash (or in a folder in the trash).
+func documents(items []tablet.Item) []tablet.Item {
 	byID := make(map[string]*tablet.Item, len(items))
-	roots := map[string]bool{}
 	for i := range items {
-		it := &items[i]
-		byID[it.ID] = it
-		if it.Folder && !it.Deleted && it.Parent == "" && it.Name == RemarkableFolder {
-			roots[it.ID] = true
-		}
+		byID[items[i].ID] = &items[i]
 	}
-	if len(roots) == 0 {
-		// Accept another spelling if that is the only one.
-		for i := range items {
-			it := &items[i]
-			if it.Folder && !it.Deleted && it.Parent == "" && strings.EqualFold(strings.TrimSpace(it.Name), RemarkableFolder) {
-				roots[it.ID] = true
-			}
-		}
-	}
-	inFolder := func(it *tablet.Item) bool {
-		for depth := 0; depth < 64 && it != nil && !it.Deleted; depth++ {
-			if roots[it.Parent] {
+	trashed := func(it *tablet.Item) bool {
+		for depth := 0; depth < 64 && it != nil; depth++ {
+			if it.Deleted || it.Parent == remarkable.TrashParent {
 				return true
 			}
 			it = byID[it.Parent]
 		}
 		return false
 	}
+	var docs []tablet.Item
 	for i := range items {
-		if it := &items[i]; !it.Folder && !it.Deleted && inFolder(it) {
+		if it := &items[i]; !it.Folder && !trashed(it) {
 			docs = append(docs, *it)
 		}
 	}
-	return docs, len(roots) > 0
+	return docs
 }
 
-// queue creates the note of a new document, or queues an existing note again when the
+// folder returns the ID of the user's knowpod folder for imported documents, creating it at
+// the top level when it's missing. The folder is remembered on the link, so it can be renamed
+// or moved; when it's deleted, a new one is made for the next new document.
+func (s *RemarkableService) folder(ctx context.Context, l *tablet.Link) (string, error) {
+	if l.FolderID != "" {
+		f, err := s.folders.Get(ctx, l.FolderID)
+		if err == nil && f.OwnerID == l.UserID {
+			return f.ID, nil
+		}
+		if err != nil && !errors.Is(err, ErrNotFound) {
+			return "", err
+		}
+	}
+	all, err := s.folders.List(ctx, l.UserID)
+	if err != nil {
+		return "", err
+	}
+	for _, f := range all {
+		if f.ParentID == "" && strings.EqualFold(f.Name, RemarkableFolder) {
+			l.FolderID = f.ID
+			return f.ID, nil
+		}
+	}
+	now := s.clock().UTC()
+	f := &folder.Folder{ID: newID(), OwnerID: l.UserID, Name: RemarkableFolder, CreatedAt: now, UpdatedAt: now}
+	if err := s.folders.Create(ctx, f); err != nil {
+		return "", err
+	}
+	l.FolderID = f.ID
+	return f.ID, nil
+}
+
+// queue creates the note of a new document in the reMarkable folder, or queues an existing note again when the
 // document's content changed. A note that is being processed is left alone; the next pull
 // looks at it again.
-func (s *RemarkableService) queue(ctx context.Context, owner string, d tablet.Item) (queued, isNew bool, err error) {
+func (s *RemarkableService) queue(ctx context.Context, l *tablet.Link, d tablet.Item) (queued, isNew bool, err error) {
 	now := s.clock().UTC()
+	owner := l.UserID
 	rec, err := s.recs.GetByClientID(ctx, recording.RemarkableDeviceID(owner), d.ID)
 	if errors.Is(err, ErrNotFound) {
+		folderID, err := s.folder(ctx, l)
+		if err != nil {
+			return false, false, err
+		}
 		rec = &recording.Recording{
 			ID: newID(), OwnerID: owner, DeviceID: recording.RemarkableDeviceID(owner), ClientID: d.ID,
 			Type: recording.TypeDocument, Source: recording.SourceRemarkable, Title: d.Name,
 			Status: recording.StatusRemote, SourceRevision: d.ContentHash, RecordedAt: d.CreatedAt,
-			NotBefore: now, CreatedAt: now, UpdatedAt: now,
+			FolderID: folderID, NotBefore: now, CreatedAt: now, UpdatedAt: now,
 		}
 		if rec.RecordedAt == nil {
 			rec.RecordedAt = d.ModifiedAt

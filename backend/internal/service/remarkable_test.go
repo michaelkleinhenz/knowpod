@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/folder"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/openrouter"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/remarkable"
@@ -20,6 +21,7 @@ type remarkableFixture struct {
 	cloud   *rt.Cloud
 	svc     *RemarkableService
 	recs    *memory.Recordings
+	folders *memory.Folders
 	objects *memstore.Store
 	acc     *Account
 	queued  int
@@ -33,8 +35,8 @@ func newRemarkableFixture(t *testing.T) *remarkableFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := &remarkableFixture{cloud: cloud, recs: memory.NewRecordings(), objects: memstore.New(), acc: &Account{ID: "u1"}}
-	f.svc = NewRemarkableService(memory.NewTabletLinks(), f.recs, f.objects, remarkable.NewClient(cloud.URL, cloud.URL),
+	f := &remarkableFixture{cloud: cloud, recs: memory.NewRecordings(), folders: memory.NewFolders(), objects: memstore.New(), acc: &Account{ID: "u1"}}
+	f.svc = NewRemarkableService(memory.NewTabletLinks(), f.recs, f.folders, f.objects, remarkable.NewClient(cloud.URL, cloud.URL),
 		spool, 1<<20, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	f.svc.OnQueued = func() { f.queued++ }
 	return f
@@ -116,37 +118,46 @@ func TestRemarkablePairing(t *testing.T) {
 	}
 }
 
-func TestRemarkablePullsOnlyTheFolder(t *testing.T) {
+func TestRemarkablePullsAllDocumentsIntoTheFolder(t *testing.T) {
 	f := newRemarkableFixture(t)
+	ctx := context.Background()
 	f.pair(t)
-	f.cloud.Set(notebook("outside", "Diary", ""))
-	if v := f.pull(t); v.LastResult == nil || v.LastResult.FolderFound || v.LastResult.Imported != 0 {
-		t.Fatalf("without folder: %+v", v.LastResult)
+	if v := f.pull(t); v.LastResult == nil || v.LastResult.Documents != 0 || v.LastResult.Imported != 0 {
+		t.Fatalf("empty account: %+v", v.LastResult)
+	}
+	if all, _ := f.folders.List(ctx, "u1"); len(all) != 0 {
+		t.Errorf("folder made without documents: %+v", all)
 	}
 
-	f.cloud.Set(rt.Item{ID: "rm", Name: "reMarkable", Folder: true})
-	f.cloud.Set(rt.Item{ID: "sub", Name: "Work", Parent: "rm", Folder: true})
-	f.cloud.Set(rt.Item{ID: "other", Name: "Other", Folder: true})
-	f.cloud.Set(notebook("n1", "Ideas", "rm", scribble))
+	f.cloud.Set(rt.Item{ID: "sub", Name: "Work", Folder: true})
+	f.cloud.Set(rt.Item{ID: "old", Name: "Old", Parent: "trash", Folder: true})
+	f.cloud.Set(notebook("n1", "Ideas", "", scribble))
 	f.cloud.Set(notebook("n2", "Meeting", "sub"))
-	f.cloud.Set(notebook("n3", "Elsewhere", "other"))
-	f.cloud.Set(notebook("n4", "Trashed", "trash"))
-	f.cloud.Set(rt.Item{ID: "n5", Name: "Gone", Parent: "rm", Deleted: true})
+	f.cloud.Set(notebook("n3", "Trashed", "trash"))
+	f.cloud.Set(notebook("n4", "In trashed folder", "old"))
+	f.cloud.Set(rt.Item{ID: "n5", Name: "Gone", Deleted: true})
 	v := f.pull(t)
-	if r := v.LastResult; !r.FolderFound || r.Documents != 2 || r.Imported != 2 || r.Updated != 0 || v.LastError != "" {
+	if r := v.LastResult; r.Documents != 2 || r.Imported != 2 || r.Updated != 0 || v.LastError != "" {
 		t.Fatalf("result %+v %q", r, v.LastError)
 	}
 	if f.queued != 1 {
 		t.Errorf("worker woken %d times", f.queued)
 	}
+	all, _ := f.folders.List(ctx, "u1")
+	if len(all) != 1 || all[0].Name != "reMarkable" || all[0].ParentID != "" {
+		t.Fatalf("folders %+v", all)
+	}
 	rec := f.note(t, "n1")
 	if rec.Type != recording.TypeDocument || rec.Source != recording.SourceRemarkable || rec.Status != recording.StatusRemote ||
-		rec.Title != "Ideas" || rec.OwnerID != "u1" || rec.RecordedAt == nil || rec.RecordedAt.UnixMilli() != 1700000000000 {
+		rec.Title != "Ideas" || rec.OwnerID != "u1" || rec.RecordedAt == nil || rec.RecordedAt.UnixMilli() != 1700000000000 ||
+		rec.FolderID != all[0].ID {
 		t.Errorf("note %+v", rec)
 	}
-	f.note(t, "n2")
-	for _, id := range []string{"outside", "n3", "n4", "n5"} {
-		if _, err := f.recs.GetByClientID(context.Background(), recording.RemarkableDeviceID("u1"), id); err == nil {
+	if f.note(t, "n2").FolderID != all[0].ID {
+		t.Errorf("note of a subfolder not in the folder")
+	}
+	for _, id := range []string{"n3", "n4", "n5"} {
+		if _, err := f.recs.GetByClientID(ctx, recording.RemarkableDeviceID("u1"), id); err == nil {
 			t.Errorf("%s was imported", id)
 		}
 	}
@@ -158,6 +169,39 @@ func TestRemarkablePullsOnlyTheFolder(t *testing.T) {
 	}
 	if reqs := f.cloud.Requests(); len(reqs) != 2 {
 		t.Errorf("unchanged account cost %d requests: %v", len(reqs), reqs)
+	}
+
+	// A renamed folder is still used; a deleted one is made again.
+	all[0].Name = "Tablet"
+	_ = f.folders.Update(ctx, all[0])
+	f.cloud.Set(notebook("n6", "More", ""))
+	f.pull(t)
+	if f.note(t, "n6").FolderID != all[0].ID {
+		t.Errorf("renamed folder not used")
+	}
+	_ = f.folders.Delete(ctx, all[0].ID)
+	f.cloud.Set(notebook("n7", "Even more", ""))
+	f.pull(t)
+	again, _ := f.folders.List(ctx, "u1")
+	if len(again) != 1 || again[0].Name != "reMarkable" || f.note(t, "n7").FolderID != again[0].ID {
+		t.Errorf("folder not made again: %+v", again)
+	}
+}
+
+func TestRemarkableUsesAnExistingFolder(t *testing.T) {
+	f := newRemarkableFixture(t)
+	ctx := context.Background()
+	f.pair(t)
+	existing := &folder.Folder{ID: "f1", OwnerID: "u1", Name: "remarkable"}
+	_ = f.folders.Create(ctx, existing)
+	_ = f.folders.Create(ctx, &folder.Folder{ID: "f2", OwnerID: "u2", Name: "reMarkable"})
+	f.cloud.Set(notebook("n1", "Ideas", ""))
+	f.pull(t)
+	if got := f.note(t, "n1").FolderID; got != "f1" {
+		t.Errorf("note in folder %q", got)
+	}
+	if all, _ := f.folders.List(ctx, "u1"); len(all) != 1 {
+		t.Errorf("folders %+v", all)
 	}
 }
 
@@ -303,15 +347,14 @@ func TestReadDocument(t *testing.T) {
 	}
 }
 
-func TestFolderDocumentsIgnoresCycles(t *testing.T) {
+func TestDocumentsIgnoresCycles(t *testing.T) {
 	f := newRemarkableFixture(t)
 	f.pair(t)
-	f.cloud.Set(rt.Item{ID: "rm", Name: "remarkable ", Folder: true}) // other spelling is accepted
 	f.cloud.Set(rt.Item{ID: "a", Name: "A", Parent: "b", Folder: true})
 	f.cloud.Set(rt.Item{ID: "b", Name: "B", Parent: "a", Folder: true})
 	f.cloud.Set(notebook("n1", "Loop", "a"))
-	f.cloud.Set(notebook("n2", "In", "rm"))
-	if v := f.pull(t); !v.LastResult.FolderFound || v.LastResult.Documents != 1 {
+	f.cloud.Set(notebook("n2", "Top", ""))
+	if v := f.pull(t); v.LastResult.Documents != 2 {
 		t.Errorf("result %+v", v.LastResult)
 	}
 }

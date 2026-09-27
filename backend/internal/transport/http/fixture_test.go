@@ -69,7 +69,7 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	archiver := service.NewArchiver(spool, objects, false, log)
 	cloud := rt.New()
 	t.Cleanup(cloud.Close)
-	rm := service.NewRemarkableService(memory.NewTabletLinks(), recs, objects, remarkable.NewClient(cloud.URL, cloud.URL), spool, 1<<20, log)
+	rm := service.NewRemarkableService(memory.NewTabletLinks(), recs, folderRepo, objects, remarkable.NewClient(cloud.URL, cloud.URL), spool, 1<<20, log)
 	userSvc.Remarkable = rm
 	w := worker.New(recs, []worker.Stage{
 		{Name: "fetch", From: recording.StatusRemote, To: recording.StatusReceived, Run: rm.Fetch},
