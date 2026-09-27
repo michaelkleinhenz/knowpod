@@ -356,7 +356,9 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
 
   const nameField = (
     <form className="tree-rename" onSubmit={saveName}>
-      <FolderIcon />
+      <span className="tree-icon">
+        <FolderIcon />
+      </span>
       <input
         autoFocus
         maxLength={80}
@@ -425,8 +427,13 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
                   `[data-folder="${CSS.escape(f.id)}"] .tree-toggle`,
                 )}
               >
-                <ChevronIcon open={isOpen} />
-                <FolderIcon open={isOpen} />
+                {/* Laid out like a note's row, so folder and note icons line up. */}
+                <span className="note-gutter">
+                  <ChevronIcon open={isOpen} />
+                </span>
+                <span className="tree-icon">
+                  <FolderIcon open={isOpen} />
+                </span>
                 <span className="tree-name">{f.name}</span>
                 <span className="tree-count">{counts.get(f.id) || ''}</span>
               </button>
