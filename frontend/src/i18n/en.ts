@@ -246,9 +246,12 @@ export const en = {
     moveRight: 'Move right',
     dragCard: 'Drag “{{title}}”',
   },
+  due: {
+    empty: 'No items with a due date.',
+  },
   folders: {
     viewLabel: 'Sort items',
-    views: { timeline: 'By time', folders: 'Folders', tasks: 'Tasks' },
+    views: { timeline: 'Created', due: 'Due', folders: 'Folders', tasks: 'Tasks' },
     new: 'New folder',
     newInside: 'New folder inside',
     newInsideLabel: 'New folder in “{{name}}”',
@@ -259,7 +262,7 @@ export const en = {
     deleteLabel: 'Delete “{{name}}”',
     deleteConfirm: 'Delete the folder “{{name}}”? Its items and folders move to the folder above; no item is deleted.',
     empty: 'No folders yet. Create one with “New folder”, then drag items onto it.',
-    dragHint: 'Drag items and folders onto a folder to move them, or here for the top level. Drop an item onto another item to make it a sub-item.',
+    dragHint: 'Drag items and folders onto a folder to move them, or here for the top level. Drop an item onto another item to make it a sub-item, or onto its top or bottom edge to put it before or after it (Alt+↑/↓ moves the focused item). New items go into the folder you opened last.',
     move: 'Move to folder',
     topLevel: 'No folder (top level)',
     noneYet: 'No folders yet. Create them in the list’s folder view.',

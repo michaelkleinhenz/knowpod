@@ -9,18 +9,21 @@ import { FilterBar } from './SavedFilters';
 import { TimerBar } from './TimeControls';
 import { NewBoardIcon, NewFolderIcon, NewNoteIcon, RefreshIcon, SearchIcon, TrashIcon, UploadIcon } from './Icons';
 import { NoteTreeRows, useNoteTree } from './NoteTree';
+import { DueView } from './DueView';
 import { TasksView } from './TasksView';
 import { TrashView } from './TrashView';
 import { errorText } from '../lib/errors';
 import { parseFilter, searchMatcher } from '../lib/filterQuery';
 import { dayKey, dayLabel, formatDate, formatTime, when } from '../lib/recordings';
+import { lastFolder } from '../lib/lastFolder';
 
 const ACCEPT = '.wav,.mp3,audio/wav,audio/x-wav,audio/wave,audio/mpeg';
 
-// The list shows the notes by time (grouped by day), in their folders, like files, or the
-// open tasks by when they are due.
-type View = 'timeline' | 'folders' | 'tasks';
-const VIEWS: View[] = ['timeline', 'folders', 'tasks'];
+// The list shows the notes by when they were created (grouped by day), the notes with a due
+// date by that date, the notes in their folders, like files, or the open tasks by when they
+// are due.
+type View = 'timeline' | 'due' | 'folders' | 'tasks';
+const VIEWS: View[] = ['timeline', 'due', 'folders', 'tasks'];
 const VIEW_KEY = 'knowpod.notesView';
 // FILTER_KEY remembers the saved filter the list is narrowed by.
 const FILTER_KEY = 'knowpod.notesFilter';
@@ -121,12 +124,19 @@ export function NotesList({ activeId }: { activeId?: string }) {
     }
   }
 
+  // newNoteFolder is the folder new notes and boards go into: in the folder view the one last
+  // opened (if it still exists), otherwise the top level.
+  const newNoteFolder = (): string | undefined => {
+    const id = view === 'folders' ? lastFolder() : '';
+    return id && folders?.some((f) => f.id === id) ? id : undefined;
+  };
+
   // createText makes an empty text note and opens it, ready to type its title.
   async function createText() {
     setCreating(true);
     setCreateError(null);
     try {
-      const rec = await api.createTextNote(t('conversations.untitled'), '');
+      const rec = await api.createTextNote(t('conversations.untitled'), '', undefined, undefined, newNoteFolder());
       upsert(rec);
       navigate(`/conversations/${rec.id}`, { state: { created: true } });
     } catch (err) {
@@ -158,7 +168,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
     setCreateError(null);
     try {
       const columns = (['todo', 'inProgress', 'done'] as const).map((k) => ({ id: '', name: t(`board.defaultColumns.${k}`) }));
-      const rec = await api.createBoard(t('board.untitled'), { scope: { kind: '', id: '' }, columns });
+      const rec = await api.createBoard(t('board.untitled'), { scope: { kind: '', id: '' }, columns }, newNoteFolder());
       upsert(rec);
       navigate(`/conversations/${rec.id}`, { state: { created: true } });
     } catch (err) {
@@ -240,42 +250,44 @@ export function NotesList({ activeId }: { activeId?: string }) {
       onDragLeave={(e) => e.currentTarget === e.target && setDragging(false)}
       onDrop={handleDrop}
     >
-      <div className="conversations-head">
-        <h1>{t('conversations.title')}</h1>
-        <div className="head-actions">
-          <button type="button" className="pill-button icon-only-mobile" onClick={createText} disabled={creating} aria-label={t('conversations.newNote')}>
-            <NewNoteIcon /> <span>{t('conversations.newNote')}</span>
-          </button>
-          <button
-            type="button"
-            className="pill-button icon-only-mobile"
-            onClick={createBoard}
-            disabled={creating}
-            title={t('conversations.newBoard')}
-            aria-label={t('conversations.newBoard')}
-          >
-            <NewBoardIcon /> <span>{t('conversations.newBoard')}</span>
-          </button>
-          <button type="button" className="pill-button icon-only-mobile" onClick={() => fileInput.current?.click()} aria-label={t('conversations.uploadAudio')}>
-            <UploadIcon /> <span>{t('conversations.upload')}</span>
-          </button>
-          <button type="button" className="pill-button icon-only-mobile" onClick={load} disabled={refreshing} aria-label={t('common.refresh')}>
-            <RefreshIcon /> <span>{refreshing ? t('common.refreshing') : t('common.refresh')}</span>
-          </button>
-          <button
-            type="button"
-            className={`pill-button icon-only-mobile trash-toggle${showTrash ? ' active' : ''}${trashDrop ? ' drop' : ''}`}
-            aria-pressed={showTrash}
-            title={t(showTrash ? 'trash.hide' : 'trash.show')}
-            aria-label={t(showTrash ? 'trash.hide' : 'trash.show')}
-            onClick={() => setShowTrash((v) => !v)}
-            {...trashDropProps}
-          >
-            <TrashIcon /> <span>{t('trash.title')}</span>
-            {!!trash?.length && <span className="trash-count">{trash.length}</span>}
-          </button>
-        </div>
-        <input ref={fileInput} type="file" accept={ACCEPT} multiple hidden onChange={handleFiles} />
+      {/* The menu stays in place; only the items below it scroll (CSS). */}
+      <div className="notes-list-top">
+        <div className="conversations-head">
+          <h1>{t('conversations.title')}</h1>
+          <div className="head-actions">
+            <button type="button" className="pill-button icon-only-mobile" onClick={createText} disabled={creating} aria-label={t('conversations.newNote')}>
+              <NewNoteIcon /> <span>{t('conversations.newNote')}</span>
+            </button>
+            <button
+              type="button"
+              className="pill-button icon-only-mobile"
+              onClick={createBoard}
+              disabled={creating}
+              title={t('conversations.newBoard')}
+              aria-label={t('conversations.newBoard')}
+            >
+              <NewBoardIcon /> <span>{t('conversations.newBoard')}</span>
+            </button>
+            <button type="button" className="pill-button icon-only-mobile" onClick={() => fileInput.current?.click()} aria-label={t('conversations.uploadAudio')}>
+              <UploadIcon /> <span>{t('conversations.upload')}</span>
+            </button>
+            <button type="button" className="pill-button icon-only-mobile" onClick={load} disabled={refreshing} aria-label={t('common.refresh')}>
+              <RefreshIcon /> <span>{refreshing ? t('common.refreshing') : t('common.refresh')}</span>
+            </button>
+            <button
+              type="button"
+              className={`pill-button icon-only-mobile trash-toggle${showTrash ? ' active' : ''}${trashDrop ? ' drop' : ''}`}
+              aria-pressed={showTrash}
+              title={t(showTrash ? 'trash.hide' : 'trash.show')}
+              aria-label={t(showTrash ? 'trash.hide' : 'trash.show')}
+              onClick={() => setShowTrash((v) => !v)}
+              {...trashDropProps}
+            >
+              <TrashIcon /> <span>{t('trash.title')}</span>
+              {!!trash?.length && <span className="trash-count">{trash.length}</span>}
+            </button>
+          </div>
+          <input ref={fileInput} type="file" accept={ACCEPT} multiple hidden onChange={handleFiles} />
       </div>
 
       <TimerBar />
@@ -285,8 +297,6 @@ export function NotesList({ activeId }: { activeId?: string }) {
         <input type="search" placeholder={t('common.search')} value={query} onChange={(e) => setQuery(e.target.value)} aria-label={t('conversations.searchLabel')} />
       </label>
       <FilterBar query={query} setQuery={setQuery} active={activeFilter?.id ?? null} setActive={setActiveFilter} />
-
-      {showTrash && recordings && <TrashView search={search} activeId={activeId} aiReady={aiReady} onSetDone={(r, d) => void setDone(r, d)} />}
 
       {!showTrash && (
         <div className="list-toolbar">
@@ -304,98 +314,106 @@ export function NotesList({ activeId }: { activeId?: string }) {
           )}
         </div>
       )}
+      </div>
 
-      {uploads.length > 0 && (
-        <ul className="upload-list" aria-live="polite">
-          {uploads.map((u) => (
-            <li key={u.key} className={u.error ? 'failed' : ''}>
-              <span className="upload-name">{u.name}</span>
-              {u.error ? (
-                <span className="error">
-                  {u.error}{' '}
-                  <button type="button" className="link-button" onClick={() => setUploads((l) => l.filter((x) => x.key !== u.key))}>
-                    {t('conversations.dismiss')}
-                  </button>
-                </span>
-              ) : (
-                <>
-                  <progress max={1} value={u.progress} />
-                  <span className="muted">{u.done ? t('conversations.uploaded') : `${Math.round(u.progress * 100)} %`}</span>
-                </>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+      <div className="notes-list-items">
+        {showTrash && recordings && <TrashView search={search} activeId={activeId} aiReady={aiReady} onSetDone={(r, d) => void setDone(r, d)} />}
 
-      {!aiReady && recordings && recordings.length > 0 && (
-        <p className="notice">
-          {account?.role === 'admin' ? <Trans i18nKey="conversations.aiOffAdmin" components={{ 1: <Link to="/admin?tab=general" /> }} /> : t('conversations.aiOff')}
-        </p>
-      )}
-      {error && <p className="error">{error}</p>}
-      {createError && <p className="error">{createError}</p>}
-      {!recordings && !error && <p className="muted">{t('common.loading')}</p>}
-      {!showTrash && recordings && recordings.length === 0 && view !== 'tasks' && (
-        <div className="empty">
-          <p className="muted">{t('conversations.empty')}</p>
-          <p className="muted">
-            <Trans i18nKey="conversations.emptyHint" components={{ 1: <Link to="/settings?tab=devices" />, 3: <Link to="/settings?tab=account" /> }} />
+        {uploads.length > 0 && (
+          <ul className="upload-list" aria-live="polite">
+            {uploads.map((u) => (
+              <li key={u.key} className={u.error ? 'failed' : ''}>
+                <span className="upload-name">{u.name}</span>
+                {u.error ? (
+                  <span className="error">
+                    {u.error}{' '}
+                    <button type="button" className="link-button" onClick={() => setUploads((l) => l.filter((x) => x.key !== u.key))}>
+                      {t('conversations.dismiss')}
+                    </button>
+                  </span>
+                ) : (
+                  <>
+                    <progress max={1} value={u.progress} />
+                    <span className="muted">{u.done ? t('conversations.uploaded') : `${Math.round(u.progress * 100)} %`}</span>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {!aiReady && recordings && recordings.length > 0 && (
+          <p className="notice">
+            {account?.role === 'admin' ? <Trans i18nKey="conversations.aiOffAdmin" components={{ 1: <Link to="/admin?tab=general" /> }} /> : t('conversations.aiOff')}
           </p>
-          <div className="empty-actions">
-            <button type="button" onClick={createText} disabled={creating}>
-              {t('conversations.newNote')}
-            </button>
-            <button type="button" className="secondary-button" onClick={() => fileInput.current?.click()}>
-              {t('conversations.uploadAudio')}
-            </button>
+        )}
+        {error && <p className="error">{error}</p>}
+        {createError && <p className="error">{createError}</p>}
+        {!recordings && !error && <p className="muted">{t('common.loading')}</p>}
+        {!showTrash && recordings && recordings.length === 0 && (view === 'timeline' || view === 'folders') && (
+          <div className="empty">
+            <p className="muted">{t('conversations.empty')}</p>
+            <p className="muted">
+              <Trans i18nKey="conversations.emptyHint" components={{ 1: <Link to="/settings?tab=devices" />, 3: <Link to="/settings?tab=account" /> }} />
+            </p>
+            <div className="empty-actions">
+              <button type="button" onClick={createText} disabled={creating}>
+                {t('conversations.newNote')}
+              </button>
+              <button type="button" className="secondary-button" onClick={() => fileInput.current?.click()}>
+                {t('conversations.uploadAudio')}
+              </button>
+            </div>
           </div>
-        </div>
+        )}
+        {!showTrash && view === 'due' && recordings && (recordings.length === 0 || matches.length > 0) && (
+        <DueView notes={matches} activeId={activeId} aiReady={aiReady} onSetDone={(r, d) => void setDone(r, d)} onNewSub={creating ? undefined : (r) => void createSub(r)} />
       )}
       {!showTrash && view === 'tasks' && recordings && (
-        <TasksView notes={matches} activeId={activeId} aiReady={aiReady} onSetDone={(r, d) => void setDone(r, d)} onNewSub={creating ? undefined : (r) => void createSub(r)} />
-      )}
+          <TasksView notes={matches} activeId={activeId} aiReady={aiReady} onSetDone={(r, d) => void setDone(r, d)} onNewSub={creating ? undefined : (r) => void createSub(r)} />
+        )}
 
-      {!showTrash && recordings && recordings.length > 0 && matches.length === 0 && view !== 'tasks' && (
-        <p className="muted empty">{query.trim() ? t('conversations.noMatch', { query }) : t('filters.noMatch', { name: activeFilter?.name ?? '' })}</p>
-      )}
+        {!showTrash && recordings && recordings.length > 0 && matches.length === 0 && view !== 'tasks' && (
+          <p className="muted empty">{query.trim() ? t('conversations.noMatch', { query }) : t('filters.noMatch', { name: activeFilter?.name ?? '' })}</p>
+        )}
 
-      {!showTrash && view === 'folders' && recordings && (recordings.length > 0 || !!folders?.length || newFolder > 0) && (
-        <FolderTree
-          notes={matches}
-          search={search}
-          activeId={activeId}
-          aiReady={aiReady}
-          onSetDone={(r, d) => void setDone(r, d)}
-          onNewSub={creating ? undefined : (r) => void createSub(r)}
-          newFolder={newFolder}
-        />
-      )}
+        {!showTrash && view === 'folders' && recordings && (recordings.length > 0 || !!folders?.length || newFolder > 0) && (
+          <FolderTree
+            notes={matches}
+            search={search}
+            activeId={activeId}
+            aiReady={aiReady}
+            onSetDone={(r, d) => void setDone(r, d)}
+            onNewSub={creating ? undefined : (r) => void createSub(r)}
+            newFolder={newFolder}
+          />
+        )}
 
-      {!showTrash &&
-        view === 'timeline' &&
-        groups.map((g) => {
-          const { label, date } = dayLabel(g.day);
-          return (
-            <div key={g.key} className="day-group">
-              <h2 className="day-heading">
-                {label} <span>{date}</span>
-              </h2>
-              <ul className="conversation-list">
-                <NoteTreeRows
-                  list={g.items}
-                  tree={tree}
-                  searching={search !== null}
-                  activeId={activeId}
-                  aiReady={aiReady}
-                  meta={(r, depth) => (depth === 0 ? formatTime(when(r)) : formatDate(when(r)))}
-                  onSetDone={(r, d) => void setDone(r, d)}
-                  onNewSub={creating ? undefined : (r) => void createSub(r)}
-                />
-              </ul>
-            </div>
-          );
-        })}
+        {!showTrash &&
+          view === 'timeline' &&
+          groups.map((g) => {
+            const { label, date } = dayLabel(g.day);
+            return (
+              <div key={g.key} className="day-group">
+                <h2 className="day-heading">
+                  {label} <span>{date}</span>
+                </h2>
+                <ul className="conversation-list">
+                  <NoteTreeRows
+                    list={g.items}
+                    tree={tree}
+                    searching={search !== null}
+                    activeId={activeId}
+                    aiReady={aiReady}
+                    meta={(r, depth) => (depth === 0 ? formatTime(when(r)) : formatDate(when(r)))}
+                    onSetDone={(r, d) => void setDone(r, d)}
+                    onNewSub={creating ? undefined : (r) => void createSub(r)}
+                  />
+                </ul>
+              </div>
+            );
+          })}
+      </div>
 
       {dragging && <div className="drop-overlay">{t('conversations.dropHint')}</div>}
     </section>

@@ -2395,15 +2395,40 @@ button.sync-state:focus-visible {
   pointer-events: none;
 }
 
+/* The sidebar's menu stays in place; only the items below it scroll. */
 .notes-sidebar {
   position: sticky;
   top: calc(3.5rem + env(safe-area-inset-top));
   height: calc(100vh - 3.5rem - env(safe-area-inset-top));
-  overflow-y: auto;
-  scrollbar-gutter: stable;
-  padding: 1rem 0.75rem 1rem 1rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 1rem 0 0 1rem;
   background: var(--color-bg);
   border-right: 1px solid var(--color-border-soft);
+}
+
+.notes-sidebar .notes-list {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.notes-sidebar .notes-list-top {
+  flex: none;
+  padding-right: 0.75rem;
+}
+
+.notes-sidebar .notes-list-items {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding: 0 0.75rem 1rem 0;
 }
 
 /* The scrollbar gutter next to the white note page is white, too. */
@@ -2498,11 +2523,30 @@ html:has(.notes-layout) {
 
   .notes-sidebar {
     position: static;
+    display: block;
     height: auto;
     max-height: none;
     overflow: visible;
     padding: 1rem;
     border-right: none;
+  }
+
+  /* On phones the page scrolls; the list's menu stays below the header. */
+  .notes-sidebar .notes-list {
+    display: block;
+  }
+
+  .notes-sidebar .notes-list-top {
+    position: sticky;
+    top: calc(3.5rem + env(safe-area-inset-top));
+    z-index: 4;
+    padding-right: 0;
+    background: var(--color-bg);
+  }
+
+  .notes-sidebar .notes-list-items {
+    overflow: visible;
+    padding: 0;
   }
 
   .notes-main {
@@ -2863,27 +2907,46 @@ html:has(.notes-layout) {
 
 /* --- Sidebar views and folders --- */
 
-/* The view switch (by time / folders) and, in the folder view, the new folder button. */
+/* The view switch (created / due / folders / tasks) and, in the folder view, the new folder
+   button, which moves to a line of its own when both don't fit (the switch then fills its
+   line). */
 .list-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 0.5rem;
   margin: -0.5rem 0 1.25rem;
 }
 
 .list-toolbar .segmented {
+  flex: 1 0 auto;
   margin-bottom: 0;
 }
 
 .list-toolbar .segmented button {
+  flex: 1 1 auto;
   white-space: nowrap;
   padding-left: 0.8rem;
   padding-right: 0.8rem;
 }
 
+.list-toolbar > .pill-button {
+  flex: none;
+}
+
+.notes-sidebar .list-toolbar .segmented button {
+  font-size: 0.85rem;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
+/* Folder rows are laid out like note rows (see .note-line): the same gutter in front, then
+   the icon in a box as wide as a note's icon, so that folder and note icons line up. */
 .folder-tree {
+  --note-gutter: 2.6rem;
+  --icon-w: 30px;
+  --item-gap: 1rem;
   min-height: 4rem;
   padding-bottom: 2rem;
   border-radius: 10px;
@@ -2894,18 +2957,18 @@ html:has(.notes-layout) {
   box-shadow: inset 0 0 0 2px var(--color-primary);
 }
 
-.tree-children {
-  list-style: none;
-  margin: 0;
-  padding: 0 0 0 1.1rem;
-  border-left: 1px solid var(--color-border);
-  margin-left: 0.95rem;
+.notes-sidebar .folder-tree {
+  --icon-w: 22px;
+  --item-gap: 0.7rem;
 }
 
-/* Sub-notes hang from their note's toggle. */
-.tree-children.sub-note-list {
-  padding-left: 0.1rem;
-  margin-left: 0.65rem;
+/* The folders, notes and sub-notes inside a folder or note hang from its toggle (the line
+   runs below it) and are indented by one gutter column. */
+.tree-children {
+  list-style: none;
+  margin: 0 0 0 0.65rem;
+  padding: 0 0 0 calc(0.65rem - 1px);
+  border-left: 1px solid var(--color-border);
 }
 
 .tree-row {
@@ -2928,20 +2991,34 @@ html:has(.notes-layout) {
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 0.45rem;
   font: inherit;
   font-weight: 600;
   text-align: left;
   color: var(--color-text);
   background: none;
   border: none;
-  padding: 0.55rem 0.5rem;
+  padding: 0.55rem 0.5rem 0.55rem 0;
   cursor: pointer;
 }
 
-.tree-toggle .folder-icon {
+/* The chevron sits where a note's sub-note toggle does. */
+.tree-toggle .note-gutter .tree-chevron {
+  grid-column: 1;
+  justify-self: center;
+}
+
+/* Where a note's icon is: after the gutter and the note link's padding. */
+.tree-icon {
   flex: none;
+  display: flex;
+  justify-content: center;
+  width: var(--icon-w);
+  margin: 0 var(--item-gap) 0 0.5rem;
   color: var(--color-primary);
+}
+
+.tree-toggle .tree-count {
+  margin-left: 0.45rem;
 }
 
 .tree-chevron {
@@ -2994,8 +3071,7 @@ html:has(.notes-layout) {
 .tree-rename {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
-  padding: 0.3rem 0.5rem 0.3rem 1.8rem;
+  padding: 0.3rem 0.5rem 0.3rem var(--note-gutter);
   color: var(--color-primary);
 }
 
@@ -3038,6 +3114,17 @@ html:has(.notes-layout) {
 .note-line.drop {
   background: var(--color-highlight);
   box-shadow: inset 0 0 0 2px var(--color-primary);
+}
+
+/* Where a note or folder dropped onto a row's edge goes: before or after it. */
+.note-line.drop-before,
+.tree-row.drop-before {
+  box-shadow: inset 0 2px 0 var(--color-primary);
+}
+
+.note-line.drop-after,
+.tree-row.drop-after {
+  box-shadow: inset 0 -2px 0 var(--color-primary);
 }
 
 /* In front of every note, so that all icons and times line up: the toggle of its sub-notes

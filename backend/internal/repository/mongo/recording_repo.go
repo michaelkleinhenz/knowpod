@@ -208,10 +208,11 @@ func (r *RecordingRepo) AssignOwnerless(ctx context.Context, ownerID string) (in
 }
 
 func (r *RecordingRepo) MoveFolder(ctx context.Context, ownerID, from, to string) error {
+	// The notes go after the ordered notes of the folder they move into.
 	filter := bson.M{"ownerId": ownerID, "folderId": from}
-	update := bson.M{"$set": bson.M{"folderId": to}}
+	update := bson.M{"$set": bson.M{"folderId": to}, "$unset": bson.M{"position": ""}}
 	if to == "" {
-		update = bson.M{"$unset": bson.M{"folderId": ""}}
+		update = bson.M{"$unset": bson.M{"folderId": "", "position": ""}}
 	}
 	if _, err := r.c.UpdateMany(ctx, filter, update); err != nil {
 		return err
@@ -224,7 +225,8 @@ func (r *RecordingRepo) MoveFolder(ctx context.Context, ownerID, from, to string
 }
 
 func (r *RecordingRepo) MoveSubNotes(ctx context.Context, ownerID, from, toParent, toFolder string) error {
-	set, unset := bson.M{}, bson.M{}
+	// The notes go after the ordered notes of the place they move into.
+	set, unset := bson.M{}, bson.M{"position": ""}
 	for field, v := range map[string]string{"parentId": toParent, "folderId": toFolder} {
 		if v == "" {
 			unset[field] = ""
@@ -232,12 +234,9 @@ func (r *RecordingRepo) MoveSubNotes(ctx context.Context, ownerID, from, toParen
 			set[field] = v
 		}
 	}
-	update := bson.M{}
+	update := bson.M{"$unset": unset}
 	if len(set) > 0 {
 		update["$set"] = set
-	}
-	if len(unset) > 0 {
-		update["$unset"] = unset
 	}
 	_, err := r.c.UpdateMany(ctx, bson.M{"ownerId": ownerID, "parentId": from}, update)
 	return err

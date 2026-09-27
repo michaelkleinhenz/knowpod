@@ -66,11 +66,56 @@ func (s *FolderService) Update(ctx context.Context, acc *Account, id string, in 
 	if err := s.validate(ctx, f.OwnerID, id, &in); err != nil {
 		return nil, err
 	}
+	if f.ParentID != in.ParentID {
+		// A folder moved elsewhere goes after the ordered folders there.
+		f.Position = 0
+	}
 	f.Name, f.ParentID, f.UpdatedAt = in.Name, in.ParentID, s.clock().UTC()
 	if err := s.repo.Update(ctx, f); err != nil {
 		return nil, err
 	}
 	return f, nil
+}
+
+// maxReorder bounds how many folders or notes one reorder can place.
+const maxReorder = 2000
+
+// Reorder puts the account's folders ids, which must all be in the same place, in this
+// order. Folders there that aren't listed follow them, by name.
+func (s *FolderService) Reorder(ctx context.Context, acc *Account, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	if len(ids) > maxReorder {
+		return invalid("at most %d folders can be ordered at once", maxReorder)
+	}
+	list := make([]*folder.Folder, 0, len(ids))
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if seen[id] {
+			return invalid("folder %q is listed twice", id)
+		}
+		seen[id] = true
+		f, err := s.own(ctx, acc, id)
+		if err != nil {
+			return err
+		}
+		if len(list) > 0 && f.ParentID != list[0].ParentID {
+			return invalid("the folders to order must be in the same place")
+		}
+		list = append(list, f)
+	}
+	now := s.clock().UTC()
+	for i, f := range list {
+		if f.Position == i+1 {
+			continue
+		}
+		f.Position, f.UpdatedAt = i+1, now
+		if err := s.repo.Update(ctx, f); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Delete removes one of the account's folders. Its notes and folders move up into the
@@ -88,7 +133,7 @@ func (s *FolderService) Delete(ctx context.Context, acc *Account, id string) err
 		if c.ParentID != id {
 			continue
 		}
-		c.ParentID, c.UpdatedAt = f.ParentID, s.clock().UTC()
+		c.ParentID, c.Position, c.UpdatedAt = f.ParentID, 0, s.clock().UTC()
 		if err := s.repo.Update(ctx, c); err != nil {
 			return err
 		}
