@@ -3,7 +3,8 @@ import { useCallback, useState } from 'react';
 // The width of the notes sidebar in pixels, set by dragging its edge and remembered in the browser.
 const WIDTH_KEY = 'knowpod.sidebarWidth';
 export const DEFAULT_SIDEBAR_WIDTH = 320;
-const MIN_WIDTH = 224;
+// Below this the list header and the view switcher no longer fit on one line.
+const MIN_WIDTH = 320;
 const MAX_WIDTH = 720;
 
 // clampSidebarWidth keeps the sidebar usable and leaves the open note at least 40% of the window.
