@@ -161,7 +161,8 @@ export const en = {
   subNotes: {
     title: 'Sub-notes',
     new: 'New sub-note',
-    empty: 'No sub-notes yet. Add one here, or drop notes onto this note in the folder view.',
+    newLabel: 'New sub-note under “{{title}}”',
+    empty: 'No sub-notes yet. Add one with the + next to this note in the sidebar, or drop notes onto this note in the folder view.',
     show: 'Show sub-notes',
     hide: 'Hide sub-notes',
     showLabel: 'Show the {{count}} sub-notes of “{{title}}”',

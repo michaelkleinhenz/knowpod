@@ -103,6 +103,21 @@ export function NotesList({ activeId }: { activeId?: string }) {
     }
   }
 
+  // createSub makes an empty text note under parent and opens it, ready to type its title.
+  async function createSub(parent: Recording) {
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const rec = await api.createTextNote(t('conversations.untitled'), '', parent.id);
+      upsert(rec);
+      navigate(`/conversations/${rec.id}`, { state: { created: true } });
+    } catch (err) {
+      setCreateError(errorText(err, t));
+    } finally {
+      setCreating(false);
+    }
+  }
+
   // createBoard makes a board with the three default columns and opens it, ready to type
   // its title and choose the folder or label it shows.
   async function createBoard() {
@@ -264,7 +279,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
       )}
 
       {view === 'folders' && recordings && (recordings.length > 0 || !!folders?.length || newFolder > 0) && (
-        <FolderTree notes={matches} query={query} activeId={activeId} aiReady={aiReady} onSetDone={(r, d) => void setDone(r, d)} newFolder={newFolder} />
+        <FolderTree notes={matches} query={query} activeId={activeId} aiReady={aiReady} onSetDone={(r, d) => void setDone(r, d)} onNewSub={creating ? undefined : (r) => void createSub(r)} newFolder={newFolder} />
       )}
 
       {view === 'timeline' &&
@@ -277,7 +292,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
               </h2>
               <ul className="conversation-list">
                 {g.items.map((r) => (
-                  <NoteRow key={r.id} rec={r} active={r.id === activeId} aiReady={aiReady} meta={formatTime(when(r))} onSetDone={(r, d) => void setDone(r, d)} />
+                  <NoteRow key={r.id} rec={r} active={r.id === activeId} aiReady={aiReady} meta={formatTime(when(r))} onSetDone={(r, d) => void setDone(r, d)} onNewSub={creating ? undefined : (r) => void createSub(r)} />
                 ))}
               </ul>
             </div>

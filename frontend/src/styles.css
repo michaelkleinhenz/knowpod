@@ -2717,6 +2717,50 @@ html:has(.notes-layout) {
   background: var(--color-surface);
 }
 
+/* Adds a sub-note; faint, and on devices with a pointer only shown on the row's hover. */
+.note-add-sub {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 0.4rem;
+  color: var(--color-muted);
+  opacity: 0.45;
+  cursor: pointer;
+}
+
+.note-add-sub svg {
+  width: 13px;
+  height: 13px;
+}
+
+.note-add-sub:hover,
+.note-add-sub:focus-visible {
+  opacity: 1;
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+
+@media (hover: hover) {
+  .note-add-sub {
+    opacity: 0;
+  }
+
+  .note-line:hover > .note-add-sub {
+    opacity: 0.6;
+  }
+}
+
+/* The note's number, for linking it with "#12". */
+.note-row-number {
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-muted);
+  opacity: 0.7;
+}
+
 /* Sub-notes in the sidebar are listed by title only, to leave their titles room. */
 .notes-sidebar .sub-note-list .conversation-time {
   display: none;
