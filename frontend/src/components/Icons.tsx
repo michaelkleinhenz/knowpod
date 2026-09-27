@@ -298,3 +298,12 @@ export function BellIcon({ size = 12 }: { size?: number }) {
     </InlineIcon>
   );
 }
+
+export function ClockIcon({ size = 12 }: { size?: number }) {
+  return (
+    <InlineIcon size={size}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7.5V12l3 2" />
+    </InlineIcon>
+  );
+}

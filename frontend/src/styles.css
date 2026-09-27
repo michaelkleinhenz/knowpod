@@ -3277,8 +3277,8 @@ a.note-ref:hover {
 }
 
 .task-popover {
-  width: min(320px, calc(100vw - 32px));
-  padding: 0.6rem;
+  width: min(300px, calc(100vw - 32px));
+  padding: 0.5rem;
 }
 
 .task-typed input {
@@ -3287,7 +3287,13 @@ a.note-ref:hover {
   font-size: 16px;
   border: 1px solid var(--color-border);
   border-radius: 6px;
-  padding: 0.4rem 0.55rem;
+  padding: 0.3rem 0.5rem;
+}
+
+@media (pointer: fine) {
+  .task-typed input {
+    font-size: 0.85rem;
+  }
 }
 
 .task-typed-preview {
@@ -3328,11 +3334,12 @@ a.note-ref:hover {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
-  margin: 0.6rem 0 0.2rem;
+  margin: 0.45rem 0 0.1rem;
 }
 
 .task-quick .small-button {
-  padding: 0.2rem 0.55rem;
+  font-size: 0.75rem;
+  padding: 0.1rem 0.5rem;
 }
 
 .small-button.active {
@@ -3344,45 +3351,72 @@ a.note-ref:hover {
 .task-fields {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.5rem;
-  margin: 0.5rem 0;
+  gap: 0.15rem 0.3rem;
+  margin: 0.4rem 0;
 }
 
 .task-fields label {
   display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
+  align-items: center;
+  gap: 0.3rem;
   min-width: 0;
-  font-size: 0.78rem;
-  font-weight: 600;
   color: var(--color-muted);
+  border-radius: 6px;
+  padding: 0 0.3rem;
 }
 
-.task-fields label > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
+.task-fields label:hover,
+.task-fields label:focus-within {
+  background: var(--color-bg);
+}
+
+.task-fields label > svg {
+  flex: none;
 }
 
 .task-fields input,
 .task-fields select {
+  flex: 1;
   width: 100%;
   min-width: 0;
   font: inherit;
-  font-size: 16px;
-  font-weight: 400;
+  font-size: 0.8rem;
   color: var(--color-text);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  padding: 0.3rem 0.4rem;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  padding: 0.25rem 0;
+  cursor: pointer;
+}
+
+.task-fields input:disabled,
+.task-fields select:disabled {
+  color: var(--color-muted);
+  cursor: default;
+}
+
+.task-fields select {
+  appearance: none;
+  text-overflow: ellipsis;
+}
+
+.task-fields input::-webkit-calendar-picker-indicator {
+  display: none;
+}
+
+/* iOS zooms into inputs with text under 16px. */
+@media (pointer: coarse) {
+  .task-fields input,
+  .task-fields select {
+    font-size: 16px;
+  }
 }
 
 .task-priorities {
   display: flex;
-  gap: 0.3rem;
+  gap: 0.25rem;
   border-top: 1px solid var(--color-border);
-  padding-top: 0.5rem;
+  padding-top: 0.4rem;
 }
 
 .priority-option {
@@ -3392,18 +3426,22 @@ a.note-ref:hover {
   justify-content: center;
   gap: 0.25rem;
   font: inherit;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   color: var(--priority, var(--color-muted));
   background: none;
-  border: 1px solid var(--color-border);
+  border: 1px solid transparent;
   border-radius: 6px;
-  padding: 0.3rem 0.2rem;
+  padding: 0.2rem;
   cursor: pointer;
+}
+
+.priority-option:hover {
+  background: var(--color-bg);
 }
 
 .priority-option.selected {
   background: color-mix(in srgb, var(--priority, var(--color-muted)) 12%, var(--color-surface));
-  border-color: var(--priority, var(--color-muted));
+  border-color: color-mix(in srgb, var(--priority, var(--color-muted)) 40%, transparent);
   font-weight: 600;
 }
 
