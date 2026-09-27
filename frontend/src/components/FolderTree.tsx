@@ -1,9 +1,9 @@
-import { DragEvent, FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { DragEvent, FormEvent, ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, Folder, Recording } from '../api/client';
 import { useNotes } from '../context/NotesContext';
 import { errorText } from '../lib/errors';
-import { childFolders, folderOf, isInside, sortByTitle } from '../lib/folders';
+import { childFolders, folderOf, isInside, isUnderNote, sortByTitle, subNotes } from '../lib/folders';
 import { formatDate, when } from '../lib/recordings';
 import { ChevronIcon, FolderIcon, NewFolderIcon, PencilIcon, TrashIcon } from './Icons';
 import { NoteRow } from './NoteRow';
@@ -42,10 +42,11 @@ interface Props {
 
 // FolderTree shows the notes in their folders, like files. Folders can be created, renamed,
 // deleted and nested; notes and folders are moved by dragging them onto a folder (or onto
-// the free space below, for the top level).
+// the free space below, for the top level). Notes with sub-notes open like folders; a note
+// dropped onto another note becomes its sub-note.
 export function FolderTree({ notes, query, activeId, aiReady, onSetDone, newFolder }: Props) {
   const { t } = useTranslation();
-  const { folders, reloadFolders, reload, upsert } = useNotes();
+  const { folders, recordings, reloadFolders, reload, upsert } = useNotes();
   const [open, setOpen] = useState(loadOpen);
   const [editing, setEditing] = useState<Editing | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
@@ -66,26 +67,42 @@ export function FolderTree({ notes, query, activeId, aiReady, onSetDone, newFold
   }, [newFolder]);
 
   const all = folders ?? NO_FOLDERS;
+  // The tree is built from all notes, so that sub-notes found by a search show under their
+  // parents; notes lists the ones to show.
+  const allNotes = recordings ?? notes;
   const searching = query.trim() !== '';
-  const { children, notesIn, counts } = useMemo(() => {
+  const { children, notesIn, subs, counts, shown } = useMemo(() => {
     const ids = new Set(all.map((f) => f.id));
+    const subs = subNotes(allNotes);
+    const withParent = new Set([...subs.values()].flat().map((r) => r.id));
+    // notesIn are the notes directly in each folder; sub-notes are under their parents.
     const notesIn = new Map<string, Recording[]>();
-    for (const r of notes) {
+    for (const r of allNotes) {
+      if (withParent.has(r.id)) continue;
       const key = folderOf(r, ids);
       notesIn.set(key, [...(notesIn.get(key) ?? []), r]);
     }
     for (const [k, list] of notesIn) notesIn.set(k, sortByTitle(list));
+    // shown counts the listed notes in each note, itself and its sub-notes at any depth;
+    // notes counting 0 are hidden.
+    const listed = new Set(notes.map((r) => r.id));
+    const shown = new Map<string, number>();
+    const countNote = (r: Recording): number => {
+      const n = (listed.has(r.id) ? 1 : 0) + (subs.get(r.id) ?? []).reduce((s, c) => s + countNote(c), 0);
+      shown.set(r.id, n);
+      return n;
+    };
     const children = childFolders(all);
-    // counts are the notes in each folder, including its folders.
+    // counts are the notes in each folder, including its folders and sub-notes.
     const counts = new Map<string, number>();
     const count = (id: string): number => {
-      const n = (notesIn.get(id)?.length ?? 0) + (children.get(id) ?? []).reduce((s, f) => s + count(f.id), 0);
+      const n = (notesIn.get(id) ?? []).reduce((s, r) => s + countNote(r), 0) + (children.get(id) ?? []).reduce((s, f) => s + count(f.id), 0);
       counts.set(id, n);
       return n;
     };
     count('');
-    return { children, notesIn, counts };
-  }, [all, notes]);
+    return { children, notesIn, subs, counts, shown };
+  }, [all, allNotes, notes]);
 
   const toggle = (id: string, on = !open.has(id)) =>
     setOpen((s) => {
@@ -136,12 +153,28 @@ export function FolderTree({ notes, query, activeId, aiReady, onSetDone, newFold
   }
 
   async function moveNote(id: string, folderId: string) {
-    const r = notes.find((n) => n.id === id);
-    if (!r || (r.folderId ?? '') === folderId) return;
-    upsert({ ...r, folderId: folderId || undefined });
+    const r = allNotes.find((n) => n.id === id);
+    if (!r || ((r.folderId ?? '') === folderId && !r.parentId)) return;
+    upsert({ ...r, folderId: folderId || undefined, parentId: undefined });
     await run(async () => {
       try {
         upsert(await api.setNoteFolder(id, folderId));
+      } catch (err) {
+        upsert(r);
+        throw err;
+      }
+    });
+  }
+
+  // moveUnder makes note id a sub-note of parentId, unless that would put it under itself.
+  async function moveUnder(id: string, parentId: string) {
+    const r = allNotes.find((n) => n.id === id);
+    if (!r || r.parentId === parentId || isUnderNote(parentId, id, allNotes)) return;
+    upsert({ ...r, parentId, folderId: undefined });
+    toggle(parentId, true);
+    await run(async () => {
+      try {
+        upsert(await api.setNoteParent(id, parentId));
       } catch (err) {
         upsert(r);
         throw err;
@@ -183,6 +216,30 @@ export function FolderTree({ notes, query, activeId, aiReady, onSetDone, newFold
     },
   });
 
+  // Drop handlers for a note: notes dropped onto it become its sub-notes.
+  const noteDropProps = (id: string) => {
+    const key = `note:${id}`;
+    return {
+      onDragOver: (e: DragEvent) => {
+        if (dragged(e) !== 'note') return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = 'move';
+        setDropTarget(key);
+      },
+      onDragLeave: (e: DragEvent) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropTarget((d) => (d === key ? null : d));
+      },
+      onDrop: (e: DragEvent) => {
+        if (dragged(e) !== 'note') return;
+        e.preventDefault();
+        e.stopPropagation();
+        setDropTarget(null);
+        void moveUnder(e.dataTransfer.getData(NOTE_TYPE), id);
+      },
+    };
+  };
+
   const nameField = (
     <form className="tree-rename" onSubmit={saveName}>
       <FolderIcon />
@@ -199,21 +256,32 @@ export function FolderTree({ notes, query, activeId, aiReady, onSetDone, newFold
     </form>
   );
 
-  const noteRows = (id: string) =>
-    (notesIn.get(id) ?? []).map((r) => (
-      <NoteRow
-        key={r.id}
-        rec={r}
-        active={r.id === activeId}
-        aiReady={aiReady}
-        meta={formatDate(when(r))}
-        onSetDone={onSetDone}
-        onDragStart={(e) => {
-          e.dataTransfer.setData(NOTE_TYPE, r.id);
-          e.dataTransfer.effectAllowed = 'move';
-        }}
-      />
-    ));
+  // noteRows shows notes with their sub-notes, which open and close like folders.
+  const noteRows = (list: Recording[]): ReactNode =>
+    list.map((r) => {
+      if (!shown.get(r.id)) return null;
+      const kids = (subs.get(r.id) ?? []).filter((c) => shown.get(c.id));
+      const isOpen = searching || open.has(r.id);
+      return (
+        <NoteRow
+          key={r.id}
+          rec={r}
+          active={r.id === activeId}
+          aiReady={aiReady}
+          meta={formatDate(when(r))}
+          onSetDone={onSetDone}
+          onDragStart={(e) => {
+            e.dataTransfer.setData(NOTE_TYPE, r.id);
+            e.dataTransfer.effectAllowed = 'move';
+          }}
+          sub={kids.length > 0 ? { count: kids.length, open: isOpen, onToggle: () => toggle(r.id) } : undefined}
+          lineProps={noteDropProps(r.id)}
+          drop={dropTarget === `note:${r.id}`}
+        >
+          {kids.length > 0 && isOpen && <ul className="tree-children sub-note-list">{noteRows(kids)}</ul>}
+        </NoteRow>
+      );
+    });
 
   const folderRows = (parent: string) =>
     (children.get(parent) ?? []).map((f) => {
@@ -279,7 +347,7 @@ export function FolderTree({ notes, query, activeId, aiReady, onSetDone, newFold
             <ul className="tree-children">
               {editing && !editing.id && editing.parentId === f.id && <li>{nameField}</li>}
               {folderRows(f.id)}
-              {noteRows(f.id)}
+              {noteRows(notesIn.get(f.id) ?? [])}
             </ul>
           )}
         </li>
@@ -292,7 +360,7 @@ export function FolderTree({ notes, query, activeId, aiReady, onSetDone, newFold
       <ul className="conversation-list tree-root">
         {editing && !editing.id && editing.parentId === '' && <li>{nameField}</li>}
         {folderRows('')}
-        {noteRows('')}
+        {noteRows(notesIn.get('') ?? [])}
       </ul>
       {!searching && folders && folders.length === 0 && !editing && <p className="muted tree-hint">{t('folders.empty')}</p>}
       {!searching && folders && folders.length > 0 && <p className="muted tree-hint">{t('folders.dragHint')}</p>}

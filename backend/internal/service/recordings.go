@@ -57,10 +57,14 @@ func (s *RecordingService) List(ctx context.Context, acc *Account, f recording.L
 	return s.recs.List(ctx, f)
 }
 
-// Delete removes a recording, its archived audio and any spooled files.
+// Delete removes a recording, its archived audio and any spooled files. Its sub-notes move
+// up to where it was, so nothing else is lost.
 func (s *RecordingService) Delete(ctx context.Context, acc *Account, id string) error {
 	rec, err := s.Get(ctx, acc, id)
 	if err != nil {
+		return err
+	}
+	if err := s.recs.MoveSubNotes(ctx, rec.OwnerID, rec.ID, rec.ParentID, rec.FolderID); err != nil {
 		return err
 	}
 	return s.delete(ctx, rec)
@@ -144,10 +148,18 @@ func (in SummaryEdit) clean() (title, markdown string, err error) {
 	return title, markdown, nil
 }
 
+// TextNoteInput creates a text note: its title and Markdown text, and optionally the note
+// it is a sub-note of.
+type TextNoteInput struct {
+	SummaryEdit
+	ParentID string `json:"parentId,omitempty"`
+}
+
 // CreateText creates a text note for the account's user. The title and Markdown text are
 // kept as the note's summary, so the note is shown, edited, copied and downloaded like the
-// summary of a recording. It needs no processing and is stored as summarized.
-func (s *RecordingService) CreateText(ctx context.Context, acc *Account, in SummaryEdit) (*recording.Recording, error) {
+// summary of a recording. It needs no processing and is stored as summarized. With a
+// ParentID it is created as a sub-note of that note.
+func (s *RecordingService) CreateText(ctx context.Context, acc *Account, in TextNoteInput) (*recording.Recording, error) {
 	if acc.ID == "" {
 		return nil, errors.Join(ErrForbidden, errors.New("notes belong to a user; sign in"))
 	}
@@ -155,11 +167,15 @@ func (s *RecordingService) CreateText(ctx context.Context, acc *Account, in Summ
 	if err != nil {
 		return nil, err
 	}
+	parentID := strings.TrimSpace(in.ParentID)
+	if err := s.validParent(ctx, acc.ID, "", parentID); err != nil {
+		return nil, err
+	}
 	id := newID()
 	now := s.clock().UTC()
 	rec := &recording.Recording{
 		ID: id, OwnerID: acc.ID, DeviceID: recording.TextDeviceID(acc.ID), ClientID: id,
-		Type: recording.TypeText, Status: recording.StatusSummarized,
+		Type: recording.TypeText, Status: recording.StatusSummarized, ParentID: parentID,
 		Summary:   &recording.Summary{Title: title, Markdown: markdown, CreatedAt: now},
 		NotBefore: now, CreatedAt: now, UpdatedAt: now,
 	}
@@ -232,7 +248,9 @@ func (s *RecordingService) SetDone(ctx context.Context, acc *Account, id string,
 	return rec, s.save(ctx, rec)
 }
 
-// SetFolder moves the note into one of its owner's folders, or to the top level ("").
+// SetFolder moves the note into one of its owner's folders, or to the top level (""). A
+// sub-note moved into a folder is no longer under its parent note; its own sub-notes come
+// along.
 func (s *RecordingService) SetFolder(ctx context.Context, acc *Account, id, folderID string) (*recording.Recording, error) {
 	rec, err := s.Get(ctx, acc, id)
 	if err != nil {
@@ -242,8 +260,51 @@ func (s *RecordingService) SetFolder(ctx context.Context, acc *Account, id, fold
 	if !s.Folders.Usable(ctx, rec.OwnerID, folderID) {
 		return nil, invalid("unknown folder %q", folderID)
 	}
-	rec.FolderID = folderID
+	rec.FolderID, rec.ParentID = folderID, ""
 	return rec, s.save(ctx, rec)
+}
+
+// maxNoteDepth bounds how deeply sub-notes can be nested.
+const maxNoteDepth = 8
+
+// SetParent makes the note a sub-note of another of its owner's notes, or takes it out from
+// under its parent to the top level (""). A sub-note is in no folder; it is shown wherever
+// its parent is. Its own sub-notes come along.
+func (s *RecordingService) SetParent(ctx context.Context, acc *Account, id, parentID string) (*recording.Recording, error) {
+	rec, err := s.Get(ctx, acc, id)
+	if err != nil {
+		return nil, err
+	}
+	parentID = strings.TrimSpace(parentID)
+	if err := s.validParent(ctx, rec.OwnerID, rec.ID, parentID); err != nil {
+		return nil, err
+	}
+	rec.ParentID, rec.FolderID = parentID, ""
+	return rec, s.save(ctx, rec)
+}
+
+// validParent checks that note id of ownerID may be put under parentID ("" is none, id ""
+// is a new note): the parent is one of the owner's notes, a note can't go under itself or
+// one of its own sub-notes, and nesting is bounded.
+func (s *RecordingService) validParent(ctx context.Context, ownerID, id, parentID string) error {
+	depth := 1
+	for p := parentID; p != ""; {
+		if p == id {
+			return invalid("a note can't be a sub-note of itself or of its own sub-notes")
+		}
+		if depth++; depth > maxNoteDepth {
+			return invalid("notes can be nested at most %d deep", maxNoteDepth)
+		}
+		parent, err := s.recs.Get(ctx, p)
+		if errors.Is(err, ErrNotFound) || (err == nil && parent.OwnerID != ownerID) {
+			return invalid("unknown note %q", p)
+		}
+		if err != nil {
+			return err
+		}
+		p = parent.ParentID
+	}
+	return nil
 }
 
 func (s *RecordingService) save(ctx context.Context, rec *recording.Recording) error {

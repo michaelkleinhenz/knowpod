@@ -203,8 +203,10 @@ export interface Recording {
   // IDs of the note's labels; done is the check mark of a note labeled "task".
   labels?: string[];
   done?: boolean;
-  // The folder the note is in; absent at the top level.
+  // The folder the note is in; absent at the top level and for sub-notes.
   folderId?: string;
+  // The note this one is a sub-note of; a sub-note is shown under it, wherever it is.
+  parentId?: string;
   // A board's scope and columns.
   board?: Board;
   lastError?: string;
@@ -317,7 +319,7 @@ export const api = {
   retranscribe: (id: string) => request<Recording>('POST', `/recordings/${encodeURIComponent(id)}/retranscribe`),
   resummarize: (id: string, opts?: SummaryOptions) =>
     request<Recording>('POST', `/recordings/${encodeURIComponent(id)}/resummarize`, opts),
-  createTextNote: (title: string, markdown: string) => request<Recording>('POST', '/recordings/text', { title, markdown }),
+  createTextNote: (title: string, markdown: string, parentId?: string) => request<Recording>('POST', '/recordings/text', { title, markdown, parentId }),
   createBoard: (title: string, board: Board) => request<Recording>('POST', '/recordings/board', { title, board }),
   setBoard: (id: string, board: Board) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/board`, board),
   editSummary: (id: string, title: string, markdown: string) =>
@@ -325,6 +327,7 @@ export const api = {
   setNoteLabels: (id: string, labels: string[]) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/labels`, { labels }),
   setNoteDone: (id: string, done: boolean) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/done`, { done }),
   setNoteFolder: (id: string, folderId: string) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/folder`, { folderId }),
+  setNoteParent: (id: string, parentId: string) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/parent`, { parentId }),
   folders: () => request<Folder[]>('GET', '/folders'),
   createFolder: (f: FolderInput) => request<Folder>('POST', '/folders', f),
   updateFolder: (id: string, f: FolderInput) => request<Folder>('PUT', `/folders/${encodeURIComponent(id)}`, f),

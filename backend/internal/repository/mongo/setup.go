@@ -43,6 +43,9 @@ var indexes = map[string][]mongo.IndexModel{
 		// Listing, newest first.
 		{Keys: bson.D{{Key: "createdAt", Value: -1}}},
 		{Keys: bson.D{{Key: "ownerId", Value: 1}, {Key: "createdAt", Value: -1}}},
+		// Sub-notes of a note.
+		{Keys: bson.D{{Key: "ownerId", Value: 1}, {Key: "parentId", Value: 1}},
+			Options: options.Index().SetPartialFilterExpression(bson.M{"parentId": bson.M{"$exists": true}})},
 		// Note numbers are unique per user.
 		{Keys: bson.D{{Key: "ownerId", Value: 1}, {Key: "number", Value: 1}},
 			Options: options.Index().SetUnique(true).SetPartialFilterExpression(bson.M{"number": bson.M{"$exists": true}})},

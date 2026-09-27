@@ -387,6 +387,64 @@ func TestFolders(t *testing.T) {
 	}
 }
 
+func TestSubNotes(t *testing.T) {
+	f := newAPIFixture(t)
+	admin := f.signedIn(adminEmail, adminPassword)
+
+	var work folder.Folder
+	admin.do("POST", "/api/v1/folders", service.FolderInput{Name: "Work"}, nil, &work)
+	var head, sub, subsub recording.Recording
+	admin.do("POST", "/api/v1/recordings/text", map[string]string{"title": "Project", "markdown": ""}, nil, &head)
+	admin.do("PUT", "/api/v1/recordings/"+head.ID+"/folder", map[string]string{"folderId": work.ID}, nil, &head)
+
+	// Sub-notes are created under a note, or moved under one.
+	if res := admin.do("POST", "/api/v1/recordings/text", map[string]string{"title": "Tasks", "markdown": "", "parentId": head.ID}, nil, &sub); res.StatusCode != 201 || sub.ParentID != head.ID {
+		t.Fatalf("create sub-note: %d %+v", res.StatusCode, sub.ParentID)
+	}
+	if res := admin.do("POST", "/api/v1/recordings/text", map[string]string{"title": "X", "markdown": "", "parentId": "nope"}, nil, nil); res.StatusCode != 400 {
+		t.Fatalf("create under unknown note: %d", res.StatusCode)
+	}
+	admin.do("POST", "/api/v1/recordings/text", map[string]string{"title": "Details", "markdown": ""}, nil, &subsub)
+	admin.do("PUT", "/api/v1/recordings/"+subsub.ID+"/folder", map[string]string{"folderId": work.ID}, nil, &subsub)
+	path := "/api/v1/recordings/" + subsub.ID + "/parent"
+	var moved recording.Recording
+	if res := admin.do("PUT", path, map[string]string{"parentId": sub.ID}, nil, &moved); res.StatusCode != 200 || moved.ParentID != sub.ID || moved.FolderID != "" {
+		t.Fatalf("move under note: %d %+v %+v", res.StatusCode, moved.ParentID, moved.FolderID)
+	}
+
+	// A note can't go under itself or one of its own sub-notes.
+	for _, parent := range []string{head.ID, sub.ID, subsub.ID, "nope"} {
+		if res := admin.do("PUT", "/api/v1/recordings/"+head.ID+"/parent", map[string]string{"parentId": parent}, nil, nil); res.StatusCode != 400 {
+			t.Errorf("move head under %s: %d", parent, res.StatusCode)
+		}
+	}
+
+	// Deleting a note moves its sub-notes up to where it was.
+	if res := admin.do("DELETE", "/api/v1/recordings/"+sub.ID, nil, nil, nil); res.StatusCode != 204 {
+		t.Fatalf("delete sub-note: %d", res.StatusCode)
+	}
+	var got recording.Recording
+	if admin.do("GET", "/api/v1/recordings/"+subsub.ID, nil, nil, &got); got.ParentID != head.ID || got.FolderID != "" {
+		t.Fatalf("after deleting its parent: %+v %+v", got.ParentID, got.FolderID)
+	}
+	if res := admin.do("DELETE", "/api/v1/recordings/"+head.ID, nil, nil, nil); res.StatusCode != 204 {
+		t.Fatalf("delete head: %d", res.StatusCode)
+	}
+	var up recording.Recording
+	if admin.do("GET", "/api/v1/recordings/"+subsub.ID, nil, nil, &up); up.ParentID != "" || up.FolderID != work.ID {
+		t.Fatalf("after deleting the head: %+v %+v", up.ParentID, up.FolderID)
+	}
+
+	// Moving a sub-note into a folder takes it out from under its parent.
+	var other recording.Recording
+	admin.do("POST", "/api/v1/recordings/text", map[string]string{"title": "Other", "markdown": ""}, nil, &other)
+	admin.do("PUT", path, map[string]string{"parentId": other.ID}, nil, nil)
+	var out recording.Recording
+	if res := admin.do("PUT", "/api/v1/recordings/"+subsub.ID+"/folder", map[string]string{"folderId": work.ID}, nil, &out); res.StatusCode != 200 || out.ParentID != "" || out.FolderID != work.ID {
+		t.Fatalf("move sub-note into folder: %d %+v %+v", res.StatusCode, out.ParentID, out.FolderID)
+	}
+}
+
 func TestBoards(t *testing.T) {
 	f := newAPIFixture(t)
 	admin := f.signedIn(adminEmail, adminPassword)

@@ -8,12 +8,13 @@ import { CopyIcon, DownloadIcon, RetranscribeIcon, TrashIcon } from '../componen
 import { inline, Markdown } from '../components/Markdown';
 import { NoteLabels } from '../components/Labels';
 import { MoveToFolder } from '../components/MoveToFolder';
+import { SubNotes } from '../components/SubNotes';
 import { SummaryDetails } from '../components/SummaryDetails';
 import { useNotes } from '../context/NotesContext';
 import { Sync, useAutosave } from '../hooks/useAutosave';
 import { locale } from '../i18n';
 import { errorText } from '../lib/errors';
-import { folderPath } from '../lib/folders';
+import { folderPath, notePath } from '../lib/folders';
 import { noteRefPath } from '../lib/noteRefs';
 import { formatBytes, formatClock, formatDate, formatDuration, noteType, processing, statusLabel, title as titleOf, when } from '../lib/recordings';
 
@@ -220,6 +221,8 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
       autosave.discard();
       await api.deleteRecording(rec.id);
       notes.remove(rec.id);
+      // Its sub-notes moved up to where it was.
+      if (notes.recordings?.some((r) => r.parentId === rec.id)) void notes.reload();
       navigate('/', { replace: true });
     } catch (err) {
       setError(errorText(err, t));
@@ -246,7 +249,9 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
         : null;
 
   const state = statusLabel(rec, aiReady);
-  const folder = folderPath(rec.folderId, notes.folders);
+  // Where the note is: the folders above it, then the notes it is a sub-note of.
+  const parents = notePath(rec, notes.recordings);
+  const folder = folderPath((parents[0] ?? rec).folderId, notes.folders);
   const d = when(rec);
   const pending = (empty: string) =>
     rec.status === 'failed' ? (
@@ -300,6 +305,17 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
             {isDocument && rec.pages ? ` · ${t('conversation.pages', { count: rec.pages })}` : ''}
             {sourceBadge && ` · ${sourceBadge}`}
             {folder.length > 0 && ` · ${folder.join(' / ')}`}
+            {parents.length > 0 && (
+              <>
+                {folder.length > 0 ? ' / ' : ' · '}
+                {parents.map((p, i) => (
+                  <span key={p.id}>
+                    {i > 0 && ' / '}
+                    <Link to={`/conversations/${p.id}`}>{titleOf(p)}</Link>
+                  </span>
+                ))}
+              </>
+            )}
             {state && <span className={`state-pill${rec.status === 'failed' ? ' bad' : ''}`}>{state}</span>}
           </p>
           <NoteLabels rec={rec} setRec={setRec} />
@@ -516,6 +532,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
             <p className="muted">{state ?? t('conversation.audioUnavailable')}</p>
           ))}
       </div>
+      <SubNotes rec={rec} />
     </>
   );
 }
@@ -566,19 +583,22 @@ export function Conversation() {
     load();
   }, [load]);
 
-  // The check mark, labels and folder can also change in the sidebar; take them over.
+  // The check mark, labels, folder and parent note can also change in the sidebar; take them over.
   const listed = notes.recordings?.find((r) => r.id === id);
   const listedLabels = listed?.labels?.join(',') ?? '';
   const listedDone = listed?.done ?? false;
   const listedFolder = listed?.folderId ?? '';
+  const listedParent = listed?.parentId ?? '';
   useEffect(() => {
     if (!listed) return;
     setRecState((r) =>
-      r && r.id === listed.id && (r.done !== listed.done || (r.labels?.join(',') ?? '') !== listedLabels || (r.folderId ?? '') !== listedFolder)
-        ? { ...r, done: listed.done, labels: listed.labels, folderId: listed.folderId }
+      r &&
+      r.id === listed.id &&
+      (r.done !== listed.done || (r.labels?.join(',') ?? '') !== listedLabels || (r.folderId ?? '') !== listedFolder || (r.parentId ?? '') !== listedParent)
+        ? { ...r, done: listed.done, labels: listed.labels, folderId: listed.folderId, parentId: listed.parentId }
         : r,
     );
-  }, [listedLabels, listedDone, listedFolder]);
+  }, [listedLabels, listedDone, listedFolder, listedParent]);
 
   const inProgress = rec ? processing(rec) : false;
   useEffect(() => {

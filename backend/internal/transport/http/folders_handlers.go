@@ -66,3 +66,20 @@ func (s *Server) handleSetNoteFolder(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, rec)
 }
+
+// handleSetNoteParent makes a note a sub-note with {"parentId": "..."}; an empty ID takes it
+// out from under its parent to the top level.
+func (s *Server) handleSetNoteParent(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		ParentID string `json:"parentId"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	rec, err := s.actions.SetParent(r.Context(), accountFrom(r.Context()), chi.URLParam(r, "id"), in.ParentID)
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, rec)
+}

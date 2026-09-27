@@ -124,6 +124,9 @@ type Recording struct {
 	Done bool `bson:"done,omitempty" json:"done,omitempty"`
 	// FolderID is the folder the note is in; empty at the top level.
 	FolderID string `bson:"folderId,omitempty" json:"folderId,omitempty"`
+	// ParentID is the note this one is a sub-note of, like a file in a folder whose head is a
+	// note itself. A sub-note is listed under its parent and is in no folder of its own.
+	ParentID string `bson:"parentId,omitempty" json:"parentId,omitempty"`
 
 	// Board is the setup of a board note: its scope and columns.
 	Board *Board `bson:"board,omitempty" json:"board,omitempty"`
@@ -155,11 +158,11 @@ func (r *Recording) IsDocument() bool { return r.Type == TypeDocument }
 // IsBoard reports whether the note is a board.
 func (r *Recording) IsBoard() bool { return r.Type == TypeBoard }
 
-// KeepUserFields copies the fields a person changes at any time (labels, done, folder) and
-// the note number from the stored version, so that a processing step saving its long-held
-// copy doesn't undo them.
+// KeepUserFields copies the fields a person changes at any time (labels, done, folder,
+// parent note) and the note number from the stored version, so that a processing step
+// saving its long-held copy doesn't undo them.
 func (r *Recording) KeepUserFields(stored *Recording) {
-	r.Labels, r.Done, r.FolderID, r.Number = stored.Labels, stored.Done, stored.FolderID, stored.Number
+	r.Labels, r.Done, r.FolderID, r.ParentID, r.Number = stored.Labels, stored.Done, stored.FolderID, stored.ParentID, stored.Number
 }
 
 // TextDeviceID returns the DeviceID of a user's text notes. Their ClientID is the note ID.

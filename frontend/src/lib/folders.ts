@@ -14,6 +14,42 @@ export function childFolders(folders: Folder[]): Map<string, Folder[]> {
   return out;
 }
 
+// subNotes maps each note ID to its sub-notes, by title. Notes whose parent is unknown
+// (e.g. deleted meanwhile) are left out; they are shown in their folder instead.
+export function subNotes(notes: Recording[]): Map<string, Recording[]> {
+  const ids = new Set(notes.map((r) => r.id));
+  const out = new Map<string, Recording[]>();
+  for (const r of notes) {
+    if (r.parentId && ids.has(r.parentId)) out.set(r.parentId, [...(out.get(r.parentId) ?? []), r]);
+  }
+  for (const [k, list] of out) out.set(k, sortByTitle(list));
+  return out;
+}
+
+// parentOf returns the note a note is shown under, if it is a sub-note of a known note.
+export function parentOf(r: Recording, byId: Map<string, Recording>): Recording | undefined {
+  return r.parentId ? byId.get(r.parentId) : undefined;
+}
+
+// notePath lists the notes above r, from the topmost down to its parent.
+export function notePath(r: Recording, notes: Recording[] | null): Recording[] {
+  const byId = new Map((notes ?? []).map((n) => [n.id, n]));
+  const out: Recording[] = [];
+  for (let p = parentOf(r, byId); p && out.length < 16 && p.id !== r.id; p = parentOf(p, byId)) out.unshift(p);
+  return out;
+}
+
+// isUnderNote reports whether note id is target or one of target's sub-notes (at any
+// depth), i.e. whether putting target under id would put it under itself.
+export function isUnderNote(id: string, target: string, notes: Recording[]): boolean {
+  const byId = new Map(notes.map((n) => [n.id, n]));
+  let n = 0;
+  for (let r = byId.get(id); r && n < 64; r = parentOf(r, byId), n++) {
+    if (r.id === target) return true;
+  }
+  return false;
+}
+
 // folderOf returns the folder a note is shown in: its folder, or the top level ('') when
 // it has none or the folder is unknown (e.g. deleted meanwhile).
 export function folderOf(r: Recording, ids: Set<string>): string {

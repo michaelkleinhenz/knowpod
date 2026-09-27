@@ -42,6 +42,9 @@ type RecordingRepository interface {
 	// MoveFolder moves all of ownerID's recordings in folder from into folder to ("" is the
 	// top level), and points boards showing folder from at folder to.
 	MoveFolder(ctx context.Context, ownerID, from, to string) error
+	// MoveSubNotes moves all of ownerID's sub-notes of note from to where that note was:
+	// under parent toParent, or into folder toFolder when toParent is empty.
+	MoveSubNotes(ctx context.Context, ownerID, from, toParent, toFolder string) error
 }
 
 // DeviceRepository persists devices. Lookups of missing documents return domain.ErrNotFound.
