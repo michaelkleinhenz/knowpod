@@ -110,6 +110,7 @@ export const de: Translation = {
     dismiss: 'Ausblenden',
     dropHint: 'WAV- oder MP3-Dateien hier ablegen zum Hochladen',
     selectHint: 'Wähle links eine Notiz aus, schreibe eine neue oder lade Audio hoch.',
+    resizeSidebar: 'Breite der Notizliste ändern (ziehen oder Pfeiltasten; Doppelklick setzt zurück)',
   },
   noteRefs: {
     menu: 'Auf eine Notiz verweisen',

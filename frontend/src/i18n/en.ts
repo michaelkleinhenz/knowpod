@@ -108,6 +108,7 @@ export const en = {
     dismiss: 'Dismiss',
     dropHint: 'Drop WAV or MP3 files to upload',
     selectHint: 'Select a note on the left, write a new one, or upload audio.',
+    resizeSidebar: 'Resize the notes list (drag, or use the arrow keys; double-click to reset)',
   },
   noteRefs: {
     menu: 'Link to a note',
