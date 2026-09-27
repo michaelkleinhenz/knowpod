@@ -35,7 +35,12 @@ export const de: Translation = {
     openMenu: 'Menü öffnen',
     closeMenu: 'Menü schließen',
   },
+  offline: {
+    badge: 'Offline',
+    hint: 'Der Server ist nicht erreichbar. Deine Notizen werden im zuletzt synchronisierten Stand gezeigt; Änderungen werden gespeichert, sobald du wieder online bist.',
+  },
   errors: {
+    offlineMissing: 'Diese Notiz ist offline noch nicht verfügbar. Öffne sie einmal, während du online bist.',
     invalid_login: 'E-Mail oder Passwort ist falsch.',
     not_signed_in: 'Bitte melde dich erneut an.',
     invalid_token: 'Ungültiges Token.',

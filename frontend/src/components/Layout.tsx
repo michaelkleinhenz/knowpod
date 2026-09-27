@@ -1,6 +1,7 @@
 import { ReactNode, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { useOffline } from '../api/offline';
 import { useAuth } from '../auth';
 
 // Layout is the app frame: a header with the navigation, which collapses into a menu
@@ -13,6 +14,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const onConversations = pathname === '/' || pathname.startsWith('/conversations/');
   const admin = account?.role === 'admin';
+  const offline = useOffline();
 
   // Close the mobile menu after navigating.
   useEffect(() => setOpen(false), [pathname]);
@@ -29,6 +31,11 @@ export function Layout({ children }: { children: ReactNode }) {
           <img src="/favicon.svg" alt="" width="26" height="26" />
           knowpod
         </Link>
+        {account && offline && (
+          <span className="offline-badge" role="status" title={t('offline.hint')}>
+            {t('offline.badge')}
+          </span>
+        )}
         {account && (
           <>
             <button

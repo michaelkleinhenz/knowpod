@@ -2046,6 +2046,17 @@ button.sync-state:focus-visible {
 
 /* --- Notes: sidebar + open note (desktop), one at a time (phones) --- */
 
+.offline-badge {
+  margin-right: auto;
+  margin-left: 0.75rem;
+  padding: 0.1rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid #b7892f;
+  color: #f3d9a4;
+  font-size: 0.8rem;
+  cursor: help;
+}
+
 .container.full {
   max-width: none;
   padding: 0;
