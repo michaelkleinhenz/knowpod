@@ -418,8 +418,8 @@ export const en = {
     remarkableTitle: 'reMarkable',
   },
   remarkable: {
-    intro: 'Pair your reMarkable cloud account to bring your handwritten notes and documents into knowpod. All your documents are imported into the folder <1>{{folder}}</1> here; they are read, never changed on your reMarkable. Notebooks are converted to PDF, and their text is read and summarized like a recording.',
-    introPaired: 'Your reMarkable documents are imported into the folder <1>{{folder}}</1> every few minutes, and imported again when they change. Documents in the trash are left out. Nothing is changed on your reMarkable.',
+    intro: 'Pair your reMarkable cloud account to bring your handwritten notes and documents into knowpod. All your documents are imported into the folder <1>{{folder}}</1> here, in the same folders as on your reMarkable; they are read, never changed on your reMarkable. Notebooks are converted to PDF, and their text is read and summarized like a recording.',
+    introPaired: 'Your reMarkable documents are imported into the folder <1>{{folder}}</1>, in the same folders as on your reMarkable, every few minutes, and imported again when they change. Documents in the trash are left out. Nothing is changed on your reMarkable.',
     notPaired: 'Not paired',
     paired: 'Paired',
     pairedSince: 'since {{date}}',
@@ -438,7 +438,7 @@ export const en = {
     lastError: 'The last import failed: {{error}}',
     unpair: 'Unpair',
     unpairConfirm: 'Unpair your reMarkable? No more documents are imported; notes already imported stay. To remove knowpod from your reMarkable account completely, also delete it under “Connected devices” at my.remarkable.com.',
-    footnote: 'Deleting a document on your reMarkable keeps its note here. You can rename or move the folder; notes you move out of it stay where you put them. Annotations on PDFs are not included; typed text in notebooks is not read yet.',
+    footnote: 'Deleting a document on your reMarkable keeps its note here. You can rename or move the folder; its folders follow your reMarkable, and notes you move out of it stay where you put them. Annotations on PDFs are not included; typed text in notebooks is not read yet.',
   },
   pocket: {
     intro: 'Connect your Pocket recorder (heypocketai.com): Pocket announces new recordings to your personal webhook URL, and knowpod downloads the audio with your API key. The recordings appear under Notes.',

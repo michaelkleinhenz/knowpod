@@ -143,18 +143,19 @@ func TestRemarkablePullsAllDocumentsIntoTheFolder(t *testing.T) {
 	if f.queued != 1 {
 		t.Errorf("worker woken %d times", f.queued)
 	}
-	all, _ := f.folders.List(ctx, "u1")
-	if len(all) != 1 || all[0].Name != "reMarkable" || all[0].ParentID != "" {
-		t.Fatalf("folders %+v", all)
+	tree := f.tree(t)
+	if len(tree) != 2 || tree["reMarkable"] == nil || tree["reMarkable/Work"] == nil {
+		t.Fatalf("folders %v", tree)
 	}
+	root := tree["reMarkable"]
 	rec := f.note(t, "n1")
 	if rec.Type != recording.TypeDocument || rec.Source != recording.SourceRemarkable || rec.Status != recording.StatusRemote ||
 		rec.Title != "Ideas" || rec.OwnerID != "u1" || rec.RecordedAt == nil || rec.RecordedAt.UnixMilli() != 1700000000000 ||
-		rec.FolderID != all[0].ID {
+		rec.FolderID != root.ID {
 		t.Errorf("note %+v", rec)
 	}
-	if f.note(t, "n2").FolderID != all[0].ID {
-		t.Errorf("note of a subfolder not in the folder")
+	if f.note(t, "n2").FolderID != tree["reMarkable/Work"].ID {
+		t.Errorf("note of a subfolder not in its folder")
 	}
 	for _, id := range []string{"n3", "n4", "n5"} {
 		if _, err := f.recs.GetByClientID(ctx, recording.RemarkableDeviceID("u1"), id); err == nil {
@@ -172,19 +173,149 @@ func TestRemarkablePullsAllDocumentsIntoTheFolder(t *testing.T) {
 	}
 
 	// A renamed folder is still used; a deleted one is made again.
-	all[0].Name = "Tablet"
-	_ = f.folders.Update(ctx, all[0])
+	root.Name = "Tablet"
+	_ = f.folders.Update(ctx, root)
 	f.cloud.Set(notebook("n6", "More", ""))
 	f.pull(t)
-	if f.note(t, "n6").FolderID != all[0].ID {
+	if f.note(t, "n6").FolderID != root.ID {
 		t.Errorf("renamed folder not used")
 	}
-	_ = f.folders.Delete(ctx, all[0].ID)
+	if tree := f.tree(t); len(tree) != 2 || tree["Tablet/Work"] == nil {
+		t.Errorf("folders after rename %v", tree)
+	}
+	_ = f.folders.Delete(ctx, root.ID)
 	f.cloud.Set(notebook("n7", "Even more", ""))
 	f.pull(t)
-	again, _ := f.folders.List(ctx, "u1")
-	if len(again) != 1 || again[0].Name != "reMarkable" || f.note(t, "n7").FolderID != again[0].ID {
-		t.Errorf("folder not made again: %+v", again)
+	again := f.tree(t)
+	if len(again) != 2 || again["reMarkable"] == nil || again["reMarkable/Work"] == nil || f.note(t, "n7").FolderID != again["reMarkable"].ID {
+		t.Errorf("folder not made again: %v", again)
+	}
+}
+
+// tree returns u1's folders by path.
+func (f *remarkableFixture) tree(t *testing.T) map[string]*folder.Folder {
+	t.Helper()
+	all, err := f.folders.List(context.Background(), "u1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]*folder.Folder{}
+	for _, d := range all {
+		byID[d.ID] = d
+	}
+	out := map[string]*folder.Folder{}
+	for _, d := range all {
+		path := d.Name
+		for p := byID[d.ParentID]; p != nil; p = byID[p.ParentID] {
+			path = p.Name + "/" + path
+		}
+		out[path] = d
+	}
+	return out
+}
+
+func TestRemarkableMirrorsTheFolders(t *testing.T) {
+	f := newRemarkableFixture(t)
+	ctx := context.Background()
+	f.pair(t)
+	f.cloud.Set(rt.Item{ID: "work", Name: "Work", Folder: true})
+	f.cloud.Set(rt.Item{ID: "meet", Name: "  Meetings ", Parent: "work", Folder: true})
+	f.cloud.Set(rt.Item{ID: "empty", Name: "Empty", Folder: true})
+	f.cloud.Set(rt.Item{ID: "dup1", Name: "Same", Folder: true})
+	f.cloud.Set(rt.Item{ID: "dup2", Name: "same", Folder: true})
+	f.cloud.Set(rt.Item{ID: "bin", Name: "Old", Parent: "trash", Folder: true})
+	f.cloud.Set(notebook("n1", "Standup", "meet"))
+	f.cloud.Set(notebook("n2", "Plan", "work"))
+	f.cloud.Set(notebook("n3", "A", "dup1"))
+	f.cloud.Set(notebook("n4", "B", "dup2"))
+	f.cloud.Set(notebook("n5", "Top", ""))
+	f.pull(t)
+
+	tree := f.tree(t)
+	for _, p := range []string{"reMarkable", "reMarkable/Work", "reMarkable/Work/Meetings", "reMarkable/Empty"} {
+		if tree[p] == nil {
+			t.Errorf("no folder %s in %v", p, tree)
+		}
+	}
+	if len(tree) != 6 || tree["reMarkable/Old"] != nil {
+		t.Errorf("folders %v", tree)
+	}
+	if f.note(t, "n1").FolderID != tree["reMarkable/Work/Meetings"].ID || f.note(t, "n2").FolderID != tree["reMarkable/Work"].ID ||
+		f.note(t, "n5").FolderID != tree["reMarkable"].ID {
+		t.Errorf("notes not in their folders")
+	}
+	if a, b := f.note(t, "n3").FolderID, f.note(t, "n4").FolderID; a == b || a == "" || b == "" {
+		t.Errorf("folders of the same name share a folder: %q %q", a, b)
+	}
+	meetings := tree["reMarkable/Work/Meetings"]
+
+	// Folders are renamed and moved with the cloud's; finished notes move with their
+	// documents, notes in processing on a later pull, and notes the user moved stay.
+	for _, id := range []string{"n1", "n2", "n5"} {
+		rec := f.note(t, id)
+		rec.Status = recording.StatusSummarized
+		_ = f.recs.Update(ctx, rec)
+	}
+	mine := &folder.Folder{ID: "mine", OwnerID: "u1", Name: "Mine"}
+	_ = f.folders.Create(ctx, mine)
+	moved := f.note(t, "n5")
+	moved.FolderID = "mine"
+	_ = f.recs.Update(ctx, moved)
+	f.cloud.Set(rt.Item{ID: "meet", Name: "Calls", Folder: true})
+	f.cloud.Set(notebook("n2", "Plan", "empty"))
+	f.cloud.Set(notebook("n3", "A", "work"))
+	f.cloud.Set(notebook("n5", "Top", "work"))
+	if v := f.pull(t); v.LastResult.Updated != 0 || v.LastResult.Imported != 0 {
+		t.Errorf("moves queued notes: %+v", v.LastResult)
+	}
+	tree = f.tree(t)
+	if tree["reMarkable/Calls"] == nil || tree["reMarkable/Calls"].ID != meetings.ID || tree["reMarkable/Work/Meetings"] != nil {
+		t.Errorf("folder not renamed and moved: %v", tree)
+	}
+	if f.note(t, "n2").FolderID != tree["reMarkable/Empty"].ID || f.note(t, "n5").FolderID != "mine" {
+		t.Errorf("finished notes not moved right")
+	}
+	if f.note(t, "n3").FolderID == tree["reMarkable/Work"].ID {
+		t.Errorf("note in processing moved")
+	}
+	rec := f.note(t, "n3")
+	rec.Status = recording.StatusSummarized
+	_ = f.recs.Update(ctx, rec)
+	f.pull(t)
+	if f.note(t, "n3").FolderID != tree["reMarkable/Work"].ID {
+		t.Errorf("note not moved once processed")
+	}
+
+	// Once everything is placed, an unchanged account costs two requests again.
+	f.pull(t)
+	f.cloud.Requests()
+	f.pull(t)
+	if reqs := f.cloud.Requests(); len(reqs) != 2 {
+		t.Errorf("unchanged account cost %d requests: %v", len(reqs), reqs)
+	}
+}
+
+func TestRemarkableMirrorsFoldersOfEarlierImports(t *testing.T) {
+	f := newRemarkableFixture(t)
+	ctx := context.Background()
+	f.pair(t)
+	f.cloud.Set(rt.Item{ID: "work", Name: "Work", Folder: true})
+	f.cloud.Set(notebook("n1", "Plan", "work"))
+	f.pull(t)
+	// As imported before folders were mirrored: all notes in the reMarkable folder.
+	l, _ := f.svc.links.Get(ctx, "u1")
+	l.Folders, l.MirroredHash = nil, ""
+	_ = f.svc.links.Save(ctx, l)
+	tree := f.tree(t)
+	_ = f.folders.Delete(ctx, tree["reMarkable/Work"].ID)
+	rec := f.note(t, "n1")
+	rec.FolderID, rec.Status = tree["reMarkable"].ID, recording.StatusSummarized
+	_ = f.recs.Update(ctx, rec)
+
+	f.pull(t)
+	tree = f.tree(t)
+	if len(tree) != 2 || tree["reMarkable/Work"] == nil || f.note(t, "n1").FolderID != tree["reMarkable/Work"].ID {
+		t.Errorf("earlier import not mirrored: %v", tree)
 	}
 }
 
@@ -356,5 +487,26 @@ func TestDocumentsIgnoresCycles(t *testing.T) {
 	f.cloud.Set(notebook("n2", "Top", ""))
 	if v := f.pull(t); v.LastResult.Documents != 2 {
 		t.Errorf("result %+v", v.LastResult)
+	}
+	tree := f.tree(t)
+	if len(tree) != 3 || (tree["reMarkable/A/B"] == nil && tree["reMarkable/B/A"] == nil) {
+		t.Errorf("folders %v", tree)
+	}
+}
+
+func TestRemarkableBoundsFolderNesting(t *testing.T) {
+	f := newRemarkableFixture(t)
+	f.pair(t)
+	parent := ""
+	for i := 0; i < 10; i++ {
+		id := string(rune('a' + i))
+		f.cloud.Set(rt.Item{ID: id, Name: id, Parent: parent, Folder: true})
+		parent = id
+	}
+	f.cloud.Set(notebook("n1", "Deep", parent))
+	f.pull(t)
+	deepest := f.tree(t)["reMarkable/a/b/c/d/e/f/g"]
+	if len(f.tree(t)) != maxFolderDepth || deepest == nil || f.note(t, "n1").FolderID != deepest.ID {
+		t.Errorf("folders %v", f.tree(t))
 	}
 }

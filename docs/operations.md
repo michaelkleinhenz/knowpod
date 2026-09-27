@@ -192,7 +192,8 @@ Pocket's transcripts, summaries and action items in the webhook payload are not 
 
 Each user can pair their own reMarkable cloud account. knowpod then imports all documents
 of the account (except those in the trash) as notes into the knowpod folder **reMarkable**,
-which is created with the first import. It only
+which is created with the first import. Inside it, the account's folders are mirrored:
+each reMarkable folder has a knowpod folder of the same name in the same place. It only
 reads: nothing on the tablet or in the cloud is changed, moved or deleted.
 
 **Setup** (each user, **Account** page → reMarkable):
@@ -218,8 +219,12 @@ the device stays listed under "Connected devices" at my.remarkable.com until rem
   vision model reads the pages into Markdown, which is summarized like a transcript.
 - When a document's content changes, the note is queued again (a rename only changes its
   `title`). A summary the user edited is kept; **Read again** on the note replaces it.
+- Folders created, renamed or moved on the reMarkable are created, renamed or moved inside
+  the knowpod folder, and a note follows its document into another folder (once it's done
+  processing). Folders deleted on the reMarkable stay in knowpod. Folders of the same name
+  get a number (`Notes (2)`); folders nested deeper than knowpod allows share the deepest one.
 - Notes stay when documents are deleted on the reMarkable. The knowpod folder can be renamed
-  or moved; notes moved out of it stay where they are put.
+  or moved; notes moved out of it (or its folders) stay where they are put.
 
 **Log messages:** `remarkable paired`, `reMarkable documents queued`,
 `reMarkable document fetched`, `reMarkable document stored`, `document read`, and

@@ -38,7 +38,7 @@ AI worker ─────────────▶ transcript (status: transcr
 - WAV and MP3 files can be uploaded from the browser on **Notes**.
 - Each user can pair their **reMarkable** cloud account on the **Account** page with a
   one-time code. All its documents (except the trash) are imported into the knowpod
-  folder **reMarkable** (read only, never changed on the tablet): handwritten notebooks are rendered to PDF, PDFs and EPUBs are kept as they
+  folder **reMarkable**, in the same folders as on the tablet (read only, never changed on the tablet): handwritten notebooks are rendered to PDF, PDFs and EPUBs are kept as they
   are, and a vision model reads the pages into text that is summarized like a transcript.
 - Notes come in types: **audio** notes (recordings, transcribed and summarized),
   **text** notes, plain Markdown documents written in the browser (**+** on **Notes**), and
