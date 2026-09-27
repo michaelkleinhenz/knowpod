@@ -140,6 +140,7 @@ export const de: Translation = {
     moveCardTo: '„{{title}}“ nach „{{name}}“ verschieben',
     moveLeft: 'Nach links',
     moveRight: 'Nach rechts',
+    dragCard: '„{{title}}“ ziehen',
   },
   folders: {
     viewLabel: 'Notizen sortieren',

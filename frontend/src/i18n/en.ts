@@ -138,6 +138,7 @@ export const en = {
     moveCardTo: 'Move “{{title}}” to “{{name}}”',
     moveLeft: 'Move left',
     moveRight: 'Move right',
+    dragCard: 'Drag “{{title}}”',
   },
   folders: {
     viewLabel: 'Sort notes',
