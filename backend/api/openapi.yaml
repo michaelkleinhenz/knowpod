@@ -104,6 +104,12 @@ tags:
     description: Estimates, the timer and focus sessions, and the time log of your notes.
   - name: Calendar
     description: A read-only iCalendar feed of your tasks with dates.
+  - name: MCP server
+    description: |
+      Access for AI assistants (Claude, ChatGPT, …) through the MCP server at `/mcp`, outside
+      this API: a Model Context Protocol server (Streamable HTTP, stateless JSON responses)
+      whose tools search, read, create and change your notes and tasks. It authenticates with
+      your MCP access token, `Authorization: Bearer kpm_…`.
   - name: "Admin: users"
     description: Create, change and delete users. Administrators only.
   - name: "Admin: AI settings"
@@ -1650,6 +1656,32 @@ paths:
       responses:
         "204": { description: Turned off }
 
+  /me/mcp:
+    get:
+      tags: ["MCP server"]
+      summary: Get your MCP access's state
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: State
+          content: { application/json: { schema: { $ref: "#/components/schemas/MCPSettings" } } }
+    post:
+      tags: ["MCP server"]
+      summary: Make an MCP access token
+      description: Turns the MCP server on for you and returns a new access token in `token`, shown only now. A previous token stops working.
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: The new token
+          content: { application/json: { schema: { $ref: "#/components/schemas/MCPSettings" } } }
+    delete:
+      tags: ["MCP server"]
+      summary: Turn your MCP access off
+      description: Its token stops working.
+      security: [{ sessionCookie: [] }]
+      responses:
+        "204": { description: Turned off }
+
   /calendar/{token}.ics:
     get:
       tags: ["Calendar"]
@@ -2215,6 +2247,13 @@ components:
         enabled: { type: boolean }
         createdAt: { type: string, format: date-time, description: When the current link was made }
         feedPath: { type: string, example: /api/v1/calendar/kpc_abc.ics, description: 'Only right after the link was made: the path of the feed on this server' }
+
+    MCPSettings:
+      type: object
+      properties:
+        enabled: { type: boolean }
+        createdAt: { type: string, format: date-time, description: When the current token was made }
+        token: { type: string, example: kpm_abc, description: 'Only right after the token was made: the bearer token for the MCP server' }
 
     Folder:
       type: object

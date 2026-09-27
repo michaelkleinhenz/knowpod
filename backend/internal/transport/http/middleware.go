@@ -31,7 +31,7 @@ func securityHeaders(next http.Handler) http.Handler {
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "no-referrer")
-		if strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/healthz" {
+		if strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/healthz" || r.URL.Path == service.MCPPath {
 			h.Set("Content-Security-Policy", apiCSP)
 		} else {
 			h.Set("Content-Security-Policy", spaCSP)

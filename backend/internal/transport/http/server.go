@@ -1,6 +1,7 @@
 package http
 
 import (
+	"cmp"
 	"context"
 	"log/slog"
 	"net/http"
@@ -51,7 +52,10 @@ type Server struct {
 	filters       *service.FilterService
 	times         *service.TimeService
 	calendar      *service.CalendarService
-	now           func() time.Time
+	// mcp signs in the AI assistants using the MCP server.
+	mcp     *service.MCPAccessService
+	version string
+	now     func() time.Time
 }
 
 // Deps are the server's constructor dependencies. Handlers of missing services are still
@@ -80,6 +84,10 @@ type Deps struct {
 	Filters  *service.FilterService
 	Times    *service.TimeService
 	Calendar *service.CalendarService
+	// MCP is optional in tests that don't use it.
+	MCP *service.MCPAccessService
+	// Version is the app version, reported by the MCP server.
+	Version string
 }
 
 // NewServer builds the server.
@@ -92,7 +100,8 @@ func NewServer(d Deps) *Server {
 		cfg: d.Cfg, log: log, db: d.DB, auth: d.Auth, users: d.Users, devices: d.Devices, uploads: d.Uploads,
 		manual: d.Manual, actions: d.Actions, objects: d.Objects, pocket: d.Pocket, ai: d.AI, themes: d.Themes,
 		labels: d.Labels, folders: d.Folders, remarkable: d.Remarkable, notifications: d.Notifications,
-		filters: d.Filters, times: d.Times, calendar: d.Calendar, now: time.Now,
+		filters: d.Filters, times: d.Times, calendar: d.Calendar, mcp: d.MCP, version: cmp.Or(d.Version, "dev"),
+		now: time.Now,
 	}
 }
 
@@ -113,6 +122,11 @@ func (s *Server) Router() http.Handler {
 	}))
 
 	r.Get("/healthz", s.handleHealth)
+
+	// --- MCP server for AI assistants (the user's MCP access token) ---
+	r.Post(service.MCPPath, s.handleMCP)
+	r.Get(service.MCPPath, s.handleMCPNotAllowed)
+	r.Delete(service.MCPPath, s.handleMCPNotAllowed)
 
 	r.Route("/api/v1", func(api chi.Router) {
 		api.Get("/info", s.handleInfo)
@@ -158,6 +172,9 @@ func (s *Server) Router() http.Handler {
 			u.Get("/me/calendar", s.handleGetCalendar)
 			u.Post("/me/calendar", s.handleEnableCalendar)
 			u.Delete("/me/calendar", s.handleDisableCalendar)
+			u.Get("/me/mcp", s.handleGetMCP)
+			u.Post("/me/mcp", s.handleEnableMCP)
+			u.Delete("/me/mcp", s.handleDisableMCP)
 			u.Get("/ai/status", s.handleAIStatus)
 			u.Get("/ai/models", s.handleOpenRouterModels)
 			u.Get("/ai/languages", s.handleSummaryLanguages)

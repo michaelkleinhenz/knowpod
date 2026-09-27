@@ -99,6 +99,7 @@ func newAPIFixture(t *testing.T) *apiFixture {
 		AI:     service.NewAIService(memory.NewSettings(), themes, objects, nil, t.TempDir(), log),
 		Themes: themes, Labels: labels, Folders: folders, Remarkable: rm, Notifications: notifications,
 		Filters: filters, Times: service.NewTimeService(timeRepo, recs, users), Calendar: service.NewCalendarService(users, recs),
+		MCP: service.NewMCPAccessService(users),
 	})
 	srv := httptest.NewServer(s.Router())
 	t.Cleanup(srv.Close)

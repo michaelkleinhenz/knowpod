@@ -677,6 +677,20 @@ a {
   line-height: 1.5;
 }
 
+.card-subtitle {
+  margin: 1.25rem 0 0;
+  font-size: 1rem;
+}
+
+/* A header or command to copy, on its own line under its step. */
+.mcp-snippet {
+  margin-top: 0.3rem;
+}
+
+.mcp-snippet code {
+  overflow-wrap: anywhere;
+}
+
 .status-pill code {
   background: none;
   border: none;
