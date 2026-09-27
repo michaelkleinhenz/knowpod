@@ -28,9 +28,10 @@ interface Props {
   children?: ReactNode;
 }
 
-// NoteRow is one note in the sidebar: its type icon (a check box for tasks), title,
-// number (to link it with "#12"), processing state and time, a button to add a sub-note,
-// and a toggle for its sub-notes if it has any.
+// NoteRow is one note in the sidebar: in front, a toggle for its sub-notes if it has any and
+// a button to add a sub-note (both in a gutter every row has, so the rows' icons and times
+// line up); then its type icon (a check box for tasks), title (shortened to fit, its number
+// always shown, to link it with "#12"), processing state and time.
 export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = true, onNewSub, onDragStart, sub, lineProps, drop, children }: Props) {
   const { t } = useTranslation();
   const state = statusLabel(r, aiReady);
@@ -38,19 +39,47 @@ export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = t
   return (
     <li className={task ? `task-item${r.done ? ' done' : ''}` : undefined}>
       <div {...lineProps} className={`note-line${drop ? ' drop' : ''}`}>
+        <span className="note-gutter">
+          {sub && (
+            <button
+              type="button"
+              className="note-sub-toggle"
+              aria-expanded={sub.open}
+              title={`${t(sub.open ? 'subNotes.hide' : 'subNotes.show')} (${t('subNotes.allHint')})`}
+              aria-label={t(sub.open ? 'subNotes.hideLabel' : 'subNotes.showLabel', { title: title(r), count: sub.count })}
+              onClick={sub.onToggle}
+            >
+              <ChevronIcon open={sub.open} />
+            </button>
+          )}
+          {onNewSub && (
+            <button type="button" className="note-add-sub" title={t('subNotes.new')} aria-label={t('subNotes.newLabel', { title: title(r) })} onClick={() => onNewSub(r)}>
+              <NewNoteIcon />
+            </button>
+          )}
+        </span>
         <Link
           to={`/conversations/${r.id}`}
           className={`conversation-item${active ? ' active' : ''}`}
           aria-current={active ? 'page' : undefined}
+          title={title(r)}
           draggable={!!onDragStart}
           onDragStart={onDragStart}
         >
           <NoteIcon type={noteType(r)} label={t(`conversations.types.${noteType(r)}`)} />
           <span className="conversation-title">
-            {title(r)}
-            {r.number ? <span className="note-row-number">#{r.number}</span> : null}
-            {task && <TaskMeta rec={r} showDue={taskDate} />}
-            {state && <span className={`state-pill${r.status === 'failed' ? ' bad' : ''}`}>{state}</span>}
+            <span className="note-title-line">
+              <span className="note-title-text">{title(r)}</span>
+              {r.number ? <span className="note-row-number">#{r.number}</span> : null}
+              {sub && <span className="tree-count note-sub-count">{sub.count}</span>}
+            </span>
+            {/* Hidden while empty (CSS). */}
+            {(task || state) && (
+              <span className="note-title-extra">
+                {task && <TaskMeta rec={r} showDue={taskDate} />}
+                {state && <span className={`state-pill${r.status === 'failed' ? ' bad' : ''}`}>{state}</span>}
+              </span>
+            )}
           </span>
           <span className="conversation-time">{meta}</span>
         </Link>
@@ -63,30 +92,6 @@ export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = t
             onChange={(e) => onSetDone(r, e.target.checked)}
             aria-label={t('labels.doneLabel', { title: title(r) })}
           />
-        )}
-        {onNewSub && (
-          <button
-            type="button"
-            className="note-add-sub"
-            title={t('subNotes.new')}
-            aria-label={t('subNotes.newLabel', { title: title(r) })}
-            onClick={() => onNewSub(r)}
-          >
-            <NewNoteIcon />
-          </button>
-        )}
-        {sub && (
-          <button
-            type="button"
-            className="note-sub-toggle"
-            aria-expanded={sub.open}
-            title={`${t(sub.open ? 'subNotes.hide' : 'subNotes.show')} (${t('subNotes.allHint')})`}
-            aria-label={t(sub.open ? 'subNotes.hideLabel' : 'subNotes.showLabel', { title: title(r), count: sub.count })}
-            onClick={sub.onToggle}
-          >
-            <span className="tree-count">{sub.count}</span>
-            <ChevronIcon open={sub.open} />
-          </button>
         )}
       </div>
       {children}

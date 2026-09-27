@@ -1,22 +1,19 @@
-import { DragEvent, FormEvent, ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { DragEvent, FormEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api, Folder, Recording, TRASH_DAYS } from '../api/client';
+import { api, Folder, Recording } from '../api/client';
 import { useNotes } from '../context/NotesContext';
 import { errorText } from '../lib/errors';
 import type { Matcher } from '../lib/filterQuery';
-import { childFolders, folderOf, isInside, isUnderNote, notePath, sortByTitle, subNotes, withSubNotes } from '../lib/folders';
+import { childFolders, folderOf, isInside, isUnderNote, notePath, sortByTitle } from '../lib/folders';
 import { setOpen, useOpen } from '../lib/treeOpen';
 import { formatDate, when } from '../lib/recordings';
-import { daysLeft } from '../lib/trash';
-import { ChevronIcon, EmptyTrashIcon, FolderIcon, NewFolderIcon, PencilIcon, TrashIcon } from './Icons';
-import { NoteRow } from './NoteRow';
+import { ChevronIcon, FolderIcon, NewFolderIcon, PencilIcon, TrashIcon } from './Icons';
+import { NoteTreeRows, useNoteTree } from './NoteTree';
 
 // Drag data types; the browser only reveals the types (not the data) while dragging over.
-const NOTE_TYPE = 'application/x-knowpod-note';
+export const NOTE_TYPE = 'application/x-knowpod-note';
 const FOLDER_TYPE = 'application/x-knowpod-folder';
 const NO_FOLDERS: Folder[] = [];
-// TRASH is the trash folder's key for opening it and dropping notes onto it.
-const TRASH = 'knowpod:trash';
 
 // Editing is the inline name field: renaming folder id, or a new folder in parentId.
 type Editing = { id?: string; parentId: string; name: string };
@@ -44,7 +41,7 @@ interface Props {
 // dropped onto another note becomes its sub-note.
 export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewSub, newFolder }: Props) {
   const { t } = useTranslation();
-  const { folders, recordings, reloadFolders, reload, upsert, trash, moveToTrash, emptyTrash } = useNotes();
+  const { folders, recordings, reloadFolders, reload, upsert } = useNotes();
   const open = useOpen();
   const [editing, setEditing] = useState<Editing | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
@@ -61,38 +58,27 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
   // parents; notes lists the ones to show.
   const allNotes = recordings ?? notes;
   const searching = search !== null;
-  const { children, notesIn, subs, counts, shown } = useMemo(() => {
+  const tree = useNoteTree(allNotes, notes);
+  const { children, notesIn, counts } = useMemo(() => {
     const ids = new Set(all.map((f) => f.id));
-    const subs = subNotes(allNotes);
-    const withParent = new Set([...subs.values()].flat().map((r) => r.id));
     // notesIn are the notes directly in each folder; sub-notes are under their parents.
     const notesIn = new Map<string, Recording[]>();
-    for (const r of allNotes) {
-      if (withParent.has(r.id)) continue;
+    for (const r of tree.roots) {
       const key = folderOf(r, ids);
       notesIn.set(key, [...(notesIn.get(key) ?? []), r]);
     }
     for (const [k, list] of notesIn) notesIn.set(k, sortByTitle(list));
-    // shown counts the listed notes in each note, itself and its sub-notes at any depth;
-    // notes counting 0 are hidden.
-    const listed = new Set(notes.map((r) => r.id));
-    const shown = new Map<string, number>();
-    const countNote = (r: Recording): number => {
-      const n = (listed.has(r.id) ? 1 : 0) + (subs.get(r.id) ?? []).reduce((s, c) => s + countNote(c), 0);
-      shown.set(r.id, n);
-      return n;
-    };
     const children = childFolders(all);
     // counts are the notes in each folder, including its folders and sub-notes.
     const counts = new Map<string, number>();
     const count = (id: string): number => {
-      const n = (notesIn.get(id) ?? []).reduce((s, r) => s + countNote(r), 0) + (children.get(id) ?? []).reduce((s, f) => s + count(f.id), 0);
+      const n = (notesIn.get(id) ?? []).reduce((s, r) => s + (tree.shown.get(r.id) ?? 0), 0) + (children.get(id) ?? []).reduce((s, f) => s + count(f.id), 0);
       counts.set(id, n);
       return n;
     };
     count('');
-    return { children, notesIn, subs, counts, shown };
-  }, [all, allNotes, notes]);
+    return { children, notesIn, counts };
+  }, [all, tree]);
 
   const toggle = (id: string, on = !open.has(id)) => setOpen([id], on);
 
@@ -213,33 +199,6 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
     },
   });
 
-  // Drop handlers for the trash: notes dropped onto it are moved there.
-  const trashDropProps = {
-    onDragOver: (e: DragEvent) => {
-      if (dragged(e) !== 'note') return;
-      e.preventDefault();
-      e.stopPropagation();
-      e.dataTransfer.dropEffect = 'move';
-      setDropTarget(TRASH);
-    },
-    onDragLeave: (e: DragEvent) => {
-      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropTarget((d) => (d === TRASH ? null : d));
-    },
-    onDrop: (e: DragEvent) => {
-      if (dragged(e) !== 'note') return;
-      e.preventDefault();
-      e.stopPropagation();
-      setDropTarget(null);
-      const r = allNotes.find((n) => n.id === e.dataTransfer.getData(NOTE_TYPE));
-      if (r) void run(() => moveToTrash(r));
-    },
-  };
-
-  async function clearTrash() {
-    if (!window.confirm(t('trash.emptyConfirm', { count: trash?.length ?? 0 }))) return;
-    await run(emptyTrash);
-  }
-
   // Drop handlers for a note: notes dropped onto it become its sub-notes.
   const noteDropProps = (id: string) => {
     const key = `note:${id}`;
@@ -281,41 +240,26 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
   );
 
   // noteRows shows notes with their sub-notes, which open and close like folders.
-  const noteRows = (list: Recording[]): ReactNode =>
-    list.map((r) => {
-      if (!shown.get(r.id)) return null;
-      const kids = (subs.get(r.id) ?? []).filter((c) => shown.get(c.id));
-      const isOpen = searching || open.has(r.id);
-      return (
-        <NoteRow
-          key={r.id}
-          rec={r}
-          active={r.id === activeId}
-          aiReady={aiReady}
-          meta={formatDate(when(r))}
-          onSetDone={onSetDone}
-          onNewSub={onNewSub}
-          onDragStart={(e) => {
-            e.dataTransfer.setData(NOTE_TYPE, r.id);
-            e.dataTransfer.effectAllowed = 'move';
-          }}
-          sub={
-            kids.length > 0
-              ? {
-                  count: kids.length,
-                  open: isOpen,
-                  // Alt+click opens or closes the note's whole tree.
-                  onToggle: (e) => (e.altKey ? setOpen(withSubNotes(r.id, subs), !isOpen) : toggle(r.id)),
-                }
-              : undefined
-          }
-          lineProps={noteDropProps(r.id)}
-          drop={dropTarget === `note:${r.id}`}
-        >
-          {kids.length > 0 && isOpen && <ul className="tree-children sub-note-list">{noteRows(kids)}</ul>}
-        </NoteRow>
-      );
-    });
+  const noteRows = (list: Recording[]) => (
+    <NoteTreeRows
+      list={list}
+      tree={tree}
+      searching={searching}
+      activeId={activeId}
+      aiReady={aiReady}
+      meta={(r) => formatDate(when(r))}
+      onSetDone={onSetDone}
+      onNewSub={onNewSub}
+      rowProps={(r) => ({
+        onDragStart: (e) => {
+          e.dataTransfer.setData(NOTE_TYPE, r.id);
+          e.dataTransfer.effectAllowed = 'move';
+        },
+        lineProps: noteDropProps(r.id),
+        drop: dropTarget === `note:${r.id}`,
+      })}
+    />
+  );
 
   const folderRows = (parent: string) =>
     (children.get(parent) ?? []).map((f) => {
@@ -388,38 +332,6 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
       );
     });
 
-  // The trash is the last folder: the notes deleted in the last TRASH_DAYS days, with how
-  // long each stays. While searching, only the ones found are shown.
-  const trashed = (trash ?? []).filter((r) => !search || search(r));
-  const trashOpen = searching || open.has(TRASH);
-  const trashRow = (!searching || trashed.length > 0) && (
-    <li className="tree-folder trash-folder">
-      <div className={`tree-row${dropTarget === TRASH ? ' drop' : ''}`} {...trashDropProps}>
-        <button type="button" className="tree-toggle" aria-expanded={trashOpen} onClick={() => toggle(TRASH)}>
-          <ChevronIcon open={trashOpen} />
-          <TrashIcon />
-          <span className="tree-name">{t('trash.title')}</span>
-          <span className="tree-count">{trashed.length || ''}</span>
-        </button>
-        {trashed.length > 0 && !searching && (
-          <span className="tree-actions">
-            <button type="button" className="icon-button danger" title={t('trash.empty')} aria-label={t('trash.empty')} onClick={() => void clearTrash()}>
-              <EmptyTrashIcon />
-            </button>
-          </span>
-        )}
-      </div>
-      {trashOpen && (
-        <ul className="tree-children">
-          {trashed.length === 0 && <li className="muted tree-hint">{t('trash.hint', { days: TRASH_DAYS })}</li>}
-          {trashed.map((r) => (
-            <NoteRow key={r.id} rec={r} active={r.id === activeId} aiReady={aiReady} meta={t('trash.daysLeft', { count: daysLeft(r.deletedAt ?? '') })} onSetDone={onSetDone} taskDate={false} />
-          ))}
-        </ul>
-      )}
-    </li>
-  );
-
   return (
     <div className={`folder-tree${dropTarget === '' ? ' drop' : ''}`} {...dropProps('')}>
       {error && <p className="error">{error}</p>}
@@ -427,7 +339,6 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
         {editing && !editing.id && editing.parentId === '' && <li>{nameField}</li>}
         {folderRows('')}
         {noteRows(notesIn.get('') ?? [])}
-        {trashRow}
       </ul>
       {!searching && folders && folders.length === 0 && !editing && <p className="muted tree-hint">{t('folders.empty')}</p>}
       {!searching && folders && folders.length > 0 && <p className="muted tree-hint">{t('folders.dragHint')}</p>}
