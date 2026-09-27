@@ -183,6 +183,7 @@ export const de: Translation = {
     intro: 'Erhalte Erinnerungen an deine Aufgaben auf diesem Gerät, auch wenn knowpod geschlossen ist. Schalte sie auf jedem Handy oder Computer ein, auf dem du sie haben möchtest.',
     unavailable: 'Benachrichtigungen sind auf diesem Server nicht verfügbar.',
     unsupported: 'Dieser Browser kann keine Benachrichtigungen empfangen.',
+    desktop: 'Die Desktop-App kann keine Benachrichtigungen empfangen. Schalte sie im Browser oder auf dem Handy ein.',
     iosInstall: 'Auf iPhone und iPad füge knowpod zuerst zum Home-Bildschirm hinzu (Teilen → Zum Home-Bildschirm), öffne es von dort und schalte dann die Benachrichtigungen ein.',
     onHere: 'Benachrichtigungen sind auf diesem Gerät eingeschaltet.',
     offHere: 'Benachrichtigungen sind auf diesem Gerät ausgeschaltet.',

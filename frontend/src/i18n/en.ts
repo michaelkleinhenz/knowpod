@@ -181,6 +181,7 @@ export const en = {
     intro: 'Get reminders for your tasks on this device, also when knowpod is closed. Turn them on on each phone or computer you want them on.',
     unavailable: "Notifications aren't available on this server.",
     unsupported: "This browser can't receive notifications.",
+    desktop: "The desktop app can't receive notifications. Turn them on in your browser or on your phone.",
     iosInstall: 'On iPhone and iPad, add knowpod to your Home Screen first (Share → Add to Home Screen), then open it from there and turn notifications on.',
     onHere: 'Notifications are on for this device.',
     offHere: 'Notifications are off for this device.',

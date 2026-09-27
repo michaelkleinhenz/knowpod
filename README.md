@@ -16,6 +16,7 @@ built and shipped as a single binary.
 | Transcoding | Pure-Go FLAC encoder ([mewkiz/flac](https://github.com/mewkiz/flac)), no external binaries |
 | Frontend | React 18 + TypeScript, Vite, react-router |
 | Deploy | One binary (frontend embedded in the backend), Docker / docker-compose |
+| Desktop app | Electron + electron-builder (Windows, macOS, Linux), optional |
 
 ## How recordings flow
 
@@ -105,6 +106,9 @@ AI worker ─────────────▶ transcript (status: transcr
 - The web UI is available in English and German; each user picks the language in
   **Settings**.
 - The web UI works on phones and can be installed as an app (PWA).
+- A **desktop app** for Windows, macOS and Linux is an alternative to the browser: the same
+  web UI in a native window, signed in to and talking to the server exactly like the web app
+  (see [Desktop app](#desktop-app)).
 
 Supported input: integer PCM WAV, 8/16/24 bit, 1–8 channels, up to 4 GiB.
 
@@ -114,7 +118,7 @@ Supported input: integer PCM WAV, 8/16/24 bit, 1–8 channels, up to 4 GiB.
 |---|---|
 | [Device upload protocol](docs/device-protocol.md) | Implementing the upload client on the gadget: requests, error handling, retry logic |
 | [Architecture](docs/architecture.md) | Backend developers: components, recording lifecycle, worker, data model, adding processing stages |
-| [Operations](docs/operations.md) | Deploying and running: Railway, AWS/IAM setup, users and sign-in, Pocket, reMarkable, uploads, installing the app, AI settings, devices, monitoring, recovery, limitations |
+| [Operations](docs/operations.md) | Deploying and running: Railway, AWS/IAM setup, users and sign-in, Pocket, reMarkable, uploads, installing the app, desktop app, AI settings, devices, monitoring, recovery, limitations |
 | [OpenAPI spec](backend/api/openapi.yaml) | The formal API definition. The service serves it at `/api/v1/openapi.yaml` and `/api/v1/openapi.json`, and the Devices tab links to it. |
 
 ## Quick start (Docker)
@@ -169,6 +173,28 @@ Production runs on [Railway](https://railway.com) with the root `Dockerfile` and
 make build
 ./backend/bin/server      # requires MongoDB and an S3 bucket (see Configuration)
 ```
+
+## Desktop app
+
+`desktop/` holds an Electron app: a native window around the web UI. It contains no backend
+and no copy of the frontend; it loads the web app from a knowpod server and uses the API
+exactly as the browser does (same session cookie, same offline copies). On the first start
+it asks for the server's address (**File → Change Server…** changes it later).
+
+```bash
+make desktop-run SERVER_URL=http://localhost:8080   # start it from source against a server
+make desktop                                        # installers for this OS, in desktop/dist
+make desktop-linux                                  # AppImage, .deb, .tar.gz
+make desktop-windows                                # NSIS installer (needs Windows or Wine), .zip
+make desktop-mac                                    # .dmg, .zip (needs macOS)
+make desktop SERVER_URL=https://knowpod.example.com # preset the server, no question on first start
+```
+
+Requires Node.js 22. Build each platform on its own OS; the **Desktop app** GitHub Actions
+workflow (`.github/workflows/desktop.yml`, run by hand or on a `desktop-v*` tag) builds all
+three and keeps the installers as artifacts. The builds are not code-signed, so macOS
+Gatekeeper and Windows SmartScreen warn on first open. The desktop app can't receive push
+notifications (see [Operations](docs/operations.md#desktop-app)).
 
 ## Local development
 
@@ -242,6 +268,7 @@ backend/
     transport/http/    router, middleware, handlers
     web/               embedded frontend (dist/) + SPA handler
     worker/            background pipeline: claim, run stages, retry/backoff
+desktop/               Electron desktop app (main process, server setup page, packaging config)
 docs/                  device protocol, architecture, operations
 frontend/
   public/              app icons (favicon.svg, PWA and Apple touch icons)

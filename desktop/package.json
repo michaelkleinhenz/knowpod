@@ -1,0 +1,71 @@
+{
+  "name": "knowpod-desktop",
+  "productName": "knowpod",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Your recorded conversations, transcribed and summarized.",
+  "author": "knowpod",
+  "homepage": "https://github.com/michaelkleinhenz/knowpod-service",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/michaelkleinhenz/knowpod-service.git"
+  },
+  "desktopName": "knowpod.desktop",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --publish never",
+    "dist:linux": "electron-builder --linux --publish never",
+    "dist:win": "electron-builder --win --publish never",
+    "dist:mac": "electron-builder --mac --publish never"
+  },
+  "devDependencies": {
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "net.kleinhenz.knowpod",
+    "productName": "knowpod",
+    "artifactName": "knowpod-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "build/icon.png",
+      "package.json"
+    ],
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb",
+        "tar.gz"
+      ],
+      "category": "Office",
+      "icon": "build/icon.png",
+      "maintainer": "knowpod",
+      "syncDesktopName": true
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.png"
+    },
+    "publish": null
+  }
+}

@@ -1,0 +1,55 @@
+# Builds the desktop app (desktop/) on each OS it ships for and keeps the installers as
+# workflow artifacts. Runs by hand (Actions → Desktop app → Run workflow) and for tags
+# desktop-v*. The builds are unsigned.
+name: Desktop app
+
+on:
+  workflow_dispatch:
+    inputs:
+      server_url:
+        description: Server the app connects to on its first start (optional)
+        required: false
+  push:
+    tags: ['desktop-v*']
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+          - os: windows-latest
+            platform: win
+          - os: macos-latest
+            platform: mac
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      # Same as `make desktop-<platform> SERVER_URL=…` (make isn't on every runner).
+      - name: Build
+        working-directory: desktop
+        shell: bash
+        env:
+          SERVER_URL: ${{ inputs.server_url }}
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          npm ci
+          npx electron-builder --${{ matrix.platform }} --publish never ${SERVER_URL:+-c.extraMetadata.defaultServerUrl="$SERVER_URL"}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: knowpod-desktop-${{ matrix.platform }}
+          path: |
+            desktop/dist/*.AppImage
+            desktop/dist/*.deb
+            desktop/dist/*.tar.gz
+            desktop/dist/*.exe
+            desktop/dist/*.zip
+            desktop/dist/*.dmg
+          if-no-files-found: error

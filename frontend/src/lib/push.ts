@@ -2,9 +2,13 @@
 // it with the server's key. The service worker shows them (public/push-sw.js).
 import { api } from '../api/client';
 
-// pushSupported says whether this browser can receive push notifications at all.
+// isDesktopApp says whether this is the knowpod desktop app (Electron, see desktop/).
+export const isDesktopApp = () => typeof window !== 'undefined' && 'knowpodDesktop' in window;
+
+// pushSupported says whether this browser can receive push notifications at all. The desktop
+// app can't: Electron has the Push API but no push service behind it.
 export const pushSupported = () =>
-  typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  typeof window !== 'undefined' && !isDesktopApp() && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 
 // isIOS says whether this is an iPhone or iPad, where only an app added to the Home Screen
 // can receive notifications.
