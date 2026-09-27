@@ -73,9 +73,11 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
   In Progress and Done; columns can be renamed, added and deleted, and cards are dragged
   between them.
 - A note's page shows its title, then one compact row with its number, date, labels and
-  icon actions. On wide screens a sidebar next to the note (not on boards) holds its task
-  (check box, date, priority), its labels and its details (type, duration, folder, boards,
-  status, model); on narrower ones they stay in the header.
+  icon actions; a dot in the top right corner shows whether its edits are saved. On wide
+  screens a sidebar next to the note (not on boards) holds its icon actions, task (check
+  box, date, priority), labels and details (date, type, duration, folder, boards, status,
+  model), and the header keeps only the title and number; on narrower screens they stay in
+  the header.
 - Notes can carry **labels**: colored chips on the note's page, with your own labels
   defined on the spot or under **Settings → Labels**. The built-in **Task** label adds a
   check box to the note's icon in the list; the check mark is saved.

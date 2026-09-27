@@ -381,7 +381,8 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
         ))
       : null;
 
-  // The note's icon actions: for the shown tab (details, download, copy), then for the whole note.
+  // The note's icon actions: for the shown tab (details, download, copy), then for the whole
+  // note. They sit in the header, or at the top of the sidebar when it is shown.
   const tools = (
     <div className="note-tools">
       {tab === 'summary' && rec.transcript && <SummaryDetails rec={rec} onRegenerate={(fn) => regenerate(fn)} />}
@@ -435,6 +436,11 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
   return (
     <div className={withAside ? 'note-layout' : undefined}>
       <div className="note-main">
+        {editable && (
+          <div className="note-sync">
+            <SyncState sync={autosave.sync} error={autosave.error} onRetry={() => void autosave.save()} />
+          </div>
+        )}
         <div className="conversation-header">
           <div className="title-block">
             {editable ? (
@@ -473,9 +479,8 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
           {/* The date and labels share a row with the note's icon actions when there is room. */}
           <div className="note-meta-row">
             <p className="conversation-meta muted">
-              {editable && <SyncState sync={autosave.sync} error={autosave.error} onRetry={() => void autosave.save()} />}
               {rec.number ? <span className="note-number">#{rec.number}</span> : null}
-              <span className="meta-item">{whenText}</span>
+              <span className="meta-item meta-extra">{whenText}</span>
               {rec.format?.durationMs ? <span className="meta-item meta-extra">{formatDuration(rec.format.durationMs)}</span> : null}
               {isDocument && rec.pages ? <span className="meta-item meta-extra">{t('conversation.pages', { count: rec.pages })}</span> : null}
               {sourceBadge && <span className="meta-item meta-extra">{sourceBadge}</span>}
@@ -486,7 +491,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
             <div className="header-labels">
               <NoteLabels rec={rec} setRec={setRec} />
             </div>
-            {tools}
+            <div className="header-tools">{tools}</div>
           </div>
         </div>
         {rec.deletedAt && (
@@ -674,6 +679,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
       </div>
       {withAside && (
         <aside className="note-aside" aria-label={t('noteInfo.title')}>
+          {tools}
           <section>
             <h2>{t('noteInfo.task')}</h2>
             <div className="note-aside-task">
