@@ -238,3 +238,16 @@ export function NewBoardIcon() {
     </svg>
   );
 }
+
+export function GripIcon() {
+  return (
+    <svg width="12" height="18" viewBox="0 0 12 18" fill="currentColor" aria-hidden="true">
+      <circle cx="3.5" cy="3.5" r="1.5" />
+      <circle cx="8.5" cy="3.5" r="1.5" />
+      <circle cx="3.5" cy="9" r="1.5" />
+      <circle cx="8.5" cy="9" r="1.5" />
+      <circle cx="3.5" cy="14.5" r="1.5" />
+      <circle cx="8.5" cy="14.5" r="1.5" />
+    </svg>
+  );
+}

@@ -1,4 +1,4 @@
-import { DragEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { DragEvent, PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { api, Board as BoardSetup, BoardColumn, BoardScope, Folder, Recording, RECORDINGS_LIMIT } from '../api/client';
@@ -7,11 +7,20 @@ import { errorText } from '../lib/errors';
 import { flatTree, folderOf } from '../lib/folders';
 import { isTask, labelName, labelStyle, noteLabels } from '../lib/labels';
 import { noteType, title, when } from '../lib/recordings';
-import { NewNoteIcon, NoteIcon, PencilIcon, TrashIcon } from './Icons';
+import { GripIcon, NewNoteIcon, NoteIcon, PencilIcon, TrashIcon } from './Icons';
 
 // DRAG_TYPE marks a card being dragged, so the columns ignore other drags (files, notes
 // from the sidebar).
 const DRAG_TYPE = 'application/x-knowpod-card';
+
+// EDGE is how close (in px) to the edge of the board or the window a card dragged by touch
+// has to come to scroll it; SPEED is the most it scrolls per frame.
+const EDGE = 48;
+const SPEED = 14;
+
+// Grab is a card dragged by its grip with a finger or a pen (touch screens don't do HTML
+// drag and drop): where the pointer is, and where on the card it was grabbed.
+type Grab = { id: string; pointer: number; x: number; y: number; dx: number; dy: number; width: number };
 
 // newColumnID makes an ID for a column added in the browser.
 function newColumnID(): string {
@@ -142,6 +151,13 @@ export function Board({ rec, setRec }: { rec: Recording; setRec: (r: Recording) 
   const [dragging, setDragging] = useState<string | null>(null);
   const [dropAt, setDropAt] = useState<{ col: number; before: string | null } | null>(null);
   const [editingColumn, setEditingColumn] = useState<string | null>(null);
+  const [grab, setGrab] = useState<Grab | null>(null);
+  const columnsRef = useRef<HTMLDivElement>(null);
+  // The latest drop target and pointer position, for the pointer handlers and the scrolling.
+  const dropRef = useRef(dropAt);
+  dropRef.current = dropAt;
+  const grabRef = useRef(grab);
+  grabRef.current = grab;
   // Only the answer to the latest save is taken over.
   const saves = useRef(0);
 
@@ -248,6 +264,76 @@ export function Board({ rec, setRec }: { rec: Recording; setRec: (r: Recording) 
     moveCard(id, col, before);
   }
 
+  // dropTargetAt finds the column and card under a point, like onDragOver does for mouse drags.
+  function dropTargetAt(x: number, y: number): { col: number; before: string | null } | null {
+    const el = document.elementFromPoint(x, y);
+    const column = el?.closest<HTMLElement>('[data-board-col]');
+    if (!column || !columnsRef.current?.contains(column)) return null;
+    const card = el?.closest<HTMLElement>('[data-board-card]');
+    return { col: Number(column.dataset.boardCol), before: card?.dataset.boardCard ?? null };
+  }
+
+  function track(x: number, y: number) {
+    const at = dropTargetAt(x, y);
+    const cur = dropRef.current;
+    if (at?.col !== cur?.col || at?.before !== cur?.before) setDropAt(at);
+  }
+
+  function onGripDown(e: ReactPointerEvent, id: string) {
+    // Mice use HTML drag and drop on the whole card.
+    if (e.pointerType === 'mouse' || e.button !== 0) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const card = (e.currentTarget as HTMLElement).closest('li')!.getBoundingClientRect();
+    setGrab({ id, pointer: e.pointerId, x: e.clientX, y: e.clientY, dx: e.clientX - card.left, dy: e.clientY - card.top, width: card.width });
+    setDragging(id);
+    setDropAt(null);
+  }
+
+  function onGripMove(e: ReactPointerEvent) {
+    const g = grabRef.current;
+    if (!g || e.pointerId !== g.pointer) return;
+    setGrab({ ...g, x: e.clientX, y: e.clientY });
+    track(e.clientX, e.clientY);
+  }
+
+  function onGripEnd(e: ReactPointerEvent, drop: boolean) {
+    const g = grabRef.current;
+    if (!g || e.pointerId !== g.pointer) return;
+    const at = drop ? dropTargetAt(e.clientX, e.clientY) : null;
+    setGrab(null);
+    setDragging(null);
+    setDropAt(null);
+    if (at) moveCard(g.id, at.col, at.before);
+  }
+
+  // While a card is dragged by touch, scroll the board sideways and the page up and down when
+  // it comes near their edges, and keep the drop target under the finger up to date.
+  const grabbing = grab !== null;
+  useEffect(() => {
+    if (!grabbing) return;
+    let frame = 0;
+    const step = () => {
+      const g = grabRef.current;
+      const box = columnsRef.current;
+      if (g && box) {
+        const r = box.getBoundingClientRect();
+        const speed = (d: number) => Math.ceil(SPEED * Math.min(1, Math.max(0, (EDGE - d) / EDGE)));
+        const dx = speed(g.x - r.left) > 0 ? -speed(g.x - r.left) : speed(r.right - g.x);
+        const dy = speed(g.y) > 0 ? -speed(g.y) : speed(window.innerHeight - g.y);
+        if (dx) box.scrollLeft += dx;
+        if (dy) window.scrollBy(0, dy);
+        if (dx || dy) track(g.x, g.y);
+      }
+      frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [grabbing]);
+
+  const grabbed = grab ? cols.flat().find((r) => r.id === grab.id) : undefined;
+
   const tree = flatTree(folders ?? []);
   const scopeMissing =
     (board.scope.kind === 'folder' && board.scope.id !== '' && folders !== null && !folders.some((f) => f.id === board.scope.id)) ||
@@ -286,12 +372,13 @@ export function Board({ rec, setRec }: { rec: Recording; setRec: (r: Recording) 
       {(!board.scope.kind || scopeMissing) && <p className="notice">{t(scopeMissing ? 'board.scopeMissing' : 'board.scopeHint')}</p>}
       {board.scope.kind && !scopeMissing && recordings && cols.every((c) => c.length === 0) && <p className="muted">{t('board.empty')}</p>}
 
-      <div className="board-columns">
+      <div className="board-columns" ref={columnsRef}>
         {board.columns.map((c, i) => (
           <section
             key={c.id}
             className={`board-column${dropAt?.col === i && dropAt.before === null ? ' drop-target' : ''}`}
             aria-label={c.name}
+            data-board-col={i}
             onDragOver={(e) => onDragOver(e, i, null)}
             onDragLeave={(e) => {
               if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropAt(null);
@@ -312,6 +399,7 @@ export function Board({ rec, setRec }: { rec: Recording; setRec: (r: Recording) 
                 <li
                   key={r.id}
                   className={`board-card${dragging === r.id ? ' dragging' : ''}${dropAt?.col === i && dropAt.before === r.id ? ' drop-before' : ''}${isTask(r) && r.done ? ' done' : ''}`}
+                  data-board-card={r.id}
                   draggable
                   onDragStart={(e) => {
                     e.dataTransfer.setData(DRAG_TYPE, r.id);
@@ -326,6 +414,17 @@ export function Board({ rec, setRec }: { rec: Recording; setRec: (r: Recording) 
                   onDrop={(e) => onDrop(e, i, r.id)}
                 >
                   <div className="board-card-main">
+                    <span
+                      className="board-card-grip"
+                      role="img"
+                      aria-label={t('board.dragCard', { title: title(r) })}
+                      onPointerDown={(e) => onGripDown(e, r.id)}
+                      onPointerMove={onGripMove}
+                      onPointerUp={(e) => onGripEnd(e, true)}
+                      onPointerCancel={(e) => onGripEnd(e, false)}
+                    >
+                      <GripIcon />
+                    </span>
                     {isTask(r) ? (
                       <input
                         type="checkbox"
@@ -375,6 +474,16 @@ export function Board({ rec, setRec }: { rec: Recording; setRec: (r: Recording) 
           </section>
         ))}
       </div>
+      {grab && grabbed && (
+        <div className="board-card board-card-ghost" style={{ left: grab.x - grab.dx, top: grab.y - grab.dy, width: grab.width }} aria-hidden="true">
+          <div className="board-card-main">
+            <span className="board-card-grip">
+              <GripIcon />
+            </span>
+            <span className="board-card-title">{title(grabbed)}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
