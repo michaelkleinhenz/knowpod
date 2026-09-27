@@ -420,8 +420,8 @@ export const de: Translation = {
     remarkableTitle: 'reMarkable',
   },
   remarkable: {
-    intro: 'Kopple dein reMarkable-Cloud-Konto, um deine handschriftlichen Notizen und Dokumente in knowpod zu holen. Alle deine Dokumente werden hier in den Ordner <1>{{folder}}</1> importiert; sie werden nur gelesen, auf deinem reMarkable nie verändert. Notizbücher werden zu PDF, und ihr Text wird gelesen und zusammengefasst wie eine Aufnahme.',
-    introPaired: 'Deine reMarkable-Dokumente werden alle paar Minuten in den Ordner <1>{{folder}}</1> importiert und erneut importiert, wenn sie sich ändern. Dokumente im Papierkorb werden ausgelassen. Auf deinem reMarkable wird nichts verändert.',
+    intro: 'Kopple dein reMarkable-Cloud-Konto, um deine handschriftlichen Notizen und Dokumente in knowpod zu holen. Alle deine Dokumente werden hier in den Ordner <1>{{folder}}</1> importiert, in dieselben Ordner wie auf deinem reMarkable; sie werden nur gelesen, auf deinem reMarkable nie verändert. Notizbücher werden zu PDF, und ihr Text wird gelesen und zusammengefasst wie eine Aufnahme.',
+    introPaired: 'Deine reMarkable-Dokumente werden alle paar Minuten in den Ordner <1>{{folder}}</1> importiert, in dieselben Ordner wie auf deinem reMarkable, und erneut importiert, wenn sie sich ändern. Dokumente im Papierkorb werden ausgelassen. Auf deinem reMarkable wird nichts verändert.',
     notPaired: 'Nicht gekoppelt',
     paired: 'Gekoppelt',
     pairedSince: 'seit {{date}}',
@@ -440,7 +440,7 @@ export const de: Translation = {
     lastError: 'Der letzte Import ist fehlgeschlagen: {{error}}',
     unpair: 'Entkoppeln',
     unpairConfirm: 'reMarkable entkoppeln? Es werden keine Dokumente mehr importiert; bereits importierte Notizen bleiben. Um knowpod ganz aus deinem reMarkable-Konto zu entfernen, lösche es auch unter „Verbundene Geräte“ auf my.remarkable.com.',
-    footnote: 'Wenn du ein Dokument auf deinem reMarkable löschst, bleibt seine Notiz hier erhalten. Du kannst den Ordner umbenennen oder verschieben; Notizen, die du herausverschiebst, bleiben, wo du sie hinlegst. Anmerkungen in PDFs werden nicht übernommen; getippter Text in Notizbüchern wird noch nicht gelesen.',
+    footnote: 'Wenn du ein Dokument auf deinem reMarkable löschst, bleibt seine Notiz hier erhalten. Du kannst den Ordner umbenennen oder verschieben; seine Ordner folgen deinem reMarkable, und Notizen, die du herausverschiebst, bleiben, wo du sie hinlegst. Anmerkungen in PDFs werden nicht übernommen; getippter Text in Notizbüchern wird noch nicht gelesen.',
   },
   pocket: {
     intro: 'Verbinde deinen Pocket-Rekorder (heypocketai.com): Pocket meldet neue Aufnahmen an deine persönliche Webhook-URL, und knowpod lädt das Audio mit deinem API-Schlüssel herunter. Die Aufnahmen erscheinen unter Notizen.',

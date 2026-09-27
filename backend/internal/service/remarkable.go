@@ -38,8 +38,8 @@ const itemReaders = 8
 
 // RemarkableService reads documents from users' reMarkable clouds. Users pair their account
 // with a one-time code; pulls then import all documents of the account (except those in
-// the trash) as notes in the knowpod folder "reMarkable", and import a document again when
-// it changed. Nothing is ever written to the cloud, and notes stay when documents are
+// the trash) as notes in the knowpod folder "reMarkable", inside folders mirroring the
+// cloud's folders, and import a document again when it changed. Nothing is ever written to the cloud, and notes stay when documents are
 // deleted there.
 type RemarkableService struct {
 	links   ports.TabletLinkRepository
@@ -265,19 +265,46 @@ func (s *RemarkableService) sync(ctx context.Context, l *tablet.Link) (*tablet.P
 		l.RootHash, l.Items = root.Hash, items
 	}
 
-	docs := documents(l.Items)
+	docs, dirs := live(l.Items)
 	res := &tablet.PullResult{Documents: len(docs)}
-	for _, d := range docs {
-		queued, isNew, err := s.queue(ctx, l, d)
+	notes := make([]*recording.Recording, len(docs))
+	fresh := false
+	for i, d := range docs {
+		rec, err := s.recs.GetByClientID(ctx, recording.RemarkableDeviceID(l.UserID), d.ID)
+		switch {
+		case errors.Is(err, ErrNotFound):
+			fresh = true
+		case err != nil:
+			return nil, err
+		default:
+			notes[i] = rec
+		}
+	}
+	// The folders are mirrored, and notes moved along, when the cloud changed since the
+	// last complete placement or when new notes need a folder.
+	var m *mirror
+	if len(docs) > 0 && (fresh || l.MirroredHash != l.RootHash) {
+		var err error
+		if m, err = s.mirror(ctx, l, dirs); err != nil {
+			return nil, err
+		}
+	}
+	complete := true
+	for i, d := range docs {
+		queued, isNew, placed, err := s.queue(ctx, l, d, notes[i], m)
 		if err != nil {
 			return nil, err
 		}
+		complete = complete && placed
 		switch {
 		case queued && isNew:
 			res.Imported++
 		case queued:
 			res.Updated++
 		}
+	}
+	if m != nil && complete {
+		l.MirroredHash = l.RootHash
 	}
 	return res, nil
 }
@@ -353,9 +380,9 @@ func (s *RemarkableService) readItems(ctx context.Context, sess *remarkable.Sess
 	return items, nil
 }
 
-// documents returns the account's documents, leaving out deleted ones and those in the
-// trash (or in a folder in the trash).
-func documents(items []tablet.Item) []tablet.Item {
+// live returns the account's documents and folders, leaving out deleted ones and those in
+// the trash (or in a folder in the trash).
+func live(items []tablet.Item) (docs, dirs []tablet.Item) {
 	byID := make(map[string]*tablet.Item, len(items))
 	for i := range items {
 		byID[items[i].ID] = &items[i]
@@ -369,13 +396,16 @@ func documents(items []tablet.Item) []tablet.Item {
 		}
 		return false
 	}
-	var docs []tablet.Item
 	for i := range items {
-		if it := &items[i]; !it.Folder && !trashed(it) {
+		switch it := &items[i]; {
+		case trashed(it):
+		case it.Folder:
+			dirs = append(dirs, *it)
+		default:
 			docs = append(docs, *it)
 		}
 	}
-	return docs
+	return docs, dirs
 }
 
 // folder returns the ID of the user's knowpod folder for imported documents, creating it at
@@ -410,45 +440,213 @@ func (s *RemarkableService) folder(ctx context.Context, l *tablet.Link) (string,
 	return f.ID, nil
 }
 
-// queue creates the note of a new document in the reMarkable folder, or queues an existing note again when the
-// document's content changed. A note that is being processed is left alone; the next pull
-// looks at it again.
-func (s *RemarkableService) queue(ctx context.Context, l *tablet.Link, d tablet.Item) (queued, isNew bool, err error) {
+// mirror is where the cloud's folders are in knowpod after a pull.
+type mirror struct {
+	root string
+	// placed maps a cloud folder to the knowpod folder its documents go into.
+	placed map[string]string
+	// managed holds the knowpod folders the import put notes into: the reMarkable folder and
+	// the folders mirroring the cloud's, now or before. Notes found elsewhere were moved there
+	// by the user and stay.
+	managed map[string]bool
+}
+
+// folderOf returns the knowpod folder for documents in the cloud folder parent.
+func (m *mirror) folderOf(parent string) string {
+	if id, ok := m.placed[parent]; ok {
+		return id
+	}
+	return m.root
+}
+
+// mirror makes the folder tree inside the reMarkable folder match the cloud's folders (not
+// those in the trash): each cloud folder has a knowpod folder of its name in the knowpod
+// folder of its parent. Folders are created, renamed and moved as the cloud's are; knowpod
+// folders of folders deleted in the cloud stay. Folders nested deeper than knowpod allows
+// share the deepest possible folder.
+func (s *RemarkableService) mirror(ctx context.Context, l *tablet.Link, dirs []tablet.Item) (*mirror, error) {
+	rootID, err := s.folder(ctx, l)
+	if err != nil {
+		return nil, err
+	}
+	all, err := s.folders.List(ctx, l.UserID)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[string]*folder.Folder, len(all))
+	for _, f := range all {
+		byID[f.ID] = f
+	}
+	// The reMarkable folder and the folders it is in can't mirror a cloud folder.
+	above := map[string]bool{}
+	rootDepth := 0
+	for p := rootID; p != "" && rootDepth < 64; rootDepth++ {
+		above[p] = true
+		f := byID[p]
+		if f == nil {
+			break
+		}
+		p = f.ParentID
+	}
+
+	cloud := make(map[string]*tablet.Item, len(dirs))
+	for i := range dirs {
+		cloud[dirs[i].ID] = &dirs[i]
+	}
+	m := &mirror{root: rootID, placed: map[string]string{}, managed: map[string]bool{rootID: true}}
+	mappedTo := map[string]string{} // knowpod folder → cloud folder, from the last pull
+	for dir, id := range l.Folders {
+		if !above[id] {
+			m.managed[id] = true
+			mappedTo[id] = dir
+		}
+	}
+	folders := map[string]string{}
+	claimed := map[string]bool{}
+	levels := map[string]int{"": rootDepth}
+	visiting := map[string]bool{}
+	now := s.clock().UTC()
+
+	// ensure returns the knowpod folder mirroring the cloud folder it inside parent: the one
+	// used last time, else one of the same name that isn't mirroring another folder, else a
+	// new one.
+	ensure := func(it *tablet.Item, parent string) (string, error) {
+		free := func(f *folder.Folder) bool {
+			if f == nil || above[f.ID] || claimed[f.ID] {
+				return false
+			}
+			owner, ok := mappedTo[f.ID]
+			return !ok || owner == it.ID || cloud[owner] == nil
+		}
+		base := folderName(it.Name)
+		var f *folder.Folder
+		if id, ok := l.Folders[it.ID]; ok && free(byID[id]) {
+			f = byID[id]
+		}
+		for _, c := range all {
+			if f == nil && c.ParentID == parent && strings.EqualFold(c.Name, base) && free(c) {
+				f = c
+			}
+		}
+		name := base
+		for n := 2; ; n++ {
+			taken := false
+			for _, c := range all {
+				if c != f && c.ParentID == parent && strings.EqualFold(c.Name, name) {
+					taken = true
+					break
+				}
+			}
+			if !taken {
+				break
+			}
+			name = fmt.Sprintf("%s (%d)", base, n)
+		}
+		switch {
+		case f == nil:
+			f = &folder.Folder{ID: newID(), OwnerID: l.UserID, Name: name, ParentID: parent, CreatedAt: now, UpdatedAt: now}
+			if err := s.folders.Create(ctx, f); err != nil {
+				return "", err
+			}
+			all = append(all, f)
+			byID[f.ID] = f
+		case f.Name != name || f.ParentID != parent:
+			f.Name, f.ParentID, f.UpdatedAt = name, parent, now
+			if err := s.folders.Update(ctx, f); err != nil {
+				return "", err
+			}
+		}
+		claimed[f.ID] = true
+		return f.ID, nil
+	}
+
+	// place returns the knowpod folder for documents in the cloud folder id, and its level.
+	var place func(id string) (string, int, error)
+	place = func(id string) (string, int, error) {
+		if kp, ok := m.placed[id]; ok {
+			return kp, levels[id], nil
+		}
+		it := cloud[id]
+		if it == nil || visiting[id] { // top level, unknown, or in a cycle
+			return rootID, rootDepth, nil
+		}
+		visiting[id] = true
+		parent, level, err := place(it.Parent)
+		if err != nil {
+			return "", 0, err
+		}
+		kp := parent
+		if level < maxFolderDepth {
+			if kp, err = ensure(it, parent); err != nil {
+				return "", 0, err
+			}
+			folders[id] = kp
+			m.managed[kp] = true
+			level++
+		}
+		m.placed[id], levels[id] = kp, level
+		return kp, level, nil
+	}
+	for i := range dirs {
+		if _, _, err := place(dirs[i].ID); err != nil {
+			return nil, err
+		}
+	}
+	l.Folders = folders
+	return m, nil
+}
+
+// folderName makes a cloud folder's name a valid knowpod folder name, leaving room for a
+// number that tells folders of the same name apart.
+func folderName(name string) string {
+	name = strings.Join(strings.Fields(name), " ")
+	if r := []rune(name); len(r) > 72 {
+		name = strings.TrimSpace(string(r[:72]))
+	}
+	if name == "" {
+		return "Untitled"
+	}
+	return name
+}
+
+// queue creates the note of a new document (rec is nil) in the knowpod folder of its cloud
+// folder, or updates an existing note: it's queued again when the document's content
+// changed, renamed with the document, and moved along with it when the folders are being
+// placed (m isn't nil) and the note is in one of the import's folders. A note that is being
+// processed is left alone; the next pull looks at it again. placed is false when the note
+// still has to be moved.
+func (s *RemarkableService) queue(ctx context.Context, l *tablet.Link, d tablet.Item, rec *recording.Recording, m *mirror) (queued, isNew, placed bool, err error) {
 	now := s.clock().UTC()
 	owner := l.UserID
-	rec, err := s.recs.GetByClientID(ctx, recording.RemarkableDeviceID(owner), d.ID)
-	if errors.Is(err, ErrNotFound) {
-		folderID, err := s.folder(ctx, l)
-		if err != nil {
-			return false, false, err
-		}
+	if rec == nil {
 		rec = &recording.Recording{
 			ID: newID(), OwnerID: owner, DeviceID: recording.RemarkableDeviceID(owner), ClientID: d.ID,
 			Type: recording.TypeDocument, Source: recording.SourceRemarkable, Title: d.Name,
 			Status: recording.StatusRemote, SourceRevision: d.ContentHash, RecordedAt: d.CreatedAt,
-			FolderID: folderID, NotBefore: now, CreatedAt: now, UpdatedAt: now,
+			FolderID: m.folderOf(d.Parent), NotBefore: now, CreatedAt: now, UpdatedAt: now,
 		}
 		if rec.RecordedAt == nil {
 			rec.RecordedAt = d.ModifiedAt
 		}
 		if err := s.recs.Create(ctx, rec); err != nil {
 			if errors.Is(err, errDuplicate) {
-				return false, false, nil
+				return false, false, true, nil
 			}
-			return false, false, err
+			return false, false, false, err
 		}
-		return true, true, nil
+		return true, true, true, nil
 	}
-	if err != nil {
-		return false, false, err
+	folderID := rec.FolderID
+	if m != nil && m.managed[rec.FolderID] {
+		folderID = m.folderOf(d.Parent)
 	}
-	if rec.SourceRevision == d.ContentHash && rec.Title == d.Name {
-		return false, false, nil
+	if rec.SourceRevision == d.ContentHash && rec.Title == d.Name && rec.FolderID == folderID {
+		return false, false, true, nil
 	}
 	if rec.Status != recording.StatusSummarized && rec.Status != recording.StatusFailed {
-		return false, false, nil
+		return false, false, rec.FolderID == folderID, nil
 	}
-	rec.Title = d.Name
+	rec.Title, rec.FolderID = d.Name, folderID
 	requeue := rec.SourceRevision != d.ContentHash
 	if requeue {
 		rec.Status, rec.Attempts, rec.LastError, rec.NotBefore = recording.StatusRemote, 0, "", now
@@ -456,9 +654,9 @@ func (s *RemarkableService) queue(ctx context.Context, l *tablet.Link, d tablet.
 	}
 	rec.UpdatedAt = now
 	if err := s.recs.Update(ctx, rec); err != nil {
-		return false, false, err
+		return false, false, false, err
 	}
-	return requeue, false, nil
+	return requeue, false, true, nil
 }
 
 // --- processing stages ---

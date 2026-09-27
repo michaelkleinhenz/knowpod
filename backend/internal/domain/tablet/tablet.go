@@ -19,6 +19,10 @@ type Link struct {
 
 	// FolderID is the knowpod folder new notes are put into (see the service).
 	FolderID string `bson:"folderId,omitempty"`
+	// Folders maps the cloud's folders (by ID) to the knowpod folders mirroring them inside
+	// FolderID. MirroredHash is the root the folders and notes were last all placed for.
+	Folders      map[string]string `bson:"folders,omitempty"`
+	MirroredHash string            `bson:"mirroredHash,omitempty"`
 
 	LastPullAt *time.Time  `bson:"lastPullAt,omitempty"`
 	LastError  string      `bson:"lastError,omitempty"`
