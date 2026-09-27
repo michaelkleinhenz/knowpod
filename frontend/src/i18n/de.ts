@@ -255,7 +255,6 @@ export const de: Translation = {
     title: 'Unternotizen',
     new: 'Neue Unternotiz',
     newLabel: 'Neue Unternotiz unter „{{title}}“',
-    empty: 'Noch keine Unternotizen. Lege eine mit dem + neben dieser Notiz in der Seitenleiste an oder ziehe in der Ordneransicht Notizen auf diese Notiz.',
     show: 'Unternotizen zeigen',
     hide: 'Unternotizen ausblenden',
     showLabel: 'Die {{count}} Unternotizen von „{{title}}“ zeigen',

@@ -95,11 +95,16 @@ a {
 }
 
 .link-button {
+  white-space: nowrap;
   background: none;
   border: none;
   padding: 0;
   font: inherit;
   cursor: pointer;
+}
+
+.nowrap {
+  white-space: nowrap;
 }
 
 .container {
@@ -244,6 +249,7 @@ a {
 }
 
 .small-button {
+  white-space: nowrap;
   font: inherit;
   font-size: 0.8rem;
   color: var(--color-primary);
@@ -260,6 +266,7 @@ a {
 
 .status-pill {
   display: inline-block;
+  white-space: nowrap;
   font-size: 0.85rem;
   font-weight: 600;
   border-radius: 999px;
@@ -572,6 +579,10 @@ a {
 }
 
 .conversations-head h1 {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   margin: 0;
   font-size: 1.6rem;
   letter-spacing: -0.01em;
@@ -579,6 +590,7 @@ a {
 
 .pill-button {
   display: inline-flex;
+  white-space: nowrap;
   align-items: center;
   gap: 0.4rem;
   font: inherit;
@@ -767,13 +779,22 @@ a {
 
 .segmented {
   display: inline-flex;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
   background: #e2e7ee;
   border-radius: 999px;
   padding: 3px;
   margin-bottom: 1rem;
 }
 
+.segmented::-webkit-scrollbar {
+  display: none;
+}
+
 .segmented button {
+  flex: 1 0 auto;
+  white-space: nowrap;
   font: inherit;
   font-size: 0.9rem;
   font-weight: 500;
@@ -985,12 +1006,23 @@ a {
     display: flex;
   }
 
+  /* Tabs fill the row but never shrink below their label; the row scrolls instead. */
   .segmented button {
-    flex: 1;
+    flex: 1 0 auto;
+    font-size: 0.85rem;
+    padding: 0.35rem 0.65rem;
   }
 
   .note-bar .segmented {
     flex: 1 1 100%;
+  }
+
+  .note-bar .note-tools {
+    gap: 0;
+  }
+
+  .note-tools .icon-button {
+    width: 2rem;
   }
 }
 
@@ -1059,6 +1091,7 @@ a {
 
 .role-pill {
   display: inline-block;
+  white-space: nowrap;
   font-size: 0.75rem;
   font-weight: 600;
   color: #fff;
@@ -1248,6 +1281,8 @@ a {
 
 .note-tools {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   gap: 0.15rem;
   margin-left: auto;
@@ -2397,6 +2432,7 @@ html:has(.notes-layout) {
 
 .label-add-button {
   display: inline-flex;
+  white-space: nowrap;
   align-items: center;
   gap: 0.3rem;
   font: inherit;
@@ -2836,14 +2872,14 @@ html:has(.notes-layout) {
   margin-bottom: 0.5rem;
 }
 
+.sub-notes-head h2,
+.action-items h2 {
+  white-space: nowrap;
+}
+
 .sub-notes-head h2 {
   margin: 0;
   font-size: 1.05rem;
-}
-
-.sub-notes-empty {
-  font-size: 0.9rem;
-  margin: 0;
 }
 
 .move-folder {
@@ -3421,6 +3457,7 @@ a.note-ref:hover {
 
 .priority-option {
   flex: 1;
+  white-space: nowrap;
   display: inline-flex;
   align-items: center;
   justify-content: center;
