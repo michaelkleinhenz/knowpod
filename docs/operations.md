@@ -114,7 +114,7 @@ a user, and each user sees only their own notes and devices.
 
 | Role | Can |
 |---|---|
-| **User** | Use Notes (including uploads and summary details), Devices, Status, Account (own password, own Pocket integration) and Settings (language, own themes). |
+| **User** | Use Notes (including uploads and summary details), Devices, Status, Account (own password, own Pocket integration, own reMarkable link) and Settings (language, own themes). |
 | **Admin** | Everything a user can, plus **Users** (create, edit, set passwords, delete) and the OpenRouter section of **Settings**. |
 
 **The built-in admin** is `ADMIN_EMAIL`. Its record is created at startup; until a password
@@ -187,6 +187,43 @@ Pocket's transcripts, summaries and action items in the webhook payload are not 
 
 **Log messages:** `pocket recording queued`, `pocket audio fetched`, and
 `pocket webhook rejected` (signature problems, with the reason and user).
+
+## reMarkable
+
+Each user can pair their own reMarkable cloud account. knowpod then imports the documents
+in the account's top-level folder **reMarkable** (and its subfolders) as notes. It only
+reads: nothing on the tablet or in the cloud is changed, moved or deleted.
+
+**Setup** (each user, **Account** page → reMarkable):
+
+1. On the reMarkable or in its app, create a folder named `reMarkable` at the top level and
+   put documents into it.
+2. Get a one-time code at
+   [my.remarkable.com/device/browser/connect](https://my.remarkable.com/device/browser/connect).
+3. Enter the 8-character code and press **Pair**. The first import starts right away.
+
+Pairing registers knowpod as a device of the reMarkable account and stores its device
+token in the `tablets` collection; the token is never shown. **Unpair** forgets the token;
+the device stays listed under "Connected devices" at my.remarkable.com until removed there
+(removing it there makes the next import fail with "pair again").
+
+**What happens**
+
+- Every `REMARKABLE_PULL_INTERVAL` (default 15 minutes), and on **Import now**, knowpod
+  reads the account's root. When nothing changed, that costs two requests; otherwise only
+  the changed documents' metadata is read again.
+- Each document in the folder becomes one note (`type` `document`, `source` `remarkable`,
+  `deviceId` `remarkable:<userId>`, the document's ID as `recordingId`, its name as
+  `title`). The pipeline then downloads the document's files, stores the PDF (notebooks are
+  rendered to a vector PDF from their strokes; PDFs and EPUBs are kept as they are), and a
+  vision model reads the pages into Markdown, which is summarized like a transcript.
+- When a document's content changes, the note is queued again (a rename only changes its
+  `title`). A summary the user edited is kept; **Read again** on the note replaces it.
+- Notes stay when documents are deleted or moved out of the folder on the reMarkable.
+
+**Log messages:** `remarkable paired`, `reMarkable documents queued`,
+`reMarkable document fetched`, `reMarkable document stored`, `document read`, and
+`reMarkable pull failed` (with the reason and user).
 
 ## Summaries: themes, language, model
 
@@ -307,6 +344,9 @@ variables:
 2. In knowpod, open **Settings** (as an admin), paste the key under **AI processing**,
    choose a **transcription model** (only models that accept audio are offered) and a
    **default summary model**, and save. Users can pick another summary model per note.
+   Optionally choose a **document model** for reading reMarkable documents (only models that
+   accept images are offered); without one, the transcription model reads them, so pick a
+   transcription model that also takes images (e.g. `google/gemini-2.5-flash`) or set one.
 
 Recordings that arrived before this wait in `stored` and are processed as soon as the
 settings are saved. Usage is billed by OpenRouter per token; the Settings page shows each
@@ -317,6 +357,10 @@ recordings (all device uploads) are decoded, mixed to mono, reduced to 16 kHz an
 5-minute WAV pieces, whose transcripts are joined. Recordings kept in another format
 (MP3 from Pocket or browser uploads, M4A from Pocket) are sent in one piece and are limited to 20 MB (roughly 40 minutes of
 MP3 at 64 kbit/s); larger ones fail with a clear error.
+
+**How documents are sent.** Notebook pages with writing are rendered to PNG images
+(1053×1404 pixels) and sent eight at a time; PDFs are sent as files (up to 20 MB). At most
+50 pages of a document are read; the text says when pages were left out. EPUBs are not read.
 
 **The API key** is stored in the MongoDB `settings` collection. It is never sent back to the
 browser (the UI shows only its last four characters), but anyone with database access can
@@ -426,5 +470,11 @@ wipe it while `received` recordings exist.
 - No API to delete recordings or their objects.
 - No retry endpoint for failed recordings; use the `mongosh` update above.
 - `/healthz` doesn't cover S3.
+- reMarkable: typed text in notebooks (Type Folio, text boxes) is not rendered or read, and
+  handwritten annotations on PDFs and EPUBs are not included in the stored file. Page
+  templates (lines, grids) are not drawn. Very long notebook pages are scaled down for the
+  model.
+- reMarkable: the cloud API is not documented by reMarkable; the client follows the protocol
+  used by [rmapi](https://github.com/ddvk/rmapi) and may break when reMarkable changes it.
 - FLAC compression is weaker than the reference encoder (see
   [Architecture](architecture.md#flac-encoding-audioflacgo)).

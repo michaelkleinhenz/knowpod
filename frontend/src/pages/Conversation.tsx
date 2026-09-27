@@ -160,6 +160,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
   const [durationMs, setDurationMs] = useState(rec.format?.durationMs ?? 0);
   const highlights = rec.highlights ?? [];
   const isText = noteType(rec) === 'text';
+  const isDocument = noteType(rec) === 'document';
   const titleInput = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (created) titleInput.current?.select();
@@ -204,7 +205,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
   };
 
   async function handleDelete() {
-    const confirmKey = isText ? 'conversation.deleteTextConfirm' : 'conversation.deleteConfirm';
+    const confirmKey = isText ? 'conversation.deleteTextConfirm' : isDocument ? 'conversation.deleteDocumentConfirm' : 'conversation.deleteConfirm';
     if (!window.confirm(t(confirmKey, { title: autosave.title || titleOf(rec) }))) return;
     setBusy(true);
     try {
@@ -223,15 +224,17 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
     tab === 'summary' && summary?.markdown
       ? { href: api.downloadURL(rec.id, 'summary'), label: t(isText ? 'conversation.downloadText' : 'conversation.downloadSummary') }
       : tab === 'transcript' && rec.transcript?.text
-        ? { href: api.downloadURL(rec.id, 'transcript'), label: t('conversation.downloadTranscript') }
+        ? { href: api.downloadURL(rec.id, 'transcript'), label: t(isDocument ? 'conversation.downloadDocumentText' : 'conversation.downloadTranscript') }
         : tab === 'source' && rec.audio
           ? { href: api.audioURL(rec.id, true), label: t('conversation.downloadAudio') }
-          : null;
+          : tab === 'source' && rec.file
+            ? { href: api.fileURL(rec.id, true), label: t('conversation.downloadDocument') }
+            : null;
   const copy =
     tab === 'summary' && summary?.markdown
       ? { text: `# ${autosave.title}\n\n${summary.markdown}`, label: t(isText ? 'conversation.copyText' : 'conversation.copySummary') }
       : tab === 'transcript' && rec.transcript?.text
-        ? { text: rec.transcript.text, label: t('conversation.copyTranscript') }
+        ? { text: rec.transcript.text, label: t(isDocument ? 'conversation.copyDocumentText' : 'conversation.copyTranscript') }
         : null;
 
   const state = statusLabel(rec, aiReady);
@@ -253,7 +256,12 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
       ? t('conversation.sourcePocket')
       : rec.source === 'upload'
         ? t('conversation.sourceUpload')
-        : '';
+        : rec.source === 'remarkable'
+          ? t('conversation.sourceRemarkable')
+          : '';
+  // Documents name their tabs and actions after pages instead of audio.
+  const tabLabel = (id: Tab) => (isDocument && id !== 'summary' ? t(`conversation.documentTabs.${id}`) : t(`conversation.tabs.${id}`));
+  const canReread = isDocument ? !!rec.file : !!rec.audio;
 
   return (
     <>
@@ -278,6 +286,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
             {d.toLocaleDateString(locale(), { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })},{' '}
             {d.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' })}
             {rec.format?.durationMs ? ` · ${formatDuration(rec.format.durationMs)}` : ''}
+            {isDocument && rec.pages ? ` · ${t('conversation.pages', { count: rec.pages })}` : ''}
             {sourceBadge && ` · ${sourceBadge}`}
             {folder.length > 0 && ` · ${folder.join(' / ')}`}
             {state && <span className={`state-pill${rec.status === 'failed' ? ' bad' : ''}`}>{state}</span>}
@@ -292,7 +301,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
           <div className="segmented" role="tablist" aria-label={t('conversation.viewLabel')}>
             {TABS.map((id) => (
               <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}>
-                {t(`conversation.tabs.${id}`)}
+                {tabLabel(id)}
               </button>
             ))}
           </div>
@@ -311,14 +320,25 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
             <button
               type="button"
               className="icon-button"
-              disabled={busy || !rec.audio}
-              title={rec.audio ? t('conversation.retranscribeTitle') : t('conversation.notArchived')}
-              aria-label={t('conversation.retranscribe')}
+              disabled={busy || !canReread}
+              title={
+                isDocument
+                  ? canReread
+                    ? t('conversation.rereadTitle')
+                    : t('conversation.documentNotStored')
+                  : canReread
+                    ? t('conversation.retranscribeTitle')
+                    : t('conversation.notArchived')
+              }
+              aria-label={t(isDocument ? 'conversation.reread' : 'conversation.retranscribe')}
               onClick={() =>
-                act(async () => {
-                  autosave.discard();
-                  await api.retranscribe(rec.id);
-                }, t('conversation.retranscribeConfirm'))
+                act(
+                  async () => {
+                    autosave.discard();
+                    await api.retranscribe(rec.id);
+                  },
+                  t(isDocument ? 'conversation.rereadConfirm' : 'conversation.retranscribeConfirm'),
+                )
               }
             >
               <RetranscribeIcon />
@@ -367,6 +387,24 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
         </div>
 
         {tab === 'transcript' &&
+          isDocument &&
+          (rec.transcript ? (
+            <>
+              {rec.transcript.text ? (
+                <div className="prose">
+                  <Markdown text={rec.transcript.text} />
+                </div>
+              ) : (
+                <p className="muted">{rec.transcript.model ? t('conversation.noText') : t('conversation.textNotRead')}</p>
+              )}
+              {rec.transcript.model && <p className="model-note">{t('conversation.readWith', { model: rec.transcript.model })}</p>}
+            </>
+          ) : (
+            pending(t('conversation.noDocumentText'))
+          ))}
+
+        {tab === 'transcript' &&
+          !isDocument &&
           (rec.transcript ? (
             <>
               {rec.transcript.text ? (
@@ -381,6 +419,40 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
           ))}
 
         {tab === 'source' &&
+          isDocument &&
+          (rec.file ? (
+            <div className="source">
+              {rec.file.contentType === 'application/pdf' ? (
+                <iframe className="document-frame" src={api.fileURL(rec.id)} title={t('conversation.documentFrame', { title: titleOf(rec) })} />
+              ) : (
+                <p>
+                  <a className="pill-button" href={api.fileURL(rec.id, true)} download>
+                    <DownloadIcon /> <span>{t('conversation.downloadDocument')}</span>
+                  </a>
+                </p>
+              )}
+              <dl className="facts">
+                <dt>{t('conversation.file')}</dt>
+                <dd>
+                  {rec.file.contentType === 'application/pdf' ? 'PDF' : 'EPUB'} · {formatBytes(rec.file.size)}
+                  {rec.pages ? ` · ${t('conversation.pages', { count: rec.pages })}` : ''}
+                </dd>
+                {rec.title && (
+                  <>
+                    <dt>{t('conversation.remarkableName')}</dt>
+                    <dd>{rec.title}</dd>
+                  </>
+                )}
+                <dt>{t('conversation.source')}</dt>
+                <dd>{inline(`${t('conversation.remarkableDocument')} \`${rec.recordingId}\``)}</dd>
+              </dl>
+            </div>
+          ) : (
+            <p className="muted">{state ?? t('conversation.documentUnavailable')}</p>
+          ))}
+
+        {tab === 'source' &&
+          !isDocument &&
           (rec.audio ? (
             <div className="source">
               <audio

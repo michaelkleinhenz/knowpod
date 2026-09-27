@@ -3,6 +3,7 @@ import { Trans, useTranslation } from 'react-i18next';
 import { api } from '../api/client';
 import { useAuth } from '../auth';
 import { PocketSetup } from '../components/PocketSetup';
+import { RemarkableSetup } from '../components/RemarkableSetup';
 import { errorText } from '../lib/errors';
 
 function ChangePassword() {
@@ -92,6 +93,10 @@ export function Account() {
       <section className="card">
         <h2 className="card-title">{t('account.pocketTitle')}</h2>
         <PocketSetup />
+      </section>
+      <section className="card">
+        <h2 className="card-title">{t('account.remarkableTitle')}</h2>
+        <RemarkableSetup />
       </section>
     </div>
   );

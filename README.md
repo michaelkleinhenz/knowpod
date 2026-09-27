@@ -36,8 +36,13 @@ AI worker ─────────────▶ transcript (status: transcr
   **Account** page: recordings arrive through the user's personal webhook and their audio is
   downloaded with the user's Pocket API key.
 - WAV and MP3 files can be uploaded from the browser on **Notes**.
-- Notes come in types: **audio** notes (recordings, transcribed and summarized) and
-  **text** notes, plain Markdown documents written in the browser (**+** on **Notes**). The
+- Each user can pair their **reMarkable** cloud account on the **Account** page with a
+  one-time code. Documents in the top-level folder **reMarkable** are imported (read only,
+  never changed): handwritten notebooks are rendered to PDF, PDFs and EPUBs are kept as they
+  are, and a vision model reads the pages into text that is summarized like a transcript.
+- Notes come in types: **audio** notes (recordings, transcribed and summarized),
+  **text** notes, plain Markdown documents written in the browser (**+** on **Notes**), and
+  **documents** from the reMarkable. The
   notes list shows each note's type as an icon; text notes are edited, copied, downloaded
   and deleted like summaries.
 - Notes can carry **labels**: colored chips in the note's header, with your own labels
@@ -76,7 +81,7 @@ Supported input: integer PCM WAV, 8/16/24 bit, 1–8 channels, up to 4 GiB.
 |---|---|
 | [Device upload protocol](docs/device-protocol.md) | Implementing the upload client on the gadget: requests, error handling, retry logic |
 | [Architecture](docs/architecture.md) | Backend developers: components, recording lifecycle, worker, data model, adding processing stages |
-| [Operations](docs/operations.md) | Deploying and running: Railway, AWS/IAM setup, users and sign-in, Pocket, uploads, installing the app, AI settings, devices, monitoring, recovery, limitations |
+| [Operations](docs/operations.md) | Deploying and running: Railway, AWS/IAM setup, users and sign-in, Pocket, reMarkable, uploads, installing the app, AI settings, devices, monitoring, recovery, limitations |
 | [OpenAPI spec](backend/api/openapi.yaml) | The formal API definition. The service serves it at `/api/v1/openapi.yaml` and `/api/v1/openapi.json`, and the web UI's **Status** page renders it as an API reference. |
 
 ## Quick start (Docker)
@@ -158,6 +163,8 @@ Environment variables only.
 | `SESSION_TTL` | `168h` | How long a web UI sign-in lasts |
 | `ADMIN_TOKEN` | _(empty: disabled)_ | Bearer token for scripts: the whole API (except the device upload API) as the built-in admin, seeing all users' data |
 | `POCKET_API_URL` | `https://public.heypocketai.com/api/v1` | Pocket API base URL |
+| `REMARKABLE_PULL_INTERVAL` | `15m` | How often paired reMarkable accounts are checked for new and changed documents; `0` turns the automatic import off (the **Import now** button still works) |
+| `REMARKABLE_AUTH_URL`, `REMARKABLE_SYNC_URL` | _(empty: the public reMarkable cloud)_ | reMarkable cloud endpoints, e.g. for a self-hosted compatible server |
 | `AWS_S3_BUCKET_NAME` | _(required)_ | Existing bucket for the audio files |
 | `AWS_S3_PREFIX` | _(empty)_ | Key prefix inside the bucket |
 | `AWS_DEFAULT_REGION` | _(required)_ | AWS region of the bucket. `AWS_REGION` also works and takes precedence. |
@@ -171,7 +178,9 @@ Environment variables only.
 
 Objects are stored at `recordings/<userId>/<id>.flac` (and `.wav` when kept), where `<id>`
 is the server-assigned recording ID. Audio kept in its original format (MP3 or M4A from
-Pocket or browser uploads) is stored as `recordings/<userId>/<id>.<ext>`. Recordings
+Pocket or browser uploads) is stored as `recordings/<userId>/<id>.<ext>`; a reMarkable
+document's PDF or EPUB as `recordings/<userId>/<id>.pdf` (`.epub`) and its original files as
+`recordings/<userId>/<id>.rmdoc` (a zip). Recordings
 archived before users existed keep their earlier keys. For the required IAM permissions, see
 [Operations](docs/operations.md#s3).
 
@@ -184,14 +193,17 @@ backend/
   internal/
     audio/             WAV parsing, WAV → FLAC, format sniffing, speech chunks for transcription
     config/            environment-based configuration
-    domain/            models: recording (lifecycle, owner), device, user (role, Pocket) + session
+    domain/            models: recording (lifecycle, owner), device, user (role, Pocket) + session,
+                       tablet (reMarkable link)
     openrouter/        OpenRouter API client (chat completions with audio, model list)
     pocket/            Pocket webhook signatures and API client
+    remarkable/        reMarkable cloud client (read only), page files (.rm), PDF/PNG rendering
     ports/             repository and object store interfaces
     repository/mongo/  MongoDB connection, repositories, collection/index setup
     repository/memory/ in-memory repositories for tests
     service/           sign-in and users, device auth, uploads + spool, browser uploads,
-                       Pocket, archive, transcription and summary stages, recording actions
+                       Pocket, reMarkable, archive, transcription/reading and summary stages,
+                       recording actions
     storage/s3/        S3 object store (storage/memory for tests)
     transport/http/    router, middleware, handlers
     web/               embedded frontend (dist/) + SPA handler

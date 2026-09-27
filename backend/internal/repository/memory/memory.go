@@ -14,6 +14,7 @@ import (
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/label"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/settings"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/tablet"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/theme"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/user"
 )
@@ -658,4 +659,54 @@ func (m *Folders) DeleteByOwner(_ context.Context, ownerID string) error {
 		}
 	}
 	return nil
+}
+
+// TabletLinks is an in-memory ports.TabletLinkRepository.
+type TabletLinks struct {
+	mu    sync.Mutex
+	links map[string]tablet.Link // by user ID
+}
+
+// NewTabletLinks builds an empty repository.
+func NewTabletLinks() *TabletLinks { return &TabletLinks{links: map[string]tablet.Link{}} }
+
+func (m *TabletLinks) Get(_ context.Context, userID string) (*tablet.Link, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	l, ok := m.links[userID]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	l.Items = slices.Clone(l.Items)
+	return &l, nil
+}
+
+func (m *TabletLinks) Save(_ context.Context, l *tablet.Link) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	c := *l
+	c.Items = slices.Clone(l.Items)
+	m.links[l.UserID] = c
+	return nil
+}
+
+func (m *TabletLinks) Delete(_ context.Context, userID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.links[userID]; !ok {
+		return domain.ErrNotFound
+	}
+	delete(m.links, userID)
+	return nil
+}
+
+func (m *TabletLinks) UserIDs(context.Context) ([]string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	ids := make([]string, 0, len(m.links))
+	for id := range m.links {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids, nil
 }

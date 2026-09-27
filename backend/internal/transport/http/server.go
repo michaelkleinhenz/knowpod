@@ -44,7 +44,9 @@ type Server struct {
 	themes  *service.ThemeService
 	labels  *service.LabelService
 	folders *service.FolderService
-	now     func() time.Time
+	// remarkable reads documents from users' reMarkable clouds.
+	remarkable *service.RemarkableService
+	now        func() time.Time
 }
 
 // Deps are the server's constructor dependencies. Handlers of missing services are still
@@ -65,6 +67,8 @@ type Deps struct {
 	Themes  *service.ThemeService
 	Labels  *service.LabelService
 	Folders *service.FolderService
+	// Remarkable is optional in tests that don't use it.
+	Remarkable *service.RemarkableService
 }
 
 // NewServer builds the server.
@@ -76,7 +80,7 @@ func NewServer(d Deps) *Server {
 	return &Server{
 		cfg: d.Cfg, log: log, db: d.DB, auth: d.Auth, users: d.Users, devices: d.Devices, uploads: d.Uploads,
 		manual: d.Manual, actions: d.Actions, objects: d.Objects, pocket: d.Pocket, ai: d.AI, themes: d.Themes,
-		labels: d.Labels, folders: d.Folders, now: time.Now,
+		labels: d.Labels, folders: d.Folders, remarkable: d.Remarkable, now: time.Now,
 	}
 }
 
@@ -126,6 +130,10 @@ func (s *Server) Router() http.Handler {
 			u.Put("/auth/password", s.handleChangePassword)
 			u.Get("/me/pocket", s.handleGetPocketSettings)
 			u.Put("/me/pocket", s.handleUpdatePocketSettings)
+			u.Get("/me/remarkable", s.handleGetRemarkable)
+			u.Delete("/me/remarkable", s.handleUnpairRemarkable)
+			u.Post("/me/remarkable/pair", s.handlePairRemarkable)
+			u.Post("/me/remarkable/pull", s.handlePullRemarkable)
 			u.Put("/me/preferences", s.handleUpdatePreferences)
 			u.Get("/ai/status", s.handleAIStatus)
 			u.Get("/ai/models", s.handleOpenRouterModels)
@@ -157,6 +165,7 @@ func (s *Server) Router() http.Handler {
 			u.Get("/recordings/{id}", s.handleGetRecording)
 			u.Delete("/recordings/{id}", s.handleDeleteRecording)
 			u.Get("/recordings/{id}/audio", s.handleRecordingAudio)
+			u.Get("/recordings/{id}/file", s.handleRecordingFile)
 			u.Post("/recordings/{id}/retranscribe", s.handleRetranscribe)
 			u.Post("/recordings/{id}/resummarize", s.handleResummarize)
 			u.Put("/recordings/{id}/summary", s.handleEditSummary)

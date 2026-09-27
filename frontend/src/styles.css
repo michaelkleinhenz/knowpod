@@ -834,6 +834,17 @@ a {
   text-decoration: none;
 }
 
+/* A document's PDF, shown with the browser's own viewer. */
+.document-frame {
+  display: block;
+  width: 100%;
+  height: min(80vh, 1100px);
+  margin-bottom: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+
 /* --- Settings --- */
 
 .narrow-wide {

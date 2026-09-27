@@ -138,16 +138,17 @@ export type RecordingStatus =
   | 'summarized'
   | 'failed';
 
-// NoteType is the kind of note: an audio recording (transcribed and summarized) or a text
-// note written in the editor, whose title and text live in summary.
-export type NoteType = 'audio' | 'text';
+// NoteType is the kind of note: an audio recording (transcribed and summarized), a text
+// note written in the editor, whose title and text live in summary, or a document from the
+// reMarkable cloud, whose text read from the pages is its transcript.
+export type NoteType = 'audio' | 'text' | 'document';
 
 export interface Recording {
   id: string;
   deviceId: string;
   // Absent for audio recordings.
-  type?: 'text';
-  source?: 'pocket' | 'upload';
+  type?: 'text' | 'document';
+  source?: 'pocket' | 'upload' | 'remarkable';
   title?: string;
   recordingId: string;
   status: RecordingStatus;
@@ -156,6 +157,9 @@ export interface Recording {
   createdAt: string;
   format?: { sampleRate: number; channels: number; bitsPerSample: number; durationMs: number };
   audio?: { key: string; contentType: string; size: number };
+  // A document's PDF (notebooks are rendered to one) or EPUB, and its number of pages.
+  file?: { key: string; contentType: string; size: number };
+  pages?: number;
   transcript?: { text: string; model: string; createdAt: string };
   summary?: {
     title: string;
@@ -182,7 +186,22 @@ export interface OpenRouterSettings {
   apiKeyHint?: string;
   transcriptionModel: string;
   summaryModel: string;
+  // Reads document pages; empty uses the transcription model.
+  documentModel: string;
   updatedAt?: string;
+}
+
+// RemarkableSettings is the user's link to the reMarkable cloud.
+export interface RemarkableSettings {
+  paired: boolean;
+  pairedAt?: string;
+  // The top-level folder whose documents are imported.
+  folder: string;
+  // Where to get a one-time code for pairing.
+  connectUrl: string;
+  lastPullAt?: string;
+  lastError?: string;
+  lastResult?: { folderFound: boolean; documents: number; imported: number; updated: number };
 }
 
 export interface ModelOption {
@@ -257,6 +276,10 @@ export const api = {
   devices: () => request<Device[]>('GET', '/devices'),
   pocket: () => request<PocketSettings>('GET', '/me/pocket'),
   savePocket: (u: { webhookSecret?: string; apiKey?: string }) => request<PocketSettings>('PUT', '/me/pocket', u),
+  remarkable: () => request<RemarkableSettings>('GET', '/me/remarkable'),
+  pairRemarkable: (code: string) => request<RemarkableSettings>('POST', '/me/remarkable/pair', { code }),
+  unpairRemarkable: () => request<void>('DELETE', '/me/remarkable'),
+  pullRemarkable: () => request<RemarkableSettings>('POST', '/me/remarkable/pull'),
   aiStatus: () => request<{ transcription: boolean; summary: boolean }>('GET', '/ai/status'),
   recordings: () => request<Recording[]>('GET', '/recordings?limit=200'),
   recording: (id: string) => request<Recording>('GET', `/recordings/${encodeURIComponent(id)}`),
@@ -280,6 +303,7 @@ export const api = {
   deleteLabel: (id: string) => request<void>('DELETE', `/labels/${encodeURIComponent(id)}`),
   downloadURL: (id: string, kind: 'summary' | 'transcript') => `/api/v1/recordings/${encodeURIComponent(id)}/${kind}`,
   audioURL: (id: string, download = false) => `/api/v1/recordings/${encodeURIComponent(id)}/audio${download ? '?download=1' : ''}`,
+  fileURL: (id: string, download = false) => `/api/v1/recordings/${encodeURIComponent(id)}/file${download ? '?download=1' : ''}`,
   uploadRecording,
   users: () => request<User[]>('GET', '/admin/users'),
   createUser: (u: { email: string; password: string; role: Role }) => request<User>('POST', '/admin/users', u),
@@ -288,9 +312,9 @@ export const api = {
     request<void>('PUT', `/admin/users/${encodeURIComponent(id)}/password`, { password }),
   deleteUser: (id: string) => request<void>('DELETE', `/admin/users/${encodeURIComponent(id)}`),
   openRouterSettings: () => request<OpenRouterSettings>('GET', '/admin/settings/openrouter'),
-  saveOpenRouterSettings: (u: { apiKey?: string; transcriptionModel?: string; summaryModel?: string }) =>
+  saveOpenRouterSettings: (u: { apiKey?: string; transcriptionModel?: string; summaryModel?: string; documentModel?: string }) =>
     request<OpenRouterSettings>('PUT', '/admin/settings/openrouter', u),
-  aiModels: () => request<{ transcription: ModelOption[]; summary: ModelOption[] }>('GET', '/ai/models'),
+  aiModels: () => request<{ transcription: ModelOption[]; summary: ModelOption[]; document: ModelOption[] }>('GET', '/ai/models'),
   aiLanguages: () => request<string[]>('GET', '/ai/languages'),
   themes: () => request<Theme[]>('GET', '/themes'),
   createTheme: (t: ThemeInput) => request<Theme>('POST', '/themes', t),

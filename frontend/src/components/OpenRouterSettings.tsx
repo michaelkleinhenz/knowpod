@@ -26,11 +26,13 @@ function ModelPicker(props: {
   models: ModelOption[] | null;
   value: string;
   audio: boolean;
+  // emptyLabel names the empty choice when it means a default rather than "not set".
+  emptyLabel?: string;
   onChange: (v: string) => void;
 }) {
   const { t } = useTranslation();
   const price = usePrice();
-  const { id, label, hint, models, value, audio, onChange } = props;
+  const { id, label, hint, models, value, audio, emptyLabel, onChange } = props;
   const [filter, setFilter] = useState('');
   const visible = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -60,7 +62,7 @@ function ModelPicker(props: {
         aria-label={label}
       />
       <select id={id} value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">{t('settings.ai.selectModel')}</option>
+        <option value="">{emptyLabel ?? t('settings.ai.selectModel')}</option>
         {visible.map((m) => (
           <option key={m.id} value={m.id}>
             {optionLabel(m)}
@@ -76,11 +78,12 @@ function ModelPicker(props: {
 export function OpenRouterSettings() {
   const { t } = useTranslation();
   const [current, setCurrent] = useState<Settings | null>(null);
-  const [models, setModels] = useState<{ transcription: ModelOption[]; summary: ModelOption[] } | null>(null);
+  const [models, setModels] = useState<{ transcription: ModelOption[]; summary: ModelOption[]; document: ModelOption[] } | null>(null);
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [apiKey, setAPIKey] = useState('');
   const [transcriptionModel, setTranscriptionModel] = useState('');
   const [summaryModel, setSummaryModel] = useState('');
+  const [documentModel, setDocumentModel] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -91,6 +94,7 @@ export function OpenRouterSettings() {
         setCurrent(s);
         setTranscriptionModel(s.transcriptionModel);
         setSummaryModel(s.summaryModel);
+        setDocumentModel(s.documentModel ?? '');
       },
       (e) => setError(errorText(e, t)),
     );
@@ -105,7 +109,7 @@ export function OpenRouterSettings() {
     );
   }, [t]);
 
-  async function save(update: { apiKey?: string; transcriptionModel?: string; summaryModel?: string }) {
+  async function save(update: { apiKey?: string; transcriptionModel?: string; summaryModel?: string; documentModel?: string }) {
     setBusy(true);
     setError(null);
     setSaved(false);
@@ -122,7 +126,11 @@ export function OpenRouterSettings() {
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    const update: { apiKey?: string; transcriptionModel?: string; summaryModel?: string } = { transcriptionModel, summaryModel };
+    const update: { apiKey?: string; transcriptionModel?: string; summaryModel?: string; documentModel?: string } = {
+      transcriptionModel,
+      summaryModel,
+      documentModel,
+    };
     if (apiKey.trim()) update.apiKey = apiKey.trim();
     save(update);
   }
@@ -189,6 +197,16 @@ export function OpenRouterSettings() {
           value={summaryModel}
           audio={false}
           onChange={setSummaryModel}
+        />
+        <ModelPicker
+          id="document-model"
+          label={t('settings.ai.documentModel')}
+          hint={t('settings.ai.documentHint')}
+          models={models?.document ?? null}
+          value={documentModel}
+          audio={false}
+          emptyLabel={t('settings.ai.sameAsTranscription')}
+          onChange={setDocumentModel}
         />
 
         {error && <p className="error">{error}</p>}

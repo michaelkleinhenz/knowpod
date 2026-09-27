@@ -4,7 +4,8 @@ import type { NoteType } from '../api/client';
 // Small inline icons (stroke uses currentColor).
 
 // NoteIcon shows a note as a page; its content says the note's type: a sound wave for audio
-// recordings, lines of text with a heading for text notes.
+// recordings, lines of text with a heading for text notes, handwriting for reMarkable
+// documents.
 export function NoteIcon({ type, label }: { type: NoteType; label?: string }) {
   return (
     <svg
@@ -18,7 +19,13 @@ export function NoteIcon({ type, label }: { type: NoteType; label?: string }) {
     >
       {label && <title>{label}</title>}
       <rect x="0.5" y="0.5" width="29" height="37" rx="4" fill="var(--color-surface)" stroke="var(--color-border)" />
-      {type === 'text' ? (
+      {type === 'document' ? (
+        <g fill="none" stroke="var(--color-primary)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" opacity="0.8">
+          <path d="M7 11c1.5-2.5 2.5-2.5 3 0s1.5 2.5 3 0 2.5-2.5 3 0" />
+          <path d="M7 18.5c1.2-2 2.2-2 2.8 0s1.8 2 3 0 2-2 2.7 0 1.8 2 3 0 1.5-1.5 2.5-.5" />
+          <path d="M7 26c1.4-2.2 2.4-2.2 3 0s1.6 2.2 3 0" opacity="0.6" />
+        </g>
+      ) : type === 'text' ? (
         <>
           <rect x="7" y="8" width="12" height="2.6" rx="1.3" fill="var(--color-primary)" opacity="0.8" />
           <rect x="7" y="15" width="16" height="2.2" rx="1.1" fill="var(--color-muted)" opacity="0.4" />

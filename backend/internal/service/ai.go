@@ -58,9 +58,14 @@ func shiftTimestamps(text string, offset time.Duration) string {
 	})
 }
 
+// summaryIntro opens the summary instructions; documentSummaryIntro replaces it for documents.
+const (
+	summaryIntro         = "You summarize transcripts of recorded conversations and voice notes.\n"
+	documentSummaryIntro = "You summarize handwritten notes and documents, given as the text read from their pages.\n"
+)
+
 // summaryPrompt is completed with the theme's structure and the output language.
-const summaryPrompt = `You summarize transcripts of recorded conversations and voice notes.
-Reply with a JSON object with exactly two string fields:
+const summaryPrompt = summaryIntro + `Reply with a JSON object with exactly two string fields:
 - "title": a short, specific title for the conversation (at most 8 words, no quotes, no trailing period).
 - "summary": the summary in Markdown, structured as follows:
 %s
@@ -114,6 +119,7 @@ type OpenRouterView struct {
 	APIKeyHint         string    `json:"apiKeyHint,omitempty"` // last characters, e.g. "…a1b2"
 	TranscriptionModel string    `json:"transcriptionModel"`
 	SummaryModel       string    `json:"summaryModel"`
+	DocumentModel      string    `json:"documentModel"` // empty: the transcription model
 	UpdatedAt          time.Time `json:"updatedAt,omitempty"`
 }
 
@@ -123,6 +129,7 @@ type OpenRouterUpdate struct {
 	APIKey             *string `json:"apiKey,omitempty"`
 	TranscriptionModel *string `json:"transcriptionModel,omitempty"`
 	SummaryModel       *string `json:"summaryModel,omitempty"`
+	DocumentModel      *string `json:"documentModel,omitempty"`
 }
 
 // Settings returns the current OpenRouter configuration.
@@ -149,7 +156,10 @@ func (s *AIService) UpdateSettings(ctx context.Context, u OpenRouterUpdate) (*Op
 	if u.SummaryModel != nil {
 		st.SummaryModel = strings.TrimSpace(*u.SummaryModel)
 	}
-	for _, m := range []string{st.TranscriptionModel, st.SummaryModel} {
+	if u.DocumentModel != nil {
+		st.DocumentModel = strings.TrimSpace(*u.DocumentModel)
+	}
+	for _, m := range []string{st.TranscriptionModel, st.SummaryModel, st.DocumentModel} {
 		if len(m) > 200 || strings.ContainsAny(m, " \t\n") {
 			return nil, invalid("model IDs look like \"google/gemini-2.5-flash\"")
 		}
@@ -167,7 +177,7 @@ func (s *AIService) UpdateSettings(ctx context.Context, u OpenRouterUpdate) (*Op
 func view(st *settings.OpenRouter) *OpenRouterView {
 	v := &OpenRouterView{
 		APIKeyConfigured: st.APIKey != "", TranscriptionModel: st.TranscriptionModel,
-		SummaryModel: st.SummaryModel, UpdatedAt: st.UpdatedAt,
+		SummaryModel: st.SummaryModel, DocumentModel: st.DocumentModel, UpdatedAt: st.UpdatedAt,
 	}
 	if k := st.APIKey; len(k) >= 8 {
 		v.APIKeyHint = "…" + k[len(k)-4:]
@@ -189,6 +199,7 @@ type ModelOption struct {
 type ModelOptions struct {
 	Transcription []ModelOption `json:"transcription"` // audio in, text out
 	Summary       []ModelOption `json:"summary"`       // text in, text out
+	Document      []ModelOption `json:"document"`      // images in, text out
 }
 
 // Models returns the OpenRouter models usable for transcription and for summaries. Batch
@@ -198,7 +209,7 @@ func (s *AIService) Models(ctx context.Context) (*ModelOptions, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := &ModelOptions{Transcription: []ModelOption{}, Summary: []ModelOption{}}
+	out := &ModelOptions{Transcription: []ModelOption{}, Summary: []ModelOption{}, Document: []ModelOption{}}
 	for _, m := range models {
 		if strings.HasSuffix(m.ID, ":batch") || strings.HasPrefix(m.ID, "openrouter/") || !m.Produces("text") {
 			continue
@@ -211,12 +222,16 @@ func (s *AIService) Models(ctx context.Context) (*ModelOptions, error) {
 		if m.Accepts("text") {
 			out.Summary = append(out.Summary, o)
 		}
+		if m.Accepts("image") {
+			out.Document = append(out.Document, o)
+		}
 	}
 	byName := func(l []ModelOption) {
 		sort.Slice(l, func(i, j int) bool { return strings.ToLower(l[i].Name) < strings.ToLower(l[j].Name) })
 	}
 	byName(out.Transcription)
 	byName(out.Summary)
+	byName(out.Document)
 	return out, nil
 }
 
@@ -242,6 +257,9 @@ func (s *AIService) Transcribe(ctx context.Context, rec *recording.Recording) er
 	}
 	if !st.CanTranscribe() {
 		return errors.New("transcription is not configured")
+	}
+	if rec.IsDocument() {
+		return s.readDocument(ctx, st, rec)
 	}
 	if rec.Audio == nil {
 		return errors.New("recording has no archived audio")
@@ -339,9 +357,20 @@ func (s *AIService) Summarize(ctx context.Context, rec *recording.Recording) err
 	if opts.Model != "" {
 		model = opts.Model
 	}
+	if rec.IsDocument() && rec.Summary != nil && rec.Summary.EditedAt != nil {
+		// A changed document was read again; the summary the user edited is kept.
+		return nil
+	}
 	th := s.themes.Resolve(ctx, rec.OwnerID, opts.ThemeID)
 	if strings.TrimSpace(rec.Transcript.Text) == "" {
-		rec.Summary = &recording.Summary{Title: "No speech detected", Markdown: "_No speech was detected in this recording._",
+		title, text := "No speech detected", "_No speech was detected in this recording._"
+		if rec.IsDocument() {
+			title, text = "No text found", "_No text was found in this document._"
+			if rec.Title != "" {
+				title = rec.Title
+			}
+		}
+		rec.Summary = &recording.Summary{Title: title, Markdown: text,
 			Language: language, ThemeID: th.ID, ThemeName: th.Name, CreatedAt: s.clock().UTC()}
 		return nil
 	}
@@ -353,12 +382,17 @@ func (s *AIService) Summarize(ctx context.Context, rec *recording.Recording) err
 	if rec.Title != "" {
 		fmt.Fprintf(&meta, "Source title: %s\n", rec.Title)
 	}
+	system, label := summarySystemPrompt(th.Instructions, language, rec.Highlights), "Transcript"
+	if rec.IsDocument() {
+		system, label = documentSummaryIntro+strings.TrimPrefix(system, summaryIntro), "Document text"
+		system = strings.Replace(system, "title for the conversation", "title for the notes", 1)
+	}
 	answer, err := s.ai.Complete(ctx, st.APIKey, openrouter.Request{
 		Model: model,
 		JSON:  true,
 		Messages: []openrouter.Message{
-			{Role: "system", Content: summarySystemPrompt(th.Instructions, language, rec.Highlights)},
-			{Role: "user", Content: meta.String() + "\nTranscript:\n\n" + rec.Transcript.Text},
+			{Role: "system", Content: system},
+			{Role: "user", Content: meta.String() + "\n" + label + ":\n\n" + rec.Transcript.Text},
 		},
 	})
 	if err != nil {
