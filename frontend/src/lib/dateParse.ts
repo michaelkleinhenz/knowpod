@@ -11,6 +11,14 @@ export interface ParsedTask {
   priority?: Priority;
   // found lists the recognized phrases as they were written.
   found: string[];
+  // spans are where the recognized phrases are in the text, in order.
+  spans: Span[];
+}
+
+// A Span is a part of the text, from at up to (not including) end.
+export interface Span {
+  at: number;
+  end: number;
 }
 
 // Letters and digits end a word; \b doesn't know umlauts.
@@ -318,12 +326,17 @@ const RULES: Rule[] = [
 ];
 
 // parseTask reads the date, time, repeat rule and priority in text. now is the current time.
-export function parseTask(text: string, now: Date = new Date()): ParsedTask {
+// The parts in keep are left as they are written: they stay in the title and aren't read
+// (like Todoist, where Backspace right after a recognized date keeps it as plain text).
+export function parseTask(text: string, now: Date = new Date(), keep: Span[] = []): ParsedTask {
   const today = startOfDay(now);
   const f: Found = {};
-  const found: { at: number; text: string }[] = [];
-  // Matched phrases are blanked out, so later rules don't see them and positions stay put.
+  const found: Span[] = [];
+  // Kept parts are masked with letters, so no rule matches them or runs into them.
+  const kept = keep.map((s) => ({ at: Math.max(0, s.at), end: Math.min(text.length, s.end) })).filter((s) => s.at < s.end);
   let work = text;
+  for (const s of kept) work = work.slice(0, s.at) + 'x'.repeat(s.end - s.at) + work.slice(s.end);
+  // Matched phrases are blanked out, so later rules don't see them and positions stay put.
   for (const rule of RULES) {
     for (let from = 0; ; ) {
       const g = new RegExp(rule.re.source, 'giu');
@@ -337,11 +350,12 @@ export function parseTask(text: string, now: Date = new Date()): ParsedTask {
         Object.assign(f, before);
         continue;
       }
-      found.push({ at: m.index, text: text.slice(m.index, m.index + m[0].length).trim() });
+      found.push({ at: m.index + m[0].length - m[0].trimStart().length, end: m.index + m[0].trimEnd().length });
       work = work.slice(0, m.index) + ' '.repeat(m[0].length) + work.slice(m.index + m[0].length);
       break;
     }
   }
+  for (const s of kept) work = work.slice(0, s.at) + text.slice(s.at, s.end) + work.slice(s.end);
   const title = work
     .replace(/\s+/g, ' ')
     .replace(/\s+([,.;:!?])/g, '$1')
@@ -365,5 +379,18 @@ export function parseTask(text: string, now: Date = new Date()): ParsedTask {
     if (f.time) due.time = f.time;
     if (r) due.repeat = r.unit === 'month' ? { ...r, monthDay: date.getDate() } : r;
   }
-  return { title, due, priority: f.priority, found: found.sort((a, b) => a.at - b.at).map((x) => x.text) };
+  const spans = found.sort((a, b) => a.at - b.at);
+  return { title, due, priority: f.priority, found: spans.map((x) => text.slice(x.at, x.end)), spans };
+}
+
+// shiftSpans moves spans of before along with an edit that made after of it: spans ahead of
+// the changed part stay, spans behind it move, and spans the edit touched are dropped.
+export function shiftSpans(spans: Span[], before: string, after: string): Span[] {
+  let start = 0;
+  while (start < before.length && start < after.length && before[start] === after[start]) start++;
+  let tail = 0;
+  while (tail < before.length - start && tail < after.length - start && before[before.length - 1 - tail] === after[after.length - 1 - tail]) tail++;
+  const endBefore = before.length - tail;
+  const delta = after.length - before.length;
+  return spans.flatMap((s) => (s.end <= start ? [s] : s.at >= endBefore ? [{ at: s.at + delta, end: s.end + delta }] : []));
 }

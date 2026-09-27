@@ -11,7 +11,7 @@ import { NoteDone, NoteLabels } from '../components/Labels';
 import { ActionItems } from '../components/ActionItems';
 import { PriorityFlag, TaskControls } from '../components/TaskControls';
 import { TimeControls } from '../components/TimeControls';
-import { parseTask } from '../lib/dateParse';
+import { useTaskParse } from '../lib/useTaskParse';
 import { formatDue, formatRepeat } from '../lib/tasks';
 import { MoveToFolder } from '../components/MoveToFolder';
 import { SubNotes } from '../components/SubNotes';
@@ -192,6 +192,8 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
     setSeek(null);
   }, [seek, tab]);
   const autosave = useAutosave(rec.id, summary?.title ?? titleOf(rec), setRec);
+  // A date typed into the title is offered as the note's due date.
+  const { parsed: typedDate, onKeyDown: titleKey } = useTaskParse(autosave.title, titleTyped && !isBoard);
   // A board has no text; only its title is saved like a summary's.
   const { editorReady } = autosave;
   useEffect(() => {
@@ -296,7 +298,6 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
         ? { text: rec.transcript.text, label: t(isDocument ? 'conversation.copyDocumentText' : 'conversation.copyTranscript') }
         : null;
 
-  const typedDate = titleTyped && !isBoard ? parseTask(autosave.title) : null;
   const titleDate = typedDate && (typedDate.due || typedDate.priority) && typedDate.title ? typedDate : null;
   async function applyTitleDate() {
     if (!titleDate) return;
@@ -457,7 +458,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
                 }}
                 onBlur={() => setTimeout(() => setTitleTyped(false), 200)}
                 onKeyDown={(e) => {
-                  if (e.key !== 'Enter') return;
+                  if (titleKey(e) || e.key !== 'Enter') return;
                   if (titleDate) {
                     e.preventDefault();
                     void applyTitleDate();

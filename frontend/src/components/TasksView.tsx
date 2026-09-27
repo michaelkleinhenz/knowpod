@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { api, Recording } from '../api/client';
 import { useNotes } from '../context/NotesContext';
 import { errorText } from '../lib/errors';
-import { parseTask } from '../lib/dateParse';
+import { useTaskParse } from '../lib/useTaskParse';
 import { formatClockTime, formatDue, formatRepeat, groupTasks } from '../lib/tasks';
 import { isTask } from '../lib/labels';
 import { formatDate, when } from '../lib/recordings';
@@ -19,7 +19,8 @@ function QuickAdd() {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const parsed = useMemo(() => parseTask(text), [text]);
+  const { parsed: typed, onKeyDown } = useTaskParse(text);
+  const parsed = typed!;
   const title = parsed.title || text.trim();
 
   async function submit(e: FormEvent) {
@@ -43,6 +44,7 @@ function QuickAdd() {
       <input
         value={text}
         onChange={(e) => setText(e.target.value)}
+        onKeyDown={onKeyDown}
         placeholder={t('tasks.quickAddPlaceholder')}
         aria-label={t('tasks.quickAdd')}
         maxLength={300}
