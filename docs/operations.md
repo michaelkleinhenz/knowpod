@@ -250,7 +250,8 @@ and **Delete**.
 
 **Summary details** sets:
 
-- **Language**: auto-detect (the transcript's language; default) or one of 23 languages.
+- **Language**: auto-detect (default: the app language chosen under **Settings → General**,
+  or the transcript's language when none is chosen) or one of 23 languages.
 - **Model**: the default summary model from the admin settings, or any OpenRouter text model.
 - **Theme**: a built-in or own theme.
 
@@ -296,7 +297,10 @@ URL (e.g. `/settings?tab=themes`).
 
 The web UI is available in English and German. Before signing in it follows the browser's
 language; each user then chooses a language under **Settings → General**, which is saved
-with the account and applies on every device. API error responses carry a stable `code`
+with the account and applies on every device. It is also the language new transcripts and
+summaries are written in: speech or handwriting in another language is translated, and the
+summary follows it unless another language is set under **Summary details**. Without a chosen
+language (following the browser), transcripts keep the recording's language. API error responses carry a stable `code`
 (e.g. `invalid_login`, `email_taken`) that the UI translates; the `error` text stays
 English. The API reference on the Status page is shown in English.
 

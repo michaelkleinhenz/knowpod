@@ -135,6 +135,7 @@ func main() {
 			Run: aiSvc.Summarize, Enabled: aiSvc.CanSummarize},
 	}, worker.Options{PollInterval: cfg.WorkerPollInterval, MaxAttempts: cfg.WorkerMaxAttempts}, log)
 	aiSvc.OnSettingsChanged = aiPipeline.Wake
+	aiSvc.Users = users
 	actions := service.NewRecordingService(recordings, objects, spool, themeSvc)
 	userSvc := service.NewUserService(users, sessions, devices, recordings, themeRepo, authSvc, actions)
 	labelSvc := service.NewLabelService(labelRepo, recordings)

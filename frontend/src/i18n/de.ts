@@ -464,7 +464,7 @@ export const de: Translation = {
     tabs: { general: 'Allgemein', themes: 'Vorlagen', labels: 'Labels', ai: 'KI-Verarbeitung' },
     language: {
       title: 'Sprache',
-      hint: 'Die Sprache der App. Sie wird mit deinem Konto gespeichert.',
+      hint: 'Die Sprache der App. Sie wird mit deinem Konto gespeichert, und neue Transkripte und Zusammenfassungen werden in ihr geschrieben.',
       label: 'Sprache der App',
       names: { en: 'English', de: 'Deutsch' },
     },

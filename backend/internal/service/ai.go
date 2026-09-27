@@ -42,6 +42,30 @@ const transcriptionPrompt = `Transcribe this audio recording verbatim in its ori
 Start each speaker's turn on a new line with its start time in the form [m:ss] (minutes and seconds from the start of this audio), followed by a speaker label such as "Speaker 1:" when more than one person speaks, e.g. "[1:05] Speaker 2: …". In long turns, start a new line with a new time stamp at least every 30 seconds.
 Output only the transcript. If there is no speech, output nothing.`
 
+// accountLanguage is how an app language a user can choose (user.Languages) applies to their
+// recordings: Name is the language transcripts are written in, Summary the key of
+// SummaryLanguages their summaries use.
+type accountLanguage struct{ Name, Summary string }
+
+var accountLanguages = map[string]accountLanguage{
+	"en": {"English", "en-US"},
+	"de": {"German", "de-DE"},
+}
+
+// inLanguage turns a prompt that keeps the original language into one that writes in
+// language (e.g. "German"), translating what is in another language. An empty language
+// keeps the prompt as it is.
+func inLanguage(prompt, language string) string {
+	if language == "" {
+		return prompt
+	}
+	to := "in " + language + ", translating anything in another language into " + language + ". Do not"
+	return strings.NewReplacer(
+		"in its original language. Do not translate,", to,
+		"in their original language. Do not translate,", to,
+	).Replace(prompt)
+}
+
 // timestampPattern matches the [m:ss] / [h:mm:ss] time stamps in transcripts.
 var timestampPattern = regexp.MustCompile(`\[(?:(\d{1,2}):)?(\d{1,3}):(\d{2})\]`)
 
@@ -102,11 +126,14 @@ func summarySystemPrompt(instructions, language string, highlights []recording.H
 type AIService struct {
 	themes   *ThemeService
 	settings ports.SettingsRepository
-	objects  ports.ObjectStore
-	ai       AIClient
-	tmpDir   string
-	log      *slog.Logger
-	clock    func() time.Time
+	// Users looks up a recording's owner, whose app language transcripts and summaries are
+	// written in. Optional: without it (or a language), the recording's language is kept.
+	Users   ports.UserRepository
+	objects ports.ObjectStore
+	ai      AIClient
+	tmpDir  string
+	log     *slog.Logger
+	clock   func() time.Time
 	// OnSettingsChanged is called after the settings were saved, e.g. to wake the worker so
 	// recordings waiting for a configuration are processed. Optional.
 	OnSettingsChanged func()
@@ -256,6 +283,22 @@ func (s *AIService) CanSummarize(ctx context.Context) bool {
 	return err == nil && st.CanSummarize()
 }
 
+// ownerLanguage returns the app language the owner of a recording chose in the settings,
+// or the zero value when there is none (the web UI then follows the browser).
+func (s *AIService) ownerLanguage(ctx context.Context, ownerID string) (lang accountLanguage) {
+	if s.Users == nil || ownerID == "" {
+		return lang
+	}
+	u, err := s.Users.Get(ctx, ownerID)
+	if err != nil {
+		if !errors.Is(err, ErrNotFound) {
+			s.log.Warn("read owner's language", "user", ownerID, "err", err)
+		}
+		return lang
+	}
+	return accountLanguages[u.Language]
+}
+
 // Transcribe is the stage stored → transcribed.
 func (s *AIService) Transcribe(ctx context.Context, rec *recording.Recording) error {
 	st, err := s.settings.OpenRouter(ctx)
@@ -265,8 +308,9 @@ func (s *AIService) Transcribe(ctx context.Context, rec *recording.Recording) er
 	if !st.CanTranscribe() {
 		return errors.New("transcription is not configured")
 	}
+	language := s.ownerLanguage(ctx, rec.OwnerID).Name
 	if rec.IsDocument() {
-		return s.readDocument(ctx, st, rec)
+		return s.readDocument(ctx, st, rec, language)
 	}
 	if rec.Audio == nil {
 		return errors.New("recording has no archived audio")
@@ -295,7 +339,7 @@ func (s *AIService) Transcribe(ctx context.Context, rec *recording.Recording) er
 	start := s.clock()
 	var parts []string
 	transcribe := func(data []byte, format string, part int) error {
-		prompt := transcriptionPrompt
+		prompt := inLanguage(transcriptionPrompt, language)
 		if part > 1 {
 			prompt += fmt.Sprintf("\nThis is part %d of a longer recording; the previous part ended just before it.", part)
 		}
@@ -357,6 +401,10 @@ func (s *AIService) Summarize(ctx context.Context, rec *recording.Recording) err
 	}
 	opts := rec.SummaryOptions
 	language := opts.Language
+	if language == "" {
+		// Auto: the language the owner chose for the app, else the transcript's.
+		language = s.ownerLanguage(ctx, rec.OwnerID).Summary
+	}
 	if language == "" {
 		language = "auto"
 	}

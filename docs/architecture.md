@@ -281,9 +281,12 @@ model calls.
   FLAC is decoded with `audio.SpeechChunks` (mono, averaged down to 16 kHz, 16-bit) into
   5-minute WAV pieces; other formats are sent as they are, up to 20 MB. Each piece goes to
   OpenRouter's chat completions as an `input_audio` part with a verbatim-transcription
-  prompt; the texts are joined.
+  prompt; the texts are joined. When the owner chose an app language (`user.Language`), the
+  prompt asks for the transcript in that language (translating other speech); documents are
+  read the same way.
 - **summarize** (`transcribed → summarized`): sends the transcript with a prompt that asks
-  for a JSON object with `title`, a Markdown `summary` in the transcript's language and
+  for a JSON object with `title`, a Markdown `summary` in the chosen summary language (auto: the owner's app language, else
+  the transcript's language) and
   `actionItems` (`response_format: json_object`). `parseSummary` tolerates code fences and
   surrounding text; `parseActionItems` keeps items with text, drops due dates that aren't
   `YYYY-MM-DD` and gives each an ID. Empty transcripts get "No speech detected" without a
