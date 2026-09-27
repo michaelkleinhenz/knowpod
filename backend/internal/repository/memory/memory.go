@@ -10,6 +10,7 @@ import (
 
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/device"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/filter"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/folder"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/label"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/push"
@@ -17,6 +18,7 @@ import (
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/settings"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/tablet"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/theme"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/timelog"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/user"
 )
 
@@ -141,6 +143,32 @@ func (m *Recordings) RemoveLabel(_ context.Context, ownerID, labelID string) err
 		}
 		m.recs[id] = r
 	}
+	return nil
+}
+
+func (m *Recordings) ClearBoardScope(_ context.Context, ownerID string, scope recording.BoardScope) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, r := range m.recs {
+		if r.OwnerID == ownerID && r.Board != nil && r.Board.Scope == scope {
+			b := *r.Board
+			b.Scope = recording.BoardScope{}
+			r.Board = &b
+			m.recs[id] = r
+		}
+	}
+	return nil
+}
+
+func (m *Recordings) AddTrackedSeconds(_ context.Context, id string, seconds int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r, ok := m.recs[id]
+	if !ok {
+		return domain.ErrNotFound
+	}
+	r.TrackedSeconds += seconds
+	m.recs[id] = r
 	return nil
 }
 
@@ -388,7 +416,8 @@ func (m *Users) Create(_ context.Context, u *user.User) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, x := range m.users {
-		if x.ID == u.ID || x.Email == u.Email || (u.Pocket.WebhookID != "" && x.Pocket.WebhookID == u.Pocket.WebhookID) {
+		if x.ID == u.ID || x.Email == u.Email || (u.Pocket.WebhookID != "" && x.Pocket.WebhookID == u.Pocket.WebhookID) ||
+			(u.Calendar.TokenHash != "" && x.Calendar.TokenHash == u.Calendar.TokenHash) {
 			return domain.ErrDuplicate
 		}
 	}
@@ -406,6 +435,10 @@ func (m *Users) GetByEmail(_ context.Context, email string) (*user.User, error) 
 
 func (m *Users) GetByPocketWebhookID(_ context.Context, webhookID string) (*user.User, error) {
 	return m.find(func(u *user.User) bool { return webhookID != "" && u.Pocket.WebhookID == webhookID })
+}
+
+func (m *Users) GetByCalendarTokenHash(_ context.Context, hash string) (*user.User, error) {
+	return m.find(func(u *user.User) bool { return hash != "" && u.Calendar.TokenHash == hash })
 }
 
 func (m *Users) List(context.Context) ([]*user.User, error) {
@@ -427,7 +460,8 @@ func (m *Users) Update(_ context.Context, u *user.User) error {
 		return domain.ErrNotFound
 	}
 	for _, x := range m.users {
-		if x.ID != u.ID && (x.Email == u.Email || (u.Pocket.WebhookID != "" && x.Pocket.WebhookID == u.Pocket.WebhookID)) {
+		if x.ID != u.ID && (x.Email == u.Email || (u.Pocket.WebhookID != "" && x.Pocket.WebhookID == u.Pocket.WebhookID) ||
+			(u.Calendar.TokenHash != "" && x.Calendar.TokenHash == u.Calendar.TokenHash)) {
 			return domain.ErrDuplicate
 		}
 	}
@@ -869,4 +903,176 @@ func (m *TabletLinks) UserIDs(context.Context) ([]string, error) {
 	}
 	sort.Strings(ids)
 	return ids, nil
+}
+
+// Filters is an in-memory ports.FilterRepository.
+type Filters struct {
+	mu      sync.Mutex
+	filters map[string]filter.Filter
+}
+
+// NewFilters builds an empty repository.
+func NewFilters() *Filters { return &Filters{filters: map[string]filter.Filter{}} }
+
+func (m *Filters) Create(_ context.Context, f *filter.Filter) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.filters[f.ID]; ok {
+		return domain.ErrDuplicate
+	}
+	m.filters[f.ID] = *f
+	return nil
+}
+
+func (m *Filters) Get(_ context.Context, id string) (*filter.Filter, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	f, ok := m.filters[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	return &f, nil
+}
+
+func (m *Filters) List(_ context.Context, ownerID string) ([]*filter.Filter, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := []*filter.Filter{}
+	for _, f := range m.filters {
+		if f.OwnerID == ownerID {
+			f := f
+			out = append(out, &f)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+func (m *Filters) Update(_ context.Context, f *filter.Filter) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.filters[f.ID]; !ok {
+		return domain.ErrNotFound
+	}
+	m.filters[f.ID] = *f
+	return nil
+}
+
+func (m *Filters) Delete(_ context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.filters[id]; !ok {
+		return domain.ErrNotFound
+	}
+	delete(m.filters, id)
+	return nil
+}
+
+func (m *Filters) DeleteByOwner(_ context.Context, ownerID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, f := range m.filters {
+		if f.OwnerID == ownerID {
+			delete(m.filters, id)
+		}
+	}
+	return nil
+}
+
+// TimeEntries is an in-memory ports.TimeEntryRepository.
+type TimeEntries struct {
+	mu      sync.Mutex
+	entries map[string]timelog.Entry
+}
+
+// NewTimeEntries builds an empty repository.
+func NewTimeEntries() *TimeEntries { return &TimeEntries{entries: map[string]timelog.Entry{}} }
+
+func (m *TimeEntries) Create(_ context.Context, e *timelog.Entry) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, x := range m.entries {
+		if x.ID == e.ID || (e.Open && x.Open && x.OwnerID == e.OwnerID) {
+			return domain.ErrDuplicate
+		}
+	}
+	m.entries[e.ID] = *e
+	return nil
+}
+
+func (m *TimeEntries) Get(_ context.Context, id string) (*timelog.Entry, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	e, ok := m.entries[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	return &e, nil
+}
+
+func (m *TimeEntries) Update(_ context.Context, e *timelog.Entry) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.entries[e.ID]; !ok {
+		return domain.ErrNotFound
+	}
+	m.entries[e.ID] = *e
+	return nil
+}
+
+func (m *TimeEntries) Delete(_ context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.entries[id]; !ok {
+		return domain.ErrNotFound
+	}
+	delete(m.entries, id)
+	return nil
+}
+
+func (m *TimeEntries) List(_ context.Context, r timelog.Range) ([]*timelog.Entry, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := []*timelog.Entry{}
+	for _, e := range m.entries {
+		if e.OwnerID == r.OwnerID && !e.Start.Before(r.From) && e.Start.Before(r.To) {
+			e := e
+			out = append(out, &e)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Start.Before(out[j].Start) })
+	return out, nil
+}
+
+func (m *TimeEntries) Running(_ context.Context, ownerID string) (*timelog.Entry, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, e := range m.entries {
+		if e.OwnerID == ownerID && e.Open {
+			return &e, nil
+		}
+	}
+	return nil, domain.ErrNotFound
+}
+
+func (m *TimeEntries) DeleteByNote(_ context.Context, noteID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, e := range m.entries {
+		if e.NoteID == noteID {
+			delete(m.entries, id)
+		}
+	}
+	return nil
+}
+
+func (m *TimeEntries) DeleteByOwner(_ context.Context, ownerID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, e := range m.entries {
+		if e.OwnerID == ownerID {
+			delete(m.entries, id)
+		}
+	}
+	return nil
 }

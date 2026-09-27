@@ -68,8 +68,8 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
 - Every note has a **number** of its own (#1, #2, … per user, never reused). Typing **#** in
   a note's text opens a list of your notes, filtered by number (or title) as you type; the
   chosen note is linked as "#12" (Ctrl/⌘+click opens it). Search also finds notes by number.
-- **Boards** are kanban boards, listed like any other note: each shows the notes of a folder or
-  with a label as cards, all starting in the first column. New boards have the columns Todo,
+- **Boards** are kanban boards, listed like any other note: each shows the notes of a folder,
+  with a label or found by a saved filter as cards, all starting in the first column. New boards have the columns Todo,
   In Progress and Done; columns can be renamed, added and deleted, and cards are dragged
   between them.
 - A note's page shows its title, then one compact row with its number, date, labels and
@@ -89,6 +89,18 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
   moves it to its next date.
 - Summaries list the **action items** found in the conversation; each becomes a task under
   the note with one click, due on the date that was named.
+- **Saved filters**: the search box understands a filter language like Todoist's, e.g.
+  `label:Task & due:week & !done`, `@Work | folder:"Side projects"` or `(p1 | p2) overdue`
+  (plain words still search the titles). A search can be saved as a filter and pinned below
+  the search box, where one click narrows the list to it; **Settings → Filters** edits them
+  and explains the language.
+- **Time tracking**: tasks get an estimate ("45", "1h30"), and a timer on the note (or a
+  25-minute focus session that stops by itself) logs the time spent on it. The running timer
+  shows above the notes list. **Time** lists the week's log (totals per note against their
+  estimates, entries per day, time added by hand) and exports it as CSV.
+- **Calendar feed**: **Settings → Account → Calendar** makes a private iCalendar link to
+  subscribe to in Google Calendar, Apple Calendar or Outlook. It lists the open tasks with
+  dates, repeating like the tasks, with their reminders as alarms.
 - **Reminders** arrive as push notifications in every browser or installed app they are
   turned on in (**Settings → Account → Notifications**), on phones too (on iPhone: from the Home Screen
   app).

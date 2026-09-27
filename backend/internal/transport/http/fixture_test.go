@@ -66,6 +66,11 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	folders := service.NewFolderService(folderRepo, recs)
 	actions.Folders = folders
 	userSvc.Folders = folderRepo
+	filters := service.NewFilterService(memory.NewFilters(), recs)
+	actions.Filters = filters
+	timeRepo := memory.NewTimeEntries()
+	actions.TimeEntries = timeRepo
+	userSvc.TimeEntries = timeRepo
 	archiver := service.NewArchiver(spool, objects, false, log)
 	cloud := rt.New()
 	t.Cleanup(cloud.Close)
@@ -90,6 +95,7 @@ func newAPIFixture(t *testing.T) *apiFixture {
 		Pocket: service.NewPocketService(recs, users, nil, spool, 1<<20, log),
 		AI:     service.NewAIService(memory.NewSettings(), themes, objects, nil, t.TempDir(), log),
 		Themes: themes, Labels: labels, Folders: folders, Remarkable: rm,
+		Filters: filters, Times: service.NewTimeService(timeRepo, recs, users), Calendar: service.NewCalendarService(users, recs),
 	})
 	srv := httptest.NewServer(s.Router())
 	t.Cleanup(srv.Close)

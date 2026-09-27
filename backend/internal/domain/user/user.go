@@ -33,6 +33,16 @@ type User struct {
 	// TimeZone is the IANA time zone (e.g. "Europe/Berlin") task dates and reminders are
 	// meant in; the web app sets it from the browser. Empty is UTC.
 	TimeZone string `bson:"timeZone,omitempty"`
+	// Calendar is the user's calendar feed of their tasks.
+	Calendar Calendar `bson:"calendar"`
+}
+
+// Calendar is a user's read-only iCalendar feed of their tasks with dates. Its URL holds a
+// random token; only the token's SHA-256 is stored, so the link is shown once and can be
+// replaced.
+type Calendar struct {
+	TokenHash string     `bson:"tokenHash,omitempty"`
+	CreatedAt *time.Time `bson:"createdAt,omitempty"`
 }
 
 // Location returns the user's time zone, UTC when unset or unknown.

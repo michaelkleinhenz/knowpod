@@ -2,6 +2,7 @@ import { FormEvent, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { api } from '../api/client';
 import { useAuth } from '../auth';
+import { CalendarSetup } from '../components/CalendarSetup';
 import { NotificationSettings } from '../components/NotificationSettings';
 import { PocketSetup } from '../components/PocketSetup';
 import { RemarkableSetup } from '../components/RemarkableSetup';
@@ -94,6 +95,10 @@ export function Account() {
       <section className="card" id="notifications">
         <h2 className="card-title">{t('notifications.title')}</h2>
         <NotificationSettings />
+      </section>
+      <section className="card" id="calendar">
+        <h2 className="card-title">{t('calendar.title')}</h2>
+        <CalendarSetup />
       </section>
       <section className="card">
         <h2 className="card-title">{t('account.pocketTitle')}</h2>

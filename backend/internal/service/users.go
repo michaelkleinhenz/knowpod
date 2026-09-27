@@ -54,6 +54,10 @@ type UserService struct {
 	Labels ports.LabelRepository
 	// Folders holds users' folders, removed with the user. Optional.
 	Folders ports.FolderRepository
+	// Filters holds users' saved filters, removed with the user. Optional.
+	Filters ports.FilterRepository
+	// TimeEntries holds users' time logs, removed with the user. Optional.
+	TimeEntries ports.TimeEntryRepository
 	// Push holds the browsers that receive users' notifications, removed with the user.
 	// Optional.
 	Push ports.PushSubscriptionRepository
@@ -231,6 +235,16 @@ func (s *UserService) Delete(ctx context.Context, actor *Account, id string) err
 	}
 	if s.Folders != nil {
 		if err := s.Folders.DeleteByOwner(ctx, u.ID); err != nil {
+			return err
+		}
+	}
+	if s.Filters != nil {
+		if err := s.Filters.DeleteByOwner(ctx, u.ID); err != nil {
+			return err
+		}
+	}
+	if s.TimeEntries != nil {
+		if err := s.TimeEntries.DeleteByOwner(ctx, u.ID); err != nil {
 			return err
 		}
 	}

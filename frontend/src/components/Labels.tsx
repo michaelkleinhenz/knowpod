@@ -7,6 +7,7 @@ import { errorText } from '../lib/errors';
 import { isTask, LABEL_COLORS, labelName, labelStyle, noteLabels } from '../lib/labels';
 import { CheckIcon, TagIcon } from './Icons';
 import { TaskControls } from './TaskControls';
+import { TimeControls } from './TimeControls';
 
 export function LabelChip({ label, onRemove }: { label: Label; onRemove?: () => void }) {
   const { t } = useTranslation();
@@ -147,7 +148,7 @@ export function NoteDone({ rec, setRec }: { rec: Recording; setRec: (r: Recordin
 }
 
 // NoteLabels shows a note's labels, the button that opens the label picker and, unless
-// withTask is off (the note's sidebar shows them apart), its check box and date.
+// withTask is off (the note's sidebar shows them apart), its check box, date and time.
 export function NoteLabels({ rec, setRec, withTask = true }: { rec: Recording; setRec: (r: Recording) => void; withTask?: boolean }) {
   const { t } = useTranslation();
   const { labels } = useNotes();
@@ -172,6 +173,7 @@ export function NoteLabels({ rec, setRec, withTask = true }: { rec: Recording; s
     <div className="note-labels">
       {withTask && <NoteDone rec={rec} setRec={setRec} />}
       {withTask && rec.type !== 'board' && <TaskControls rec={rec} setRec={setRec} />}
+      {withTask && rec.type !== 'board' && <TimeControls rec={rec} setRec={setRec} />}
       {noteLabels(rec, labels).map((l) => (
         <LabelChip key={l.id} label={l} onRemove={() => act(() => toggle(l.id))} />
       ))}

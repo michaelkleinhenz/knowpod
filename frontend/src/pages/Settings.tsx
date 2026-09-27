@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { api } from '../api/client';
 import { useAuth } from '../auth';
 import { LabelSettings } from '../components/LabelSettings';
+import { FilterSettings } from '../components/SavedFilters';
 import { TabbedPage, useTab } from '../components/Tabs';
 import { ThemeSettings } from '../components/ThemeSettings';
 import { LANGUAGES } from '../i18n';
@@ -10,7 +11,7 @@ import { Account } from './Account';
 import { Devices } from './Devices';
 import { errorText } from '../lib/errors';
 
-const TABS = ['general', 'account', 'devices', 'themes', 'labels'] as const;
+const TABS = ['general', 'account', 'devices', 'themes', 'labels', 'filters'] as const;
 
 // LanguageSettings changes the app language; it is saved with the user.
 function LanguageSettings() {
@@ -74,6 +75,12 @@ export function Settings() {
         <section className="card">
           <h2 className="card-title">{t('labels.title')}</h2>
           <LabelSettings />
+        </section>
+      )}
+      {tab === 'filters' && (
+        <section className="card">
+          <h2 className="card-title">{t('filters.title')}</h2>
+          <FilterSettings />
         </section>
       )}
     </TabbedPage>

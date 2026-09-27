@@ -30,6 +30,11 @@ type RecordingService struct {
 	// Folders checks the folders notes are moved into. Optional; without it notes stay at
 	// the top level.
 	Folders *FolderService
+	// Filters checks the saved filters boards show. Optional; without it boards can't show
+	// filters.
+	Filters *FilterService
+	// TimeEntries holds the time logged on notes, deleted with them. Optional.
+	TimeEntries ports.TimeEntryRepository
 	// Users gives the time zone task dates are meant in. Optional; without it they are UTC.
 	Users ports.UserRepository
 	// OnRequeued is called when a recording was sent back into processing. Optional.
@@ -163,6 +168,11 @@ func (s *RecordingService) delete(ctx context.Context, rec *recording.Recording)
 	}
 	if err := s.spool.Remove(rec.ID); err != nil {
 		return err
+	}
+	if s.TimeEntries != nil {
+		if err := s.TimeEntries.DeleteByNote(ctx, rec.ID); err != nil {
+			return err
+		}
 	}
 	return s.recs.Delete(ctx, rec.ID)
 }

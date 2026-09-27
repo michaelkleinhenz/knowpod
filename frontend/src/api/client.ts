@@ -177,11 +177,47 @@ export type RecordingStatus =
 // other notes, whose title lives in summary.
 export type NoteType = 'audio' | 'text' | 'document' | 'board';
 
-// BoardScope selects the notes a board shows: those in a folder (id '' is the top level) or
-// with a label. An empty kind shows none.
+// BoardScope selects the notes a board shows: those in a folder (id '' is the top level),
+// with a label, or matching a saved filter. An empty kind shows none.
 export interface BoardScope {
-  kind: '' | 'folder' | 'label';
+  kind: '' | 'folder' | 'label' | 'filter';
   id: string;
+}
+
+// SavedFilter is a named search in the filter language (see lib/filterQuery.ts); pinned ones
+// are shown in the notes list.
+export interface SavedFilter {
+  id: string;
+  name: string;
+  query: string;
+  pinned: boolean;
+}
+
+export interface SavedFilterInput {
+  name: string;
+  query: string;
+  pinned: boolean;
+}
+
+// TimeEntry is time spent on a note. The running timer has no end; until is when a focus
+// session stops by itself. seconds is how long it lasted (a running one up to now).
+export interface TimeEntry {
+  id: string;
+  noteId: string;
+  noteTitle: string;
+  noteNumber?: number;
+  start: string;
+  end?: string;
+  until?: string;
+  seconds: number;
+}
+
+// CalendarSettings is the state of the user's calendar feed; feedPath is only returned
+// right after a link was made.
+export interface CalendarSettings {
+  enabled: boolean;
+  createdAt?: string;
+  feedPath?: string;
 }
 
 // BoardColumn is a column of a board with the IDs of the notes put into it, in order.
@@ -301,6 +337,9 @@ export interface Recording {
   due?: Due;
   priority?: Priority;
   remindAt?: string;
+  // How many minutes a task is expected to take, and the time logged on it.
+  estimate?: number;
+  trackedSeconds?: number;
   // The folder the note is in; absent at the top level and for sub-notes.
   folderId?: string;
   // The note this one is a sub-note of; a sub-note is shown under it, wherever it is.
@@ -407,6 +446,21 @@ export const api = {
   setNoteDone: (id: string, done: boolean) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/done`, { done }),
   setNoteDue: (id: string, due: Due | null) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/due`, { due }),
   setNotePriority: (id: string, priority: Priority) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/priority`, { priority }),
+  setNoteEstimate: (id: string, minutes: number) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/estimate`, { minutes }),
+  filters: () => request<SavedFilter[]>('GET', '/filters'),
+  createFilter: (f: SavedFilterInput) => request<SavedFilter>('POST', '/filters', f),
+  updateFilter: (id: string, f: SavedFilterInput) => request<SavedFilter>('PUT', `/filters/${encodeURIComponent(id)}`, f),
+  deleteFilter: (id: string) => request<void>('DELETE', `/filters/${encodeURIComponent(id)}`),
+  timer: () => request<{ timer: TimeEntry | null }>('GET', '/timer'),
+  startTimer: (noteId: string, minutes?: number) => request<{ timer: TimeEntry }>('POST', '/timer', { noteId, minutes }),
+  stopTimer: () => request<{ stopped: TimeEntry | null }>('DELETE', '/timer'),
+  timeEntries: (from: string, to: string) => request<TimeEntry[]>('GET', `/time-entries?from=${from}&to=${to}`),
+  addTimeEntry: (noteId: string, start: string, end: string) => request<TimeEntry>('POST', '/time-entries', { noteId, start, end }),
+  deleteTimeEntry: (id: string) => request<void>('DELETE', `/time-entries/${encodeURIComponent(id)}`),
+  timeExportURL: (from: string, to: string) => `/api/v1/time-entries/export?from=${from}&to=${to}`,
+  calendar: () => request<CalendarSettings>('GET', '/me/calendar'),
+  enableCalendar: () => request<CalendarSettings>('POST', '/me/calendar'),
+  disableCalendar: () => request<void>('DELETE', '/me/calendar'),
   createActionItemTask: (id: string, itemId: string) =>
     request<{ task: Recording; note: Recording }>('POST', `/recordings/${encodeURIComponent(id)}/action-items/${encodeURIComponent(itemId)}/task`),
   dismissActionItem: (id: string, itemId: string, dismissed: boolean) =>

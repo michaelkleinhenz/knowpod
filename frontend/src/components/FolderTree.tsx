@@ -3,9 +3,10 @@ import { useTranslation } from 'react-i18next';
 import { api, Folder, Recording, TRASH_DAYS } from '../api/client';
 import { useNotes } from '../context/NotesContext';
 import { errorText } from '../lib/errors';
+import type { Matcher } from '../lib/filterQuery';
 import { childFolders, folderOf, isInside, isUnderNote, notePath, sortByTitle, subNotes, withSubNotes } from '../lib/folders';
 import { setOpen, useOpen } from '../lib/treeOpen';
-import { formatDate, title, when } from '../lib/recordings';
+import { formatDate, when } from '../lib/recordings';
 import { daysLeft } from '../lib/trash';
 import { ChevronIcon, EmptyTrashIcon, FolderIcon, NewFolderIcon, PencilIcon, TrashIcon } from './Icons';
 import { NoteRow } from './NoteRow';
@@ -27,7 +28,8 @@ function dragged(e: DragEvent): 'note' | 'folder' | null {
 
 interface Props {
   notes: Recording[];
-  query: string;
+  // search is the search or filter the list is narrowed by; null when there is none.
+  search: Matcher | null;
   activeId?: string;
   aiReady: boolean;
   onSetDone: (r: Recording, done: boolean) => void;
@@ -40,7 +42,7 @@ interface Props {
 // deleted and nested; notes and folders are moved by dragging them onto a folder (or onto
 // the free space below, for the top level). Notes with sub-notes open like folders; a note
 // dropped onto another note becomes its sub-note.
-export function FolderTree({ notes, query, activeId, aiReady, onSetDone, onNewSub, newFolder }: Props) {
+export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewSub, newFolder }: Props) {
   const { t } = useTranslation();
   const { folders, recordings, reloadFolders, reload, upsert, trash, moveToTrash, emptyTrash } = useNotes();
   const open = useOpen();
@@ -58,7 +60,7 @@ export function FolderTree({ notes, query, activeId, aiReady, onSetDone, onNewSu
   // The tree is built from all notes, so that sub-notes found by a search show under their
   // parents; notes lists the ones to show.
   const allNotes = recordings ?? notes;
-  const searching = query.trim() !== '';
+  const searching = search !== null;
   const { children, notesIn, subs, counts, shown } = useMemo(() => {
     const ids = new Set(all.map((f) => f.id));
     const subs = subNotes(allNotes);
@@ -388,8 +390,7 @@ export function FolderTree({ notes, query, activeId, aiReady, onSetDone, onNewSu
 
   // The trash is the last folder: the notes deleted in the last TRASH_DAYS days, with how
   // long each stays. While searching, only the ones found are shown.
-  const q = query.trim().toLowerCase();
-  const trashed = (trash ?? []).filter((r) => !q || title(r).toLowerCase().includes(q));
+  const trashed = (trash ?? []).filter((r) => !search || search(r));
   const trashOpen = searching || open.has(TRASH);
   const trashRow = (!searching || trashed.length > 0) && (
     <li className="tree-folder trash-folder">

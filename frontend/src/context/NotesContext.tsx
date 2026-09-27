@@ -1,9 +1,11 @@
-import { createContext, ReactNode, useCallback, useContext, useEffect, useState } from 'react';
+import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api, Folder, Label, Recording, RECORDINGS_LIMIT } from '../api/client';
+import { api, Folder, Label, Recording, RECORDINGS_LIMIT, SavedFilter, TimeEntry } from '../api/client';
 import { forgetNote, isOffline, syncNotes, useOffline, writeOffline } from '../api/offline';
 import { errorText } from '../lib/errors';
+import { FilterContext } from '../lib/filterQuery';
 import { processing } from '../lib/recordings';
+import { notifyFocusDone } from '../lib/timer';
 
 const POLL_MS = 10_000;
 // While the server can't be reached, it is tried again this often.
@@ -19,6 +21,15 @@ interface NotesState {
   // folders are the user's folders, shared by the folder view and the note's move menu.
   folders: Folder[] | null;
   reloadFolders: () => Promise<void>;
+  // filters are the user's saved filters, pinned in the list and shown by boards.
+  filters: SavedFilter[] | null;
+  reloadFilters: () => Promise<void>;
+  // filterContext resolves label and folder names in filter queries.
+  filterContext: FilterContext;
+  // timer is the running timer; starting one stops the one that was running.
+  timer: TimeEntry | null;
+  startTimer: (noteId: string, minutes?: number) => Promise<void>;
+  stopTimer: () => Promise<void>;
   aiReady: boolean;
   error: string | null;
   refreshing: boolean;
@@ -50,6 +61,8 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   const [recordings, setRecordings] = useState<Recording[] | null>(null);
   const [labels, setLabels] = useState<Label[] | null>(null);
   const [folders, setFolders] = useState<Folder[] | null>(null);
+  const [filters, setFilters] = useState<SavedFilter[] | null>(null);
+  const [timer, setTimer] = useState<TimeEntry | null>(null);
   const [aiReady, setAIReady] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -87,11 +100,29 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     }
   }, [t]);
 
+  const reloadFilters = useCallback(async () => {
+    try {
+      setFilters(await api.filters());
+    } catch (err) {
+      setError(errorText(err, t));
+    }
+  }, [t]);
+
+  const reloadTimer = useCallback(async () => {
+    try {
+      setTimer((await api.timer()).timer);
+    } catch {
+      // Offline: the timer keeps running on the server and shows up once back.
+    }
+  }, []);
+
   useEffect(() => {
     void reload();
     void reloadLabels();
     void reloadFolders();
-  }, [reload, reloadLabels, reloadFolders]);
+    void reloadFilters();
+    void reloadTimer();
+  }, [reload, reloadLabels, reloadFolders, reloadFilters, reloadTimer]);
 
   // Keep the list as shown (with saved changes) for offline reading.
   useEffect(() => {
@@ -106,6 +137,8 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       void reload();
       void reloadLabels();
       void reloadFolders();
+      void reloadFilters();
+      void reloadTimer();
     };
     window.addEventListener('online', online);
     const timer = offline ? setInterval(online, OFFLINE_RETRY_MS) : undefined;
@@ -113,7 +146,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('online', online);
       clearInterval(timer);
     };
-  }, [offline, reload, reloadLabels, reloadFolders]);
+  }, [offline, reload, reloadLabels, reloadFolders, reloadFilters, reloadTimer]);
 
   const busy = recordings?.some(processing) ?? false;
   useEffect(() => {
@@ -170,6 +203,49 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     [recordings, reload, remove],
   );
 
+  // refreshNote loads a note in the list again, e.g. after time was logged on it.
+  const refreshNote = useCallback(async (id: string) => {
+    try {
+      const rec = await api.recording(id);
+      setRecordings((list) => list?.map((r) => (r.id === rec.id ? rec : r)) ?? list);
+    } catch {
+      // Deleted meanwhile or offline; the next reload brings it up to date.
+    }
+  }, []);
+
+  const startTimer = useCallback(
+    async (noteId: string, minutes?: number) => {
+      const before = timer;
+      const { timer: next } = await api.startTimer(noteId, minutes);
+      setTimer(next);
+      if (before) void refreshNote(before.noteId);
+    },
+    [timer, refreshNote],
+  );
+
+  const stopTimer = useCallback(async () => {
+    const { stopped } = await api.stopTimer();
+    setTimer(null);
+    if (stopped) void refreshNote(stopped.noteId);
+  }, [refreshNote]);
+
+  // A focus session stops by itself on the server; the app follows at the same moment.
+  useEffect(() => {
+    if (!timer?.until) return;
+    const ends = new Date(timer.until).getTime() - Date.now();
+    const done = setTimeout(
+      () => {
+        notifyFocusDone(timer.noteTitle, t);
+        setTimer(null);
+        void refreshNote(timer.noteId);
+      },
+      Math.max(ends, 0) + 500,
+    );
+    return () => clearTimeout(done);
+  }, [timer, refreshNote, t]);
+
+  const filterContext = useMemo<FilterContext>(() => ({ labels: labels ?? [], folders: folders ?? [], notes: recordings ?? [] }), [labels, folders, recordings]);
+
   const emptyTrash = useCallback(async () => {
     const gone = trash ?? [];
     await api.emptyTrash();
@@ -179,7 +255,30 @@ export function NotesProvider({ children }: { children: ReactNode }) {
 
   return (
     <NotesContext.Provider
-      value={{ recordings, labels, reloadLabels, folders, reloadFolders, aiReady, error, refreshing, reload, upsert, remove, trash, moveToTrash, restore, deleteForever, emptyTrash }}
+      value={{
+        recordings,
+        labels,
+        reloadLabels,
+        folders,
+        reloadFolders,
+        filters,
+        reloadFilters,
+        filterContext,
+        timer,
+        startTimer,
+        stopTimer,
+        aiReady,
+        error,
+        refreshing,
+        reload,
+        upsert,
+        remove,
+        trash,
+        moveToTrash,
+        restore,
+        deleteForever,
+        emptyTrash,
+      }}
     >
       {children}
     </NotesContext.Provider>

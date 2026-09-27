@@ -254,6 +254,24 @@ func (r *RecordingRepo) RemoveLabel(ctx context.Context, ownerID, labelID string
 	return err
 }
 
+func (r *RecordingRepo) ClearBoardScope(ctx context.Context, ownerID string, scope recording.BoardScope) error {
+	_, err := r.c.UpdateMany(ctx,
+		bson.M{"ownerId": ownerID, "board.scope.kind": scope.Kind, "board.scope.id": scope.ID},
+		bson.M{"$set": bson.M{"board.scope": recording.BoardScope{}}})
+	return err
+}
+
+func (r *RecordingRepo) AddTrackedSeconds(ctx context.Context, id string, seconds int64) error {
+	res, err := r.c.UpdateOne(ctx, bson.M{"_id": id}, bson.M{"$inc": bson.M{"trackedSeconds": seconds}})
+	if err != nil {
+		return err
+	}
+	if res.MatchedCount == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (r *RecordingRepo) findOne(ctx context.Context, filter bson.M) (*recording.Recording, error) {
 	var rec recording.Recording
 	if err := r.c.FindOne(ctx, filter).Decode(&rec); err != nil {

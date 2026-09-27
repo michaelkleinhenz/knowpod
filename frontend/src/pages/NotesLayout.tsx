@@ -1,17 +1,20 @@
 import { useTranslation } from 'react-i18next';
 import { useRef, useState } from 'react';
 import type { CSSProperties, KeyboardEvent, PointerEvent } from 'react';
-import { Outlet, useParams } from 'react-router-dom';
+import { Outlet, useLocation, useParams } from 'react-router-dom';
 import { NotesList } from '../components/NotesList';
 import { NotesProvider } from '../context/NotesContext';
 import { DEFAULT_SIDEBAR_WIDTH, clampSidebarWidth, useSidebarWidth } from '../lib/sidebarWidth';
 
-// NotesLayout shows the notes list as a sidebar next to the open note on desktop. On narrow
-// screens only one of them is visible: the list at "/", the note when one is open (CSS).
+// NotesLayout shows the notes list as a sidebar next to the open note (or the time log) on
+// desktop. On narrow screens only one of them is visible: the list at "/", the note when one
+// is open (CSS).
 // On desktop the sidebar's right edge can be dragged to make it wider or narrower.
 export function NotesLayout() {
   const { t } = useTranslation();
   const { id, number } = useParams();
+  const { pathname } = useLocation();
+  const hasMain = !!(id || number) || pathname === '/time';
   const [width, setWidth] = useSidebarWidth();
   const [resizing, setResizing] = useState(false);
   const drag = useRef<{ x: number; width: number } | null>(null);
@@ -44,7 +47,7 @@ export function NotesLayout() {
   return (
     <NotesProvider>
       <div
-        className={`notes-layout${id || number ? ' has-note' : ''}${resizing ? ' resizing' : ''}`}
+        className={`notes-layout${hasMain ? ' has-note' : ''}${resizing ? ' resizing' : ''}`}
         style={{ '--sidebar-width': `${shown}px` } as CSSProperties}
       >
         <aside className="notes-sidebar">

@@ -14,6 +14,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
   const onConversations = pathname === '/' || pathname.startsWith('/conversations/');
+  const onTime = pathname === '/time';
   const admin = account?.role === 'admin';
   const offline = useOffline();
 
@@ -68,6 +69,7 @@ export function Layout({ children }: { children: ReactNode }) {
               <NavLink to="/" className={() => (onConversations ? 'active' : '')}>
                 {t('nav.conversations')}
               </NavLink>
+              <NavLink to="/time">{t('nav.time')}</NavLink>
               <NavLink to="/settings">{t('nav.settings')}</NavLink>
               {admin && <NavLink to="/admin">{t('nav.admin')}</NavLink>}
               <span className="nav-divider" aria-hidden="true" />
@@ -81,7 +83,7 @@ export function Layout({ children }: { children: ReactNode }) {
           </>
         )}
       </header>
-      <main className={`container${onConversations ? ' full' : ''}`}>{children}</main>
+      <main className={`container${onConversations || onTime ? ' full' : ''}`}>{children}</main>
     </>
   );
 }

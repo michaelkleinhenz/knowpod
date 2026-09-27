@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: knowpod-service API
-  version: 0.11.0
+  version: 0.12.0
   description: |
     Backend for the knowpod AI audio recorder.
 
@@ -33,7 +33,11 @@ info:
     web UI (`POST /recordings/text`, `type: text`). They skip transcription and summaries.
 
     **Boards** — kanban boards (`POST /recordings/board`, `type: board`) show the notes of a
-    folder or a label as cards in columns ("Todo", "In Progress", "Done" to start with).
+    folder, a label or a saved filter as cards in columns ("Todo", "In Progress", "Done" to
+    start with).
+
+    **Saved filters** — searches such as `label:Task & due:week & !done` are saved with a
+    name (`/filters`) and can be pinned to the notes list. The web app evaluates their query.
 
     **Tasks** — notes labeled `task` have a check mark (`PUT /recordings/{id}/done`), a due
     date with an optional time, repeat rule and reminder (`PUT /recordings/{id}/due`) and a
@@ -42,6 +46,15 @@ info:
     user's time zone (`PUT /me/preferences`). Summaries list the **action items** found in the
     conversation (`summary.actionItems`); `POST /recordings/{id}/action-items/{itemId}/task`
     turns one into a task under the note.
+
+    **Time tracking** — tasks get an estimate in minutes (`PUT /recordings/{id}/estimate`). A
+    timer (`/timer`, one per user, optionally a focus session of a few minutes that stops by
+    itself) logs the time spent on a note; the time log of a period is listed and exported as
+    CSV (`/time-entries`). Each note keeps its logged total (`trackedSeconds`).
+
+    **Calendar feed** — `POST /me/calendar` makes a secret iCalendar link
+    (`GET /calendar/{token}.ics`) listing the open tasks with dates, for calendar apps to
+    subscribe to.
 
     **Notifications** — reminders are sent through Web Push to the browsers and installed apps
     the user turned them on in (`/me/notifications`).
@@ -85,6 +98,12 @@ tags:
     description: Due dates, repeat rules, reminders and priorities of notes labeled as tasks, and tasks made from action items.
   - name: Notifications
     description: Task reminders sent through Web Push to your browsers and installed apps.
+  - name: Filters
+    description: Saved searches, pinned to the notes list and shown by boards.
+  - name: Time tracking
+    description: Estimates, the timer and focus sessions, and the time log of your notes.
+  - name: Calendar
+    description: A read-only iCalendar feed of your tasks with dates.
   - name: "Admin: users"
     description: Create, change and delete users. Administrators only.
   - name: "Admin: AI settings"
@@ -1358,6 +1377,248 @@ paths:
           content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
         "404": { $ref: "#/components/responses/Error" }
 
+  /filters:
+    get:
+      tags: ["Filters"]
+      summary: List saved filters
+      description: Your saved filters, by name.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      responses:
+        "200":
+          description: Filters
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Filter" } }
+    post:
+      tags: ["Filters"]
+      summary: Save a filter
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/FilterInput" } } }
+      responses:
+        "201":
+          description: Created
+          content: { application/json: { schema: { $ref: "#/components/schemas/Filter" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+
+  /filters/{filterId}:
+    parameters:
+      - { name: filterId, in: path, required: true, schema: { type: string } }
+    put:
+      tags: ["Filters"]
+      summary: Change a saved filter
+      description: Renames it, changes its query, or pins or unpins it.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/FilterInput" } } }
+      responses:
+        "200":
+          description: Saved
+          content: { application/json: { schema: { $ref: "#/components/schemas/Filter" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: ["Filters"]
+      summary: Delete a saved filter
+      description: Boards showing it show no notes until another scope is chosen.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /timer:
+    get:
+      tags: ["Time tracking"]
+      summary: Get the running timer
+      description: A focus session that has run out is stopped first, so `timer` is null then.
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: The running timer, or null
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  timer: { allOf: [{ $ref: "#/components/schemas/TimeEntry" }], nullable: true }
+    post:
+      tags: ["Time tracking"]
+      summary: Start the timer on a note
+      description: Stops the timer that was running. With `minutes` it is a focus session (Pomodoro) that stops by itself after that many minutes.
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [noteId]
+              properties:
+                noteId: { type: string }
+                minutes: { type: integer, minimum: 0, maximum: 240, example: 25 }
+      responses:
+        "200":
+          description: Started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  timer: { $ref: "#/components/schemas/TimeEntry" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: ["Time tracking"]
+      summary: Stop the timer
+      description: Adds the time to the note's `trackedSeconds`.
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: The stopped timer, or null when none was running
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stopped: { allOf: [{ $ref: "#/components/schemas/TimeEntry" }], nullable: true }
+
+  /time-entries:
+    get:
+      tags: ["Time tracking"]
+      summary: List the time log
+      description: The entries that started on the days from `from` to `to` (inclusive, in your time zone), oldest first. Without them, the current week (Monday to Sunday).
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: Entries
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/TimeEntry" } }
+        "400": { $ref: "#/components/responses/Error" }
+    post:
+      tags: ["Time tracking"]
+      summary: Log time by hand
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [noteId, start, end]
+              properties:
+                noteId: { type: string }
+                start: { type: string, format: date-time }
+                end: { type: string, format: date-time, description: 'After start, at most 24 hours later, not in the future' }
+      responses:
+        "201":
+          description: Logged
+          content: { application/json: { schema: { $ref: "#/components/schemas/TimeEntry" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /time-entries/export:
+    get:
+      tags: ["Time tracking"]
+      summary: Export the time log as CSV
+      description: 'Columns: date, start, end (in your time zone), minutes, note, number, estimate_minutes. Same period as `GET /time-entries`.'
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: CSV file
+          content: { text/csv: { schema: { type: string } } }
+        "400": { $ref: "#/components/responses/Error" }
+
+  /time-entries/{entryId}:
+    delete:
+      tags: ["Time tracking"]
+      summary: Delete a time log entry
+      description: Takes its time off the note's `trackedSeconds`.
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: entryId, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /recordings/{recordingId}/estimate:
+    put:
+      tags: ["Recordings", "Tasks", "Time tracking"]
+      summary: Set a task's estimate
+      description: How many minutes the task is expected to take; 0 clears it. A note gets the `task` label when an estimate is set.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [minutes]
+              properties:
+                minutes: { type: integer, minimum: 0, maximum: 10000, example: 45 }
+      responses:
+        "200":
+          description: Saved
+          content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /me/calendar:
+    get:
+      tags: ["Calendar"]
+      summary: Get the calendar feed's state
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: State
+          content: { application/json: { schema: { $ref: "#/components/schemas/CalendarSettings" } } }
+    post:
+      tags: ["Calendar"]
+      summary: Make a calendar feed link
+      description: Returns a new secret link in `feedPath`, shown only now. A previous link stops working.
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: The new link
+          content: { application/json: { schema: { $ref: "#/components/schemas/CalendarSettings" } } }
+    delete:
+      tags: ["Calendar"]
+      summary: Turn the calendar feed off
+      description: Its link stops working.
+      security: [{ sessionCookie: [] }]
+      responses:
+        "204": { description: Turned off }
+
+  /calendar/{token}.ics:
+    get:
+      tags: ["Calendar"]
+      summary: Calendar feed
+      description: |
+        The open tasks with dates (not in the trash) as iCalendar events, for calendar apps to
+        subscribe to. Tasks without a time are all-day events; timed ones last their estimate
+        (30 minutes without one). Repeating tasks repeat, and reminders become alarms. The
+        secret token in the link authenticates the request.
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: iCalendar
+          content: { text/calendar: { schema: { type: string } } }
+        "404": { $ref: "#/components/responses/Error" }
+        "429": { description: Too many requests }
+
   /me/notifications:
     get:
       tags: ["Notifications"]
@@ -1637,8 +1898,8 @@ components:
           type: object
           description: The notes the board shows. An empty kind shows none.
           properties:
-            kind: { type: string, enum: ["", folder, label] }
-            id: { type: string, description: 'A folder ID (empty for the top level) or a label ID' }
+            kind: { type: string, enum: ["", folder, label, filter] }
+            id: { type: string, description: 'A folder ID (empty for the top level), a label ID or a saved filter ID' }
         columns:
           type: array
           minItems: 1
@@ -1733,6 +1994,8 @@ components:
         due: { $ref: "#/components/schemas/Due" }
         priority: { $ref: "#/components/schemas/Priority" }
         remindAt: { type: string, format: date-time, description: When the task's next reminder is sent; absent when none is pending }
+        estimate: { type: integer, description: How many minutes the task is expected to take; absent for none }
+        trackedSeconds: { type: integer, format: int64, description: Time logged on the note with the timer or by hand (finished entries) }
         folderId: { type: string, description: The folder the note is in (see GET /folders); absent at the top level and for sub-notes }
         parentId: { type: string, description: The note this one is a sub-note of; absent otherwise }
         board: { $ref: "#/components/schemas/Board" }
@@ -1837,6 +2100,53 @@ components:
       properties:
         name: { type: string, maxLength: 40, description: Unique among your labels, ignoring case }
         color: { type: string, pattern: "^#[0-9a-fA-F]{6}$", example: "#2f6f5e" }
+
+    Filter:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        query:
+          type: string
+          example: "label:Task & due:week & !done"
+          description: |
+            The notes it selects. Terms: words (in the title), `label:Name` or `@Name`,
+            `folder:Name`, `due:today|tomorrow|overdue|week|month|none|any|2026-10-01`,
+            `due<2026-10-01` (also `<=`, `>`, `>=`), `done`, `task`, `p1`-`p3`, `repeat`,
+            `estimate`, `type:text|audio|document|board`, `#12`. Combine them with `&` (or a
+            space), `|` and `!`, and group them with parentheses; quote names with spaces.
+        pinned: { type: boolean, description: Shown in the notes list }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    FilterInput:
+      type: object
+      required: [name, query]
+      properties:
+        name: { type: string, maxLength: 60, description: Unique among your filters, ignoring case }
+        query: { type: string, maxLength: 500 }
+        pinned: { type: boolean }
+
+    TimeEntry:
+      type: object
+      description: Time spent on a note. A running timer has no `end`.
+      properties:
+        id: { type: string }
+        noteId: { type: string }
+        noteTitle: { type: string }
+        noteNumber: { type: integer, format: int64 }
+        start: { type: string, format: date-time }
+        end: { type: string, format: date-time }
+        until: { type: string, format: date-time, description: When a focus session ends by itself }
+        seconds: { type: integer, format: int64, description: How long it lasted; a running timer up to now }
+        createdAt: { type: string, format: date-time }
+
+    CalendarSettings:
+      type: object
+      properties:
+        enabled: { type: boolean }
+        createdAt: { type: string, format: date-time, description: When the current link was made }
+        feedPath: { type: string, example: /api/v1/calendar/kpc_abc.ics, description: 'Only right after the link was made: the path of the feed on this server' }
 
     Folder:
       type: object

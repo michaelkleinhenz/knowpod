@@ -1,9 +1,9 @@
 // Offline copies of the user's notes. API answers the app reads (the account, the notes
-// list, labels, folders, each note) are kept in the browser's Cache Storage, and every note
-// in the list is synced in the background, so the notes stay readable without a connection.
-// The client answers reads from here when the server can't be reached; see request() in
-// client.ts. Audio and document files are not kept. Everything is dropped on sign-out and
-// when another user signs in.
+// list, labels, folders, saved filters, each note) are kept in the browser's Cache Storage,
+// and every note in the list is synced in the background, so the notes stay readable
+// without a connection. The client answers reads from here when the server can't be
+// reached; see request() in client.ts. Audio and document files are not kept. Everything is
+// dropped on sign-out and when another user signs in.
 import { useSyncExternalStore } from 'react';
 import type { Recording } from './client';
 
@@ -19,7 +19,7 @@ const url = (path: string) => `/api/v1${path}`;
 
 // Paths whose answers are kept. Everything else (admin pages, settings, models) needs a
 // connection. The full notes list (full=1) is kept note by note, see syncNotes.
-const KEPT = [/^\/auth\/me$/, /^\/recordings(\?(limit|number)=\d+)?$/, /^\/recordings\/[^/?]+$/, /^\/labels$/, /^\/folders$/, /^\/ai\/status$/, /^\/themes$/];
+const KEPT = [/^\/auth\/me$/, /^\/recordings(\?(limit|number)=\d+)?$/, /^\/recordings\/[^/?]+$/, /^\/labels$/, /^\/folders$/, /^\/filters$/, /^\/ai\/status$/, /^\/themes$/];
 export const kept = (path: string) => KEPT.some((re) => re.test(path));
 
 export const notePath = (id: string) => `/recordings/${encodeURIComponent(id)}`;

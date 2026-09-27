@@ -48,6 +48,9 @@ type Server struct {
 	remarkable *service.RemarkableService
 	// notifications sends task reminders to users' browsers.
 	notifications *service.NotificationService
+	filters       *service.FilterService
+	times         *service.TimeService
+	calendar      *service.CalendarService
 	now           func() time.Time
 }
 
@@ -73,6 +76,10 @@ type Deps struct {
 	Remarkable *service.RemarkableService
 	// Notifications is optional in tests that don't use it.
 	Notifications *service.NotificationService
+	// Filters, Times and Calendar are optional in tests that don't use them.
+	Filters  *service.FilterService
+	Times    *service.TimeService
+	Calendar *service.CalendarService
 }
 
 // NewServer builds the server.
@@ -84,7 +91,8 @@ func NewServer(d Deps) *Server {
 	return &Server{
 		cfg: d.Cfg, log: log, db: d.DB, auth: d.Auth, users: d.Users, devices: d.Devices, uploads: d.Uploads,
 		manual: d.Manual, actions: d.Actions, objects: d.Objects, pocket: d.Pocket, ai: d.AI, themes: d.Themes,
-		labels: d.Labels, folders: d.Folders, remarkable: d.Remarkable, notifications: d.Notifications, now: time.Now,
+		labels: d.Labels, folders: d.Folders, remarkable: d.Remarkable, notifications: d.Notifications,
+		filters: d.Filters, times: d.Times, calendar: d.Calendar, now: time.Now,
 	}
 }
 
@@ -127,6 +135,9 @@ func (s *Server) Router() http.Handler {
 		// --- webhooks from external services (authenticated by their signatures) ---
 		api.Post("/webhooks/pocket/{webhookId}", s.handlePocketWebhook)
 
+		// --- calendar feeds (authenticated by the secret in the link) ---
+		api.With(httprate.LimitByIP(60, time.Minute)).Get("/calendar/{token}.ics", s.handleCalendarFeed)
+
 		// --- the signed-in user's own data (session, or ADMIN_TOKEN for everyone's) ---
 		api.Group(func(u chi.Router) {
 			u.Use(s.requireUser)
@@ -143,6 +154,9 @@ func (s *Server) Router() http.Handler {
 			u.Post("/me/notifications/subscriptions", s.handleSubscribePush)
 			u.Delete("/me/notifications/subscriptions/{id}", s.handleUnsubscribePush)
 			u.Post("/me/notifications/test", s.handleTestNotification)
+			u.Get("/me/calendar", s.handleGetCalendar)
+			u.Post("/me/calendar", s.handleEnableCalendar)
+			u.Delete("/me/calendar", s.handleDisableCalendar)
 			u.Get("/ai/status", s.handleAIStatus)
 			u.Get("/ai/models", s.handleOpenRouterModels)
 			u.Get("/ai/languages", s.handleSummaryLanguages)
@@ -161,6 +175,19 @@ func (s *Server) Router() http.Handler {
 			u.Post("/folders", s.handleCreateFolder)
 			u.Put("/folders/{id}", s.handleUpdateFolder)
 			u.Delete("/folders/{id}", s.handleDeleteFolder)
+
+			u.Get("/filters", s.handleListFilters)
+			u.Post("/filters", s.handleCreateFilter)
+			u.Put("/filters/{id}", s.handleUpdateFilter)
+			u.Delete("/filters/{id}", s.handleDeleteFilter)
+
+			u.Get("/timer", s.handleGetTimer)
+			u.Post("/timer", s.handleStartTimer)
+			u.Delete("/timer", s.handleStopTimer)
+			u.Get("/time-entries", s.handleListTimeEntries)
+			u.Post("/time-entries", s.handleCreateTimeEntry)
+			u.Get("/time-entries/export", s.handleExportTimeEntries)
+			u.Delete("/time-entries/{id}", s.handleDeleteTimeEntry)
 
 			u.Get("/devices", s.handleListDevices)
 			u.Post("/devices", s.handleRegisterDevice)
@@ -184,6 +211,7 @@ func (s *Server) Router() http.Handler {
 			u.Put("/recordings/{id}/done", s.handleSetNoteDone)
 			u.Put("/recordings/{id}/due", s.handleSetNoteDue)
 			u.Put("/recordings/{id}/priority", s.handleSetNotePriority)
+			u.Put("/recordings/{id}/estimate", s.handleSetNoteEstimate)
 			u.Post("/recordings/{id}/action-items/{itemId}/task", s.handleCreateActionItemTask)
 			u.Put("/recordings/{id}/action-items/{itemId}/dismissed", s.handleDismissActionItem)
 			u.Put("/recordings/{id}/folder", s.handleSetNoteFolder)

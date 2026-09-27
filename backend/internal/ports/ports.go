@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/device"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/filter"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/folder"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/label"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/push"
@@ -16,6 +17,7 @@ import (
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/settings"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/tablet"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/theme"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/timelog"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/user"
 )
 
@@ -42,6 +44,11 @@ type RecordingRepository interface {
 	// RemoveLabel takes the label off all of ownerID's recordings and clears the scope of
 	// boards showing it.
 	RemoveLabel(ctx context.Context, ownerID, labelID string) error
+	// ClearBoardScope makes ownerID's boards showing the scope show nothing until another
+	// scope is chosen (e.g. after a saved filter was deleted).
+	ClearBoardScope(ctx context.Context, ownerID string, scope recording.BoardScope) error
+	// AddTrackedSeconds adds to the time logged on the recording (negative: takes off).
+	AddTrackedSeconds(ctx context.Context, id string, seconds int64) error
 	// MoveFolder moves all of ownerID's recordings in folder from into folder to ("" is the
 	// top level), and points boards showing folder from at folder to.
 	MoveFolder(ctx context.Context, ownerID, from, to string) error
@@ -76,6 +83,7 @@ type UserRepository interface {
 	Get(ctx context.Context, id string) (*user.User, error)
 	GetByEmail(ctx context.Context, email string) (*user.User, error)
 	GetByPocketWebhookID(ctx context.Context, webhookID string) (*user.User, error)
+	GetByCalendarTokenHash(ctx context.Context, hash string) (*user.User, error)
 	List(ctx context.Context) ([]*user.User, error)
 	Update(ctx context.Context, u *user.User) error
 	Delete(ctx context.Context, id string) error
@@ -159,4 +167,30 @@ type ObjectStore interface {
 	// Get reads length bytes starting at offset; length < 0 reads to the end.
 	Get(ctx context.Context, key string, offset, length int64) (io.ReadCloser, error)
 	Delete(ctx context.Context, key string) error
+}
+
+// FilterRepository persists users' saved filters. Get of a missing filter returns
+// domain.ErrNotFound.
+type FilterRepository interface {
+	Create(ctx context.Context, f *filter.Filter) error
+	Get(ctx context.Context, id string) (*filter.Filter, error)
+	List(ctx context.Context, ownerID string) ([]*filter.Filter, error)
+	Update(ctx context.Context, f *filter.Filter) error
+	Delete(ctx context.Context, id string) error
+	DeleteByOwner(ctx context.Context, ownerID string) error
+}
+
+// TimeEntryRepository persists the time logged on notes. Get of a missing entry and Running
+// of a user without a running timer return domain.ErrNotFound.
+type TimeEntryRepository interface {
+	Create(ctx context.Context, e *timelog.Entry) error
+	Get(ctx context.Context, id string) (*timelog.Entry, error)
+	Update(ctx context.Context, e *timelog.Entry) error
+	Delete(ctx context.Context, id string) error
+	// List returns the entries that started in the range, oldest first.
+	List(ctx context.Context, r timelog.Range) ([]*timelog.Entry, error)
+	// Running returns the user's running timer (the entry without an end).
+	Running(ctx context.Context, ownerID string) (*timelog.Entry, error)
+	DeleteByNote(ctx context.Context, noteID string) error
+	DeleteByOwner(ctx context.Context, ownerID string) error
 }
