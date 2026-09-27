@@ -154,6 +154,7 @@ func (s *Server) Router() http.Handler {
 			u.Post("/me/notifications/subscriptions", s.handleSubscribePush)
 			u.Delete("/me/notifications/subscriptions/{id}", s.handleUnsubscribePush)
 			u.Post("/me/notifications/test", s.handleTestNotification)
+			u.Get("/me/notifications/stream", s.handleNotificationStream)
 			u.Get("/me/calendar", s.handleGetCalendar)
 			u.Post("/me/calendar", s.handleEnableCalendar)
 			u.Delete("/me/calendar", s.handleDisableCalendar)

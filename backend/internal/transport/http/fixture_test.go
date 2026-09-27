@@ -39,6 +39,8 @@ type apiFixture struct {
 	// cloud is the fake reMarkable cloud; remarkable reads from it.
 	cloud      *rt.Cloud
 	remarkable *service.RemarkableService
+	// notifications has no Web Push; it only reaches live connections.
+	notifications *service.NotificationService
 }
 
 func newAPIFixture(t *testing.T) *apiFixture {
@@ -87,6 +89,7 @@ func newAPIFixture(t *testing.T) *apiFixture {
 			}, Cleanup: archiver.Cleanup},
 	}, worker.Options{}, log)
 
+	notifications := service.NewNotificationService(memory.NewPushSubscriptions(), users, recs, nil, log)
 	s := NewServer(Deps{
 		Cfg: config.Config{AdminToken: adminToken}, Log: log, Auth: auth,
 		Users:   userSvc,
@@ -94,12 +97,13 @@ func newAPIFixture(t *testing.T) *apiFixture {
 		Manual: service.NewManualUploadService(recs, spool, 1<<30), Actions: actions, Objects: objects,
 		Pocket: service.NewPocketService(recs, users, nil, spool, 1<<20, log),
 		AI:     service.NewAIService(memory.NewSettings(), themes, objects, nil, t.TempDir(), log),
-		Themes: themes, Labels: labels, Folders: folders, Remarkable: rm,
+		Themes: themes, Labels: labels, Folders: folders, Remarkable: rm, Notifications: notifications,
 		Filters: filters, Times: service.NewTimeService(timeRepo, recs, users), Calendar: service.NewCalendarService(users, recs),
 	})
 	srv := httptest.NewServer(s.Router())
 	t.Cleanup(srv.Close)
-	return &apiFixture{t: t, srv: srv, recs: recs, users: users, worker: w, cloud: cloud, remarkable: rm}
+	t.Cleanup(notifications.Shutdown) // before srv.Close, which waits for open streams
+	return &apiFixture{t: t, srv: srv, recs: recs, users: users, worker: w, cloud: cloud, remarkable: rm, notifications: notifications}
 }
 
 // client is an HTTP client with its own cookie jar, i.e. one browser.

@@ -289,6 +289,8 @@ export interface NotificationStatus {
   available: boolean;
   publicKey?: string;
   devices: PushDevice[];
+  // listening counts the desktop apps that receive notifications over a live connection.
+  listening: number;
 }
 
 // RECORDINGS_LIMIT is how many notes the list loads.

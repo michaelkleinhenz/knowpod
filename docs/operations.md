@@ -358,14 +358,17 @@ contact about the sender.
   then turn notifications on.
 - **Android, desktop Chrome, Edge, Firefox, Safari**: works in the browser and in the
   installed app.
-- **Desktop app**: can't receive notifications (Electron has no push service); turn them on
-  in a browser or on a phone instead.
+- **Desktop app**: Electron has no push service, so Web Push can't reach it. Instead it
+  listens to the server over a live connection and shows notifications while it runs (also
+  from the tray, see [Desktop app](#desktop-app)); there is nothing to turn on. A proxy in
+  front of the server must not buffer `/api/v1/me/notifications/stream` (server-sent
+  events) or close it sooner than every 25 seconds, when the server sends a keep-alive.
 - The server must be able to reach the push services over HTTPS (e.g.
   `fcm.googleapis.com`, `updates.push.services.mozilla.com`, `web.push.apple.com`).
 
 The reminder job checks every 30 seconds. Each reminder is taken from the database before it
 is sent, so it goes out at most once; if the server is down at the time, it goes out when it
-is back. Subscriptions that the push service reports as gone are forgotten.
+is back. A desktop app that isn't running (or is offline) when a reminder goes out misses it. Subscriptions that the push service reports as gone are forgotten.
 
 ## Uploading audio files
 
@@ -405,7 +408,13 @@ CORS setting is needed. New server versions reach it like the web app, on the ne
 - Links to other sites open in the default browser; downloads ask where to save.
 - The server should be served over HTTPS, as for the browser (the session cookie and
   offline support depend on it); `http://localhost` works for development.
-- Notifications aren't available in the desktop app (see [Notifications](#notifications)).
+- It shows notifications while it runs (see [Notifications](#notifications)); clicking one
+  opens its note. Closing the window keeps the app running in the tray (on macOS in the menu
+  bar), so reminders still appear; **Quit knowpod** in the tray menu ends it. The tray menu
+  also has **Keep Running When Closed** (turn it off to quit when the window closes) and, in
+  the installed app, **Start at Login** (starts it in the tray; on Linux an entry in
+  `~/.config/autostart`). Some Linux desktops (e.g. GNOME without an AppIndicator
+  extension) show no tray icon; starting the app again opens its window.
 - The installers are not code-signed: on macOS open the app with right-click → **Open** the
   first time, on Windows choose **More info → Run anyway**.
 

@@ -426,7 +426,7 @@ the moment has passed. A time zone change recomputes the user's pending reminder
 (every 30 s, started in `main.go`) takes due reminders with `ClaimReminder`, an atomic
 `findOneAndUpdate` that unsets `remindAt`, so each reminder is sent at most once even across
 restarts, and sends `{title, body, url, tag}` in the owner's language to all their push
-subscriptions. `remindAt`, `due` and `priority` are kept by the worker like `labels`.
+subscriptions and live connections. `remindAt`, `due` and `priority` are kept by the worker like `labels`.
 
 **Web Push.** The VAPID key pair is generated on the first start and stored in `settings`
 (`InitWebPush` only inserts, so it never changes; browsers subscribed with its public key).
@@ -439,6 +439,23 @@ and signs a VAPID JWT (ES256) for the push service's origin; a 404/410 answer de
 subscription. In the browser, `public/push-sw.js` is imported into the generated service
 worker: it shows the notification and, on click, focuses the app and asks it to open the
 note (or opens a new window).
+
+**Live notifications (desktop app).** Electron has the Push API but no push service, so the
+desktop app can't subscribe. Instead the web app, when it runs in a desktop app that offers
+`knowpodDesktop.notify` (`frontend/src/lib/desktop.ts`, used by `Layout`), keeps an
+`EventSource` on `GET /me/notifications/stream`. `NotificationService.Listen` registers a
+buffered channel per connection (at most 10 per user, in memory, so this needs the single
+instance the server runs as anyway); `Notify` hands each message to the user's channels
+without blocking, then to Web Push, and counts both in `sent` (`listening` in
+`GET /me/notifications` counts the connections). The handler writes `notification` events
+and a comment every 25 s; `NotificationService.Shutdown`, registered with
+`http.Server.RegisterOnShutdown`, ends the streams so shutdown doesn't wait for them. The
+desktop app's main process (`desktop/src/main.js`) shows each message as a native
+notification, accepting them only from pages of the configured server; a click shows the
+window and sends `knowpod:open` to the page, which navigates to the note. Closing the window
+hides it (the page, and so the stream, keeps running) and a tray icon offers Open, Quit,
+**Keep Running When Closed** and **Start at Login** (started with `--hidden`, it stays in
+the tray).
 
 **Action items.** The summary's `actionItems` (`id`, `text`, `owner`, `due`) are offered below
 the summary. `POST /recordings/{id}/action-items/{itemId}/task` creates a text note under the

@@ -245,8 +245,9 @@ Requires Node.js 22. Build each platform on its own OS; the **Desktop app** GitH
 workflow (`.github/workflows/desktop.yml`, run by hand or on a `desktop-v*` tag) builds all
 three and keeps the installers as artifacts; a `desktop-v<version>` tag also publishes them as
 a GitHub release (see [Version](#version)). The builds are not code-signed, so macOS
-Gatekeeper and Windows SmartScreen warn on first open. The desktop app can't receive push
-notifications (see [Operations](docs/operations.md#desktop-app)).
+Gatekeeper and Windows SmartScreen warn on first open. The desktop app shows notifications
+while it runs; closing its window keeps it running in the tray (see
+[Operations](docs/operations.md#desktop-app)).
 
 ## Version
 

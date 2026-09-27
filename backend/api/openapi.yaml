@@ -1684,6 +1684,22 @@ paths:
           description: Notifications are not available on this server
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
+  /me/notifications/stream:
+    get:
+      tags: ["Notifications"]
+      summary: Receive notifications over a live connection
+      description: |
+        Server-sent events: a `notification` event (data `{title, body, url, tag}`, like a
+        Web Push message) for each of your notifications while the connection is open, and a
+        comment every 25 seconds. For apps that can't use Web Push, such as the desktop app.
+        A user can have 10 such connections; opening another ends one of the others.
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: The event stream
+          content: { text/event-stream: { schema: { type: string } } }
+        "403": { $ref: "#/components/responses/Error" }
+
   /admin/users:
     get:
       tags: ["Admin: users"]
@@ -1951,6 +1967,7 @@ components:
         available: { type: boolean, description: Whether the server can send notifications }
         publicKey: { type: string, description: VAPID public key (base64url) for PushManager.subscribe }
         devices: { type: array, items: { $ref: "#/components/schemas/PushDevice" } }
+        listening: { type: integer, description: How many apps receive your notifications over a live connection (GET /me/notifications/stream) right now }
 
     PushDevice:
       type: object
