@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api/client';
+import { BackIcon } from '../components/Icons';
 import { useNotes } from '../context/NotesContext';
 import { errorText } from '../lib/errors';
 import { noteByNumber } from '../lib/noteRefs';
@@ -44,7 +45,8 @@ export function NoteByNumber() {
   return (
     <section className="conversation">
       <Link to="/" className="back-link">
-        {t('conversation.back')}
+        <BackIcon />
+        <span>{t('conversation.back')}</span>
       </Link>
       {error ? <p className="error">{error}</p> : <p className="muted">{t('common.loading')}</p>}
     </section>

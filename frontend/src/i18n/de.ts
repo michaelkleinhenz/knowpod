@@ -173,7 +173,7 @@ export const de: Translation = {
     moveOut: 'Aus „{{title}}“ herausnehmen',
   },
   conversation: {
-    back: '← Alle Notizen',
+    back: 'Alle Notizen',
     retranscribe: 'Neu transkribieren',
     retranscribeTitle: 'Audio neu transkribieren (fasst auch neu zusammen)',
     retranscribeConfirm: 'Neu transkribieren? Das aktuelle Transkript und die Zusammenfassung werden ersetzt.',

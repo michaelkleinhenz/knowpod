@@ -732,10 +732,17 @@ a {
 /* --- Conversation page --- */
 
 .back-link {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   margin: 0.5rem 0 1rem;
   font-size: 0.9rem;
+  line-height: 1;
   text-decoration: none;
+}
+
+.back-link svg {
+  flex-shrink: 0;
 }
 
 .conversation-header {
@@ -2187,7 +2194,7 @@ html:has(.notes-layout) {
   }
 
   .notes-main .back-link {
-    display: inline-block;
+    display: inline-flex;
   }
 
   .notes-sidebar .head-actions .pill-button span {

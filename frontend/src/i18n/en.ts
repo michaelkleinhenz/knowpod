@@ -171,7 +171,7 @@ export const en = {
     moveOut: 'Move out of “{{title}}”',
   },
   conversation: {
-    back: '← All notes',
+    back: 'All notes',
     retranscribe: 'Re-transcribe',
     retranscribeTitle: 'Transcribe the audio again (also summarizes again)',
     retranscribeConfirm: 'Transcribe again? The current transcript and summary are replaced.',
