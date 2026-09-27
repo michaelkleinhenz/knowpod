@@ -184,6 +184,26 @@ func (r *RecordingRepo) MoveFolder(ctx context.Context, ownerID, from, to string
 	return err
 }
 
+func (r *RecordingRepo) MoveSubNotes(ctx context.Context, ownerID, from, toParent, toFolder string) error {
+	set, unset := bson.M{}, bson.M{}
+	for field, v := range map[string]string{"parentId": toParent, "folderId": toFolder} {
+		if v == "" {
+			unset[field] = ""
+		} else {
+			set[field] = v
+		}
+	}
+	update := bson.M{}
+	if len(set) > 0 {
+		update["$set"] = set
+	}
+	if len(unset) > 0 {
+		update["$unset"] = unset
+	}
+	_, err := r.c.UpdateMany(ctx, bson.M{"ownerId": ownerID, "parentId": from}, update)
+	return err
+}
+
 func (r *RecordingRepo) RemoveLabel(ctx context.Context, ownerID, labelID string) error {
 	if _, err := r.c.UpdateMany(ctx, bson.M{"ownerId": ownerID, "labels": labelID}, bson.M{"$pull": bson.M{"labels": labelID}}); err != nil {
 		return err

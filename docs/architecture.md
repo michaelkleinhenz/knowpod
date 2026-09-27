@@ -354,6 +354,15 @@ folder's notes (`RecordingRepository.MoveFolder`) and folders up into its parent
 `PUT /recordings/{id}/folder` moves a note (`folderId`, empty for the top level);
 `folderId` is kept by the worker like `labels` and `done`.
 
+**Sub-notes** (`service/recordings.go`). A note's optional `parentId` makes it a sub-note of
+another of the owner's notes, like a folder whose head is a note itself. A note is either in
+a folder (`folderId`) or under a note (`parentId`), never both: `PUT /recordings/{id}/parent`
+sets the parent and clears the folder, and `PUT /recordings/{id}/folder` does the reverse.
+A note can't go under itself or one of its own sub-notes, and notes nest at most 8 deep.
+`POST /recordings/text` takes an optional `parentId` to create a sub-note directly. Deleting
+a note moves its sub-notes to where it was (`RecordingRepository.MoveSubNotes`); `parentId`
+is kept by the worker like `folderId`.
+
 `GET /recordings/{id}/summary` and `/transcript` return the texts as `.md` / `.txt`
 downloads (`transport/http/downloads_handlers.go`), or JSON with `?format=json`.
 

@@ -182,9 +182,10 @@ func (s *Server) handleDeleteRecording(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleCreateTextNote creates a text note from a JSON body with its title and Markdown text.
+// handleCreateTextNote creates a text note from a JSON body with its title and Markdown text,
+// and optionally the note it is a sub-note of.
 func (s *Server) handleCreateTextNote(w http.ResponseWriter, r *http.Request) {
-	var in service.SummaryEdit
+	var in service.TextNoteInput
 	if !decode(w, r, &in) {
 		return
 	}

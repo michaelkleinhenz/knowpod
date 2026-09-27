@@ -830,6 +830,7 @@ paths:
               properties:
                 title: { type: string, maxLength: 200 }
                 markdown: { type: string, maxLength: 100000 }
+                parentId: { type: string, description: Creates the note as a sub-note of this note }
       responses:
         "201":
           description: Created
@@ -1095,6 +1096,7 @@ paths:
     put:
       tags: ["Recordings", "Folders"]
       summary: Move the note into a folder
+      description: A sub-note moved into a folder is no longer under its parent note. Its own sub-notes come along.
       security: [{ sessionCookie: [] }, { adminToken: [] }]
       parameters:
         - { name: recordingId, in: path, required: true, schema: { type: string } }
@@ -1106,6 +1108,33 @@ paths:
               type: object
               properties:
                 folderId: { type: string, description: A folder ID from GET /folders; empty for the top level }
+      responses:
+        "200":
+          description: Saved
+          content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /recordings/{recordingId}/parent:
+    put:
+      tags: ["Recordings", "Folders"]
+      summary: Make the note a sub-note of another note
+      description: |
+        Notes can hold sub-notes, like a folder whose head is a note itself. A sub-note is in no
+        folder of its own; it is listed under its parent wherever that is, and its own sub-notes
+        come along. A note can't go under itself or one of its own sub-notes, and notes nest at
+        most 8 deep. Deleting a note moves its sub-notes up to where it was.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                parentId: { type: string, description: The ID of another of your notes; empty takes the note out to the top level }
       responses:
         "200":
           description: Saved
@@ -1420,7 +1449,8 @@ components:
         highlights: { type: array, items: { $ref: "#/components/schemas/Highlight" } }
         labels: { type: array, items: { type: string }, description: IDs of the note's labels (see GET /labels) }
         done: { type: boolean, description: Check mark of a note labeled `task` }
-        folderId: { type: string, description: The folder the note is in (see GET /folders); absent at the top level }
+        folderId: { type: string, description: The folder the note is in (see GET /folders); absent at the top level and for sub-notes }
+        parentId: { type: string, description: The note this one is a sub-note of; absent otherwise }
         board: { $ref: "#/components/schemas/Board" }
         transcript:
           type: object

@@ -90,6 +90,18 @@ func (m *Recordings) MoveFolder(_ context.Context, ownerID, from, to string) err
 	return nil
 }
 
+func (m *Recordings) MoveSubNotes(_ context.Context, ownerID, from, toParent, toFolder string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, r := range m.recs {
+		if r.OwnerID == ownerID && r.ParentID == from {
+			r.ParentID, r.FolderID = toParent, toFolder
+			m.recs[id] = r
+		}
+	}
+	return nil
+}
+
 func (m *Recordings) RemoveLabel(_ context.Context, ownerID, labelID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

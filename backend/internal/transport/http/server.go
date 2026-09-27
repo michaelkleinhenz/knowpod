@@ -173,6 +173,7 @@ func (s *Server) Router() http.Handler {
 			u.Put("/recordings/{id}/labels", s.handleSetNoteLabels)
 			u.Put("/recordings/{id}/done", s.handleSetNoteDone)
 			u.Put("/recordings/{id}/folder", s.handleSetNoteFolder)
+			u.Put("/recordings/{id}/parent", s.handleSetNoteParent)
 			u.Put("/recordings/{id}/board", s.handleSetBoard)
 			u.Get("/recordings/{id}/summary", s.handleDownloadSummary)
 			u.Get("/recordings/{id}/transcript", s.handleDownloadTranscript)
