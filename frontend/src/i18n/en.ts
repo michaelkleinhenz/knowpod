@@ -33,7 +33,12 @@ export const en = {
     openMenu: 'Open menu',
     closeMenu: 'Close menu',
   },
+  offline: {
+    badge: 'Offline',
+    hint: 'The server cannot be reached. Your notes are shown as last synced; changes are saved when you are back online.',
+  },
   errors: {
+    offlineMissing: 'This note is not available offline yet. Open it once while online.',
     invalid_login: 'Invalid email or password.',
     not_signed_in: 'Please sign in again.',
     invalid_token: 'Invalid token.',

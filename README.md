@@ -64,6 +64,11 @@ AI worker ─────────────▶ transcript (status: transcr
   the note's own sub-notes list (Alt+click opens or closes a whole tree; opening a note
   unfolds the notes above it in the sidebar). The note's header shows the notes above it, and deleting a note moves its sub-notes up (nothing
   else is lost). Moving a sub-note into a folder takes it out from under its parent.
+- The web app works **offline**: it is installable and keeps a copy of every note in the
+  list (text, summaries, transcripts, labels and folders) in the browser, synced in the
+  background whenever it is online. Without a connection the header shows **Offline** and the
+  notes are shown as last synced; edits to an open note are saved once the connection is
+  back. Audio and document files need a connection. Signing out removes the copies.
 - Recorders can send **highlights** (moments marked with a button while recording); they
   are shown on the note's timeline and described in the summary.
 - Summaries and transcripts can be downloaded as Markdown and text files, in the web app and

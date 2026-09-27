@@ -3,8 +3,9 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 // The web app is installable (PWA): a manifest plus a service worker that caches the app
-// shell so it starts instantly and offline. API responses are never cached; data is always
-// live. In dev the /api path is proxied to the Go backend so URLs match production, where
+// shell so it starts instantly and offline. The service worker never answers API calls;
+// the app itself keeps copies of the user's notes for offline reading (src/api/offline.ts).
+// In dev the /api path is proxied to the Go backend so URLs match production, where
 // the backend serves both the embedded SPA and the API from one origin.
 export default defineConfig({
   plugins: [

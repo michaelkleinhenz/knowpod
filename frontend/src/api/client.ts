@@ -1,6 +1,8 @@
 // Thin API client. All server communication goes through here. The web UI authenticates
 // with an HttpOnly session cookie, which the browser sends automatically (same origin).
 
+import { forgetNote, keepNote, kept, notePath, readOffline, setOffline, writeOffline } from './offline';
+
 // ApiError is an error answer from the API. code is a stable identifier that the UI
 // translates (see errorText in lib/errors.ts); message is the server's English text.
 export class ApiError extends Error {
@@ -13,15 +15,35 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+// unreachable says whether a status means the server itself couldn't be reached (a proxy
+// answering for it).
+const unreachable = (status: number) => status === 502 || status === 503 || status === 504;
+
+// request calls the API. Reads the app keeps offline (see offline.ts) are stored on success
+// and answered from the kept copy while the server can't be reached; fallback can answer
+// what wasn't kept.
+async function request<T>(method: string, path: string, body?: unknown, fallback?: () => Promise<T | undefined>): Promise<T> {
   const headers: Record<string, string> = {};
   if (body !== undefined) headers['Content-Type'] = 'application/json';
-  const res = await fetch(`/api/v1${path}`, {
-    method,
-    headers,
-    credentials: 'same-origin',
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  const read = method === 'GET' && kept(path);
+  const fromCache = async (cause: unknown): Promise<T> => {
+    setOffline(true);
+    const data = read ? ((await readOffline<T>(path)) ?? (await fallback?.())) : undefined;
+    if (data !== undefined) return data;
+    if (read) throw new ApiError(0, 'Not available offline', 'offlineMissing');
+    throw cause;
+  };
+  let res: Response;
+  try {
+    res = await fetch(`/api/v1${path}`, {
+      method,
+      headers,
+      credentials: 'same-origin',
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch (err) {
+    return fromCache(err);
+  }
   const text = await res.text();
   let data: unknown = null;
   try {
@@ -31,10 +53,23 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   }
   if (!res.ok) {
     const body = data as { error?: string; code?: string } | null;
-    throw new ApiError(res.status, body?.error || `Error ${res.status}`, body?.code);
+    const err = new ApiError(res.status, body?.error || `Error ${res.status}`, body?.code);
+    if (unreachable(res.status) && !body?.code) return fromCache(err);
+    setOffline(false);
+    throw err;
+  }
+  setOffline(false);
+  if (read) {
+    const note = /^\/recordings\/[^/?]+$/.test(path);
+    void (note ? keepNote(data as Recording) : writeOffline(path, data));
+  } else if (method !== 'GET' && isRecording(data)) {
+    void keepNote(data);
   }
   return data as T;
 }
+
+const isRecording = (v: unknown): v is Recording =>
+  !!v && typeof v === 'object' && typeof (v as Recording).id === 'string' && typeof (v as Recording).status === 'string' && 'recordingId' in v;
 
 export interface Info {
   service: string;
@@ -182,6 +217,7 @@ export interface Recording {
   size: number;
   recordedAt?: string;
   createdAt: string;
+  updatedAt?: string;
   format?: { sampleRate: number; channels: number; bitsPerSample: number; durationMs: number };
   audio?: { key: string; contentType: string; size: number };
   // A document's PDF (notebooks are rendered to one) or EPUB, and its number of pages.
@@ -314,8 +350,13 @@ export const api = {
   aiStatus: () => request<{ transcription: boolean; summary: boolean }>('GET', '/ai/status'),
   recordings: () => request<Recording[]>('GET', `/recordings?limit=${RECORDINGS_LIMIT}`),
   recordingByNumber: (n: number) => request<Recording[]>('GET', `/recordings?number=${n}`),
-  recording: (id: string) => request<Recording>('GET', `/recordings/${encodeURIComponent(id)}`),
-  deleteRecording: (id: string) => request<void>('DELETE', `/recordings/${encodeURIComponent(id)}`),
+  recording: (id: string) => request<Recording>('GET', notePath(id)),
+  deleteRecording: async (id: string) => {
+    await request<void>('DELETE', `/recordings/${encodeURIComponent(id)}`);
+    await forgetNote(id);
+  },
+  // allRecordings loads the notes list with each note's text, for keeping them offline.
+  allRecordings: () => request<Recording[]>('GET', `/recordings?limit=${RECORDINGS_LIMIT}&full=1`),
   retranscribe: (id: string) => request<Recording>('POST', `/recordings/${encodeURIComponent(id)}/retranscribe`),
   resummarize: (id: string, opts?: SummaryOptions) =>
     request<Recording>('POST', `/recordings/${encodeURIComponent(id)}/resummarize`, opts),
