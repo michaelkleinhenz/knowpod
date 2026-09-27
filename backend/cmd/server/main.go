@@ -198,6 +198,8 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second,
 		IdleTimeout:       2 * time.Minute,
 	}
+	// Shutdown waits for requests to finish; live notification streams never would.
+	httpServer.RegisterOnShutdown(notifySvc.Shutdown)
 
 	go func() {
 		log.Info("server listening", "port", cfg.Port)

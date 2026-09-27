@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/push"
@@ -53,8 +54,13 @@ const maxPushSubscriptions = 20
 // reminderTTL is how long a push service keeps a reminder for a device that is offline.
 const reminderTTL = 24 * time.Hour
 
+// maxListeners bounds the apps of one user that receive notifications over a live
+// connection at the same time.
+const maxListeners = 10
+
 // NotificationService sends users' notifications (task reminders) to the browsers and
-// installed apps they turned them on in, through Web Push.
+// installed apps they turned them on in, through Web Push, and to the apps that listen for
+// them over a live connection (the desktop app, which has no push service).
 type NotificationService struct {
 	subs  ports.PushSubscriptionRepository
 	users ports.UserRepository
@@ -64,11 +70,99 @@ type NotificationService struct {
 	clock func() time.Time
 	// allowHost says which push services subscriptions may point to.
 	allowHost func(host string) bool
+
+	mu sync.Mutex
+	// listeners are the live connections per user; closed says Shutdown ran.
+	listeners map[string]map[chan Message]struct{}
+	closed    bool
 }
 
 // NewNotificationService builds the service. Without a pusher, notifications are off.
 func NewNotificationService(subs ports.PushSubscriptionRepository, users ports.UserRepository, recs ports.RecordingRepository, p Pusher, log *slog.Logger) *NotificationService {
-	return &NotificationService{subs: subs, users: users, recs: recs, push: p, log: log, clock: time.Now, allowHost: knownPushService}
+	return &NotificationService{
+		subs: subs, users: users, recs: recs, push: p, log: log, clock: time.Now, allowHost: knownPushService,
+		listeners: map[string]map[chan Message]struct{}{},
+	}
+}
+
+// Listen makes a live connection receive the account's notifications until stop is called
+// or the service shuts down, which closes the channel. A user with too many connections
+// loses one of the others (usually a stale one of an app that went away).
+func (s *NotificationService) Listen(acc *Account) (msgs <-chan Message, stop func(), err error) {
+	if acc.ID == "" {
+		return nil, nil, errors.Join(ErrForbidden, errors.New("notifications belong to a user; sign in"))
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return nil, nil, errors.Join(ErrNotReady, errors.New("the server is shutting down"))
+	}
+	ls := s.listeners[acc.ID]
+	if ls == nil {
+		ls = map[chan Message]struct{}{}
+		s.listeners[acc.ID] = ls
+	}
+	for len(ls) >= maxListeners {
+		for c := range ls {
+			delete(ls, c)
+			close(c)
+			break
+		}
+	}
+	c := make(chan Message, 8)
+	ls[c] = struct{}{}
+	return c, func() { s.unlisten(acc.ID, c) }, nil
+}
+
+func (s *NotificationService) unlisten(userID string, c chan Message) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ls := s.listeners[userID]
+	if _, ok := ls[c]; !ok {
+		return
+	}
+	delete(ls, c)
+	close(c)
+	if len(ls) == 0 {
+		delete(s.listeners, userID)
+	}
+}
+
+// Shutdown ends all live connections (for the HTTP server's shutdown, which doesn't end
+// long-lived requests by itself).
+func (s *NotificationService) Shutdown() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.closed = true
+	for id, ls := range s.listeners {
+		for c := range ls {
+			close(c)
+		}
+		delete(s.listeners, id)
+	}
+}
+
+// listening says how many live connections receive the user's notifications.
+func (s *NotificationService) listening(userID string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.listeners[userID])
+}
+
+// notifyLive hands a message to the user's live connections and returns how many took it.
+// A connection that is too far behind misses it rather than holding up the others.
+func (s *NotificationService) notifyLive(userID string, m Message) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := 0
+	for c := range s.listeners[userID] {
+		select {
+		case c <- m:
+			n++
+		default:
+		}
+	}
+	return n
 }
 
 // PushDevice is a browser that receives the user's notifications.
@@ -78,12 +172,14 @@ type PushDevice struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
-// NotificationStatus says whether notifications can be sent, the key browsers subscribe
-// with, and where the user gets them.
+// NotificationStatus says whether notifications can be sent (through Web Push), the key
+// browsers subscribe with, and where the user gets them.
 type NotificationStatus struct {
 	Available bool         `json:"available"`
 	PublicKey string       `json:"publicKey,omitempty"`
 	Devices   []PushDevice `json:"devices"`
+	// Listening counts the apps that receive them over a live connection right now.
+	Listening int `json:"listening"`
 }
 
 // PushSubscriptionInput is a browser's PushSubscription.toJSON().
@@ -104,6 +200,7 @@ func (s *NotificationService) Status(ctx context.Context, acc *Account) (*Notifi
 	if acc.ID == "" {
 		return out, nil
 	}
+	out.Listening = s.listening(acc.ID)
 	subs, err := s.subs.List(ctx, acc.ID)
 	if err != nil {
 		return nil, err
@@ -193,21 +290,21 @@ type Message struct {
 	Tag string `json:"tag,omitempty"`
 }
 
-// Notify sends a message to all of the user's browsers and returns how many took it.
-// Subscriptions the push service reports as gone are forgotten.
+// Notify sends a message to all of the user's browsers and live connections and returns
+// how many took it. Subscriptions the push service reports as gone are forgotten.
 func (s *NotificationService) Notify(ctx context.Context, userID string, m Message, ttl time.Duration) (int, error) {
+	sent := s.notifyLive(userID, m)
 	if s.push == nil {
-		return 0, nil
+		return sent, nil
 	}
 	subs, err := s.subs.List(ctx, userID)
 	if err != nil {
-		return 0, err
+		return sent, err
 	}
 	payload, err := json.Marshal(m)
 	if err != nil {
-		return 0, err
+		return sent, err
 	}
-	sent := 0
 	var errs []error
 	for _, sub := range subs {
 		err := s.push.Send(ctx, webpush.Subscription{Endpoint: sub.Endpoint, P256dh: sub.P256dh, Auth: sub.Auth}, payload, ttl)
@@ -236,7 +333,7 @@ func (s *NotificationService) SendTest(ctx context.Context, acc *Account) (int, 
 	if acc.ID == "" {
 		return 0, errors.Join(ErrForbidden, errors.New("notifications belong to a user; sign in"))
 	}
-	if s.push == nil {
+	if s.push == nil && s.listening(acc.ID) == 0 {
 		return 0, errors.Join(ErrNotReady, errors.New("notifications are not available on this server"))
 	}
 	m := Message{Title: "knowpod", Body: "Notifications work. Reminders for your tasks will appear like this.", URL: "/", Tag: "test"}

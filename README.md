@@ -55,15 +55,15 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
 - Each user can connect their own [Pocket](https://heypocket.com) recorder on the
   **Settings → Account** tab: recordings arrive through the user's personal webhook and their audio is
   downloaded with the user's Pocket API key.
-- WAV and MP3 files can be uploaded from the browser on **Notes**.
+- WAV and MP3 files can be uploaded from the browser on **Workspace**.
 - Each user can pair their **reMarkable** cloud account under **Settings → Account** with a
   one-time code. All its documents (except the trash) are imported into the knowpod
   folder **reMarkable**, in the same folders as on the tablet (read only, never changed on the tablet): handwritten notebooks are rendered to PDF, PDFs and EPUBs are kept as they
   are, and a vision model reads the pages into text that is summarized like a transcript.
 - Notes come in types: **audio** notes (recordings, transcribed and summarized),
-  **text** notes, plain Markdown documents written in the browser (**+** on **Notes**), and
+  **text** notes, plain Markdown documents written in the browser (**+** on **Workspace**), and
   **documents** from the reMarkable. The
-  notes list shows each note's type as an icon; text notes are edited, copied, downloaded
+  workspace list shows each note's type as an icon; text notes are edited, copied, downloaded
   and deleted like summaries.
 - Every note has a **number** of its own (#1, #2, … per user, never reused). Typing **#** in
   a note's text opens a list of your notes, filtered by number (or title) as you type; the
@@ -96,7 +96,7 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
   and explains the language.
 - **Time tracking**: tasks get an estimate ("45", "1h30"), and a timer on the note (or a
   25-minute focus session that stops by itself) logs the time spent on it. The running timer
-  shows above the notes list. **Time** lists the week's log (totals per note against their
+  shows above the workspace list. **Time** lists the week's log (totals per note against their
   estimates, entries per day, time added by hand) and exports it as CSV.
 - **Calendar feed**: **Settings → Account → Calendar** makes a private iCalendar link to
   subscribe to in Google Calendar, Apple Calendar or Outlook. It lists the open tasks with
@@ -104,13 +104,13 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
 - **Reminders** arrive as push notifications in every browser or installed app they are
   turned on in (**Settings → Account → Notifications**), on phones too (on iPhone: from the Home Screen
   app).
-- The notes list shows notes **by time** (grouped by day) or in **folders**, like files.
+- The workspace list shows notes **by time** (grouped by day) or in **folders**, like files.
   Folders can be nested, renamed and deleted (their notes move up, nothing is lost); drag
   notes and folders onto a folder to move them, or use the note's **Move to folder** button.
 - Notes can hold **sub-notes**, like a folder whose head is a note itself: **New sub-note**
   below a note creates one, and dropping a note onto another note in the folder view moves
   it under that note. Sub-notes open and close under their parent, in the folder view and in
-  the note's own sub-notes list (Alt+click opens or closes a whole tree; opening a note
+  the note's own sub-items list (Alt+click opens or closes a whole tree; opening a note
   unfolds the notes above it in the sidebar). The note's header shows the notes above it, and deleting a note moves its sub-notes up (nothing
   else is lost). Moving a sub-note into a folder takes it out from under its parent.
 - Deleted notes go to the **Trash**, the last folder in the folder view (dropping a note
@@ -132,7 +132,7 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
 - Every archived recording is transcribed and summarized through
   [OpenRouter](https://openrouter.ai). The API key and both models are chosen by an admin
   in the web UI under **Admin → General**.
-- The web UI's **Notes** page (a note per recording) lists your recordings by the title of
+- The web UI's **Workspace** page (a note per recording) lists your recordings by the title of
   their summary; on desktop the list stays in a sidebar next to the open note;
   each note shows its summary, transcript and audio, and can be re-transcribed,
   re-summarized (via Summary details) or deleted from icon buttons next to the view switcher. Summaries are always editable in place, like a document
@@ -245,8 +245,9 @@ Requires Node.js 22. Build each platform on its own OS; the **Desktop app** GitH
 workflow (`.github/workflows/desktop.yml`, run by hand or on a `desktop-v*` tag) builds all
 three and keeps the installers as artifacts; a `desktop-v<version>` tag also publishes them as
 a GitHub release (see [Version](#version)). The builds are not code-signed, so macOS
-Gatekeeper and Windows SmartScreen warn on first open. The desktop app can't receive push
-notifications (see [Operations](docs/operations.md#desktop-app)).
+Gatekeeper and Windows SmartScreen warn on first open. The desktop app shows notifications
+while it runs; closing its window keeps it running in the tray (see
+[Operations](docs/operations.md#desktop-app)).
 
 ## Version
 
@@ -347,8 +348,8 @@ frontend/src/
   components/          reusable UI components
   pages/               NotesLayout (list sidebar + open note), Conversation (a note), Devices,
                        Users, Settings (tabs), Status, Account, Login
-  components/NotesList the notes list (sidebar on desktop, start page on phones)
-  context/             NotesContext: the notes list shared by sidebar and open note
+  components/NotesList the workspace list (sidebar on desktop, start page on phones)
+  context/             NotesContext: the workspace list shared by sidebar and open note
   hooks/useAutosave.ts saving the open note's summary
   i18n/                translations (en.ts, de.ts) and language setup
   lib/                 display helpers (recordings, themes, error texts)

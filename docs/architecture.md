@@ -334,7 +334,7 @@ with `PUT /recordings/{id}/summary`), and is listed, labeled, moved and deleted 
 note. Its `board` field holds a **scope** (`{kind: "folder"|"label", id}`; folder `""` is the
 top level, an empty kind shows nothing) and 1-20 **columns** (`{id, name, notes}`), where
 `notes` are the IDs of the notes put into that column, in order. The web UI works out the
-cards from the notes list: every note in the scope (never a board) is shown in its column,
+cards from the workspace list: every note in the scope (never a board) is shown in its column,
 and notes in no column go to the end of the first. `POST /recordings/board` creates a board
 (default columns "Todo", "In Progress", "Done"; the UI sends them translated) and
 `PUT /recordings/{id}/board` replaces scope, columns and placements at once. Deleting a
@@ -347,7 +347,7 @@ boards showing it (`ClearBoardScope`).
 /filters/{id}` keep each user's named queries (`name` unique per user ignoring case,
 `query` up to 500 characters, `pinned`). The server stores queries as text and doesn't
 evaluate them: the web app compiles them (`frontend/src/lib/filterQuery.ts`) against the
-user's labels, folders and notes, both for the notes list (the search box takes the same
+user's labels, folders and notes, both for the workspace list (the search box takes the same
 language; plain words search the titles) and for boards that show a filter. The language
 has words, `#12`, `label:`/`@`, `folder:` (and the folders in it), `due:` (`today`,
 `tomorrow`, `overdue`, `week`, `month`, `none`, `any`, a date) and `due<`/`<=`/`>`/`>=`,
@@ -426,7 +426,7 @@ the moment has passed. A time zone change recomputes the user's pending reminder
 (every 30 s, started in `main.go`) takes due reminders with `ClaimReminder`, an atomic
 `findOneAndUpdate` that unsets `remindAt`, so each reminder is sent at most once even across
 restarts, and sends `{title, body, url, tag}` in the owner's language to all their push
-subscriptions. `remindAt`, `due` and `priority` are kept by the worker like `labels`.
+subscriptions and live connections. `remindAt`, `due` and `priority` are kept by the worker like `labels`.
 
 **Web Push.** The VAPID key pair is generated on the first start and stored in `settings`
 (`InitWebPush` only inserts, so it never changes; browsers subscribed with its public key).
@@ -439,6 +439,23 @@ and signs a VAPID JWT (ES256) for the push service's origin; a 404/410 answer de
 subscription. In the browser, `public/push-sw.js` is imported into the generated service
 worker: it shows the notification and, on click, focuses the app and asks it to open the
 note (or opens a new window).
+
+**Live notifications (desktop app).** Electron has the Push API but no push service, so the
+desktop app can't subscribe. Instead the web app, when it runs in a desktop app that offers
+`knowpodDesktop.notify` (`frontend/src/lib/desktop.ts`, used by `Layout`), keeps an
+`EventSource` on `GET /me/notifications/stream`. `NotificationService.Listen` registers a
+buffered channel per connection (at most 10 per user, in memory, so this needs the single
+instance the server runs as anyway); `Notify` hands each message to the user's channels
+without blocking, then to Web Push, and counts both in `sent` (`listening` in
+`GET /me/notifications` counts the connections). The handler writes `notification` events
+and a comment every 25 s; `NotificationService.Shutdown`, registered with
+`http.Server.RegisterOnShutdown`, ends the streams so shutdown doesn't wait for them. The
+desktop app's main process (`desktop/src/main.js`) shows each message as a native
+notification, accepting them only from pages of the configured server; a click shows the
+window and sends `knowpod:open` to the page, which navigates to the note. Closing the window
+hides it (the page, and so the stream, keeps running) and a tray icon offers Open, Quit,
+**Keep Running When Closed** and **Start at Login** (started with `--hidden`, it stays in
+the tray).
 
 **Action items.** The summary's `actionItems` (`id`, `text`, `owner`, `due`) are offered below
 the summary. `POST /recordings/{id}/action-items/{itemId}/task` creates a text note under the
@@ -635,7 +652,7 @@ server.
 
 ## Notes view
 
-`pages/NotesLayout.tsx` is a layout route for `/` and `/conversations/:id`: the notes list
+`pages/NotesLayout.tsx` is a layout route for `/` and `/conversations/:id`: the workspace list
 (`components/NotesList.tsx`) as a sidebar and the open note (`pages/Conversation.tsx`, or a
 placeholder) in the main area. `context/NotesContext.tsx` holds the list for both: it polls
 while any note is processing, and the open note pushes its changes into it (`upsert`, e.g.

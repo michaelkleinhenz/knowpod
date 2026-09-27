@@ -2,7 +2,12 @@
 // S3, so it isn't bundled; the app loads the web UI from a knowpod server instead, like the
 // installed web app (PWA) does. The server's address is asked for on the first start (or
 // baked in at build time, see README) and kept in the user's app data folder.
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
+//
+// Web Push can't reach Electron (it has no push service), so the web app listens to the
+// server's live notification stream and hands each notification to notify() here. To get
+// them also while the window is closed, closing it only hides it: the app keeps running in
+// the tray (the menu bar on macOS) until Quit.
+const { app, BrowserWindow, Menu, Notification, Tray, dialog, ipcMain, nativeImage, powerMonitor, shell } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -49,6 +54,18 @@ function serverUrl() {
 }
 
 let mainWindow = null;
+let tray = null;
+// quitting is set once the app is really quitting, so closing the window doesn't just hide it.
+let quitting = false;
+
+const iconPath = path.join(__dirname, '..', 'build', 'icon.png');
+
+// runInBackground says whether closing the window keeps the app running in the tray (on by
+// default; switched in the tray menu).
+const runInBackground = () => readConfig().background !== false;
+
+// startedHidden says whether the app was started at login, where it starts in the tray.
+const startedHidden = () => process.argv.includes('--hidden') || !!app.getLoginItemSettings().wasOpenedAsHidden;
 
 // isAppUrl says whether a link stays in the app window: pages of the server itself.
 function isAppUrl(target) {
@@ -78,7 +95,7 @@ function createWindow() {
     ...(config.bounds || {}),
     title: 'knowpod',
     backgroundColor: '#eef1f5',
-    icon: path.join(__dirname, '..', 'build', 'icon.png'),
+    icon: iconPath,
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -90,8 +107,22 @@ function createWindow() {
     },
   });
   if (config.maximized) mainWindow.maximize();
-  mainWindow.once('ready-to-show', () => mainWindow.show());
-  mainWindow.on('close', saveBounds);
+  const hidden = startedHidden() && runInBackground();
+  mainWindow.once('ready-to-show', () => {
+    if (!hidden) mainWindow.show();
+  });
+  mainWindow.on('close', (event) => {
+    saveBounds();
+    if (quitting || !runInBackground()) return;
+    // Keep the page (and with it the notification stream) running; only hide the window.
+    event.preventDefault();
+    mainWindow.hide();
+    hintBackground();
+  });
+  // Logging off or shutting down Windows closes the window; hiding it would hold that up.
+  mainWindow.on('query-session-end', () => {
+    quitting = true;
+  });
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -131,6 +162,72 @@ function showSetup(error) {
   void mainWindow.loadFile(path.join(__dirname, 'setup.html'), { query });
 }
 
+// showWindow brings the window to the front, making one if there is none.
+function showWindow() {
+  if (!mainWindow) createWindow();
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+// hintBackground tells once that the app keeps running after its window was closed.
+function hintBackground() {
+  const config = readConfig();
+  if (config.backgroundHintShown || !Notification.isSupported()) return;
+  writeConfig({ ...config, backgroundHintShown: true });
+  const where = process.platform === 'darwin' ? 'menu bar' : 'tray';
+  showNotification({
+    title: 'knowpod is still running',
+    body: `It keeps showing your reminders. To quit, use the knowpod icon in the ${where}.`,
+  });
+}
+
+// notifications are the ones on screen, by tag; a newer one with the same tag replaces the
+// older. Keeping them referenced keeps their click handlers alive.
+const notifications = new Map();
+let untagged = 0;
+
+// showNotification shows a notification {title, body, url, tag} from the server (see
+// backend/internal/service/notifications.go). Clicking it opens its page in the window.
+function showNotification(message) {
+  if (!Notification.isSupported()) return;
+  const tag = typeof message.tag === 'string' && message.tag ? message.tag : `untagged-${untagged++}`;
+  notifications.get(tag)?.close();
+  const notification = new Notification({
+    title: String(message.title || 'knowpod').slice(0, 200),
+    body: String(message.body || '').slice(0, 500),
+    icon: iconPath,
+  });
+  const forget = () => {
+    if (notifications.get(tag) === notification) notifications.delete(tag);
+  };
+  notification.on('click', () => {
+    forget();
+    showWindow();
+    if (typeof message.url === 'string' && message.url.startsWith('/')) openInApp(message.url);
+  });
+  notification.on('close', forget);
+  notifications.set(tag, notification);
+  notification.show();
+}
+
+// openInApp shows a page of the server: the web app navigates itself (see
+// frontend/src/lib/desktop.ts), unless the window shows something else, e.g. the setup page.
+function openInApp(pathname) {
+  const server = serverUrl();
+  if (!server || !mainWindow) return;
+  const target = new URL(pathname, server).href;
+  if (!isAppUrl(target)) return; // e.g. "//elsewhere.example"
+  if (isAppUrl(mainWindow.webContents.getURL())) mainWindow.webContents.send('knowpod:open', target);
+  else void mainWindow.loadURL(target);
+}
+
+// Only pages of the server may show notifications.
+ipcMain.on('knowpod:notify', (event, message) => {
+  if (!event.senderFrame || !isAppUrl(event.senderFrame.url) || !message || typeof message !== 'object') return;
+  showNotification(message);
+});
+
 ipcMain.handle('knowpod:set-server', (event, input) => {
   // Only the bundled setup page may change the server, never a page the server sent.
   if (!event.senderFrame?.url.startsWith('file:')) return { ok: false };
@@ -140,6 +237,88 @@ ipcMain.handle('knowpod:set-server', (event, input) => {
   load();
   return { ok: true, url };
 });
+
+// Start at login: Windows and macOS keep the setting themselves; on Linux it's an autostart
+// entry (XDG), which is read back to show the setting.
+const autostartFile = () => path.join(app.getPath('appData'), 'autostart', 'knowpod.desktop');
+
+function openAtLogin() {
+  if (process.platform === 'linux') return fs.existsSync(autostartFile());
+  return app.getLoginItemSettings({ args: ['--hidden'] }).openAtLogin;
+}
+
+function setOpenAtLogin(on) {
+  if (process.platform !== 'linux') {
+    app.setLoginItemSettings({ openAtLogin: on, openAsHidden: on, args: ['--hidden'] });
+    return;
+  }
+  if (!on) {
+    fs.rmSync(autostartFile(), { force: true });
+    return;
+  }
+  // An AppImage runs from a temporary mount; the file itself is in APPIMAGE.
+  const exec = process.env.APPIMAGE || process.execPath;
+  fs.mkdirSync(path.dirname(autostartFile()), { recursive: true });
+  fs.writeFileSync(
+    autostartFile(),
+    ['[Desktop Entry]', 'Type=Application', 'Name=knowpod', `Exec="${exec.replace(/(["\\`$])/g, '\\$1')}" --hidden`, 'X-GNOME-Autostart-enabled=true', ''].join('\n'),
+  );
+}
+
+// startAtLoginAvailable says whether the app can start itself at login: not when run from
+// source (it would start Electron without the app).
+const startAtLoginAvailable = () => app.isPackaged;
+
+function buildTrayMenu() {
+  return Menu.buildFromTemplate([
+    { label: 'Open knowpod', click: showWindow },
+    { type: 'separator' },
+    {
+      label: 'Keep Running When Closed',
+      type: 'checkbox',
+      checked: runInBackground(),
+      click: (item) => {
+        writeConfig({ ...readConfig(), background: item.checked });
+        updateTray();
+      },
+    },
+    ...(startAtLoginAvailable()
+      ? [
+          {
+            label: 'Start at Login',
+            type: 'checkbox',
+            checked: openAtLogin(),
+            click: (item) => {
+              try {
+                setOpenAtLogin(item.checked);
+              } catch (err) {
+                dialog.showErrorBox('knowpod', `Couldn't change the setting: ${err.message}`);
+              }
+              updateTray();
+            },
+          },
+        ]
+      : []),
+    { type: 'separator' },
+    { label: 'Quit knowpod', click: () => app.quit() },
+  ]);
+}
+
+// createTray puts the knowpod icon in the tray (the menu bar on macOS), with the menu to open
+// the window, change the background settings and quit.
+function createTray() {
+  const size = process.platform === 'darwin' ? 18 : process.platform === 'win32' ? 16 : 24;
+  const image = nativeImage.createFromPath(iconPath).resize({ width: size, height: size, quality: 'best' });
+  tray = new Tray(image);
+  tray.setToolTip('knowpod');
+  updateTray();
+  // Windows and most Linux desktops open the window on a click; macOS shows the menu.
+  if (process.platform !== 'darwin') tray.on('click', showWindow);
+}
+
+function updateTray() {
+  tray?.setContextMenu(buildTrayMenu());
+}
 
 function buildMenu() {
   const isMac = process.platform === 'darwin';
@@ -197,19 +376,31 @@ function buildMenu() {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
-    if (!mainWindow) return;
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.focus();
-  });
+  app.on('second-instance', showWindow);
+
+  // Windows shows notifications only for an app with an ID (the installer's shortcut has it).
+  if (process.platform === 'win32') app.setAppUserModelId(pkg.build.appId);
 
   app.whenReady().then(() => {
     app.setAboutPanelOptions({ applicationName: 'knowpod', applicationVersion: app.getVersion() });
     buildMenu();
+    createTray();
     createWindow();
+    // macOS also activates the app when it launches; started at login, it stays in the tray.
+    let skipActivate = startedHidden();
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+      if (skipActivate) skipActivate = false;
+      else showWindow();
     });
+    // Shutting down Linux or macOS: quit, don't hide.
+    powerMonitor.on('shutdown', () => {
+      quitting = true;
+      app.quit();
+    });
+  });
+
+  app.on('before-quit', () => {
+    quitting = true;
   });
 
   app.on('window-all-closed', () => {

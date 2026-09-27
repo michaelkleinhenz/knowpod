@@ -257,7 +257,7 @@ and **Delete**.
 **Regenerate summary** stores these choices with the recording (they also apply to later
 re-summaries and re-transcriptions) and summarizes it again.
 
-**Layout.** On desktop, the notes list stays in a sidebar on the left and the open note is
+**Layout.** On desktop, the workspace list stays in a sidebar on the left and the open note is
 shown next to it; on phones the list and a note are separate screens.
 
 **Editing.** A note's summary is always editable, like a document in a word processor:
@@ -332,7 +332,7 @@ Any note can be a task: the **Date** button on the note's page (in its header, o
 sidebar on wide screens) sets a due date (typed as "tomorrow 3pm", "every monday", "jeden
 Monat am 1." or picked), an optional time, a repeat rule, a reminder and a priority (P1–P3), and puts the **Task** label on it. Typing a date
 into a note's title offers it as the task's date (Enter takes it out of the title). The
-**Tasks** view of the notes list shows the open tasks by due date (overdue, today, the next
+**Tasks** view of the workspace list shows the open tasks by due date (overdue, today, the next
 days, later, no date) and adds tasks from one line ("Call Anna tomorrow 3pm p1"). Checking
 off a recurring task moves it to its next date.
 
@@ -358,18 +358,21 @@ contact about the sender.
   then turn notifications on.
 - **Android, desktop Chrome, Edge, Firefox, Safari**: works in the browser and in the
   installed app.
-- **Desktop app**: can't receive notifications (Electron has no push service); turn them on
-  in a browser or on a phone instead.
+- **Desktop app**: Electron has no push service, so Web Push can't reach it. Instead it
+  listens to the server over a live connection and shows notifications while it runs (also
+  from the tray, see [Desktop app](#desktop-app)); there is nothing to turn on. A proxy in
+  front of the server must not buffer `/api/v1/me/notifications/stream` (server-sent
+  events) or close it sooner than every 25 seconds, when the server sends a keep-alive.
 - The server must be able to reach the push services over HTTPS (e.g.
   `fcm.googleapis.com`, `updates.push.services.mozilla.com`, `web.push.apple.com`).
 
 The reminder job checks every 30 seconds. Each reminder is taken from the database before it
 is sent, so it goes out at most once; if the server is down at the time, it goes out when it
-is back. Subscriptions that the push service reports as gone are forgotten.
+is back. A desktop app that isn't running (or is offline) when a reminder goes out misses it. Subscriptions that the push service reports as gone are forgotten.
 
 ## Uploading audio files
 
-On **Notes**, **Upload** (or dragging files onto the page) sends WAV and MP3 files
+On **Workspace**, **Upload** (or dragging files onto the page) sends WAV and MP3 files
 from the browser; several at a time are fine, each with a progress bar. The format is
 detected from the file's content: WAV must be integer PCM (like device uploads) and is
 archived as FLAC, MP3 is archived as it is; other formats are refused. The file name becomes
@@ -405,7 +408,13 @@ CORS setting is needed. New server versions reach it like the web app, on the ne
 - Links to other sites open in the default browser; downloads ask where to save.
 - The server should be served over HTTPS, as for the browser (the session cookie and
   offline support depend on it); `http://localhost` works for development.
-- Notifications aren't available in the desktop app (see [Notifications](#notifications)).
+- It shows notifications while it runs (see [Notifications](#notifications)); clicking one
+  opens its note. Closing the window keeps the app running in the tray (on macOS in the menu
+  bar), so reminders still appear; **Quit knowpod** in the tray menu ends it. The tray menu
+  also has **Keep Running When Closed** (turn it off to quit when the window closes) and, in
+  the installed app, **Start at Login** (starts it in the tray; on Linux an entry in
+  `~/.config/autostart`). Some Linux desktops (e.g. GNOME without an AppIndicator
+  extension) show no tray icon; starting the app again opens its window.
 - The installers are not code-signed: on macOS open the app with right-click → **Open** the
   first time, on Windows choose **More info → Run anyway**.
 
@@ -540,7 +549,7 @@ wipe it while `received` recordings exist.
   piece; splitting it would need an MP3/AAC decoder).
 - Speaker labels ("Speaker 1") are assigned per 5-minute piece and may not match across
   pieces of long recordings.
-- The notes list loads the newest 200 recordings, so the Tasks view only shows tasks among
+- The workspace list loads the newest 200 recordings, so the Tasks view only shows tasks among
   them.
 - A user's time zone follows the browser last used, so a phone and a laptop in different
   time zones take turns.

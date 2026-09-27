@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, NotificationStatus } from '../api/client';
+import { desktopNotifications } from '../lib/desktop';
 import { errorText } from '../lib/errors';
 import { currentSubscription, deviceId, isDesktopApp, isInstalled, isIOS, pushSupported, subscribe, unsubscribe } from '../lib/push';
 import { formatDate } from '../lib/recordings';
@@ -66,8 +67,9 @@ export function NotificationSettings() {
       setNotice(sent > 0 ? t('notifications.testSent', { count: sent }) : t('notifications.testNone'));
     });
   // A test goes to every device that receives notifications, so it can be sent from any
-  // device (also the desktop app, which can't receive them itself) as long as one does.
-  const canTest = !!status?.available && (status?.devices.length ?? 0) > 0;
+  // device (also an old desktop app, which can't receive them itself) as long as one does.
+  const listening = status?.listening ?? 0;
+  const canTest = (!!status?.available && (status?.devices.length ?? 0) > 0) || listening > 0;
   const testButton = (
     <button type="button" className={on ? 'primary-button' : 'secondary-button'} onClick={test} disabled={busy} title={t('notifications.testHint')}>
       {t('notifications.test')}
@@ -77,7 +79,16 @@ export function NotificationSettings() {
   return (
     <div className="notification-settings">
       <p className="muted">{t('notifications.intro')}</p>
-      {status && !status.available ? (
+      {desktopNotifications() ? (
+        // The desktop app gets them over a live connection (lib/desktop.ts), not Web Push.
+        <>
+          <p className="notification-state">
+            <span className={`status-dot${listening > 0 ? ' ok' : ''}`} aria-hidden="true" />
+            {status && listening === 0 ? t('notifications.desktopConnecting') : t('notifications.desktopOn')}
+          </p>
+          {canTest && <div className="button-row">{testButton}</div>}
+        </>
+      ) : status && !status.available ? (
         <p className="notice">{t('notifications.unavailable')}</p>
       ) : !supported ? (
         <>

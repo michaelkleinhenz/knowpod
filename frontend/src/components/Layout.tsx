@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useOffline } from '../api/offline';
 import { useAuth } from '../auth';
+import { useDesktopNotifications } from '../lib/desktop';
 import { SignOutIcon } from './Icons';
 
 // Layout is the app frame: a header with the navigation, which collapses into a menu
@@ -33,6 +34,9 @@ export function Layout({ children }: { children: ReactNode }) {
     navigator.serviceWorker.addEventListener('message', onMessage);
     return () => navigator.serviceWorker.removeEventListener('message', onMessage);
   }, [navigate]);
+
+  // The desktop app shows notifications from the server's live stream (see lib/desktop.ts).
+  useDesktopNotifications(!!account, navigate);
 
   async function handleLogout() {
     await logout();
