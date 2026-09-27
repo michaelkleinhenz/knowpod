@@ -271,6 +271,7 @@ export const de: Translation = {
     retranscribeConfirm: 'Neu transkribieren? Das aktuelle Transkript und die Zusammenfassung werden ersetzt.',
     needsTranscript: 'Dafür wird zuerst ein Transkript benötigt',
     notArchived: 'Die Audiodatei ist noch nicht gespeichert',
+    laneTitle: 'Auf dem Board „{{board}}“ in „{{lane}}“',
     deleteConfirm: '„{{title}}“ löschen? Audio, Transkript und Zusammenfassung werden endgültig entfernt.',
     deleteTextConfirm: '„{{title}}“ löschen? Die Notiz wird endgültig entfernt.',
     deleteBoardConfirm: 'Das Board „{{title}}“ löschen? Nur das Board wird entfernt, seine Notizen bleiben erhalten.',

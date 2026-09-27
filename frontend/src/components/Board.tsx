@@ -60,6 +60,18 @@ function layout(board: BoardSetup, notes: Recording[], folders: Folder[]): Recor
   return cols;
 }
 
+// boardLanes finds the boards that show the note and the column it is in on each: the one it
+// was put into, or the first column when it is in none (as the board shows it).
+export function boardLanes(rec: Recording, notes: Recording[], folders: Folder[]): { board: Recording; lane: string }[] {
+  const folderIds = new Set(folders.map((f) => f.id));
+  return notes.flatMap((b) => {
+    const setup = b.board;
+    if (b.type !== 'board' || !setup || setup.columns.length === 0 || !inScope(rec, setup.scope, folderIds)) return [];
+    const column = setup.columns.find((c) => c.notes?.includes(rec.id)) ?? setup.columns[0];
+    return [{ board: b, lane: column.name }];
+  });
+}
+
 function scopeValue(s: BoardScope): string {
   return s.kind ? `${s.kind}:${s.id}` : '';
 }

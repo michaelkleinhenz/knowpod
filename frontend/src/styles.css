@@ -777,6 +777,28 @@ a {
   font-size: 0.9rem;
 }
 
+/* The save state is a small dot before the note's number. */
+.conversation-meta .sync-state {
+  width: 1rem;
+  height: 1rem;
+  margin: 0 0.3rem 0 -0.2rem;
+  border-radius: 50%;
+  vertical-align: -0.1rem;
+}
+
+.conversation-meta .sync-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+}
+
+.lane-pill {
+  text-decoration: none;
+}
+
+.lane-pill:hover {
+  text-decoration: underline;
+}
+
 .segmented {
   display: inline-flex;
   max-width: 100%;
@@ -3128,11 +3150,13 @@ html:has(.notes-layout) {
 .board-card-grip {
   flex: none;
   display: inline-flex;
-  align-items: center;
+  /* At the top, next to the first line of the title, however tall the card is. */
+  align-items: flex-start;
   justify-content: center;
   width: 1.1rem;
   align-self: stretch;
   min-height: 1.4rem;
+  padding-top: 0.55rem;
   margin: -0.45rem 0 -0.45rem -0.4rem;
   color: var(--color-muted);
   opacity: 0.55;

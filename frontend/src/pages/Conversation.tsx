@@ -2,7 +2,7 @@ import { lazy, ReactNode, Suspense, useCallback, useEffect, useRef, useState } f
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api, Recording } from '../api/client';
-import { Board } from '../components/Board';
+import { Board, boardLanes } from '../components/Board';
 import { CopyButton } from '../components/CopyButton';
 import { BackIcon, CalendarIcon, CopyIcon, DownloadIcon, NewNoteIcon, RetranscribeIcon, TrashIcon } from '../components/Icons';
 import { inline, Markdown } from '../components/Markdown';
@@ -106,7 +106,7 @@ function Highlights({ highlights, durationMs, onSeek }: { highlights: { offsetMs
   );
 }
 
-// SyncState is a colored dot at the far right of the note's toolbar: green when all is saved,
+// SyncState is a colored dot before the note's number under its title: green when all is saved,
 // amber for unsaved changes, pulsing while saving, red when a save failed (click to retry).
 // The words are its tooltip and are read out by screen readers.
 function SyncState({ sync, error, onRetry }: { sync: Sync; error: string | null; onRetry: () => void }) {
@@ -293,6 +293,8 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
   // Where the note is: the folders above it, then the notes it is a sub-note of.
   const parents = notePath(rec, notes.recordings);
   const folder = folderPath((parents[0] ?? rec).folderId, notes.folders);
+  // The boards showing the note, with the lane it is in on each.
+  const lanes = boardLanes(rec, notes.recordings ?? [], notes.folders ?? []);
   const d = when(rec);
   const pending = (empty: string) =>
     rec.status === 'failed' ? (
@@ -356,6 +358,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
             </button>
           )}
           <p className="conversation-meta muted">
+            {editable && <SyncState sync={autosave.sync} error={autosave.error} onRetry={() => void autosave.save()} />}
             {rec.number ? <span className="note-number">#{rec.number}</span> : null}
             <span className="nowrap">{d.toLocaleDateString(locale(), { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })},</span>{' '}
             <span className="nowrap">{d.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' })}</span>
@@ -374,6 +377,17 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
                 ))}
               </>
             )}
+            {lanes.map(({ board, lane }) => (
+              <Link
+                key={board.id}
+                to={`/conversations/${board.id}`}
+                className="state-pill lane-pill"
+                title={t('conversation.laneTitle', { board: titleOf(board), lane })}
+                aria-label={t('conversation.laneTitle', { board: titleOf(board), lane })}
+              >
+                {lane}
+              </Link>
+            ))}
             {state && <span className={`state-pill${rec.status === 'failed' ? ' bad' : ''}`}>{state}</span>}
           </p>
           <NoteLabels rec={rec} setRec={setRec} />
@@ -436,7 +450,6 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
           <button type="button" className="icon-button danger" disabled={busy} title={t('common.delete')} aria-label={t('common.delete')} onClick={handleDelete}>
             <TrashIcon />
           </button>
-          {editable && <SyncState sync={autosave.sync} error={autosave.error} onRetry={() => void autosave.save()} />}
         </div>
       </div>
 

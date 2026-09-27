@@ -269,6 +269,7 @@ export const en = {
     retranscribeConfirm: 'Transcribe again? The current transcript and summary are replaced.',
     needsTranscript: 'Needs a transcript first',
     notArchived: "The audio hasn't been stored yet",
+    laneTitle: 'On the board “{{board}}” in “{{lane}}”',
     deleteConfirm: 'Delete “{{title}}”? The audio, transcript and summary are removed permanently.',
     deleteTextConfirm: 'Delete “{{title}}”? The note is removed permanently.',
     deleteBoardConfirm: 'Delete the board “{{title}}”? Only the board is removed; its notes stay.',
