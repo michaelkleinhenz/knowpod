@@ -282,6 +282,16 @@ button[type='submit']:disabled,
   cursor: default;
 }
 
+/* A compact, icon-only submit button next to a single row of inputs. */
+button.icon-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 2rem;
+  padding: 0;
+}
+
 .muted {
   color: var(--color-muted);
 }
@@ -4412,15 +4422,6 @@ a.note-ref:hover {
   border-radius: 6px;
 }
 
-.estimate-form .estimate-save {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  width: 2rem;
-  padding: 0;
-}
-
 .estimate-popover .task-quick {
   margin-top: 0.5rem;
 }
@@ -4543,6 +4544,11 @@ a.note-ref:hover {
   border-radius: 6px;
   background: var(--color-surface);
   max-width: 100%;
+}
+
+.time-manual .icon-submit {
+  width: 2.1rem;
+  height: 2.1rem;
 }
 
 .time-manual .error {

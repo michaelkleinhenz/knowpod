@@ -42,7 +42,7 @@ function EstimatePicker({ rec, save, onClose }: { rec: Recording; save: (minutes
           <span className="sr-only">{t('time.estimate')}</span>
           <input autoFocus value={text} onChange={(e) => setText(e.target.value)} placeholder={t('time.estimatePlaceholder')} aria-invalid={minutes === null} />
         </label>
-        <button type="submit" className="estimate-save" disabled={minutes === null} aria-label={t('common.save')} title={t('common.save')}>
+        <button type="submit" className="icon-submit" disabled={minutes === null} aria-label={t('common.save')} title={t('common.save')}>
           <CheckIcon />
         </button>
       </form>
