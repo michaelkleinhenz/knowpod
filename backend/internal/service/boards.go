@@ -82,7 +82,7 @@ func (s *RecordingService) SetBoard(ctx context.Context, acc *Account, id string
 }
 
 // validBoard normalizes a board's setup and checks it: the scope must be one of the owner's
-// folders or labels, and there must be 1-20 named columns. Columns without an ID get one;
+// folders, labels or saved filters, and there must be 1-20 named columns. Columns without an ID get one;
 // a note can be in one column only.
 func (s *RecordingService) validBoard(ctx context.Context, ownerID string, b *recording.Board) error {
 	b.Scope.ID = strings.TrimSpace(b.Scope.ID)
@@ -97,8 +97,12 @@ func (s *RecordingService) validBoard(ctx context.Context, ownerID string, b *re
 		if b.Scope.ID == "" || !s.Labels.Usable(ctx, ownerID, b.Scope.ID) {
 			return invalid("unknown label %q", b.Scope.ID)
 		}
+	case recording.ScopeFilter:
+		if !s.Filters.Usable(ctx, ownerID, b.Scope.ID) {
+			return invalid("unknown filter %q", b.Scope.ID)
+		}
 	default:
-		return invalid("a board's scope is a folder or a label")
+		return invalid("a board's scope is a folder, a label or a saved filter")
 	}
 
 	if len(b.Columns) == 0 || len(b.Columns) > maxBoardColumns {

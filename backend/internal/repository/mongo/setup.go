@@ -23,10 +23,14 @@ const (
 	CollPushSubscriptions = "pushSubscriptions"
 	// CollCounters holds sequences, e.g. each user's last note number.
 	CollCounters = "counters"
+	// CollFilters holds users' saved filters.
+	CollFilters = "filters"
+	// CollTimeEntries holds the time logged on notes.
+	CollTimeEntries = "timeEntries"
 )
 
 // collections lists every collection the service owns. Setup creates any that are missing.
-var collections = []string{CollDevices, CollRecordings, CollUsers, CollSessions, CollSettings, CollThemes, CollLabels, CollFolders, CollTablets, CollCounters, CollPushSubscriptions}
+var collections = []string{CollDevices, CollRecordings, CollUsers, CollSessions, CollSettings, CollThemes, CollLabels, CollFolders, CollTablets, CollCounters, CollPushSubscriptions, CollFilters, CollTimeEntries}
 
 // indexes lists the indexes per collection. Setup creates them; CreateMany on an existing
 // identical index is a no-op.
@@ -62,6 +66,19 @@ var indexes = map[string][]mongo.IndexModel{
 		{Keys: bson.D{{Key: "email", Value: 1}}, Options: options.Index().SetUnique(true)},
 		// Webhook routing; users without Pocket have no webhookId.
 		{Keys: bson.D{{Key: "pocket.webhookId", Value: 1}}, Options: options.Index().SetUnique(true).SetSparse(true)},
+		// Calendar feed lookup; users without a feed have no token hash.
+		{Keys: bson.D{{Key: "calendar.tokenHash", Value: 1}}, Options: options.Index().SetUnique(true).SetSparse(true)},
+	},
+	CollFilters: {
+		{Keys: bson.D{{Key: "ownerId", Value: 1}, {Key: "name", Value: 1}}},
+	},
+	CollTimeEntries: {
+		// The time log of a period.
+		{Keys: bson.D{{Key: "ownerId", Value: 1}, {Key: "start", Value: 1}}},
+		{Keys: bson.D{{Key: "noteId", Value: 1}}},
+		// At most one running timer per user.
+		{Keys: bson.D{{Key: "ownerId", Value: 1}}, Options: options.Index().SetName("running_timer").SetUnique(true).
+			SetPartialFilterExpression(bson.M{"running": true})},
 	},
 	CollThemes: {
 		{Keys: bson.D{{Key: "ownerId", Value: 1}, {Key: "name", Value: 1}}},

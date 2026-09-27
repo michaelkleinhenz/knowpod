@@ -128,6 +128,10 @@ type Recording struct {
 	// RemindAt is when the task's next reminder is sent; nil when none is pending (no
 	// reminder, done, or already sent).
 	RemindAt *time.Time `bson:"remindAt,omitempty" json:"remindAt,omitempty"`
+	// Estimate is how long the task is expected to take, in minutes; 0 is none.
+	Estimate int `bson:"estimate,omitempty" json:"estimate,omitempty"`
+	// TrackedSeconds is the time logged on the note with its timer (finished entries).
+	TrackedSeconds int64 `bson:"trackedSeconds,omitempty" json:"trackedSeconds,omitempty"`
 	// FolderID is the folder the note is in; empty at the top level.
 	FolderID string `bson:"folderId,omitempty" json:"folderId,omitempty"`
 	// ParentID is the note this one is a sub-note of, like a file in a folder whose head is a
@@ -168,12 +172,13 @@ func (r *Recording) IsDocument() bool { return r.Type == TypeDocument }
 // IsBoard reports whether the note is a board.
 func (r *Recording) IsBoard() bool { return r.Type == TypeBoard }
 
-// KeepUserFields copies the fields a person changes at any time (labels, task fields,
-// folder, parent note) and the note number from the stored version, so that a processing
+// KeepUserFields copies the fields a person changes at any time (labels, task fields, time
+// estimate and log, folder, parent note) and the note number from the stored version, so that a processing
 // step saving its long-held copy doesn't undo them.
 func (r *Recording) KeepUserFields(stored *Recording) {
 	r.Labels, r.Done, r.FolderID, r.ParentID, r.Number = stored.Labels, stored.Done, stored.FolderID, stored.ParentID, stored.Number
 	r.Due, r.Priority, r.RemindAt = stored.Due, stored.Priority, stored.RemindAt
+	r.Estimate, r.TrackedSeconds = stored.Estimate, stored.TrackedSeconds
 }
 
 // TextDeviceID returns the DeviceID of a user's text notes. Their ClientID is the note ID.
@@ -189,12 +194,14 @@ const (
 	ScopeFolder ScopeKind = "folder"
 	// ScopeLabel: the notes carrying a label.
 	ScopeLabel ScopeKind = "label"
+	// ScopeFilter: the notes matching one of the owner's saved filters.
+	ScopeFilter ScopeKind = "filter"
 )
 
 // BoardScope selects the notes a board shows.
 type BoardScope struct {
 	Kind ScopeKind `bson:"kind,omitempty" json:"kind"`
-	// ID is the folder or label.
+	// ID is the folder, label or saved filter.
 	ID string `bson:"id,omitempty" json:"id"`
 }
 

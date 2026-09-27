@@ -36,6 +36,13 @@ func (r *UserRepo) GetByPocketWebhookID(ctx context.Context, webhookID string) (
 	return r.findOne(ctx, bson.M{"pocket.webhookId": webhookID})
 }
 
+func (r *UserRepo) GetByCalendarTokenHash(ctx context.Context, hash string) (*user.User, error) {
+	if hash == "" {
+		return nil, ErrNotFound
+	}
+	return r.findOne(ctx, bson.M{"calendar.tokenHash": hash})
+}
+
 func (r *UserRepo) List(ctx context.Context) ([]*user.User, error) {
 	cur, err := r.c.Find(ctx, bson.M{}, options.Find().SetSort(bson.D{{Key: "email", Value: 1}}))
 	if err != nil {
