@@ -686,10 +686,15 @@ the note's own width (`.conversation.with-aside`) shows it only when there is ro
 hides the icon actions, labels, number, date and the other repeated details from the header.
 Both places render the same components, so either one edits the note.
 
-The list switches (remembered per browser) between **By time**, notes grouped by day, and
-**Folders** (`components/FolderTree.tsx`), a tree of folders with notes sorted by title.
+The list switches (remembered per browser) between **Created**, notes grouped by the day
+they were made; **Due** (`components/DueView.tsx`), the notes with a due date, open or done,
+grouped by that date; **Folders** (`components/FolderTree.tsx`), a tree of folders with the
+notes in the order the user put them (`position`, set with `PUT /recordings/order` and
+`PUT /folders/order`; unordered ones follow by title); and **Tasks**, the open tasks.
+New notes made in the folder view go into the folder opened last (`lib/lastFolder.ts`).
 Folders are created, renamed and deleted in place; notes and folders are moved by drag and
-drop (onto a folder, or the free space for the top level), and a note's toolbar has a
+drop (onto a folder, or the free space for the top level; onto a row's top or bottom edge
+to put it before or after it, or Alt+Up/Down), and a note's toolbar has a
 **Move to folder** menu (`components/MoveToFolder.tsx`) that also works on touch screens.
 While searching, only folders with matching notes are shown, opened. The note's save state
 is a colored dot at the far right of its toolbar (green saved, amber unsaved, pulsing while

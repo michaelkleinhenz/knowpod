@@ -104,9 +104,12 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
 - **Reminders** arrive as push notifications in every browser or installed app they are
   turned on in (**Settings → Account → Notifications**), on phones too (on iPhone: from the Home Screen
   app).
-- The workspace list shows notes **by time** (grouped by day) or in **folders**, like files.
+- The workspace list shows notes by **creation** (grouped by day), by **due** date, in
+  **folders**, like files, or as open **tasks**.
   Folders can be nested, renamed and deleted (their notes move up, nothing is lost); drag
   notes and folders onto a folder to move them, or use the note's **Move to folder** button.
+  Drop an item on the top or bottom edge of another to put it in order; the order is kept.
+  New notes made in the folder view go into the folder opened last.
 - Notes can hold **sub-notes**, like a folder whose head is a note itself: **New sub-note**
   below a note creates one, and dropping a note onto another note in the folder view moves
   it under that note. Sub-notes open and close under their parent, in the folder view and in

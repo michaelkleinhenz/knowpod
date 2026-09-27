@@ -246,9 +246,12 @@ export const en = {
     moveRight: 'Move right',
     dragCard: 'Drag “{{title}}”',
   },
+  due: {
+    empty: 'No items with a due date.',
+  },
   folders: {
     viewLabel: 'Sort items',
-    views: { timeline: 'By time', folders: 'Folders', tasks: 'Tasks' },
+    views: { timeline: 'Created', due: 'Due', folders: 'Folders', tasks: 'Tasks' },
     new: 'New folder',
     newInside: 'New folder inside',
     newInsideLabel: 'New folder in “{{name}}”',

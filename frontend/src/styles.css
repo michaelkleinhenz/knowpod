@@ -2907,24 +2907,38 @@ html:has(.notes-layout) {
 
 /* --- Sidebar views and folders --- */
 
-/* The view switch (by time / folders) and, in the folder view, the new folder button. */
+/* The view switch (created / due / folders / tasks) and, in the folder view, the new folder
+   button, which moves to a line of its own when both don't fit (the switch then fills its
+   line). */
 .list-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 0.5rem;
   margin: -0.5rem 0 1.25rem;
 }
 
 .list-toolbar .segmented {
+  flex: 1 0 auto;
   margin-bottom: 0;
 }
 
 .list-toolbar .segmented button {
+  flex: 1 1 auto;
   white-space: nowrap;
   padding-left: 0.8rem;
   padding-right: 0.8rem;
+}
+
+.list-toolbar > .pill-button {
+  flex: none;
+}
+
+.notes-sidebar .list-toolbar .segmented button {
+  font-size: 0.85rem;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
 }
 
 /* Folder rows are laid out like note rows (see .note-line): the same gutter in front, then

@@ -9,6 +9,7 @@ import { FilterBar } from './SavedFilters';
 import { TimerBar } from './TimeControls';
 import { NewBoardIcon, NewFolderIcon, NewNoteIcon, RefreshIcon, SearchIcon, TrashIcon, UploadIcon } from './Icons';
 import { NoteTreeRows, useNoteTree } from './NoteTree';
+import { DueView } from './DueView';
 import { TasksView } from './TasksView';
 import { TrashView } from './TrashView';
 import { errorText } from '../lib/errors';
@@ -18,10 +19,11 @@ import { lastFolder } from '../lib/lastFolder';
 
 const ACCEPT = '.wav,.mp3,audio/wav,audio/x-wav,audio/wave,audio/mpeg';
 
-// The list shows the notes by time (grouped by day), in their folders, like files, or the
-// open tasks by when they are due.
-type View = 'timeline' | 'folders' | 'tasks';
-const VIEWS: View[] = ['timeline', 'folders', 'tasks'];
+// The list shows the notes by when they were created (grouped by day), the notes with a due
+// date by that date, the notes in their folders, like files, or the open tasks by when they
+// are due.
+type View = 'timeline' | 'due' | 'folders' | 'tasks';
+const VIEWS: View[] = ['timeline', 'due', 'folders', 'tasks'];
 const VIEW_KEY = 'knowpod.notesView';
 // FILTER_KEY remembers the saved filter the list is narrowed by.
 const FILTER_KEY = 'knowpod.notesFilter';
@@ -348,7 +350,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
         {error && <p className="error">{error}</p>}
         {createError && <p className="error">{createError}</p>}
         {!recordings && !error && <p className="muted">{t('common.loading')}</p>}
-        {!showTrash && recordings && recordings.length === 0 && view !== 'tasks' && (
+        {!showTrash && recordings && recordings.length === 0 && (view === 'timeline' || view === 'folders') && (
           <div className="empty">
             <p className="muted">{t('conversations.empty')}</p>
             <p className="muted">
@@ -364,7 +366,10 @@ export function NotesList({ activeId }: { activeId?: string }) {
             </div>
           </div>
         )}
-        {!showTrash && view === 'tasks' && recordings && (
+        {!showTrash && view === 'due' && recordings && (recordings.length === 0 || matches.length > 0) && (
+        <DueView notes={matches} activeId={activeId} aiReady={aiReady} onSetDone={(r, d) => void setDone(r, d)} onNewSub={creating ? undefined : (r) => void createSub(r)} />
+      )}
+      {!showTrash && view === 'tasks' && recordings && (
           <TasksView notes={matches} activeId={activeId} aiReady={aiReady} onSetDone={(r, d) => void setDone(r, d)} onNewSub={creating ? undefined : (r) => void createSub(r)} />
         )}
 

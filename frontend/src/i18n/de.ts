@@ -248,9 +248,12 @@ export const de: Translation = {
     moveRight: 'Nach rechts',
     dragCard: '„{{title}}“ ziehen',
   },
+  due: {
+    empty: 'Keine Einträge mit Fälligkeitsdatum.',
+  },
   folders: {
     viewLabel: 'Einträge sortieren',
-    views: { timeline: 'Nach Zeit', folders: 'Ordner', tasks: 'Aufgaben' },
+    views: { timeline: 'Erstellung', due: 'Fällig', folders: 'Ordner', tasks: 'Aufgaben' },
     new: 'Neuer Ordner',
     newInside: 'Neuer Ordner darin',
     newInsideLabel: 'Neuer Ordner in „{{name}}“',
