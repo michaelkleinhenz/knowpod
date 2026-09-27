@@ -4,12 +4,26 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api, Recording } from '../api/client';
 import { useNotes } from '../context/NotesContext';
 import { useAuth } from '../auth';
-import { NewNoteIcon, NoteIcon, RefreshIcon, SearchIcon, UploadIcon } from './Icons';
+import { FolderTree } from './FolderTree';
+import { NewFolderIcon, NewNoteIcon, RefreshIcon, SearchIcon, UploadIcon } from './Icons';
+import { NoteRow } from './NoteRow';
 import { errorText } from '../lib/errors';
-import { isTask } from '../lib/labels';
-import { dayKey, dayLabel, formatTime, noteType, statusLabel, title, when } from '../lib/recordings';
+import { dayKey, dayLabel, formatTime, title, when } from '../lib/recordings';
 
 const ACCEPT = '.wav,.mp3,audio/wav,audio/x-wav,audio/wave,audio/mpeg';
+
+// The list shows the notes by time (grouped by day) or in their folders, like files.
+type View = 'timeline' | 'folders';
+const VIEWS: View[] = ['timeline', 'folders'];
+const VIEW_KEY = 'knowpod.notesView';
+
+function loadView(): View {
+  try {
+    return localStorage.getItem(VIEW_KEY) === 'folders' ? 'folders' : 'timeline';
+  } catch {
+    return 'timeline';
+  }
+}
 
 interface UploadState {
   key: string;
@@ -19,20 +33,32 @@ interface UploadState {
   done?: boolean;
 }
 
-// NotesList lists the user's notes, newest first, grouped by day, with an icon for each
-// note's type. It creates text notes and accepts WAV/MP3 uploads (button or drag and drop). On desktop it is the sidebar next to the open note;
-// on phones it is the start page.
+// NotesList lists the user's notes, either newest first grouped by day or in their folders,
+// with an icon for each note's type. It creates text notes and accepts WAV/MP3 uploads
+// (button or drag and drop). On desktop it is the sidebar next to the open note; on phones
+// it is the start page.
 export function NotesList({ activeId }: { activeId?: string }) {
   const { t } = useTranslation();
   const { account } = useAuth();
   const navigate = useNavigate();
-  const { recordings, aiReady, error, refreshing, reload: load, upsert } = useNotes();
+  const { recordings, folders, aiReady, error, refreshing, reload: load, upsert } = useNotes();
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [uploads, setUploads] = useState<UploadState[]>([]);
   const [dragging, setDragging] = useState(false);
+  const [view, setViewState] = useState(loadView);
+  const [newFolder, setNewFolder] = useState(0);
   const fileInput = useRef<HTMLInputElement>(null);
+
+  const setView = (v: View) => {
+    setViewState(v);
+    try {
+      localStorage.setItem(VIEW_KEY, v);
+    } catch {
+      // Not remembered; the list starts in the timeline next time.
+    }
+  };
 
   async function upload(files: File[]) {
     for (const file of files) {
@@ -89,11 +115,13 @@ export function NotesList({ activeId }: { activeId?: string }) {
     upload(Array.from(e.dataTransfer.files));
   }
 
-  const groups = useMemo(() => {
+  const matches = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const list = (recordings ?? [])
-      .filter((r) => !q || title(r).toLowerCase().includes(q))
-      .sort((a, b) => when(b).getTime() - when(a).getTime());
+    return (recordings ?? []).filter((r) => !q || title(r).toLowerCase().includes(q));
+  }, [recordings, query]);
+
+  const groups = useMemo(() => {
+    const list = matches.slice().sort((a, b) => when(b).getTime() - when(a).getTime());
     const out: { key: string; day: Date; items: Recording[] }[] = [];
     for (const r of list) {
       const d = when(r);
@@ -102,7 +130,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
       out[out.length - 1].items.push(r);
     }
     return out;
-  }, [recordings, query]);
+  }, [matches]);
 
   return (
     <section
@@ -142,6 +170,21 @@ export function NotesList({ activeId }: { activeId?: string }) {
           aria-label={t('conversations.searchLabel')}
         />
       </label>
+
+      <div className="list-toolbar">
+        <div className="segmented" role="tablist" aria-label={t('folders.viewLabel')}>
+          {VIEWS.map((v) => (
+            <button key={v} type="button" role="tab" aria-selected={view === v} className={view === v ? 'active' : ''} onClick={() => setView(v)}>
+              {t(`folders.views.${v}`)}
+            </button>
+          ))}
+        </div>
+        {view === 'folders' && (
+          <button type="button" className="pill-button" title={t('folders.new')} aria-label={t('folders.new')} onClick={() => setNewFolder((n) => n + 1)}>
+            <NewFolderIcon /> <span>{t('folders.new')}</span>
+          </button>
+        )}
+      </div>
 
       {uploads.length > 0 && (
         <ul className="upload-list" aria-live="polite">
@@ -194,52 +237,30 @@ export function NotesList({ activeId }: { activeId?: string }) {
           </div>
         </div>
       )}
-      {recordings && recordings.length > 0 && groups.length === 0 && (
+      {recordings && recordings.length > 0 && matches.length === 0 && (
         <p className="muted empty">{t('conversations.noMatch', { query })}</p>
       )}
 
-      {groups.map((g) => {
-        const { label, date } = dayLabel(g.day);
-        return (
-          <div key={g.key} className="day-group">
-            <h2 className="day-heading">
-              {label} <span>{date}</span>
-            </h2>
-            <ul className="conversation-list">
-              {g.items.map((r) => {
-                const state = statusLabel(r, aiReady);
-                const task = isTask(r);
-                return (
-                  <li key={r.id} className={task ? `task-item${r.done ? ' done' : ''}` : undefined}>
-                    <Link
-                      to={`/conversations/${r.id}`}
-                      className={`conversation-item${r.id === activeId ? ' active' : ''}`}
-                      aria-current={r.id === activeId ? 'page' : undefined}
-                    >
-                      <NoteIcon type={noteType(r)} label={t(`conversations.types.${noteType(r)}`)} />
-                      <span className="conversation-title">
-                        {title(r)}
-                        {state && <span className={`state-pill${r.status === 'failed' ? ' bad' : ''}`}>{state}</span>}
-                      </span>
-                      <span className="conversation-time">{formatTime(when(r))}</span>
-                    </Link>
-                    {/* Over the note's icon; outside the link so checking doesn't open the note. */}
-                    {task && (
-                      <input
-                        type="checkbox"
-                        className="task-check"
-                        checked={!!r.done}
-                        onChange={(e) => void setDone(r, e.target.checked)}
-                        aria-label={t('labels.doneLabel', { title: title(r) })}
-                      />
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        );
-      })}
+      {view === 'folders' && recordings && (recordings.length > 0 || !!folders?.length || newFolder > 0) && (
+        <FolderTree notes={matches} query={query} activeId={activeId} aiReady={aiReady} onSetDone={(r, d) => void setDone(r, d)} newFolder={newFolder} />
+      )}
+
+      {view === 'timeline' &&
+        groups.map((g) => {
+          const { label, date } = dayLabel(g.day);
+          return (
+            <div key={g.key} className="day-group">
+              <h2 className="day-heading">
+                {label} <span>{date}</span>
+              </h2>
+              <ul className="conversation-list">
+                {g.items.map((r) => (
+                  <NoteRow key={r.id} rec={r} active={r.id === activeId} aiReady={aiReady} meta={formatTime(when(r))} onSetDone={(r, d) => void setDone(r, d)} />
+                ))}
+              </ul>
+            </div>
+          );
+        })}
 
       {dragging && <div className="drop-overlay">{t('conversations.dropHint')}</div>}
     </section>

@@ -234,9 +234,9 @@ Markdown; the editor reads and writes Markdown, so nothing else changes. Edited 
 show "Edited <date>"; just viewing a note never changes it.
 
 Changes are **saved automatically** 2 seconds after typing stops, and at least every 10
-seconds while typing continues. The sync state is always shown under the title: *All
-changes saved*, *Unsaved changes*, *Saving…*, or *Not saved* / *Offline* with a **Retry**
-link. Failed saves are retried every 10 seconds and as soon as the browser is online again;
+seconds while typing continues. The sync state is a colored dot at the far right of the
+note's toolbar: green (*All changes saved*), amber (*Unsaved changes*), pulsing (*Saving…*),
+or red (*Not saved* / *Offline*; click it to retry). Hover it for the words. Failed saves are retried every 10 seconds and as soon as the browser is online again;
 leaving the note saves what's left, and closing the tab with unsaved changes asks first.
 
 **Regenerating asks first.** Regenerate summary and Re-transcribe always ask

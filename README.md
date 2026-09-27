@@ -43,6 +43,9 @@ AI worker ─────────────▶ transcript (status: transcr
 - Notes can carry **labels**: colored chips in the note's header, with your own labels
   defined on the spot or under **Settings → Labels**. The built-in **Task** label adds a
   check box to the note's icon in the list; the check mark is saved.
+- The notes list shows notes **by time** (grouped by day) or in **folders**, like files.
+  Folders can be nested, renamed and deleted (their notes move up, nothing is lost); drag
+  notes and folders onto a folder to move them, or use the note's **Move to folder** button.
 - Recorders can send **highlights** (moments marked with a button while recording); they
   are shown on the note's timeline and described in the summary.
 - Summaries and transcripts can be downloaded as Markdown and text files, in the web app and

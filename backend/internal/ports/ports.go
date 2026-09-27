@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/device"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/folder"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/label"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/settings"
@@ -36,6 +37,9 @@ type RecordingRepository interface {
 	AssignOwnerless(ctx context.Context, ownerID string) (int, error)
 	// RemoveLabel takes the label off all of ownerID's recordings.
 	RemoveLabel(ctx context.Context, ownerID, labelID string) error
+	// MoveFolder moves all of ownerID's recordings in folder from into folder to ("" is the
+	// top level).
+	MoveFolder(ctx context.Context, ownerID, from, to string) error
 }
 
 // DeviceRepository persists devices. Lookups of missing documents return domain.ErrNotFound.
@@ -97,6 +101,17 @@ type LabelRepository interface {
 	Get(ctx context.Context, id string) (*label.Label, error)
 	List(ctx context.Context, ownerID string) ([]*label.Label, error)
 	Update(ctx context.Context, l *label.Label) error
+	Delete(ctx context.Context, id string) error
+	DeleteByOwner(ctx context.Context, ownerID string) error
+}
+
+// FolderRepository persists users' folders. Get of a missing folder returns
+// domain.ErrNotFound.
+type FolderRepository interface {
+	Create(ctx context.Context, f *folder.Folder) error
+	Get(ctx context.Context, id string) (*folder.Folder, error)
+	List(ctx context.Context, ownerID string) ([]*folder.Folder, error)
+	Update(ctx context.Context, f *folder.Folder) error
 	Delete(ctx context.Context, id string) error
 	DeleteByOwner(ctx context.Context, ownerID string) error
 }

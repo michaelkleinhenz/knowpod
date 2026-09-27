@@ -277,6 +277,14 @@ taking `task` off clears it. Deleting a label pulls it off the owner's notes
 being processed, the worker copies `labels` and `done` from the stored document before
 saving a stage's result (`Recording.KeepUserFields`), so a long transcription can't undo them.
 
+**Folders** (`service/folders.go`). `GET /folders` lists the user's folders; each has an
+optional `parentId`, so folders nest (at most 8 deep). `POST`/`PUT /folders/{id}` create,
+rename and move them; names are unique among the folders in the same place, and a folder
+can't be moved into itself or one of its own folders. `DELETE /folders/{id}` moves the
+folder's notes (`RecordingRepository.MoveFolder`) and folders up into its parent.
+`PUT /recordings/{id}/folder` moves a note (`folderId`, empty for the top level);
+`folderId` is kept by the worker like `labels` and `done`.
+
 `GET /recordings/{id}/summary` and `/transcript` return the texts as `.md` / `.txt`
 downloads (`transport/http/downloads_handlers.go`), or JSON with `?format=json`.
 
@@ -375,6 +383,7 @@ implements the work.
 | `deviceId`, `clientId` | Device (or `pocket:<userId>` / `upload:<userId>` / `text:<userId>`) and its `recordingId` (unique together) |
 | `type` | The kind of note: absent for audio recordings, `text` for text notes (see below) |
 | `labels`, `done` | IDs of the note's labels (see below) and the check mark of a `task` note |
+| `folderId` | The folder the note is in; absent at the top level |
 | `status` | `uploading`, `received`, `stored` or `failed` |
 | `size`, `sha256` | Declared by the device at create |
 | `recordedAt` | Optional, from the device |
@@ -417,6 +426,9 @@ Indexes: `(deviceId, clientId)` unique; `(status, notBefore)` for claiming;
 
 **`labels`**: users' own note labels: `_id`, `ownerId` (indexed with `name`), `name`
 (unique per user, ignoring case), `color` (`#rrggbb`), `createdAt`, `updatedAt`.
+
+**`folders`**: users' folders: `_id`, `ownerId` (indexed with `name`), `name`,
+`parentId` (absent at the top level), `createdAt`, `updatedAt`.
 
 **`settings`**: one document per settings group. `_id: "openrouter"` holds `apiKey`,
 `transcriptionModel`, `summaryModel` and `updatedAt`.
@@ -466,6 +478,16 @@ the note; the change shows at once and is undone if saving fails) and a Done/To 
 its header; the open note takes over check marks and labels changed in the list. Saves that
 answer after their note was left (e.g. the autosave on leaving) only update the list, never
 the note now open.
+
+The list switches (remembered per browser) between **By time**, notes grouped by day, and
+**Folders** (`components/FolderTree.tsx`), a tree of folders with notes sorted by title.
+Folders are created, renamed and deleted in place; notes and folders are moved by drag and
+drop (onto a folder, or the free space for the top level), and a note's toolbar has a
+**Move to folder** menu (`components/MoveToFolder.tsx`) that also works on touch screens.
+While searching, only folders with matching notes are shown, opened. The note's save state
+is a colored dot at the far right of its toolbar (green saved, amber unsaved, pulsing while
+saving, red on failure: click to retry); the words are its tooltip and a screen reader
+status.
 
 ## Errors
 

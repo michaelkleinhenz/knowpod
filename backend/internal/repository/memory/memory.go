@@ -10,6 +10,7 @@ import (
 
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/device"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/folder"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/label"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/settings"
@@ -57,6 +58,18 @@ func (m *Recordings) GetByClientID(_ context.Context, deviceID, clientID string)
 		}
 	}
 	return nil, domain.ErrNotFound
+}
+
+func (m *Recordings) MoveFolder(_ context.Context, ownerID, from, to string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, r := range m.recs {
+		if r.OwnerID == ownerID && r.FolderID == from {
+			r.FolderID = to
+			m.recs[id] = r
+		}
+	}
+	return nil
 }
 
 func (m *Recordings) RemoveLabel(_ context.Context, ownerID, labelID string) error {
@@ -568,6 +581,80 @@ func (m *Labels) DeleteByOwner(_ context.Context, ownerID string) error {
 	for id, t := range m.labels {
 		if t.OwnerID == ownerID {
 			delete(m.labels, id)
+		}
+	}
+	return nil
+}
+
+// Folders is an in-memory ports.FolderRepository.
+type Folders struct {
+	mu      sync.Mutex
+	folders map[string]folder.Folder
+}
+
+// NewFolders builds an empty repository.
+func NewFolders() *Folders { return &Folders{folders: map[string]folder.Folder{}} }
+
+func (m *Folders) Create(_ context.Context, f *folder.Folder) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.folders[f.ID]; ok {
+		return domain.ErrDuplicate
+	}
+	m.folders[f.ID] = *f
+	return nil
+}
+
+func (m *Folders) Get(_ context.Context, id string) (*folder.Folder, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	f, ok := m.folders[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	return &f, nil
+}
+
+func (m *Folders) List(_ context.Context, ownerID string) ([]*folder.Folder, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := []*folder.Folder{}
+	for _, f := range m.folders {
+		f := f
+		if f.OwnerID == ownerID {
+			out = append(out, &f)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+func (m *Folders) Update(_ context.Context, f *folder.Folder) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.folders[f.ID]; !ok {
+		return domain.ErrNotFound
+	}
+	m.folders[f.ID] = *f
+	return nil
+}
+
+func (m *Folders) Delete(_ context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.folders[id]; !ok {
+		return domain.ErrNotFound
+	}
+	delete(m.folders, id)
+	return nil
+}
+
+func (m *Folders) DeleteByOwner(_ context.Context, ownerID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, f := range m.folders {
+		if f.OwnerID == ownerID {
+			delete(m.folders, id)
 		}
 	}
 	return nil

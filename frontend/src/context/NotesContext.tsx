@@ -1,6 +1,6 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api, Label, Recording } from '../api/client';
+import { api, Folder, Label, Recording } from '../api/client';
 import { errorText } from '../lib/errors';
 import { processing } from '../lib/recordings';
 
@@ -11,6 +11,9 @@ interface NotesState {
   // labels are the user's labels (built-in first), shared by the list and the open note.
   labels: Label[] | null;
   reloadLabels: () => Promise<void>;
+  // folders are the user's folders, shared by the folder view and the note's move menu.
+  folders: Folder[] | null;
+  reloadFolders: () => Promise<void>;
   aiReady: boolean;
   error: string | null;
   refreshing: boolean;
@@ -28,6 +31,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
   const [recordings, setRecordings] = useState<Recording[] | null>(null);
   const [labels, setLabels] = useState<Label[] | null>(null);
+  const [folders, setFolders] = useState<Folder[] | null>(null);
   const [aiReady, setAIReady] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -54,10 +58,19 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     }
   }, [t]);
 
+  const reloadFolders = useCallback(async () => {
+    try {
+      setFolders(await api.folders());
+    } catch (err) {
+      setError(errorText(err, t));
+    }
+  }, [t]);
+
   useEffect(() => {
     void reload();
     void reloadLabels();
-  }, [reload, reloadLabels]);
+    void reloadFolders();
+  }, [reload, reloadLabels, reloadFolders]);
 
   const busy = recordings?.some(processing) ?? false;
   useEffect(() => {
@@ -82,7 +95,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <NotesContext.Provider value={{ recordings, labels, reloadLabels, aiReady, error, refreshing, reload, upsert, remove }}>{children}</NotesContext.Provider>
+    <NotesContext.Provider value={{ recordings, labels, reloadLabels, folders, reloadFolders, aiReady, error, refreshing, reload, upsert, remove }}>{children}</NotesContext.Provider>
   );
 }
 

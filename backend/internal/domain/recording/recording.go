@@ -98,6 +98,8 @@ type Recording struct {
 	Labels []string `bson:"labels,omitempty" json:"labels,omitempty"`
 	// Done is the check mark of a note labeled as a task.
 	Done bool `bson:"done,omitempty" json:"done,omitempty"`
+	// FolderID is the folder the note is in; empty at the top level.
+	FolderID string `bson:"folderId,omitempty" json:"folderId,omitempty"`
 
 	// Highlights are moments the user marked on the device while recording.
 	Highlights     []Highlight    `bson:"highlights,omitempty" json:"highlights,omitempty"`
@@ -120,10 +122,10 @@ type Recording struct {
 // IsText reports whether the note is a text note.
 func (r *Recording) IsText() bool { return r.Type == TypeText }
 
-// KeepUserFields copies the fields a person changes at any time (labels, done) from the
-// stored version, so that a processing step saving its long-held copy doesn't undo them.
+// KeepUserFields copies the fields a person changes at any time (labels, done, folder) from
+// the stored version, so that a processing step saving its long-held copy doesn't undo them.
 func (r *Recording) KeepUserFields(stored *Recording) {
-	r.Labels, r.Done = stored.Labels, stored.Done
+	r.Labels, r.Done, r.FolderID = stored.Labels, stored.Done, stored.FolderID
 }
 
 // TextDeviceID returns the DeviceID of a user's text notes. Their ClientID is the note ID.

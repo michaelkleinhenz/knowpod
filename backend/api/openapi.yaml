@@ -58,6 +58,8 @@ tags:
     description: Summary themes that define how summaries are structured. Built-in ones plus your own.
   - name: Labels
     description: Labels for notes, with colors. The built-in "task" label plus your own.
+  - name: Folders
+    description: Folders the notes are sorted into; folders can hold folders.
   - name: "Admin: users"
     description: Create, change and delete users. Administrators only.
   - name: "Admin: AI settings"
@@ -402,6 +404,58 @@ paths:
       responses:
         "204": { description: Deleted }
         "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /folders:
+    get:
+      tags: ["Folders"]
+      summary: List folders
+      description: Your folders, by name. Build the tree from `parentId`.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      responses:
+        "200":
+          description: Folders
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Folder" } }
+    post:
+      tags: ["Folders"]
+      summary: Create a folder
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/FolderInput" } } }
+      responses:
+        "201":
+          description: Created
+          content: { application/json: { schema: { $ref: "#/components/schemas/Folder" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+
+  /folders/{folderId}:
+    parameters:
+      - { name: folderId, in: path, required: true, schema: { type: string } }
+    put:
+      tags: ["Folders"]
+      summary: Rename or move a folder
+      description: Moves the folder into `parentId` (empty for the top level). A folder can't go into itself or one of its own folders.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/FolderInput" } } }
+      responses:
+        "200":
+          description: Saved
+          content: { application/json: { schema: { $ref: "#/components/schemas/Folder" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: ["Folders"]
+      summary: Delete a folder
+      description: The folder's notes and folders move up into the folder it was in; no note is deleted.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      responses:
+        "204": { description: Deleted }
         "404": { $ref: "#/components/responses/Error" }
 
   /themes:
@@ -903,6 +957,28 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
 
+  /recordings/{recordingId}/folder:
+    put:
+      tags: ["Recordings", "Folders"]
+      summary: Move the note into a folder
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                folderId: { type: string, description: A folder ID from GET /folders; empty for the top level }
+      responses:
+        "200":
+          description: Saved
+          content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
   /recordings/{recordingId}/done:
     put:
       tags: ["Recordings", "Labels"]
@@ -1164,6 +1240,7 @@ components:
         highlights: { type: array, items: { $ref: "#/components/schemas/Highlight" } }
         labels: { type: array, items: { type: string }, description: IDs of the note's labels (see GET /labels) }
         done: { type: boolean, description: Check mark of a note labeled `task` }
+        folderId: { type: string, description: The folder the note is in (see GET /folders); absent at the top level }
         transcript:
           type: object
           properties:
@@ -1247,6 +1324,22 @@ components:
       properties:
         name: { type: string, maxLength: 40, description: Unique among your labels, ignoring case }
         color: { type: string, pattern: "^#[0-9a-fA-F]{6}$", example: "#2f6f5e" }
+
+    Folder:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        parentId: { type: string, description: The folder this one is in; absent at the top level }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    FolderInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, maxLength: 80, description: Unique among the folders in the same place, ignoring case }
+        parentId: { type: string, description: The folder to put it in; empty for the top level }
 
     ThemeInput:
       type: object
