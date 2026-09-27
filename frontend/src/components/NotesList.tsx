@@ -5,11 +5,14 @@ import { api, Recording } from '../api/client';
 import { useNotes } from '../context/NotesContext';
 import { useAuth } from '../auth';
 import { FolderTree } from './FolderTree';
+import { FilterBar } from './SavedFilters';
+import { TimerBar } from './TimeControls';
 import { NewBoardIcon, NewFolderIcon, NewNoteIcon, RefreshIcon, SearchIcon, UploadIcon } from './Icons';
 import { NoteRow } from './NoteRow';
 import { TasksView } from './TasksView';
 import { errorText } from '../lib/errors';
-import { dayKey, dayLabel, formatTime, title, when } from '../lib/recordings';
+import { parseFilter, searchMatcher } from '../lib/filterQuery';
+import { dayKey, dayLabel, formatTime, when } from '../lib/recordings';
 
 const ACCEPT = '.wav,.mp3,audio/wav,audio/x-wav,audio/wave,audio/mpeg';
 
@@ -18,6 +21,8 @@ const ACCEPT = '.wav,.mp3,audio/wav,audio/x-wav,audio/wave,audio/mpeg';
 type View = 'timeline' | 'folders' | 'tasks';
 const VIEWS: View[] = ['timeline', 'folders', 'tasks'];
 const VIEW_KEY = 'knowpod.notesView';
+// FILTER_KEY remembers the saved filter the list is narrowed by.
+const FILTER_KEY = 'knowpod.notesFilter';
 
 function loadView(): View {
   try {
@@ -25,6 +30,14 @@ function loadView(): View {
     return VIEWS.includes(v as View) ? (v as View) : 'timeline';
   } catch {
     return 'timeline';
+  }
+}
+
+function loadFilter(): string | null {
+  try {
+    return localStorage.getItem(FILTER_KEY);
+  } catch {
+    return null;
   }
 }
 
@@ -44,7 +57,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
   const { t } = useTranslation();
   const { account } = useAuth();
   const navigate = useNavigate();
-  const { recordings, folders, trash, aiReady, error, refreshing, reload: load, upsert } = useNotes();
+  const { recordings, folders, filters, filterContext, trash, aiReady, error, refreshing, reload: load, upsert } = useNotes();
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -52,6 +65,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
   const [dragging, setDragging] = useState(false);
   const [view, setViewState] = useState(loadView);
   const [newFolder, setNewFolder] = useState(0);
+  const [activeFilterId, setActiveFilterState] = useState(loadFilter);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const setView = (v: View) => {
@@ -62,6 +76,18 @@ export function NotesList({ activeId }: { activeId?: string }) {
       // Not remembered; the list starts in the timeline next time.
     }
   };
+
+  const setActiveFilter = (id: string | null) => {
+    setActiveFilterState(id);
+    try {
+      if (id) localStorage.setItem(FILTER_KEY, id);
+      else localStorage.removeItem(FILTER_KEY);
+    } catch {
+      // Not remembered.
+    }
+  };
+  // A remembered filter that was deleted meanwhile no longer applies.
+  const activeFilter = filters?.find((f) => f.id === activeFilterId) ?? null;
 
   async function upload(files: File[]) {
     for (const file of files) {
@@ -150,12 +176,16 @@ export function NotesList({ activeId }: { activeId?: string }) {
     upload(Array.from(e.dataTransfer.files));
   }
 
-  const matches = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    // "#12" (or "12") also finds note 12 by its number.
-    const n = /^#?(\d+)$/.exec(q)?.[1];
-    return (recordings ?? []).filter((r) => !q || title(r).toLowerCase().includes(q) || (!!n && String(r.number) === n));
-  }, [recordings, query]);
+  // The search box takes the filter language (plain words search the titles); the chosen
+  // saved filter narrows the list further.
+  const search = useMemo(() => {
+    const byQuery = query.trim() ? searchMatcher(query, filterContext) : null;
+    const parsed = activeFilter ? parseFilter(activeFilter.query, filterContext) : null;
+    const byFilter = parsed ? (parsed.ok ? parsed.match : () => false) : null;
+    if (!byQuery && !byFilter) return null;
+    return (r: Recording) => (!byQuery || byQuery(r)) && (!byFilter || byFilter(r));
+  }, [query, activeFilter, filterContext]);
+  const matches = useMemo(() => (search ? (recordings ?? []).filter(search) : (recordings ?? [])), [recordings, search]);
 
   const groups = useMemo(() => {
     const list = matches.slice().sort((a, b) => when(b).getTime() - when(a).getTime());
@@ -200,6 +230,8 @@ export function NotesList({ activeId }: { activeId?: string }) {
         <input ref={fileInput} type="file" accept={ACCEPT} multiple hidden onChange={handleFiles} />
       </div>
 
+      <TimerBar />
+
       <label className="search">
         <SearchIcon />
         <input
@@ -210,6 +242,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
           aria-label={t('conversations.searchLabel')}
         />
       </label>
+      <FilterBar query={query} setQuery={setQuery} active={activeFilter?.id ?? null} setActive={setActiveFilter} />
 
       <div className="list-toolbar">
         <div className="segmented" role="tablist" aria-label={t('folders.viewLabel')}>
@@ -280,11 +313,11 @@ export function NotesList({ activeId }: { activeId?: string }) {
       {view === 'tasks' && recordings && <TasksView notes={matches} activeId={activeId} aiReady={aiReady} onSetDone={(r, d) => void setDone(r, d)} />}
 
       {recordings && recordings.length > 0 && matches.length === 0 && view !== 'tasks' && (
-        <p className="muted empty">{t('conversations.noMatch', { query })}</p>
+        <p className="muted empty">{query.trim() ? t('conversations.noMatch', { query }) : t('filters.noMatch', { name: activeFilter?.name ?? '' })}</p>
       )}
 
       {view === 'folders' && recordings && (recordings.length > 0 || !!folders?.length || !!trash?.length || newFolder > 0) && (
-        <FolderTree notes={matches} query={query} activeId={activeId} aiReady={aiReady} onSetDone={(r, d) => void setDone(r, d)} onNewSub={creating ? undefined : (r) => void createSub(r)} newFolder={newFolder} />
+        <FolderTree notes={matches} search={search} activeId={activeId} aiReady={aiReady} onSetDone={(r, d) => void setDone(r, d)} onNewSub={creating ? undefined : (r) => void createSub(r)} newFolder={newFolder} />
       )}
 
       {view === 'timeline' &&

@@ -9,6 +9,7 @@ import { Login } from './pages/Login';
 import { NoteByNumber } from './pages/NoteByNumber';
 import { NotesHome, NotesLayout } from './pages/NotesLayout';
 import { Settings } from './pages/Settings';
+import { TimeLog } from './pages/TimeLog';
 
 // RequireLogin sends signed-out visitors to the login page and back afterwards. With admin,
 // only administrators get through.
@@ -37,6 +38,7 @@ export default function App() {
           <Route path="/" element={<NotesHome />} />
           <Route path="/conversations/:id" element={<Conversation />} />
           <Route path="/n/:number" element={<NoteByNumber />} />
+          <Route path="/time" element={<TimeLog />} />
         </Route>
         <Route
           path="/settings"

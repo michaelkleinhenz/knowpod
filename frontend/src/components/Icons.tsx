@@ -325,3 +325,63 @@ export function ClockIcon({ size = 12 }: { size?: number }) {
     </InlineIcon>
   );
 }
+
+// Icons of the timer and saved filters.
+export function PlayIcon({ size = 14 }: { size?: number }) {
+  return (
+    <InlineIcon size={size}>
+      <path d="M8 5.5v13l10-6.5z" fill="currentColor" />
+    </InlineIcon>
+  );
+}
+
+export function StopIcon({ size = 14 }: { size?: number }) {
+  return (
+    <InlineIcon size={size}>
+      <rect x="6.5" y="6.5" width="11" height="11" rx="1.5" fill="currentColor" />
+    </InlineIcon>
+  );
+}
+
+// FocusIcon is a tomato-shaped timer for focus sessions (Pomodoro).
+export function FocusIcon({ size = 14 }: { size?: number }) {
+  return (
+    <InlineIcon size={size}>
+      <circle cx="12" cy="13.5" r="7" />
+      <path d="M12 6.5V4M9.5 5l2.5 1.5L14.5 5M12 10v3.5l2 1.5" />
+    </InlineIcon>
+  );
+}
+
+export function StopwatchIcon({ size = 14 }: { size?: number }) {
+  return (
+    <InlineIcon size={size}>
+      <circle cx="12" cy="13.5" r="7.5" />
+      <path d="M12 9.5v4l2.5 1.5M10 3h4M12 3v3M18.5 6.5l1.5-1.5" />
+    </InlineIcon>
+  );
+}
+
+export function FilterIcon({ size = 14 }: { size?: number }) {
+  return (
+    <InlineIcon size={size}>
+      <path d="M4 5h16l-6.2 7.4V19l-3.6-1.8v-4.8z" />
+    </InlineIcon>
+  );
+}
+
+export function BookmarkIcon({ size = 16 }: { size?: number }) {
+  return (
+    <InlineIcon size={size}>
+      <path d="M6.5 4h11v16L12 16l-5.5 4z" />
+    </InlineIcon>
+  );
+}
+
+export function PinIcon({ size = 14, filled = false }: { size?: number; filled?: boolean }) {
+  return (
+    <InlineIcon size={size}>
+      <path d="M9 4h6l-1 6 3.5 3.5h-11L10 10zM12 13.5V20" fill={filled ? 'currentColor' : 'none'} />
+    </InlineIcon>
+  );
+}

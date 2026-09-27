@@ -10,6 +10,7 @@ import { inline, Markdown } from '../components/Markdown';
 import { NoteDone, NoteLabels } from '../components/Labels';
 import { ActionItems } from '../components/ActionItems';
 import { PriorityFlag, TaskControls } from '../components/TaskControls';
+import { TimeControls } from '../components/TimeControls';
 import { parseTask } from '../lib/dateParse';
 import { formatDue, formatRepeat } from '../lib/tasks';
 import { MoveToFolder } from '../components/MoveToFolder';
@@ -319,7 +320,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
   const parents = notePath(rec, notes.recordings);
   const folder = folderPath((parents[0] ?? rec).folderId, notes.folders);
   // The boards showing the note, with the lane it is in on each.
-  const lanes = boardLanes(rec, notes.recordings ?? [], notes.folders ?? []);
+  const lanes = boardLanes(rec, notes.recordings ?? [], { folders: notes.folders ?? [], filters: notes.filters ?? [], filterContext: notes.filterContext });
   const d = when(rec);
   const pending = (empty: string) =>
     rec.status === 'failed' ? (
@@ -686,6 +687,10 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
               <NoteDone rec={rec} setRec={setRec} />
               <TaskControls rec={rec} setRec={setRec} />
             </div>
+          </section>
+          <section>
+            <h2>{t('noteInfo.time')}</h2>
+            <TimeControls rec={rec} setRec={setRec} />
           </section>
           <section>
             <h2>{t('labels.title')}</h2>

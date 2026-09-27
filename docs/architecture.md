@@ -339,7 +339,44 @@ and notes in no column go to the end of the first. `POST /recordings/board` crea
 (default columns "Todo", "In Progress", "Done"; the UI sends them translated) and
 `PUT /recordings/{id}/board` replaces scope, columns and placements at once. Deleting a
 folder points boards showing it at the folder its notes moved into; deleting a label clears
-the scope of boards showing it (`MoveFolder` / `RemoveLabel` in the repository).
+the scope of boards showing it (`MoveFolder` / `RemoveLabel` in the repository). A board can
+also show a saved filter (`scope.kind: filter`); deleting the filter clears the scope of
+boards showing it (`ClearBoardScope`).
+
+**Saved filters** (`service/filters.go`). `GET`/`POST /filters` and `PUT`/`DELETE
+/filters/{id}` keep each user's named queries (`name` unique per user ignoring case,
+`query` up to 500 characters, `pinned`). The server stores queries as text and doesn't
+evaluate them: the web app compiles them (`frontend/src/lib/filterQuery.ts`) against the
+user's labels, folders and notes, both for the notes list (the search box takes the same
+language; plain words search the titles) and for boards that show a filter. The language
+has words, `#12`, `label:`/`@`, `folder:` (and the folders in it), `due:` (`today`,
+`tomorrow`, `overdue`, `week`, `month`, `none`, `any`, a date) and `due<`/`<=`/`>`/`>=`,
+`done`, `task`, `p1`–`p3`, `repeat`, `estimate` and `type:`, combined with `&` (or a
+space), `|`, `!` and parentheses.
+
+**Time tracking** (`domain/timelog`, `service/timelog.go`). `PUT /recordings/{id}/estimate`
+sets a task's `estimate` in minutes (and labels the note as a task). Time is logged in the
+`timeEntries` collection, one entry per stretch of work on a note: `POST /timer` starts one
+(stopping the running one), with `minutes` a focus session whose `until` stops it by itself;
+`DELETE /timer` stops it. A user has at most one running entry (`running: true`, guarded by a
+unique partial index). A focus session that ran out is closed lazily at `until` the next
+time the timer or the log is read, so nothing needs to run in the background; entries also
+stop after 24 hours. Stopping, adding (`POST /time-entries`) and deleting an entry adjust
+the note's `trackedSeconds` with an atomic `$inc` (`AddTrackedSeconds`), so a save of the
+note from an older copy doesn't lose logged time (the worker keeps `estimate` and
+`trackedSeconds` like `labels`). `GET /time-entries?from=&to=` lists the entries that
+started on those days in the user's time zone (the current week without them), and
+`/time-entries/export` returns them as CSV. Deleting a note for good deletes its entries.
+
+**Calendar feed** (`service/calendar.go`). `POST /me/calendar` makes a random token
+(`kpc_…`) and stores its SHA-256 in `users.calendar.tokenHash` (unique, sparse index); the
+link `GET /calendar/{token}.ics` is returned once, and a new one replaces it. The feed is
+public but rate-limited, and lists the user's open tasks with dates (not in the trash) as
+VEVENTs: all-day events for dates without a time; timed ones last their estimate (30 minutes
+without one) and are written in UTC, or with `TZID` of the user's time zone when they repeat
+(so the time of day survives daylight saving changes). Repeat rules become RRULEs (weeks
+start on Sunday as in `Repeat.Next`; the 29th–31st of a month use `BYSETPOS=-1` to fall on
+short months' last day), reminders become VALARMs, and each event links to its note.
 
 **Labels** (`service/labels.go`). `GET /labels` lists the built-in labels (only `task`,
 named by the UI in its language) and the user's own; `POST`/`PUT`/`DELETE /labels/{id}`
@@ -509,6 +546,7 @@ implements the work.
 | `file`, `pages` | A document's PDF or EPUB (S3 key, content type, size) and its page count |
 | `sourceRevision` | Content hash of the imported version of a reMarkable document |
 | `labels`, `done` | IDs of the note's labels (see below) and the check mark of a `task` note |
+| `estimate`, `trackedSeconds` | A task's estimate in minutes, and the time logged on the note (finished entries) |
 | `folderId` | The folder the note is in; absent at the top level |
 | `status` | `uploading`, `received`, `stored` or `failed` |
 | `size`, `sha256` | Declared by the device at create |
@@ -536,6 +574,7 @@ Indexes: `(deviceId, clientId)` unique; `(status, notBefore)` for claiming;
 | `passwordHash` | bcrypt; empty for the built-in admin until a password is set (then `ADMIN_PASSWORD` applies) |
 | `pocket.webhookId` | Random part of the user's webhook URL (unique, sparse index) |
 | `pocket.webhookSecret`, `pocket.apiKey` | The user's Pocket credentials; never returned by the API |
+| `calendar.tokenHash`, `calendar.createdAt` | SHA-256 of the calendar feed token (unique, sparse index) and when it was made |
 | `createdAt`, `passwordChangedAt` | Timestamps (UTC) |
 
 **`sessions`**
@@ -555,6 +594,13 @@ Indexes: `(deviceId, clientId)` unique; `(status, notBefore)` for claiming;
 
 **`folders`**: users' folders: `_id`, `ownerId` (indexed with `name`), `name`,
 `parentId` (absent at the top level), `createdAt`, `updatedAt`.
+
+**`filters`**: users' saved filters: `_id`, `ownerId` (indexed with `name`), `name`,
+`query`, `pinned`, `createdAt`, `updatedAt`.
+
+**`timeEntries`**: time logged on notes: `_id`, `ownerId` (indexed with `start`), `noteId`
+(indexed), `start`, `end` (absent while running), `until` (a focus session's end), `running`
+(set only while running; unique per owner), `createdAt`.
 
 **`tablets`**: users' reMarkable links, `_id` = user ID: `deviceToken` (never returned by
 the API), `pairedAt`, `rootHash` and `items` (the cache of the last pull), `folderId` (the knowpod

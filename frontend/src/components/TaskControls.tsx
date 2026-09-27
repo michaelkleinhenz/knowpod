@@ -1,9 +1,11 @@
 import { KeyboardEvent, MouseEvent as ReactMouseEvent, useEffect, useMemo, useState } from 'react';
+import i18n from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { api, Due, Priority, Recording, Repeat } from '../api/client';
 import { errorText } from '../lib/errors';
 import { isoDate, parseTask } from '../lib/dateParse';
 import { dueDate, formatDue, formatReminder, formatRepeat, overdue, REMINDERS } from '../lib/tasks';
+import { formatMinutes } from '../lib/timer';
 import { BellIcon, CalendarIcon, ClockIcon, FlagIcon, RepeatIcon } from './Icons';
 
 export const PRIORITIES: Priority[] = [1, 2, 3];
@@ -37,14 +39,21 @@ export function DueChip({ rec, small = false }: { rec: Recording; small?: boolea
   );
 }
 
-// TaskMeta is the priority and (unless showDue is false) the date of a task, for a row in
-// a list.
+// TaskMeta is the priority, estimate and (unless showDue is false) the date of a task, for a
+// row in a list.
 export function TaskMeta({ rec, showDue = true }: { rec: Recording; showDue?: boolean }) {
   const due = showDue && !rec.done && !!rec.due;
-  if (!due && !rec.priority && !rec.due?.repeat) return null;
+  const estimate = !rec.done && !!rec.estimate;
+  if (!due && !rec.priority && !rec.due?.repeat && !estimate) return null;
   return (
     <span className="task-meta">
       <PriorityFlag priority={rec.priority} />
+      {estimate && (
+        <span className="estimate-chip" title={i18n.t('time.estimate')}>
+          <ClockIcon size={11} />
+          {formatMinutes(rec.estimate!)}
+        </span>
+      )}
       {due ? (
         <DueChip rec={rec} small />
       ) : (

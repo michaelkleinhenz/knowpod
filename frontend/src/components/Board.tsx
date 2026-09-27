@@ -1,9 +1,10 @@
 import { DragEvent, PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { api, Board as BoardSetup, BoardColumn, BoardScope, Folder, Recording, RECORDINGS_LIMIT } from '../api/client';
+import { api, Board as BoardSetup, BoardColumn, BoardScope, Folder, Recording, RECORDINGS_LIMIT, SavedFilter } from '../api/client';
 import { useNotes } from '../context/NotesContext';
 import { errorText } from '../lib/errors';
+import { FilterContext, Matcher, parseFilter } from '../lib/filterQuery';
 import { flatTree, folderOf } from '../lib/folders';
 import { isTask, labelName, labelStyle, noteLabels } from '../lib/labels';
 import { TaskMeta } from './TaskControls';
@@ -28,25 +29,42 @@ function newColumnID(): string {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 }
 
-// inScope reports whether the board shows the note. Boards never show boards, nor notes in
-// the trash.
-function inScope(r: Recording, scope: BoardScope, folderIds: Set<string>): boolean {
-  if (r.type === 'board' || r.deletedAt) return false;
+// ScopeSources are what a board's scope is resolved against: the user's folders and saved
+// filters, and the labels and folders filter queries name.
+export interface ScopeSources {
+  folders: Folder[];
+  filters: SavedFilter[];
+  filterContext: FilterContext;
+}
+
+// scopeMatcher reports whether the board shows a note. Boards never show boards, nor notes
+// in the trash; a filter that is gone or doesn't parse shows none.
+function scopeMatcher(scope: BoardScope, src: ScopeSources): Matcher {
+  let inScope: Matcher = () => false;
   switch (scope.kind) {
-    case 'folder':
-      return folderOf(r, folderIds) === scope.id;
+    case 'folder': {
+      const folderIds = new Set(src.folders.map((f) => f.id));
+      inScope = (r) => folderOf(r, folderIds) === scope.id;
+      break;
+    }
     case 'label':
-      return r.labels?.includes(scope.id) ?? false;
-    default:
-      return false;
+      inScope = (r) => r.labels?.includes(scope.id) ?? false;
+      break;
+    case 'filter': {
+      const f = src.filters.find((x) => x.id === scope.id);
+      const parsed = f ? parseFilter(f.query, src.filterContext) : null;
+      if (parsed?.ok) inScope = parsed.match;
+      break;
+    }
   }
+  return (r) => r.type !== 'board' && !r.deletedAt && inScope(r);
 }
 
 // layout sorts the notes in the board's scope into its columns: in the order they were put
 // there, and the notes in no column (newest first) at the end of the first column.
-function layout(board: BoardSetup, notes: Recording[], folders: Folder[]): Recording[][] {
-  const folderIds = new Set(folders.map((f) => f.id));
-  const shown = new Map(notes.filter((r) => inScope(r, board.scope, folderIds)).map((r) => [r.id, r]));
+function layout(board: BoardSetup, notes: Recording[], src: ScopeSources): Recording[][] {
+  const inScope = scopeMatcher(board.scope, src);
+  const shown = new Map(notes.filter(inScope).map((r) => [r.id, r]));
   const placed = new Set<string>();
   const cols = board.columns.map((c) =>
     (c.notes ?? []).flatMap((id) => {
@@ -63,11 +81,10 @@ function layout(board: BoardSetup, notes: Recording[], folders: Folder[]): Recor
 
 // boardLanes finds the boards that show the note and the column it is in on each: the one it
 // was put into, or the first column when it is in none (as the board shows it).
-export function boardLanes(rec: Recording, notes: Recording[], folders: Folder[]): { board: Recording; lane: string }[] {
-  const folderIds = new Set(folders.map((f) => f.id));
+export function boardLanes(rec: Recording, notes: Recording[], src: ScopeSources): { board: Recording; lane: string }[] {
   return notes.flatMap((b) => {
     const setup = b.board;
-    if (b.type !== 'board' || !setup || setup.columns.length === 0 || !inScope(rec, setup.scope, folderIds)) return [];
+    if (b.type !== 'board' || !setup || setup.columns.length === 0 || !scopeMatcher(setup.scope, src)(rec)) return [];
     const column = setup.columns.find((c) => c.notes?.includes(rec.id)) ?? setup.columns[0];
     return [{ board: b, lane: column.name }];
   });
@@ -79,7 +96,7 @@ function scopeValue(s: BoardScope): string {
 
 function parseScope(v: string): BoardScope {
   const [kind, ...id] = v.split(':');
-  return kind === 'folder' || kind === 'label' ? { kind, id: id.join(':') } : { kind: '', id: '' };
+  return kind === 'folder' || kind === 'label' || kind === 'filter' ? { kind, id: id.join(':') } : { kind: '', id: '' };
 }
 
 // ColumnHeader shows a column's name and count; the name is renamed in place.
@@ -154,12 +171,12 @@ function ColumnHeader({
   );
 }
 
-// Board shows a board note: the notes of a folder or with a label as cards in columns. Cards
-// are dragged between columns (or moved with their arrow buttons); columns are renamed,
-// added and deleted. Every change is saved right away.
+// Board shows a board note: the notes of a folder, with a label or matching a saved filter as
+// cards in columns. Cards are dragged between columns (or moved with their arrow buttons);
+// columns are renamed, added and deleted. Every change is saved right away.
 export function Board({ rec, setRec }: { rec: Recording; setRec: (r: Recording) => void }) {
   const { t } = useTranslation();
-  const { recordings, folders, labels, upsert } = useNotes();
+  const { recordings, folders, labels, filters, filterContext, upsert } = useNotes();
   const [board, setBoard] = useState<BoardSetup>(() => rec.board ?? { scope: { kind: '', id: '' }, columns: [] });
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
@@ -183,7 +200,10 @@ export function Board({ rec, setRec }: { rec: Recording; setRec: (r: Recording) 
   }, [stored]);
 
   const notes = recordings ?? [];
-  const cols = useMemo(() => layout(board, notes, folders ?? []), [board, notes, folders]);
+  const cols = useMemo(
+    () => layout(board, notes, { folders: folders ?? [], filters: filters ?? [], filterContext }),
+    [board, notes, folders, filters, filterContext],
+  );
 
   async function save(next: BoardSetup) {
     const previous = board;
@@ -351,7 +371,8 @@ export function Board({ rec, setRec }: { rec: Recording; setRec: (r: Recording) 
   const tree = flatTree(folders ?? []);
   const scopeMissing =
     (board.scope.kind === 'folder' && board.scope.id !== '' && folders !== null && !folders.some((f) => f.id === board.scope.id)) ||
-    (board.scope.kind === 'label' && labels !== null && !labels.some((l) => l.id === board.scope.id));
+    (board.scope.kind === 'label' && labels !== null && !labels.some((l) => l.id === board.scope.id)) ||
+    (board.scope.kind === 'filter' && filters !== null && !filters.some((f) => f.id === board.scope.id));
 
   return (
     <div className="board">
@@ -376,6 +397,15 @@ export function Board({ rec, setRec }: { rec: Recording; setRec: (r: Recording) 
                 </option>
               ))}
             </optgroup>
+            {!!filters?.length && (
+              <optgroup label={t('board.filters')}>
+                {filters.map((f) => (
+                  <option key={f.id} value={`filter:${f.id}`}>
+                    {f.name}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
         </label>
         <button type="button" className="pill-button" onClick={addColumn} disabled={board.columns.length >= 20}>
