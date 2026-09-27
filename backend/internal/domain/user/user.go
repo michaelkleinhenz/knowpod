@@ -33,6 +33,8 @@ type User struct {
 	// TimeZone is the IANA time zone (e.g. "Europe/Berlin") task dates and reminders are
 	// meant in; the web app sets it from the browser. Empty is UTC.
 	TimeZone string `bson:"timeZone,omitempty"`
+	// Appearance is the web UI color scheme ("light", "dark"); empty follows the system.
+	Appearance string `bson:"appearance,omitempty"`
 	// Calendar is the user's calendar feed of their tasks.
 	Calendar Calendar `bson:"calendar"`
 }
@@ -64,6 +66,22 @@ func LoadLocation(name string) *time.Location {
 
 // Languages lists the supported web UI languages.
 var Languages = []string{"en", "de"}
+
+// Appearances lists the web UI color schemes.
+var Appearances = []string{"light", "dark"}
+
+// ValidAppearance reports whether a is a supported color scheme (or empty).
+func ValidAppearance(a string) bool {
+	if a == "" {
+		return true
+	}
+	for _, v := range Appearances {
+		if v == a {
+			return true
+		}
+	}
+	return false
+}
 
 // ValidLanguage reports whether lang is a supported UI language (or empty).
 func ValidLanguage(lang string) bool {

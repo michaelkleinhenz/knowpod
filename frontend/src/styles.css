@@ -1,20 +1,83 @@
 :root {
-  /* Slate / steel-blue palette. */
+  /* Slate / steel-blue palette. The dark scheme below redefines these colors; the app
+     sets data-theme on <html> from the user's appearance setting (lib/appearance.ts). */
+  color-scheme: light;
   --color-header: #1e2a3a;
   --color-header-text: #e6ebf2;
   --color-header-muted: #9aa8bb;
   --color-primary: #3b5f86;
-  --color-primary-dark: #2d4a6a;
+  --color-primary-hover: #2d4a6a;
+  /* Emphasized text in the primary hue. */
+  --color-primary-text: #2d4a6a;
+  /* Text on a primary (or other strong) background. */
+  --color-on-primary: #fff;
   --color-bg: #eef1f5;
   --color-surface: #ffffff;
   --color-text: #1f2a37;
   --color-muted: #5d6b7d;
+  --color-placeholder: #9aa6b5;
   --color-border: #c9d1dc;
+  /* Hairlines inside a surface (menus, the sidebar, board columns). */
+  --color-border-soft: #e3e7ed;
   --color-error: #b42318;
   --color-success: #2f6f5e;
+  --color-orange: #c2410c;
+  --color-warning: #b7892f;
+  /* Hover and selection fills on a surface. */
+  --color-hover: #eef1f5;
+  --color-highlight: #e6edf5;
+  --color-highlight-strong: #d5e1ee;
+  /* The groove of a segmented control. */
+  --color-track: #e2e7ee;
+  --color-info-bg: #eef3f9;
+  --color-info-border: #c3d3e6;
+  --color-danger-bg: #fbe9e7;
+  --color-danger-border: #f1c4bd;
+  --color-success-bg: #e3f0ec;
+  /* The RGB of shadows and dimming overlays, for rgba(). */
+  --shadow-rgb: 30, 42, 58;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color: var(--color-text);
   background: var(--color-bg);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --color-header: #0d141d;
+  --color-header-text: #e6ebf2;
+  --color-header-muted: #9aa8bb;
+  --color-primary: #5687bd;
+  --color-primary-hover: #6794c6;
+  --color-primary-text: #9dbde0;
+  --color-on-primary: #fff;
+  --color-bg: #121922;
+  --color-surface: #1a2330;
+  --color-text: #dde4ed;
+  --color-muted: #93a1b3;
+  --color-placeholder: #627084;
+  --color-border: #334155;
+  --color-border-soft: #283444;
+  --color-error: #f07a6e;
+  --color-success: #5cbf9f;
+  --color-orange: #f0875a;
+  --color-warning: #d2a44a;
+  --color-hover: #243142;
+  --color-highlight: #213650;
+  --color-highlight-strong: #2b4668;
+  --color-track: #121922;
+  --color-info-bg: #1a2c42;
+  --color-info-border: #2f4d70;
+  --color-danger-bg: #3b2020;
+  --color-danger-border: #6e3530;
+  --color-success-bg: #173329;
+  --shadow-rgb: 0, 0, 0;
+}
+
+/* Form fields without their own colors would keep the browser's; give them the scheme's.
+   :where() keeps this below every field's own rule. */
+:where(:root[data-theme='dark']) :where(input, select, textarea):not(:where([type='checkbox'], [type='radio'], [type='color'], [type='range'])) {
+  color: var(--color-text);
+  background-color: var(--color-surface);
 }
 
 * {
@@ -152,7 +215,7 @@ a {
   border-radius: 8px;
   padding: 1.25rem;
   border: 1px solid var(--color-border);
-  box-shadow: 0 1px 2px rgba(30, 42, 58, 0.06);
+  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.06);
 }
 
 .card.narrow {
@@ -200,7 +263,7 @@ button[type='submit'],
 .primary-button {
   font: inherit;
   font-weight: 600;
-  color: #fff;
+  color: var(--color-on-primary);
   background: var(--color-primary);
   border: none;
   border-radius: 6px;
@@ -210,7 +273,7 @@ button[type='submit'],
 
 button[type='submit']:hover,
 .primary-button:hover {
-  background: var(--color-primary-dark);
+  background: var(--color-primary-hover);
 }
 
 button[type='submit']:disabled,
@@ -309,12 +372,12 @@ a {
 
 .status-pill.ok {
   color: var(--color-success);
-  background: #e3f0ec;
+  background: var(--color-success-bg);
 }
 
 .status-pill.bad {
   color: var(--color-error);
-  background: #fbe9e7;
+  background: var(--color-danger-bg);
 }
 
 .prose p,
@@ -397,7 +460,7 @@ a {
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.04em;
-  color: #fff;
+  color: var(--color-on-primary);
   border-radius: 4px;
   padding: 0.15rem 0.4rem;
 }
@@ -568,8 +631,8 @@ a {
 }
 
 .new-token .device-token {
-  background: #eef3f9;
-  border: 1px solid #c3d3e6;
+  background: var(--color-info-bg);
+  border: 1px solid var(--color-info-border);
   border-radius: 6px;
   padding: 0.6rem 0.75rem;
 }
@@ -578,7 +641,7 @@ a {
   flex-basis: 100%;
   margin: 0;
   font-size: 0.85rem;
-  color: var(--color-primary-dark);
+  color: var(--color-primary-text);
 }
 
 .steps {
@@ -674,8 +737,8 @@ a {
 }
 
 .notice {
-  background: #eef3f9;
-  border: 1px solid #c3d3e6;
+  background: var(--color-info-bg);
+  border: 1px solid var(--color-info-border);
   border-radius: 8px;
   padding: 0.65rem 0.9rem;
   font-size: 0.92rem;
@@ -706,8 +769,8 @@ a {
 }
 
 .notice.bad {
-  background: #fbe9e7;
-  border-color: #f1c4bd;
+  background: var(--color-danger-bg);
+  border-color: var(--color-danger-border);
 }
 
 .notice p {
@@ -813,8 +876,8 @@ a {
   display: inline-block;
   font-size: 0.75rem;
   font-weight: 500;
-  color: var(--color-primary-dark);
-  background: #e6edf5;
+  color: var(--color-primary-text);
+  background: var(--color-highlight);
   border-radius: 999px;
   padding: 0.05rem 0.55rem;
   margin-left: 0.5rem;
@@ -827,7 +890,7 @@ a {
 
 .state-pill.bad {
   color: var(--color-error);
-  background: #fbe9e7;
+  background: var(--color-danger-bg);
 }
 
 /* --- Conversation page --- */
@@ -906,7 +969,7 @@ a {
   max-width: 100%;
   overflow-x: auto;
   scrollbar-width: none;
-  background: #e2e7ee;
+  background: var(--color-track);
   border-radius: 999px;
   padding: 3px;
   margin-bottom: 1rem;
@@ -933,7 +996,7 @@ a {
 .segmented button.active {
   color: var(--color-text);
   background: var(--color-surface);
-  box-shadow: 0 1px 2px rgba(30, 42, 58, 0.15);
+  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.15);
 }
 
 .conversation-body {
@@ -973,7 +1036,7 @@ a {
 
 .speaker {
   font-weight: 600;
-  color: var(--color-primary-dark);
+  color: var(--color-primary-text);
 }
 
 .source audio {
@@ -1236,7 +1299,7 @@ a {
   white-space: nowrap;
   font-size: 0.75rem;
   font-weight: 600;
-  color: #fff;
+  color: var(--color-on-primary);
   background: var(--color-primary);
   border-radius: 999px;
   padding: 0.05rem 0.55rem;
@@ -1398,8 +1461,8 @@ a {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(30, 42, 58, 0.55);
-  color: #fff;
+  background: rgba(var(--shadow-rgb), 0.55);
+  color: var(--color-on-primary);
   font-size: 1.2rem;
   font-weight: 600;
   pointer-events: none;
@@ -1447,12 +1510,12 @@ a {
 .icon-button:hover:not(:disabled),
 .icon-button.active {
   color: var(--color-text);
-  background: #eef1f5;
+  background: var(--color-hover);
 }
 
 .icon-button.danger:hover:not(:disabled) {
   color: var(--color-error);
-  background: #fdecea;
+  background: var(--color-danger-bg);
 }
 
 .icon-button:disabled {
@@ -1497,7 +1560,7 @@ a {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 12px;
-  box-shadow: 0 10px 30px rgba(30, 42, 58, 0.18);
+  box-shadow: 0 10px 30px rgba(var(--shadow-rgb), 0.18);
   padding: 0.5rem;
 }
 
@@ -1559,7 +1622,7 @@ a {
   margin-top: 0.6rem;
   font: inherit;
   font-weight: 600;
-  color: var(--color-primary-dark);
+  color: var(--color-primary-text);
   background: var(--color-surface);
   border: 1.5px solid var(--color-primary);
   border-radius: 999px;
@@ -1568,7 +1631,7 @@ a {
 }
 
 .regenerate:hover:not(:disabled) {
-  background: #eef3f9;
+  background: var(--color-info-bg);
 }
 
 .regenerate:disabled {
@@ -1659,7 +1722,7 @@ a {
     position: fixed;
     inset: 0;
     z-index: 39;
-    background: rgba(30, 42, 58, 0.35);
+    background: rgba(var(--shadow-rgb), 0.35);
   }
 
   .details-panel {
@@ -1935,7 +1998,7 @@ button.sync-state {
 }
 
 button.sync-state:hover {
-  background: #fdecea;
+  background: var(--color-danger-bg);
 }
 
 button.sync-state:focus-visible {
@@ -1952,7 +2015,7 @@ button.sync-state:focus-visible {
 }
 
 .sync-state.dirty .sync-dot {
-  background: #b7892f;
+  background: var(--color-warning);
 }
 
 .sync-state.saving .sync-dot {
@@ -1963,7 +2026,7 @@ button.sync-state:focus-visible {
 .sync-state.error .sync-dot,
 .sync-state.offline .sync-dot {
   background: var(--color-error);
-  box-shadow: 0 0 0 3px #fbe9e7;
+  box-shadow: 0 0 0 3px var(--color-danger-bg);
 }
 
 @keyframes sync-pulse {
@@ -2036,7 +2099,7 @@ button.sync-state:focus-visible {
   content: attr(data-placeholder);
   float: left;
   height: 0;
-  color: #9aa6b5;
+  color: var(--color-placeholder);
   pointer-events: none;
 }
 
@@ -2092,7 +2155,7 @@ button.sync-state:focus-visible {
 
 .editor-content pre {
   padding: 0.75rem 1rem;
-  background: #f3f5f8;
+  background: var(--color-hover);
   border-radius: 6px;
   overflow-x: auto;
 }
@@ -2114,10 +2177,10 @@ button.sync-state:focus-visible {
   overflow-y: auto;
   scrollbar-gutter: stable;
   padding: 0.3rem;
-  background: #fff;
-  border: 1px solid #e3e7ed;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-soft);
   border-radius: 10px;
-  box-shadow: 0 10px 30px rgba(30, 42, 58, 0.16), 0 2px 6px rgba(30, 42, 58, 0.08);
+  box-shadow: 0 10px 30px rgba(var(--shadow-rgb), 0.16), 0 2px 6px rgba(var(--shadow-rgb), 0.08);
 }
 
 .slash-menu button {
@@ -2136,7 +2199,7 @@ button.sync-state:focus-visible {
 }
 
 .slash-menu button.selected {
-  background: #eef1f5;
+  background: var(--color-hover);
 }
 
 .slash-icon {
@@ -2149,8 +2212,8 @@ button.sync-state:focus-visible {
   font-size: 0.95rem;
   font-weight: 600;
   color: var(--color-muted);
-  background: #fff;
-  border: 1px solid #e3e7ed;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-soft);
   border-radius: 7px;
 }
 
@@ -2183,10 +2246,10 @@ button.sync-state:focus-visible {
   align-items: center;
   gap: 0.1rem;
   padding: 0.2rem;
-  background: #fff;
-  border: 1px solid #e3e7ed;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-soft);
   border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(30, 42, 58, 0.16);
+  box-shadow: 0 8px 24px rgba(var(--shadow-rgb), 0.16);
 }
 
 .bubble-button {
@@ -2203,19 +2266,19 @@ button.sync-state:focus-visible {
 }
 
 .bubble-button:hover {
-  background: #eef1f5;
+  background: var(--color-hover);
 }
 
 .bubble-button.active {
-  color: var(--color-primary-dark);
-  background: #e2e8f0;
+  color: var(--color-primary-text);
+  background: var(--color-highlight-strong);
 }
 
 .bubble-sep {
   width: 1px;
   height: 1.3rem;
   margin: 0 0.15rem;
-  background: #e3e7ed;
+  background: var(--color-border-soft);
 }
 
 @media (pointer: coarse) {
@@ -2306,12 +2369,12 @@ button.sync-state:focus-visible {
   scrollbar-gutter: stable;
   padding: 1rem 0.75rem 1rem 1rem;
   background: var(--color-bg);
-  border-right: 1px solid #dde2e9;
+  border-right: 1px solid var(--color-border-soft);
 }
 
 /* The scrollbar gutter next to the white note page is white, too. */
 html:has(.notes-layout) {
-  background: #fff;
+  background: var(--color-surface);
 }
 
 /* The open note is a plain white page, like a word processor. */
@@ -2319,7 +2382,7 @@ html:has(.notes-layout) {
   align-self: stretch;
   min-width: 0;
   padding: 2.5rem 3rem 3rem;
-  background: #fff;
+  background: var(--color-surface);
 }
 
 .notes-sidebar .conversations {
@@ -2445,7 +2508,7 @@ html:has(.notes-layout) {
   font-size: 0.8rem;
   font-variant-numeric: tabular-nums;
   color: var(--color-primary);
-  background: #e6edf5;
+  background: var(--color-highlight);
   border: none;
   border-radius: 4px;
   padding: 0.05rem 0.35rem;
@@ -2454,7 +2517,7 @@ html:has(.notes-layout) {
 }
 
 .time-link:hover {
-  background: #d5e1ee;
+  background: var(--color-highlight-strong);
 }
 
 .highlights {
@@ -2494,8 +2557,8 @@ html:has(.notes-layout) {
   margin: -0.475rem 0 0 -0.475rem;
   border-radius: 50%;
   border: 2px solid var(--color-surface);
-  background: #b7892f;
-  box-shadow: 0 0 0 1px rgba(30, 42, 58, 0.2);
+  background: var(--color-warning);
+  box-shadow: 0 0 0 1px rgba(var(--shadow-rgb), 0.2);
   cursor: pointer;
   padding: 0;
 }
@@ -2607,7 +2670,7 @@ html:has(.notes-layout) {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
+  box-shadow: 0 8px 24px rgba(var(--shadow-rgb), 0.14);
   padding: 0.4rem;
 }
 
@@ -2718,7 +2781,7 @@ html:has(.notes-layout) {
   gap: 0.35rem;
   font-size: 0.8rem;
   font-weight: 600;
-  color: var(--color-primary-dark);
+  color: var(--color-primary-text);
   cursor: pointer;
 }
 
@@ -2793,7 +2856,7 @@ html:has(.notes-layout) {
 }
 
 .folder-tree.drop {
-  background: #e6edf5;
+  background: var(--color-highlight);
   box-shadow: inset 0 0 0 2px var(--color-primary);
 }
 
@@ -2822,7 +2885,7 @@ html:has(.notes-layout) {
 }
 
 .tree-row.drop {
-  background: #e6edf5;
+  background: var(--color-highlight);
   box-shadow: inset 0 0 0 2px var(--color-primary);
 }
 
@@ -2939,7 +3002,7 @@ html:has(.notes-layout) {
 }
 
 .note-line.drop {
-  background: #e6edf5;
+  background: var(--color-highlight);
   box-shadow: inset 0 0 0 2px var(--color-primary);
 }
 
@@ -3128,7 +3191,7 @@ html:has(.notes-layout) {
   flex-direction: column;
   min-height: 8rem;
   background: var(--color-bg);
-  border: 1px solid #dde2e9;
+  border: 1px solid var(--color-border-soft);
   border-radius: 10px;
   padding: 0.5rem;
   transition: box-shadow 0.1s;
@@ -3209,10 +3272,10 @@ html:has(.notes-layout) {
 
 .board-card {
   background: var(--color-surface);
-  border: 1px solid #dde2e9;
+  border: 1px solid var(--color-border-soft);
   border-radius: 8px;
   padding: 0.45rem 0.35rem 0.45rem 0.55rem;
-  box-shadow: 0 1px 2px rgba(30, 42, 58, 0.06);
+  box-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.06);
   cursor: grab;
   -webkit-user-drag: element;
 }
@@ -3331,7 +3394,7 @@ html:has(.notes-layout) {
   cursor: grabbing;
   opacity: 0.92;
   transform: rotate(1.5deg);
-  box-shadow: 0 8px 20px rgba(30, 42, 58, 0.22);
+  box-shadow: 0 8px 20px rgba(var(--shadow-rgb), 0.22);
 }
 
 .board-card-ghost .board-card-grip {
@@ -3383,7 +3446,7 @@ a.note-ref:hover {
 
 .note-ref.unknown {
   color: var(--color-muted);
-  background: #eef1f5;
+  background: var(--color-hover);
 }
 
 .note-menu {
@@ -3434,17 +3497,17 @@ a.note-ref:hover {
 
 .priority-flag.p1,
 .priority-option.p1 {
-  --priority: #b42318;
+  --priority: var(--color-error);
 }
 
 .priority-flag.p2,
 .priority-option.p2 {
-  --priority: #c2410c;
+  --priority: var(--color-orange);
 }
 
 .priority-flag.p3,
 .priority-option.p3 {
-  --priority: #3b5f86;
+  --priority: var(--color-primary);
 }
 
 .priority-flag {
@@ -4128,7 +4191,7 @@ a.note-ref:hover {
 }
 
 .filter-chip.active {
-  color: #fff;
+  color: var(--color-on-primary);
   background: var(--color-primary);
   border-color: var(--color-primary);
 }
@@ -4579,8 +4642,8 @@ a.note-ref:hover {
 
 /* The trash button, last in the list's head, shows only the trash while on. */
 .pill-button.trash-toggle.active {
-  color: var(--color-primary-dark);
-  background: #e6edf5;
+  color: var(--color-primary-text);
+  background: var(--color-highlight);
   border-color: var(--color-primary);
 }
 

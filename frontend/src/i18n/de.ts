@@ -613,6 +613,12 @@ export const de: Translation = {
       label: 'Sprache der App',
       names: { en: 'English', de: 'Deutsch' },
     },
+    appearance: {
+      title: 'Darstellung',
+      hint: 'Helle oder dunkle Farben für die App. Sie wird mit deinem Konto gespeichert; „System“ folgt der Einstellung deines Geräts.',
+      label: 'Farbschema',
+      names: { system: 'System', light: 'Hell', dark: 'Dunkel' },
+    },
     themes: {
       title: 'Vorlagen für Zusammenfassungen',
       intro: 'Eine Vorlage legt fest, wie eine Zusammenfassung aufgebaut ist. Du wählst sie pro Notiz unter „Details der Zusammenfassung“. Die vordefinierten Vorlagen kannst du nach deinen Wünschen anpassen (nur für dich) und eigene hinzufügen.',

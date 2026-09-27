@@ -31,7 +31,7 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
   | Scripts and your own tools | The full [REST API](backend/api/openapi.yaml), downloads as Markdown and text |
 
 - **Everywhere you work.** A responsive web app, installable on phones and desktops (PWA),
-  and a native [desktop app](#desktop-app); English and German.
+  and a native [desktop app](#desktop-app); English and German, light and dark.
 
 ## Tech stack
 
@@ -142,6 +142,8 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
   Users adjust the built-in themes and add their own on the **Settings** page.
 - The web UI is available in English and German; each user picks the language in
   **Settings**.
+- The web UI has a light and a dark color scheme; each user picks one, or follows the
+  device's setting, under **Settings → General**.
 - The web UI works on phones and can be installed as an app (PWA).
 - A **desktop app** for Windows, macOS and Linux is an alternative to the browser: the same
   web UI in a native window, signed in to and talking to the server exactly like the web app

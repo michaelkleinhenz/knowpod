@@ -64,6 +64,21 @@ func TestPreferences(t *testing.T) {
 	if a, _ := s.Authenticate(ctx, token); a.Language != "de" {
 		t.Fatalf("language not on account: %+v", a)
 	}
+
+	dark, sepia, system := "dark", "sepia", ""
+	if _, err := s.UpdatePreferences(ctx, acc, Preferences{Appearance: &sepia}); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("unsupported appearance: %v", err)
+	}
+	got, err = s.UpdatePreferences(ctx, acc, Preferences{Appearance: &dark})
+	if err != nil || got.Appearance != "dark" || got.Language != "de" {
+		t.Fatalf("appearance: %+v, %v", got, err)
+	}
+	if a, _ := s.Authenticate(ctx, token); a.Appearance != "dark" {
+		t.Fatalf("appearance not on account: %+v", a)
+	}
+	if got, _ = s.UpdatePreferences(ctx, acc, Preferences{Appearance: &system}); got.Appearance != "" {
+		t.Fatalf("back to system: %+v", got)
+	}
 }
 
 func TestNoBuiltInAdminWithoutEnv(t *testing.T) {
