@@ -2395,15 +2395,40 @@ button.sync-state:focus-visible {
   pointer-events: none;
 }
 
+/* The sidebar's menu stays in place; only the items below it scroll. */
 .notes-sidebar {
   position: sticky;
   top: calc(3.5rem + env(safe-area-inset-top));
   height: calc(100vh - 3.5rem - env(safe-area-inset-top));
-  overflow-y: auto;
-  scrollbar-gutter: stable;
-  padding: 1rem 0.75rem 1rem 1rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 1rem 0 0 1rem;
   background: var(--color-bg);
   border-right: 1px solid var(--color-border-soft);
+}
+
+.notes-sidebar .notes-list {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.notes-sidebar .notes-list-top {
+  flex: none;
+  padding-right: 0.75rem;
+}
+
+.notes-sidebar .notes-list-items {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding: 0 0.75rem 1rem 0;
 }
 
 /* The scrollbar gutter next to the white note page is white, too. */
@@ -2498,11 +2523,30 @@ html:has(.notes-layout) {
 
   .notes-sidebar {
     position: static;
+    display: block;
     height: auto;
     max-height: none;
     overflow: visible;
     padding: 1rem;
     border-right: none;
+  }
+
+  /* On phones the page scrolls; the list's menu stays below the header. */
+  .notes-sidebar .notes-list {
+    display: block;
+  }
+
+  .notes-sidebar .notes-list-top {
+    position: sticky;
+    top: calc(3.5rem + env(safe-area-inset-top));
+    z-index: 4;
+    padding-right: 0;
+    background: var(--color-bg);
+  }
+
+  .notes-sidebar .notes-list-items {
+    overflow: visible;
+    padding: 0;
   }
 
   .notes-main {
