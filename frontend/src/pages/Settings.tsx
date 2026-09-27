@@ -1,15 +1,16 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../auth';
 import { LabelSettings } from '../components/LabelSettings';
-import { OpenRouterSettings } from '../components/OpenRouterSettings';
+import { TabbedPage, useTab } from '../components/Tabs';
 import { ThemeSettings } from '../components/ThemeSettings';
 import { LANGUAGES } from '../i18n';
+import { Account } from './Account';
+import { Devices } from './Devices';
 import { errorText } from '../lib/errors';
 
-type Tab = 'general' | 'themes' | 'labels' | 'ai';
+const TABS = ['general', 'account', 'devices', 'themes', 'labels'] as const;
 
 // LanguageSettings changes the app language; it is saved with the user.
 function LanguageSettings() {
@@ -48,56 +49,33 @@ function LanguageSettings() {
   );
 }
 
-// Settings groups the user's settings in tabs; the AI tab is for administrators. The tab is
-// part of the URL (?tab=themes) so it can be linked.
+// Settings groups the user's own settings in tabs: they apply only to the signed-in user.
+// Settings for all users are under Admin.
 export function Settings() {
   const { t } = useTranslation();
-  const { account } = useAuth();
-  const [params, setParams] = useSearchParams();
-  const tabs: Tab[] = account?.role === 'admin' ? ['general', 'themes', 'labels', 'ai'] : ['general', 'themes', 'labels'];
-  const requested = params.get('tab') as Tab | null;
-  const tab: Tab = requested && tabs.includes(requested) ? requested : 'general';
+  const [tab, setTab] = useTab(TABS);
 
   return (
-    <div className="page">
-      <h1 className="page-title">{t('settings.title')}</h1>
-      <div className="segmented tabs" role="tablist" aria-label={t('settings.title')}>
-        {tabs.map((id) => (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            id={`tab-${id}`}
-            aria-selected={tab === id}
-            aria-controls={`panel-${id}`}
-            className={tab === id ? 'active' : ''}
-            onClick={() => setParams(id === 'general' ? {} : { tab: id }, { replace: true })}
-          >
-            {t(`settings.tabs.${id}`)}
-          </button>
-        ))}
-      </div>
-      <section className="card" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
-        {tab === 'general' && <LanguageSettings />}
-        {tab === 'themes' && (
-          <>
-            <h2 className="card-title">{t('settings.themes.title')}</h2>
-            <ThemeSettings />
-          </>
-        )}
-        {tab === 'labels' && (
-          <>
-            <h2 className="card-title">{t('labels.title')}</h2>
-            <LabelSettings />
-          </>
-        )}
-        {tab === 'ai' && (
-          <>
-            <h2 className="card-title">{t('settings.ai.title')}</h2>
-            <OpenRouterSettings />
-          </>
-        )}
-      </section>
-    </div>
+    <TabbedPage title={t('settings.title')} tabs={TABS} tab={tab} setTab={setTab} label={(id) => t(`settings.tabs.${id}`)}>
+      {tab === 'general' && (
+        <section className="card">
+          <LanguageSettings />
+        </section>
+      )}
+      {tab === 'account' && <Account />}
+      {tab === 'devices' && <Devices />}
+      {tab === 'themes' && (
+        <section className="card">
+          <h2 className="card-title">{t('settings.themes.title')}</h2>
+          <ThemeSettings />
+        </section>
+      )}
+      {tab === 'labels' && (
+        <section className="card">
+          <h2 className="card-title">{t('labels.title')}</h2>
+          <LabelSettings />
+        </section>
+      )}
+    </TabbedPage>
   );
 }

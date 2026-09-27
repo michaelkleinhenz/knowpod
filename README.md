@@ -31,12 +31,12 @@ AI worker ─────────────▶ transcript (status: transcr
   devices. Admins manage users and the AI settings. The built-in admin is `ADMIN_EMAIL`,
   whose password is `ADMIN_PASSWORD` until one is set in the UI.
 - Each gadget authenticates with its own revocable token, created on the web UI's
-  **Devices** page.
+  **Settings → Devices** tab.
 - Each user can connect their own [Pocket](https://heypocket.com) recorder on the
-  **Account** page: recordings arrive through the user's personal webhook and their audio is
+  **Settings → Account** tab: recordings arrive through the user's personal webhook and their audio is
   downloaded with the user's Pocket API key.
 - WAV and MP3 files can be uploaded from the browser on **Notes**.
-- Each user can pair their **reMarkable** cloud account on the **Account** page with a
+- Each user can pair their **reMarkable** cloud account under **Settings → Account** with a
   one-time code. All its documents (except the trash) are imported into the knowpod
   folder **reMarkable**, in the same folders as on the tablet (read only, never changed on the tablet): handwritten notebooks are rendered to PDF, PDFs and EPUBs are kept as they
   are, and a vision model reads the pages into text that is summarized like a transcript.
@@ -64,7 +64,7 @@ AI worker ─────────────▶ transcript (status: transcr
 - Summaries list the **action items** found in the conversation; each becomes a task under
   the note with one click, due on the date that was named.
 - **Reminders** arrive as push notifications in every browser or installed app they are
-  turned on in (**Account → Notifications**), on phones too (on iPhone: from the Home Screen
+  turned on in (**Settings → Account → Notifications**), on phones too (on iPhone: from the Home Screen
   app).
 - The notes list shows notes **by time** (grouped by day) or in **folders**, like files.
   Folders can be nested, renamed and deleted (their notes move up, nothing is lost); drag
@@ -93,7 +93,7 @@ AI worker ─────────────▶ transcript (status: transcr
 - Transcoding and archiving run in a background worker with retries and backoff.
 - Every archived recording is transcribed and summarized through
   [OpenRouter](https://openrouter.ai). The API key and both models are chosen by an admin
-  on the web UI's **Settings** page.
+  in the web UI under **Admin → General**.
 - The web UI's **Notes** page (a note per recording) lists your recordings by the title of
   their summary; on desktop the list stays in a sidebar next to the open note;
   each note shows its summary, transcript and audio, and can be re-transcribed,
@@ -115,7 +115,7 @@ Supported input: integer PCM WAV, 8/16/24 bit, 1–8 channels, up to 4 GiB.
 | [Device upload protocol](docs/device-protocol.md) | Implementing the upload client on the gadget: requests, error handling, retry logic |
 | [Architecture](docs/architecture.md) | Backend developers: components, recording lifecycle, worker, data model, adding processing stages |
 | [Operations](docs/operations.md) | Deploying and running: Railway, AWS/IAM setup, users and sign-in, Pocket, reMarkable, uploads, installing the app, AI settings, devices, monitoring, recovery, limitations |
-| [OpenAPI spec](backend/api/openapi.yaml) | The formal API definition. The service serves it at `/api/v1/openapi.yaml` and `/api/v1/openapi.json`, and the web UI's **Status** page renders it as an API reference. |
+| [OpenAPI spec](backend/api/openapi.yaml) | The formal API definition. The service serves it at `/api/v1/openapi.yaml` and `/api/v1/openapi.json`, and the Devices tab links to it. |
 
 ## Quick start (Docker)
 
@@ -128,7 +128,7 @@ docker compose up --build
 ```
 
 - Web UI: <http://localhost:8080>. Sign in with `ADMIN_EMAIL` / `ADMIN_PASSWORD`, then
-  change the password under **Account**.
+  change the password under **Settings → Account**.
 - API: under `/api/v1`. The health check at `/healthz` also checks database connectivity.
 - MongoDB: `localhost:27017`
 

@@ -1772,7 +1772,7 @@ a {
   margin-top: 0.2rem;
 }
 
-/* --- Settings tabs --- */
+/* --- Settings and Admin tabs --- */
 
 .page-title {
   margin: 0.5rem 0 1rem;
@@ -1788,7 +1788,8 @@ a {
   }
 
   .segmented.tabs button {
-    flex: 1;
+    /* Share the width; with more tabs than fit, the row scrolls. */
+    flex: 1 0 auto;
     padding-left: 0.5rem;
     padding-right: 0.5rem;
   }

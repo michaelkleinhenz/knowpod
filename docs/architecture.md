@@ -264,9 +264,8 @@ it in the runtime image. Nothing else needs to change.
 
 `backend/api/openapi.yaml` is the single description of the HTTP API. It is embedded in the
 binary (`backend/api/api.go`) and served at `/api/v1/openapi.yaml` and, converted, at
-`/api/v1/openapi.json`. The web UI's Status page reads the JSON and lists every operation
-grouped by its first tag. When you add or change a route, update the spec; the route
-coverage test enforces it.
+`/api/v1/openapi.json`; the web UI's Devices tab links to it. When you add or change a
+route, update the spec; the route coverage test enforces it.
 
 ### AI stages (`service/ai.go`)
 

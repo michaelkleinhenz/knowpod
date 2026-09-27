@@ -67,11 +67,8 @@ export function Layout({ children }: { children: ReactNode }) {
               <NavLink to="/" className={() => (onConversations ? 'active' : '')}>
                 {t('nav.conversations')}
               </NavLink>
-              <NavLink to="/devices">{t('nav.devices')}</NavLink>
-              {admin && <NavLink to="/users">{t('nav.users')}</NavLink>}
               <NavLink to="/settings">{t('nav.settings')}</NavLink>
-              <NavLink to="/status">{t('nav.status')}</NavLink>
-              <NavLink to="/account">{t('nav.account')}</NavLink>
+              {admin && <NavLink to="/admin">{t('nav.admin')}</NavLink>}
               <span className="nav-user">{account.email}</span>
               <button type="button" className="link-button" onClick={handleLogout}>
                 {t('nav.signOut')}

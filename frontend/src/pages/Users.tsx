@@ -219,9 +219,9 @@ export function Users() {
   useEffect(load, [load]);
 
   return (
-    <div className="page">
+    <>
       <section className="card">
-        <h1>{t('users.title')}</h1>
+        <h2 className="card-title">{t('users.title')}</h2>
         <p className="muted">{t('users.intro')}</p>
         <h2 className="card-title">{t('users.add')}</h2>
         <CreateUser onCreated={load} />
@@ -238,6 +238,6 @@ export function Users() {
           </ul>
         )}
       </section>
-    </div>
+    </>
   );
 }

@@ -3,15 +3,12 @@ import { useTranslation } from 'react-i18next';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './auth';
 import { Layout } from './components/Layout';
-import { Account } from './pages/Account';
-import { Devices } from './pages/Devices';
+import { Admin } from './pages/Admin';
 import { Conversation } from './pages/Conversation';
 import { Login } from './pages/Login';
 import { NoteByNumber } from './pages/NoteByNumber';
 import { NotesHome, NotesLayout } from './pages/NotesLayout';
 import { Settings } from './pages/Settings';
-import { Users } from './pages/Users';
-import { Status } from './pages/Status';
 
 // RequireLogin sends signed-out visitors to the login page and back afterwards. With admin,
 // only administrators get through.
@@ -50,37 +47,18 @@ export default function App() {
           }
         />
         <Route
-          path="/users"
+          path="/admin"
           element={
             <RequireLogin admin>
-              <Users />
+              <Admin />
             </RequireLogin>
           }
         />
-        <Route
-          path="/devices"
-          element={
-            <RequireLogin>
-              <Devices />
-            </RequireLogin>
-          }
-        />
-        <Route
-          path="/status"
-          element={
-            <RequireLogin>
-              <Status />
-            </RequireLogin>
-          }
-        />
-        <Route
-          path="/account"
-          element={
-            <RequireLogin>
-              <Account />
-            </RequireLogin>
-          }
-        />
+        {/* Former pages, now tabs. */}
+        <Route path="/account" element={<Navigate to="/settings?tab=account" replace />} />
+        <Route path="/devices" element={<Navigate to="/settings?tab=devices" replace />} />
+        <Route path="/users" element={<Navigate to="/admin" replace />} />
+        <Route path="/status" element={<Navigate to="/settings" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>

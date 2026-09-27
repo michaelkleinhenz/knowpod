@@ -252,7 +252,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
       {!aiReady && recordings && recordings.length > 0 && (
         <p className="notice">
           {account?.role === 'admin' ? (
-            <Trans i18nKey="conversations.aiOffAdmin" components={{ 1: <Link to="/settings" /> }} />
+            <Trans i18nKey="conversations.aiOffAdmin" components={{ 1: <Link to="/admin?tab=general" /> }} />
           ) : (
             t('conversations.aiOff')
           )}
@@ -265,7 +265,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
         <div className="empty">
           <p className="muted">{t('conversations.empty')}</p>
           <p className="muted">
-            <Trans i18nKey="conversations.emptyHint" components={{ 1: <Link to="/devices" />, 3: <Link to="/account" /> }} />
+            <Trans i18nKey="conversations.emptyHint" components={{ 1: <Link to="/settings?tab=devices" />, 3: <Link to="/settings?tab=account" /> }} />
           </p>
           <div className="empty-actions">
             <button type="button" onClick={createText} disabled={creating}>
