@@ -54,7 +54,8 @@ const SLASH_ITEMS: SlashItem[] = [
   { id: 'heading3', icon: 'H₃', run: (e, r) => e.chain().focus().deleteRange(r).setNode('heading', { level: 3 }).run() },
   { id: 'bulletList', icon: '•≡', run: (e, r) => e.chain().focus().deleteRange(r).toggleBulletList().run() },
   { id: 'orderedList', icon: '1≡', run: (e, r) => e.chain().focus().deleteRange(r).toggleOrderedList().run() },
-  { id: 'taskList', icon: '☑', run: (e, r) => e.chain().focus().deleteRange(r).toggleTaskList().run() },
+  // A checklist is part of the text ("- [ ]" / "- [x]" in the Markdown); it doesn't create tasks.
+  { id: 'checklist', icon: '☑', run: (e, r) => e.chain().focus().deleteRange(r).toggleTaskList().run() },
   { id: 'codeBlock', icon: '</>', run: (e, r) => e.chain().focus().deleteRange(r).toggleCodeBlock().run() },
   { id: 'quote', icon: '❝', run: (e, r) => e.chain().focus().deleteRange(r).toggleBlockquote().run() },
   { id: 'divider', icon: '—', run: (e, r) => e.chain().focus().deleteRange(r).setHorizontalRule().run() },
@@ -403,6 +404,9 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
       strike: e.isActive('strike'),
       code: e.isActive('code'),
       link: e.isActive('link'),
+      bulletList: e.isActive('bulletList'),
+      orderedList: e.isActive('orderedList'),
+      checklist: e.isActive('taskList'),
     }),
   });
 
@@ -430,6 +434,16 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
         </BubbleButton>
         <BubbleButton label={t('editor.code')} active={marks.code} onClick={() => chain().toggleCode().run()}>
           {'</>'}
+        </BubbleButton>
+        <span className="bubble-sep" />
+        <BubbleButton label={t('editor.bulletList')} active={marks.bulletList} onClick={() => chain().toggleBulletList().run()}>
+          •≡
+        </BubbleButton>
+        <BubbleButton label={t('editor.orderedList')} active={marks.orderedList} onClick={() => chain().toggleOrderedList().run()}>
+          1≡
+        </BubbleButton>
+        <BubbleButton label={t('editor.checklist')} active={marks.checklist} onClick={() => chain().toggleTaskList().run()}>
+          ☑
         </BubbleButton>
         <span className="bubble-sep" />
         <BubbleButton label={t('editor.link')} active={marks.link} onClick={setLink}>
