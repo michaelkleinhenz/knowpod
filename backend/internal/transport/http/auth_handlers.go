@@ -50,7 +50,7 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, accountFrom(r.Context()))
 }
 
-// handleUpdatePreferences changes the signed-in user's own settings (UI language).
+// handleUpdatePreferences changes the signed-in user's own settings (UI language, appearance, time zone).
 func (s *Server) handleUpdatePreferences(w http.ResponseWriter, r *http.Request) {
 	var p service.Preferences
 	if !decode(w, r, &p) {

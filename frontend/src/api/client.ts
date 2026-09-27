@@ -81,6 +81,8 @@ export interface Account {
   // The IANA time zone task dates and reminders are meant in; the app keeps it in sync
   // with the browser's.
   timeZone?: string;
+  // The color scheme ("light", "dark"); absent follows the system.
+  appearance?: string;
 }
 
 export interface Theme {
@@ -498,7 +500,7 @@ export const api = {
   createTheme: (t: ThemeInput) => request<Theme>('POST', '/themes', t),
   updateTheme: (id: string, t: ThemeInput) => request<Theme>('PUT', `/themes/${encodeURIComponent(id)}`, t),
   deleteTheme: (id: string) => request<void>('DELETE', `/themes/${encodeURIComponent(id)}`),
-  savePreferences: (p: { language?: string; timeZone?: string }) => request<Account>('PUT', '/me/preferences', p),
+  savePreferences: (p: { language?: string; timeZone?: string; appearance?: string }) => request<Account>('PUT', '/me/preferences', p),
   createDevice: (name: string) => request<DeviceWithToken>('POST', '/devices', { name }),
   rotateDeviceToken: (id: string) => request<DeviceWithToken>('POST', `/devices/${encodeURIComponent(id)}/token`),
   removeDevice: (id: string) => request<void>('DELETE', `/devices/${encodeURIComponent(id)}`),

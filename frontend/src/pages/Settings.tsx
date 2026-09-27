@@ -9,6 +9,7 @@ import { ThemeSettings } from '../components/ThemeSettings';
 import { LANGUAGES } from '../i18n';
 import { Account } from './Account';
 import { Devices } from './Devices';
+import { APPEARANCES, applyAppearance, currentAppearance } from '../lib/appearance';
 import { errorText } from '../lib/errors';
 
 const TABS = ['general', 'account', 'devices', 'themes', 'labels', 'filters'] as const;
@@ -50,6 +51,45 @@ function LanguageSettings() {
   );
 }
 
+// AppearanceSettings switches between the light and dark color scheme, or follows the
+// system's; it is saved with the user.
+function AppearanceSettings() {
+  const { t } = useTranslation();
+  const { account, update } = useAuth();
+  const [error, setError] = useState<string | null>(null);
+  const value = account?.appearance ?? currentAppearance();
+
+  async function change(a: string) {
+    setError(null);
+    applyAppearance(a); // switch right away; saving follows
+    try {
+      update(await api.savePreferences({ appearance: a }));
+    } catch (err) {
+      setError(errorText(err, t));
+    }
+  }
+
+  return (
+    <>
+      <h2 className="card-title">{t('settings.appearance.title')}</h2>
+      <p className="muted">{t('settings.appearance.hint')}</p>
+      <div className="form">
+        <label>
+          {t('settings.appearance.label')}
+          <select value={value} onChange={(e) => change(e.target.value)}>
+            {APPEARANCES.map((a) => (
+              <option key={a} value={a}>
+                {t(`settings.appearance.names.${a || 'system'}`)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {error && <p className="error">{error}</p>}
+    </>
+  );
+}
+
 // Settings groups the user's own settings in tabs: they apply only to the signed-in user.
 // Settings for all users are under Admin.
 export function Settings() {
@@ -59,9 +99,14 @@ export function Settings() {
   return (
     <TabbedPage title={t('settings.title')} tabs={TABS} tab={tab} setTab={setTab} label={(id) => t(`settings.tabs.${id}`)}>
       {tab === 'general' && (
-        <section className="card">
-          <LanguageSettings />
-        </section>
+        <>
+          <section className="card">
+            <LanguageSettings />
+          </section>
+          <section className="card">
+            <AppearanceSettings />
+          </section>
+        </>
       )}
       {tab === 'account' && <Account />}
       {tab === 'devices' && <Devices />}

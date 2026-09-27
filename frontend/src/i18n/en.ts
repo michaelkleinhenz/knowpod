@@ -611,6 +611,12 @@ export const en = {
       label: 'App language',
       names: { en: 'English', de: 'Deutsch' },
     },
+    appearance: {
+      title: 'Appearance',
+      hint: 'Light or dark colors for the app. It is saved with your account; “System” follows your device’s setting.',
+      label: 'Color scheme',
+      names: { system: 'System', light: 'Light', dark: 'Dark' },
+    },
     themes: {
       title: 'Summary themes',
       intro: 'A theme defines how a summary is structured. Pick one per note under “Summary details”. You can adjust the built-in themes to your liking (only for you) and add your own.',

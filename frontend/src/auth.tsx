@@ -2,6 +2,7 @@ import { createContext, ReactNode, useCallback, useContext, useEffect, useState 
 import { Account, api, ApiError } from './api/client';
 import { clearOffline, readOffline, writeOffline } from './api/offline';
 import { applyLanguage } from './i18n';
+import { applyAppearance } from './lib/appearance';
 
 interface AuthState {
   account: Account | null;
@@ -27,6 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .me()
       .then((a) => {
         applyLanguage(a.language);
+        applyAppearance(a.appearance);
         setAccount(a);
       })
       .catch((e) => {
@@ -43,6 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (before && before.id !== a.id) await clearOffline();
     void writeOffline('/auth/me', a);
     applyLanguage(a.language);
+    applyAppearance(a.appearance);
     setAccount(a);
   }, []);
 
@@ -55,6 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const update = useCallback((a: Account) => {
     void writeOffline('/auth/me', a);
     applyLanguage(a.language);
+    applyAppearance(a.appearance);
     setAccount(a);
   }, []);
 

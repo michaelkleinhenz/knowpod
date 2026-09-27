@@ -458,6 +458,7 @@ paths:
               type: object
               properties:
                 language: { type: string, enum: ["", en, de], description: Web UI language; empty follows the browser }
+                appearance: { type: string, enum: ["", light, dark], description: Web UI color scheme; empty follows the system }
                 timeZone: { type: string, example: Europe/Berlin, description: IANA time zone task dates and reminders are meant in; empty is UTC. Changing it moves pending reminders. }
       responses:
         "200":
@@ -2032,6 +2033,7 @@ components:
         role: { type: string, enum: [user, admin] }
         language: { type: string, description: Web UI language (en, de); absent follows the browser }
         timeZone: { type: string, description: IANA time zone of task dates and reminders; absent is UTC }
+        appearance: { type: string, enum: [light, dark], description: Web UI color scheme; absent follows the system }
 
     User:
       type: object

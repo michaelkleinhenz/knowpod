@@ -46,7 +46,9 @@ type Account struct {
 	Role     user.Role `json:"role"`
 	Language string    `json:"language,omitempty"` // web UI language; empty follows the browser
 	TimeZone string    `json:"timeZone,omitempty"` // IANA time zone of task dates; empty is UTC
-	All      bool      `json:"-"`
+	// Appearance is the web UI color scheme ("light", "dark"); empty follows the system.
+	Appearance string `json:"appearance,omitempty"`
+	All        bool   `json:"-"`
 }
 
 // IsAdmin reports whether the account may manage users and global settings.
@@ -244,7 +246,7 @@ func account(u *user.User) *Account {
 	if !role.Valid() {
 		role = user.RoleUser
 	}
-	return &Account{ID: u.ID, Email: u.Email, Role: role, Language: u.Language, TimeZone: u.TimeZone}
+	return &Account{ID: u.ID, Email: u.Email, Role: role, Language: u.Language, TimeZone: u.TimeZone, Appearance: u.Appearance}
 }
 
 // Preferences are a user's own settings.
@@ -252,6 +254,8 @@ type Preferences struct {
 	Language *string `json:"language,omitempty"`
 	// TimeZone is an IANA time zone name such as "Europe/Berlin".
 	TimeZone *string `json:"timeZone,omitempty"`
+	// Appearance is the web UI color scheme: "light", "dark" or empty for the system's.
+	Appearance *string `json:"appearance,omitempty"`
 }
 
 // UpdatePreferences changes the signed-in user's settings.
@@ -268,6 +272,12 @@ func (s *AuthService) UpdatePreferences(ctx context.Context, acc *Account, p Pre
 			return nil, invalid("language must be one of %v", user.Languages)
 		}
 		u.Language = *p.Language
+	}
+	if p.Appearance != nil {
+		if !user.ValidAppearance(*p.Appearance) {
+			return nil, invalid("appearance must be empty or one of %v", user.Appearances)
+		}
+		u.Appearance = *p.Appearance
 	}
 	zoneChanged := false
 	if p.TimeZone != nil {
