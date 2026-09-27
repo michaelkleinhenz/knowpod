@@ -13,6 +13,7 @@ import (
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/label"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/settings"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/tablet"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/theme"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/user"
 )
@@ -114,6 +115,16 @@ type FolderRepository interface {
 	Update(ctx context.Context, f *folder.Folder) error
 	Delete(ctx context.Context, id string) error
 	DeleteByOwner(ctx context.Context, ownerID string) error
+}
+
+// TabletLinkRepository persists users' links to the reMarkable cloud, one per user. Get of a
+// user without a link returns domain.ErrNotFound; Save creates or replaces the link.
+type TabletLinkRepository interface {
+	Get(ctx context.Context, userID string) (*tablet.Link, error)
+	Save(ctx context.Context, l *tablet.Link) error
+	Delete(ctx context.Context, userID string) error
+	// UserIDs lists the users that have a link.
+	UserIDs(ctx context.Context) ([]string, error)
 }
 
 // ObjectStore stores binary objects (the audio files). Get of a missing key returns

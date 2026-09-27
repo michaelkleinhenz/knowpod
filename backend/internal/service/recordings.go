@@ -67,7 +67,7 @@ func (s *RecordingService) Delete(ctx context.Context, acc *Account, id string) 
 }
 
 func (s *RecordingService) delete(ctx context.Context, rec *recording.Recording) error {
-	for _, obj := range []*recording.Object{rec.Audio, rec.Original} {
+	for _, obj := range []*recording.Object{rec.Audio, rec.Original, rec.File} {
 		if obj != nil {
 			if err := s.objects.Delete(ctx, obj.Key); err != nil && !errors.Is(err, ErrNotFound) {
 				return err
@@ -81,16 +81,18 @@ func (s *RecordingService) delete(ctx context.Context, rec *recording.Recording)
 }
 
 // Retranscribe discards the transcript and summary and queues the recording for
-// transcription again.
+// transcription again (for documents: reading the pages again).
 func (s *RecordingService) Retranscribe(ctx context.Context, acc *Account, id string) (*recording.Recording, error) {
 	rec, err := s.Get(ctx, acc, id)
 	if err != nil {
 		return nil, err
 	}
-	if rec.IsText() {
+	switch {
+	case rec.IsText():
 		return nil, errors.Join(ErrNotReady, errors.New("text notes have no audio"))
-	}
-	if rec.Audio == nil {
+	case rec.IsDocument() && rec.Original == nil:
+		return nil, errors.Join(ErrNotReady, errors.New("the document has not been stored yet"))
+	case !rec.IsDocument() && rec.Audio == nil:
 		return nil, errors.Join(ErrNotReady, errors.New("the audio has not been archived yet"))
 	}
 	rec.Transcript, rec.Summary = nil, nil

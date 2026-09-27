@@ -36,6 +36,10 @@ const (
 	// TypeText: a Markdown note written by the user. It has no audio, transcript or source;
 	// its title and text are kept in Summary, so it is edited like a summary.
 	TypeText Type = "text"
+	// TypeDocument: a document read from the reMarkable cloud (a handwritten notebook, PDF
+	// or EPUB). File is its PDF or EPUB; the text read from its pages is kept as the
+	// Transcript and summarized like one.
+	TypeDocument Type = "document"
 )
 
 // Source says where a recording came from.
@@ -48,11 +52,17 @@ const (
 	SourcePocket Source = "pocket"
 	// SourceUpload: a WAV or MP3 file uploaded in the web UI.
 	SourceUpload Source = "upload"
+	// SourceRemarkable: a document pulled from the user's reMarkable cloud.
+	SourceRemarkable Source = "remarkable"
 )
 
 // PocketDeviceID returns the DeviceID of a user's Pocket recordings. Together with ClientID
 // (the Pocket recording ID) it makes webhook deliveries idempotent.
 func PocketDeviceID(userID string) string { return "pocket:" + userID }
+
+// RemarkableDeviceID returns the DeviceID of a user's reMarkable documents. Their ClientID is
+// the document's ID in the reMarkable cloud, so every document is imported once.
+func RemarkableDeviceID(userID string) string { return "remarkable:" + userID }
 
 // Format describes the PCM audio of the uploaded WAV file.
 type Format struct {
@@ -92,7 +102,14 @@ type Recording struct {
 	RecordedAt        *time.Time `bson:"recordedAt,omitempty" json:"recordedAt,omitempty"`
 	Format            *Format    `bson:"format,omitempty" json:"format,omitempty"`
 	Audio             *Object    `bson:"audio,omitempty" json:"audio,omitempty"`       // archived FLAC
-	Original          *Object    `bson:"original,omitempty" json:"original,omitempty"` // archived WAV, if kept
+	Original          *Object    `bson:"original,omitempty" json:"original,omitempty"` // archived WAV, if kept; a document's files
+	// File is a document's viewable file: a PDF (notebooks are rendered to one) or EPUB.
+	File *Object `bson:"file,omitempty" json:"file,omitempty"`
+	// Pages is the number of pages of a document.
+	Pages int `bson:"pages,omitempty" json:"pages,omitempty"`
+	// SourceRevision identifies the version of a document that was imported; a pull
+	// imports the document again when it changed.
+	SourceRevision string `bson:"sourceRevision,omitempty" json:"-"`
 
 	// Labels are the IDs of the labels the user put on the note, in the order they were added.
 	Labels []string `bson:"labels,omitempty" json:"labels,omitempty"`
@@ -121,6 +138,9 @@ type Recording struct {
 
 // IsText reports whether the note is a text note.
 func (r *Recording) IsText() bool { return r.Type == TypeText }
+
+// IsDocument reports whether the note is a document from the reMarkable cloud.
+func (r *Recording) IsDocument() bool { return r.Type == TypeDocument }
 
 // KeepUserFields copies the fields a person changes at any time (labels, done, folder) from
 // the stored version, so that a processing step saving its long-held copy doesn't undo them.

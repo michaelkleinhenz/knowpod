@@ -22,6 +22,13 @@ info:
     whose audio is then downloaded with the user's Pocket API key and archived like device
     uploads. WAV and MP3 files can also be uploaded from the browser (`POST /recordings`).
 
+    **reMarkable documents** — users pair their reMarkable cloud account with a one-time code
+    (`POST /me/remarkable/pair`). The documents in its top-level folder "reMarkable" are then
+    imported as notes (`type: document`) every few minutes or on `POST /me/remarkable/pull`,
+    and imported again when they change. Handwritten notebooks are rendered to PDF; PDFs and
+    EPUBs are kept as they are (`GET /recordings/{id}/file`). The text read from the pages
+    becomes the note's `transcript` and is summarized. Nothing is written to the cloud.
+
     **Text notes** — besides audio recordings, notes can be plain Markdown text written in the
     web UI (`POST /recordings/text`, `type: text`). They skip transcription and summaries.
 
@@ -47,7 +54,7 @@ tags:
   - name: Web UI sign-in
     description: Email/password sign-in for the web UI, with a session cookie.
   - name: Your account
-    description: The signed-in user's Pocket integration and AI status.
+    description: The signed-in user's Pocket and reMarkable integrations and AI status.
   - name: Devices
     description: Your recorder gadgets. ADMIN_TOKEN sees every user's.
   - name: Recordings
@@ -284,6 +291,73 @@ paths:
           description: Saved
           content: { application/json: { schema: { $ref: "#/components/schemas/PocketSettings" } } }
 
+  /me/remarkable:
+    get:
+      tags: ["Your account"]
+      summary: Your reMarkable link
+      description: Whether a reMarkable cloud account is paired, and the outcome of the last pull.
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: Link
+          content: { application/json: { schema: { $ref: "#/components/schemas/RemarkableSettings" } } }
+        "401": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: ["Your account"]
+      summary: Unpair your reMarkable account
+      description: |
+        Forgets the pairing; imported notes stay. The paired app remains listed among the
+        account's devices at my.remarkable.com until it is removed there.
+      security: [{ sessionCookie: [] }]
+      responses:
+        "204": { description: Unpaired }
+
+  /me/remarkable/pair:
+    post:
+      tags: ["Your account"]
+      summary: Pair a reMarkable account
+      description: Pairs with the one-time code from `connectUrl` (https://my.remarkable.com/device/browser/connect). Pairing again replaces the link.
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string, example: abcdefgh, description: The 8-character one-time code }
+      responses:
+        "200":
+          description: Paired
+          content: { application/json: { schema: { $ref: "#/components/schemas/RemarkableSettings" } } }
+        "400":
+          description: Malformed or refused code (`invalid_input`, `invalid_pairing_code`)
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "502":
+          description: The reMarkable cloud could not be reached (`remarkable_unavailable`)
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /me/remarkable/pull:
+    post:
+      tags: ["Your account"]
+      summary: Import new and changed documents now
+      description: |
+        Reads the top-level folder "reMarkable" (and its subfolders) and queues new documents
+        and documents whose content changed. Pulls also run automatically
+        (`REMARKABLE_PULL_INTERVAL`, default 15 minutes).
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: Pulled; `lastResult` tells what was found
+          content: { application/json: { schema: { $ref: "#/components/schemas/RemarkableSettings" } } }
+        "409":
+          description: No account paired (`not_paired`), or the cloud no longer accepts the pairing (`pairing_revoked`)
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "502":
+          description: The reMarkable cloud could not be reached (`remarkable_unavailable`)
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
   /ai/status:
     get:
       tags: ["Your account"]
@@ -316,6 +390,7 @@ paths:
                 properties:
                   transcription: { type: array, items: { $ref: "#/components/schemas/ModelOption" } }
                   summary: { type: array, items: { $ref: "#/components/schemas/ModelOption" } }
+                  document: { type: array, items: { $ref: "#/components/schemas/ModelOption" }, description: Models that take images (for reading documents) }
         "502":
           description: OpenRouter could not be reached
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
@@ -809,11 +884,38 @@ paths:
           description: Not archived yet
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
+  /recordings/{recordingId}/file:
+    get:
+      tags: ["Recordings"]
+      summary: Show or download a document
+      description: |
+        The PDF of a reMarkable document (notebooks rendered from their pages) or its EPUB.
+        Supports a single `Range`; `?download=1` sends it as an attachment.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+        - { name: download, in: query, schema: { type: boolean } }
+        - { name: Range, in: header, schema: { type: string, example: bytes=0-1023 } }
+      responses:
+        "206": { description: Partial content for a Range request }
+        "416": { description: Range outside the file }
+        "200":
+          description: Document
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+            application/epub+zip:
+              schema: { type: string, format: binary }
+        "404": { $ref: "#/components/responses/Error" }
+        "409":
+          description: Not stored yet, or the note is not a document
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
   /recordings/{recordingId}/retranscribe:
     post:
       tags: ["Recordings"]
       summary: Transcribe again
-      description: Discards the transcript and summary; the recording is transcribed and summarized anew.
+      description: Discards the transcript and summary; the recording is transcribed (a document read) and summarized anew.
       security: [{ sessionCookie: [] }, { adminToken: [] }]
       parameters:
         - { name: recordingId, in: path, required: true, schema: { type: string } }
@@ -1125,6 +1227,7 @@ paths:
                 apiKey: { type: string, example: sk-or-v1-… }
                 transcriptionModel: { type: string, example: google/gemini-2.5-flash }
                 summaryModel: { type: string, example: google/gemini-2.5-flash }
+                documentModel: { type: string, example: google/gemini-2.5-flash, description: Empty uses the transcription model }
       responses:
         "200":
           description: Saved
@@ -1216,11 +1319,11 @@ components:
       properties:
         id: { type: string }
         ownerId: { type: string, description: The user the recording belongs to }
-        deviceId: { type: string, description: '"pocket:<userId>" for Pocket, "upload:<userId>" for browser uploads, "text:<userId>" for text notes' }
-        type: { type: string, enum: [text], description: 'The kind of note: absent for audio recordings, "text" for Markdown notes (title and text in `summary`)' }
-        source: { type: string, enum: [pocket, upload], description: Absent for device uploads }
-        title: { type: string, description: Title from the source (Pocket) }
-        recordingId: { type: string, description: Device-assigned ID, or the Pocket recording ID }
+        deviceId: { type: string, description: '"pocket:<userId>" for Pocket, "upload:<userId>" for browser uploads, "text:<userId>" for text notes, "remarkable:<userId>" for reMarkable documents' }
+        type: { type: string, enum: [text, document], description: 'The kind of note: absent for audio recordings, "text" for Markdown notes (title and text in `summary`), "document" for reMarkable documents (the text read from the pages in `transcript`)' }
+        source: { type: string, enum: [pocket, upload, remarkable], description: Absent for device uploads }
+        title: { type: string, description: Title from the source (Pocket, the document's name on the reMarkable) }
+        recordingId: { type: string, description: Device-assigned ID, the Pocket recording ID, or the reMarkable document ID }
         status: { $ref: "#/components/schemas/Status" }
         size: { type: integer, format: int64 }
         sha256: { type: string }
@@ -1236,6 +1339,8 @@ components:
             durationMs: { type: integer, format: int64 }
         audio: { $ref: "#/components/schemas/Object" }
         original: { $ref: "#/components/schemas/Object" }
+        file: { $ref: "#/components/schemas/Object" }
+        pages: { type: integer, description: Number of pages of a document }
         summaryOptions: { $ref: "#/components/schemas/SummaryOptions" }
         highlights: { type: array, items: { $ref: "#/components/schemas/Highlight" } }
         labels: { type: array, items: { type: string }, description: IDs of the note's labels (see GET /labels) }
@@ -1292,6 +1397,23 @@ components:
         webhookSecretConfigured: { type: boolean }
         apiKeyConfigured: { type: boolean }
         apiKeyHint: { type: string, example: …a1b2 }
+
+    RemarkableSettings:
+      type: object
+      properties:
+        paired: { type: boolean }
+        pairedAt: { type: string, format: date-time }
+        folder: { type: string, example: reMarkable, description: The top-level folder whose documents are imported }
+        connectUrl: { type: string, example: https://my.remarkable.com/device/browser/connect, description: Where to get a one-time code }
+        lastPullAt: { type: string, format: date-time }
+        lastError: { type: string, description: Why the last pull failed }
+        lastResult:
+          type: object
+          properties:
+            folderFound: { type: boolean }
+            documents: { type: integer, description: Documents in the folder }
+            imported: { type: integer, description: New notes }
+            updated: { type: integer, description: Notes queued again because their document changed }
 
     SummaryOptions:
       type: object
@@ -1356,6 +1478,7 @@ components:
         apiKeyHint: { type: string, example: …a1b2 }
         transcriptionModel: { type: string }
         summaryModel: { type: string }
+        documentModel: { type: string, description: Reads document pages; empty uses the transcription model }
         updatedAt: { type: string, format: date-time }
 
     ModelOption:

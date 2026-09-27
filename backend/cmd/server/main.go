@@ -18,6 +18,7 @@ import (
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/openrouter"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/pocket"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/remarkable"
 	repo "github.com/michaelkleinhenz/knowpod-service/backend/internal/repository/mongo"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/service"
 	s3store "github.com/michaelkleinhenz/knowpod-service/backend/internal/storage/s3"
@@ -53,6 +54,7 @@ func main() {
 	themeRepo := repo.NewThemeRepo(store)
 	labelRepo := repo.NewLabelRepo(store)
 	folderRepo := repo.NewFolderRepo(store)
+	tabletRepo := repo.NewTabletLinkRepo(store)
 
 	// Object storage.
 	objects, err := s3store.New(ctx, s3store.Options{
@@ -83,15 +85,31 @@ func main() {
 	archiver := service.NewArchiver(spool, objects, cfg.KeepOriginalWAV, log)
 	pocketSvc := service.NewPocketService(recordings, users, pocket.NewClient(cfg.PocketAPIURL), spool, cfg.MaxUploadBytes, log)
 	manualSvc := service.NewManualUploadService(recordings, spool, cfg.MaxUploadBytes)
+	remarkableSvc := service.NewRemarkableService(tabletRepo, recordings, objects,
+		remarkable.NewClient(cfg.RemarkableAuthURL, cfg.RemarkableSyncURL), spool, cfg.MaxUploadBytes, log)
 	var wakeAI func() // set below, once the AI worker exists
 	pipeline := worker.New(recordings, []worker.Stage{
-		{Name: "pocket-fetch", From: recording.StatusRemote, To: recording.StatusReceived, Run: pocketSvc.Fetch},
-		{Name: "archive", From: recording.StatusReceived, To: recording.StatusStored, Run: archiver.Run,
+		// Audio from Pocket and documents from the reMarkable cloud are fetched first.
+		{Name: "fetch", From: recording.StatusRemote, To: recording.StatusReceived,
+			Run: func(ctx context.Context, rec *recording.Recording) error {
+				if rec.Source == recording.SourceRemarkable {
+					return remarkableSvc.Fetch(ctx, rec)
+				}
+				return pocketSvc.Fetch(ctx, rec)
+			}},
+		{Name: "archive", From: recording.StatusReceived, To: recording.StatusStored,
+			Run: func(ctx context.Context, rec *recording.Recording) error {
+				if rec.IsDocument() {
+					return remarkableSvc.Store(ctx, rec)
+				}
+				return archiver.Run(ctx, rec)
+			},
 			Cleanup: func(rec *recording.Recording) { archiver.Cleanup(rec); wakeAI() }},
 	}, worker.Options{PollInterval: cfg.WorkerPollInterval, MaxAttempts: cfg.WorkerMaxAttempts}, log)
 	uploadSvc.OnReceived = pipeline.Wake
 	pocketSvc.OnQueued = pipeline.Wake
 	manualSvc.OnReceived = pipeline.Wake
+	remarkableSvc.OnQueued = pipeline.Wake
 
 	// AI processing (transcription, summaries) runs in its own worker so that slow model
 	// calls never delay archiving. Its stages wait until OpenRouter is configured.
@@ -112,21 +130,23 @@ func main() {
 	folderSvc := service.NewFolderService(folderRepo, recordings)
 	actions.Folders = folderSvc
 	userSvc.Folders = folderRepo
+	userSvc.Remarkable = remarkableSvc
 	actions.OnRequeued = aiPipeline.Wake
 	wakeAI = aiPipeline.Wake // archived recordings move on to transcription right away
 
 	jobCtx, jobCancel := context.WithCancel(ctx)
 	var jobs sync.WaitGroup
-	jobs.Add(3)
+	jobs.Add(4)
 	go func() { defer jobs.Done(); pipeline.Start(jobCtx) }()
 	go func() { defer jobs.Done(); aiPipeline.Start(jobCtx) }()
 	go func() { defer jobs.Done(); purgeStaleUploads(jobCtx, uploadSvc, cfg.UploadTTL, log) }()
+	go func() { defer jobs.Done(); pullRemarkable(jobCtx, remarkableSvc, cfg.RemarkablePullInterval, log) }()
 
 	// HTTP server.
 	srv := httpx.NewServer(httpx.Deps{
 		Cfg: cfg, Log: log, DB: store, Auth: authSvc, Users: userSvc, Devices: deviceSvc, Uploads: uploadSvc,
 		Manual: manualSvc, Actions: actions, Objects: objects, Pocket: pocketSvc, AI: aiSvc, Themes: themeSvc,
-		Labels: labelSvc, Folders: folderSvc,
+		Labels: labelSvc, Folders: folderSvc, Remarkable: remarkableSvc,
 	})
 	httpServer := &http.Server{
 		Addr:              ":" + cfg.Port,
@@ -189,6 +209,24 @@ func purgeStaleUploads(ctx context.Context, uploads *service.UploadService, ttl 
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+		}
+	}
+}
+
+// pullRemarkable imports new documents from the paired reMarkable accounts periodically.
+func pullRemarkable(ctx context.Context, svc *service.RemarkableService, every time.Duration, log *slog.Logger) {
+	if every <= 0 {
+		log.Info("automatic reMarkable pull disabled")
+		return
+	}
+	ticker := time.NewTicker(every)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			svc.PullAll(ctx)
 		}
 	}
 }

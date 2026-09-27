@@ -14,6 +14,8 @@ import (
 
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/config"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/remarkable"
+	rt "github.com/michaelkleinhenz/knowpod-service/backend/internal/remarkable/remarkabletest"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/repository/memory"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/service"
 	memstore "github.com/michaelkleinhenz/knowpod-service/backend/internal/storage/memory"
@@ -34,6 +36,9 @@ type apiFixture struct {
 	recs   *memory.Recordings
 	users  *memory.Users
 	worker *worker.Worker
+	// cloud is the fake reMarkable cloud; remarkable reads from it.
+	cloud      *rt.Cloud
+	remarkable *service.RemarkableService
 }
 
 func newAPIFixture(t *testing.T) *apiFixture {
@@ -62,9 +67,20 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	actions.Folders = folders
 	userSvc.Folders = folderRepo
 	archiver := service.NewArchiver(spool, objects, false, log)
-	w := worker.New(recs, []worker.Stage{{
-		Name: "archive", From: recording.StatusReceived, To: recording.StatusStored, Run: archiver.Run, Cleanup: archiver.Cleanup,
-	}}, worker.Options{}, log)
+	cloud := rt.New()
+	t.Cleanup(cloud.Close)
+	rm := service.NewRemarkableService(memory.NewTabletLinks(), recs, objects, remarkable.NewClient(cloud.URL, cloud.URL), spool, 1<<20, log)
+	userSvc.Remarkable = rm
+	w := worker.New(recs, []worker.Stage{
+		{Name: "fetch", From: recording.StatusRemote, To: recording.StatusReceived, Run: rm.Fetch},
+		{Name: "archive", From: recording.StatusReceived, To: recording.StatusStored,
+			Run: func(ctx context.Context, rec *recording.Recording) error {
+				if rec.IsDocument() {
+					return rm.Store(ctx, rec)
+				}
+				return archiver.Run(ctx, rec)
+			}, Cleanup: archiver.Cleanup},
+	}, worker.Options{}, log)
 
 	s := NewServer(Deps{
 		Cfg: config.Config{AdminToken: adminToken}, Log: log, Auth: auth,
@@ -73,11 +89,11 @@ func newAPIFixture(t *testing.T) *apiFixture {
 		Manual: service.NewManualUploadService(recs, spool, 1<<30), Actions: actions, Objects: objects,
 		Pocket: service.NewPocketService(recs, users, nil, spool, 1<<20, log),
 		AI:     service.NewAIService(memory.NewSettings(), themes, objects, nil, t.TempDir(), log),
-		Themes: themes, Labels: labels, Folders: folders,
+		Themes: themes, Labels: labels, Folders: folders, Remarkable: rm,
 	})
 	srv := httptest.NewServer(s.Router())
 	t.Cleanup(srv.Close)
-	return &apiFixture{t: t, srv: srv, recs: recs, users: users, worker: w}
+	return &apiFixture{t: t, srv: srv, recs: recs, users: users, worker: w, cloud: cloud, remarkable: rm}
 }
 
 // client is an HTTP client with its own cookie jar, i.e. one browser.

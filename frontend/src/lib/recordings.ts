@@ -10,7 +10,7 @@ export function title(r: Recording): string {
 
 // noteType says what kind of note a recording is; notes from before types are audio.
 export function noteType(r: Recording): NoteType {
-  return r.type === 'text' ? 'text' : 'audio';
+  return r.type === 'text' || r.type === 'document' ? r.type : 'audio';
 }
 
 // when is the moment a conversation happened.
@@ -26,6 +26,16 @@ export function processing(r: Recording): boolean {
 // statusLabel describes an unfinished recording; aiReady says whether OpenRouter is set up.
 export function statusLabel(r: Recording, aiReady: boolean): string | null {
   const t = i18n.t.bind(i18n);
+  if (r.type === 'document') {
+    switch (r.status) {
+      case 'remote':
+        return t('state.documentRemote');
+      case 'received':
+        return t('state.documentReceived');
+      case 'stored':
+        return aiReady ? t('state.reading') : t('state.waitingAI');
+    }
+  }
   switch (r.status) {
     case 'remote':
       return t('state.remote');

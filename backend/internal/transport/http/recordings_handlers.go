@@ -76,14 +76,38 @@ func (s *Server) handleRecordingAudio(w http.ResponseWriter, r *http.Request) {
 		writeCode(w, http.StatusConflict, "not_archived", "audio not archived yet (status "+string(rec.Status)+")")
 		return
 	}
-	size := rec.Audio.Size
+	s.streamObject(w, r, rec.Audio, rec.ID+path.Ext(rec.Audio.Key))
+}
+
+// handleRecordingFile streams a document's PDF or EPUB, with byte ranges like the audio.
+func (s *Server) handleRecordingFile(w http.ResponseWriter, r *http.Request) {
+	rec, err := s.actions.Get(r.Context(), accountFrom(r.Context()), chi.URLParam(r, "id"))
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	if rec.File == nil {
+		writeCode(w, http.StatusConflict, "not_archived", "no document file stored (status "+string(rec.Status)+")")
+		return
+	}
+	// The web UI shows the PDF in a frame; the API's headers otherwise forbid framing.
+	h := w.Header()
+	h.Set("X-Frame-Options", "SAMEORIGIN")
+	h.Set("Content-Security-Policy", "default-src 'none'; object-src 'self'; style-src 'unsafe-inline'; frame-ancestors 'self'")
+	s.streamObject(w, r, rec.File, fileName(rec, "document", strings.TrimPrefix(path.Ext(rec.File.Key), ".")))
+}
+
+// streamObject sends a stored file, or the byte range asked for. ?download=1 sends it as an
+// attachment.
+func (s *Server) streamObject(w http.ResponseWriter, r *http.Request, obj *recording.Object, name string) {
+	size := obj.Size
 	offset, length, partial, ok := parseRange(r.Header.Get("Range"), size)
 	if !ok {
 		w.Header().Set("Content-Range", "bytes */"+strconv.FormatInt(size, 10))
 		w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
 		return
 	}
-	body, err := s.objects.Get(r.Context(), rec.Audio.Key, offset, length)
+	body, err := s.objects.Get(r.Context(), obj.Key, offset, length)
 	if err != nil {
 		s.writeErr(w, err)
 		return
@@ -95,17 +119,21 @@ func (s *Server) handleRecordingAudio(w http.ResponseWriter, r *http.Request) {
 		disposition = "attachment"
 	}
 	h := w.Header()
-	h.Set("Content-Type", rec.Audio.ContentType)
+	h.Set("Content-Type", obj.ContentType)
 	h.Set("Content-Length", strconv.FormatInt(length, 10))
 	h.Set("Accept-Ranges", "bytes")
-	h.Set("Content-Disposition", disposition+`; filename="`+rec.ID+path.Ext(rec.Audio.Key)+`"`)
+	cd := disposition + `; filename="` + asciiName(name) + `"`
+	if asciiName(name) != name {
+		cd += `; filename*=UTF-8''` + url.PathEscape(name)
+	}
+	h.Set("Content-Disposition", cd)
 	h.Set("Cache-Control", "private, max-age=3600")
 	if partial {
 		h.Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", offset, offset+length-1, size))
 		w.WriteHeader(http.StatusPartialContent)
 	}
 	if _, err := io.Copy(w, body); err != nil {
-		s.log.Debug("streaming audio aborted", "id", rec.ID, "err", err)
+		s.log.Debug("streaming aborted", "key", obj.Key, "err", err)
 	}
 }
 

@@ -131,12 +131,45 @@ type AudioInput struct {
 	Format string `json:"format"`
 }
 
+// ImagePart is an image content part; the URL may be a data: URL.
+type ImagePart struct {
+	Type     string   `json:"type"` // "image_url"
+	ImageURL ImageURL `json:"image_url"`
+}
+
+// ImageURL locates an image.
+type ImageURL struct {
+	URL string `json:"url"`
+}
+
+// FilePart is a file content part (PDF): its name and a data: URL.
+type FilePart struct {
+	Type string    `json:"type"` // "file"
+	File FileInput `json:"file"`
+}
+
+// FileInput holds a file.
+type FileInput struct {
+	Filename string `json:"filename"`
+	FileData string `json:"file_data"`
+}
+
 // Text builds a text part.
 func Text(s string) TextPart { return TextPart{Type: "text", Text: s} }
 
 // Audio builds an audio part from base64 data.
 func Audio(base64Data, format string) AudioPart {
 	return AudioPart{Type: "input_audio", InputAudio: AudioInput{Data: base64Data, Format: format}}
+}
+
+// Image builds an image part from base64 data of the given media type (e.g. "image/png").
+func Image(base64Data, mediaType string) ImagePart {
+	return ImagePart{Type: "image_url", ImageURL: ImageURL{URL: "data:" + mediaType + ";base64," + base64Data}}
+}
+
+// PDF builds a file part from base64 PDF data.
+func PDF(base64Data, filename string) FilePart {
+	return FilePart{Type: "file", File: FileInput{Filename: filename, FileData: "data:application/pdf;base64," + base64Data}}
 }
 
 // Request is a chat completion request.

@@ -83,7 +83,8 @@ One MongoDB document in `recordings` represents both the upload session and the 
 its `_id` is the `uploadId` the device sees.
 
 ```
-  Pocket webhook          pocket-fetch stage OK
+  Pocket webhook,         fetch stage OK
+  reMarkable pull
   (none) ─────────▶ remote ─────────────────────┐
                                                  ▼
             create                 last byte, checksum + WAV OK        archive stage OK
@@ -104,10 +105,10 @@ its `_id` is the `uploadId` the device sees.
 
 | Status | Where the audio is |
 |---|---|
-| `remote` | Announced by a Pocket webhook; the audio is still at Pocket. |
+| `remote` | Announced by a Pocket webhook, or found by a reMarkable pull; the audio or document is still there. |
 | `uploading` | Partial WAV in the spool (`UPLOAD_DIR/<id>.wav`). Its file size is the upload offset. |
-| `received` | Complete audio in the spool, waiting for the worker: a verified WAV upload, or a file fetched from Pocket (`<id>.download`, any format). |
-| `stored` | FLAC (and optionally the WAV) in S3. The spool files are gone. Waits for transcription. |
+| `received` | Complete audio in the spool, waiting for the worker: a verified WAV upload, or a file fetched from Pocket (`<id>.download`, any format). For documents: a zip of the document's files. |
+| `stored` | FLAC (and optionally the WAV) in S3. For documents: the PDF or EPUB (`file`) and the zip (`original`). The spool files are gone. Waits for transcription (documents: reading). |
 | `transcribed` | Transcript stored; waits for the summary. |
 | `summarized` | Title and summary stored; fully processed. |
 | `failed` | Rejected WAV: nothing kept. Archive failure: the WAV stays in the spool for recovery. AI failure: audio (and transcript) are kept; the UI offers re-transcribe/re-summarize. |
@@ -178,6 +179,40 @@ bytes (`audio.Sniff`; pre-signed storage URLs often report a generic content typ
 records size, SHA-256 and media type. The Pocket API docs don't specify the field that
 holds the URL, so `pocket.findURL` accepts a bare string or the usual field names; an
 unrecognised response fails the stage with the response body in `lastError`.
+
+### reMarkable (`service/remarkable.go`, `remarkable/`)
+
+The `remarkable` package reads the reMarkable cloud the way rmapi does: pairing turns a
+one-time code into a long-lived device token (`POST /token/json/2/device/new`), each use
+exchanges it for a user token (`/token/json/2/user/new`), and documents are
+content-addressed files below a root (`GET /sync/v4/root`, files at `/sync/v3/files/<hash>`
+with the file name in `rm-filename`). The root index lists every document and folder with
+the hash of its own index, which lists its files (`.metadata`, `.content`, `<page>.rm`,
+`.pdf`, …). Index schemas 3 and 4 are read. Nothing is ever written.
+
+A pull (`RemarkableService.Pull`, and `PullAll` on a ticker in `main.go`) keeps each
+user's link in `tablets`: the root hash and a cache of all items (name, parent, folder,
+hash and a content hash that ignores the metadata). An unchanged root ends the pull; a
+changed one re-reads only items whose hash changed, eight at a time. Documents below the
+top-level folder named `reMarkable` (exact name first, else any case) are matched to notes
+by (`remarkable:<userId>`, document ID): new ones are created in `remote`; finished notes
+whose content hash differs are queued again. Pulls and pairing for one user are serialized
+by an in-process lock.
+
+Stages, dispatched by `source`/`type` in `main.go`:
+
+- `remote → received` (`Fetch`): looks the document up in the current root, downloads its
+  files (not thumbnails) into a zip at `<id>.download`, limited to `MAX_UPLOAD_BYTES`.
+- `received → stored` (`Store`): notebooks are parsed (`.rm` versions 3, 5 and 6; the
+  line items of v6's block format) and written as a vector PDF (`remarkable.WritePDF`, one
+  page per notebook page, grown to fit strokes beyond the screen); PDFs and EPUBs are
+  stored as they are. The zip is stored as `<id>.rmdoc`.
+- `stored → transcribed` (`AIService.Transcribe` → `readDocument`): notebook pages with
+  strokes are rasterized (`remarkable.RenderPNG`, anti-aliased with `x/image/vector`) and
+  sent to the document model in groups of eight; PDFs are sent as file parts. The Markdown
+  answer becomes the transcript.
+- `transcribed → summarized`: the normal summary, with a prompt for notes instead of
+  conversations. A summary edited by the user survives a re-import.
 
 ### The archive stage (`service/archive.go`)
 
@@ -380,8 +415,10 @@ implements the work.
 |---|---|
 | `_id` | Random 24-hex ID; the device's `uploadId` |
 | `ownerId` | The user it belongs to (indexed with `createdAt` for lists) |
-| `deviceId`, `clientId` | Device (or `pocket:<userId>` / `upload:<userId>` / `text:<userId>`) and its `recordingId` (unique together) |
-| `type` | The kind of note: absent for audio recordings, `text` for text notes (see below) |
+| `deviceId`, `clientId` | Device (or `pocket:<userId>` / `upload:<userId>` / `text:<userId>` / `remarkable:<userId>`) and its `recordingId` (unique together) |
+| `type` | The kind of note: absent for audio recordings, `text` for text notes (see below), `document` for reMarkable documents |
+| `file`, `pages` | A document's PDF or EPUB (S3 key, content type, size) and its page count |
+| `sourceRevision` | Content hash of the imported version of a reMarkable document |
 | `labels`, `done` | IDs of the note's labels (see below) and the check mark of a `task` note |
 | `folderId` | The folder the note is in; absent at the top level |
 | `status` | `uploading`, `received`, `stored` or `failed` |
@@ -430,8 +467,12 @@ Indexes: `(deviceId, clientId)` unique; `(status, notBefore)` for claiming;
 **`folders`**: users' folders: `_id`, `ownerId` (indexed with `name`), `name`,
 `parentId` (absent at the top level), `createdAt`, `updatedAt`.
 
+**`tablets`**: users' reMarkable links, `_id` = user ID: `deviceToken` (never returned by
+the API), `pairedAt`, `rootHash` and `items` (the cache of the last pull), `lastPullAt`,
+`lastError`, `lastResult`.
+
 **`settings`**: one document per settings group. `_id: "openrouter"` holds `apiKey`,
-`transcriptionModel`, `summaryModel` and `updatedAt`.
+`transcriptionModel`, `summaryModel`, `documentModel` and `updatedAt`.
 
 `repository/mongo/setup.go` creates collections and indexes on every start.
 
@@ -445,10 +486,12 @@ reason MongoDB runs as a replica set). Nothing uses it yet.
 | `audio/*_test.go` | WAV parsing edge cases; FLAC output decodes to the exact input samples |
 | `service/themes_test.go`, `auth_test.go` | Themes (built-ins, own themes, isolation, fallback to Auto), summary prompts with theme/language/model, validation of summary options, language preference |
 | `service/*_test.go` | Users (built-in admin, create/update/delete with cascade, last-admin and self protection), per-user Pocket settings, browser uploads (formats, limits), ownership checks; upload protocol: chunks, idempotency, offsets, dropped connections, checksum reset, invalid audio, isolation between devices, purge; device tokens; sign-in with the default login, password change overriding it, session expiry and logout; transcription (FLAC chunks, passthrough, size limit), summaries and their parsing, OpenRouter settings and model filtering, delete/re-transcribe/re-summarize |
+| `remarkable/*_test.go` | Page files (v6 blocks, deleted items, erasers, highlighter colors; v5), index schemas, page order, PDF structure (cross-references, page size, title), PNG rendering, and the client against a fake cloud (`remarkabletest`): pairing, revoked tokens, file names, download limits |
+| `service/remarkable_test.go` | Pairing, the folder and its subfolders only (not trash, deleted or other folders), unchanged accounts costing two requests, rename vs. content change, notes in processing left alone, fetch and store of notebooks and PDFs, reading pages with a vision model, edited summaries kept |
 | `worker/worker_test.go` | Archive stage end to end, retry/backoff, permanent failure, recovery, disabled stages waiting |
 | `openrouter/*_test.go` | Request shape for audio, error handling, model list |
 | `audio/speech_test.go` | Speech chunks: count, duration, mono 16 kHz output |
-| `transport/http/*_test.go` | Full HTTP flows on in-memory storage: device uploads, browser sign-in with cookies, password change and reset, user management, access control per role, isolation between users, browser uploads, per-user Pocket webhooks, audio ranges, login rate limit. `openapi_test.go` fails if a route under `/api/v1` is missing from `openapi.yaml` or the spec lists a route that doesn't exist. |
+| `transport/http/*_test.go` | Full HTTP flows on in-memory storage: device uploads, browser sign-in with cookies, password change and reset, user management, access control per role, isolation between users, browser uploads, per-user Pocket webhooks, reMarkable pairing, import and document file (ranges, framing), audio ranges, login rate limit. `openapi_test.go` fails if a route under `/api/v1` is missing from `openapi.yaml` or the spec lists a route that doesn't exist. |
 | `repository/mongo/repo_test.go` | Real MongoDB; runs only with `KNOWPOD_TEST_MONGO_URI` set |
 
 The S3 store has no automated test. It has been checked by hand against an S3-compatible
