@@ -8,7 +8,7 @@ import { childFolders, folderOf, isInside, isUnderNote, notePath, sortInPlace } 
 import { lastFolder, setLastFolder } from '../lib/lastFolder';
 import { setOpen, useOpen } from '../lib/treeOpen';
 import { formatDate, when } from '../lib/recordings';
-import { ChevronIcon, FolderIcon, NewFolderIcon, PencilIcon, TrashIcon } from './Icons';
+import { ChevronIcon, FolderIcon, NewFolderIcon, NewNoteIcon, PencilIcon, TrashIcon } from './Icons';
 import { NoteTreeRows, useNoteTree } from './NoteTree';
 
 // Drag data types; the browser only reveals the types (not the data) while dragging over.
@@ -62,6 +62,8 @@ interface Props {
   aiReady: boolean;
   onSetDone: (r: Recording, done: boolean) => void;
   onNewSub?: (parent: Recording) => void;
+  // onNewInFolder, when set, shows a button on each folder that adds a note to it.
+  onNewInFolder?: (folderId: string) => void;
   // newFolder is bumped by the list's "New folder" button to start a folder at the top level.
   newFolder: number;
 }
@@ -73,7 +75,7 @@ interface Props {
 // order the user puts them in: dropped onto the top or bottom edge of a row, an item goes
 // before or after it, and Alt+Up/Down moves the focused item up or down. The folder the
 // user last opened is remembered, for new notes to go into.
-export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewSub, newFolder }: Props) {
+export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewSub, onNewInFolder, newFolder }: Props) {
   const { t } = useTranslation();
   const { folders, recordings, reloadFolders, reload, upsert } = useNotes();
   const open = useOpen();
@@ -415,6 +417,27 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
               }}
               {...dropProps(f.id)}
             >
+              {/* Laid out like a note's gutter, so folder and note icons line up: the
+                  chevron where a note's sub-item toggle is, the "+" where its add button is. */}
+              <span className="note-gutter">
+                <button type="button" className="note-sub-toggle" tabIndex={-1} aria-hidden="true" onClick={() => openFolder(f)}>
+                  <ChevronIcon open={isOpen} />
+                </button>
+                {onNewInFolder && (
+                  <button
+                    type="button"
+                    className="note-add-sub"
+                    title={t('folders.newItem')}
+                    aria-label={t('folders.newItemLabel', { name: f.name })}
+                    onClick={() => {
+                      openFolder(f, true);
+                      onNewInFolder(f.id);
+                    }}
+                  >
+                    <NewNoteIcon />
+                  </button>
+                )}
+              </span>
               <button
                 type="button"
                 className="tree-toggle"
@@ -427,10 +450,6 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
                   `[data-folder="${CSS.escape(f.id)}"] .tree-toggle`,
                 )}
               >
-                {/* Laid out like a note's row, so folder and note icons line up. */}
-                <span className="note-gutter">
-                  <ChevronIcon open={isOpen} />
-                </span>
                 <span className="tree-icon">
                   <FolderIcon open={isOpen} />
                 </span>
@@ -490,8 +509,6 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
         {folderRows('')}
         {noteRows(notesIn.get('') ?? [])}
       </ul>
-      {!searching && folders && folders.length === 0 && !editing && <p className="muted tree-hint">{t('folders.empty')}</p>}
-      {!searching && folders && folders.length > 0 && <p className="muted tree-hint">{t('folders.dragHint')}</p>}
     </div>
   );
 }

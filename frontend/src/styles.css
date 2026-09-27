@@ -763,6 +763,24 @@ a {
   margin-bottom: 1.5rem;
 }
 
+/* The search box, and next to it the new folder button. */
+.search-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.search-row .search {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.search-row > .pill-button {
+  flex: none;
+}
+
 .search:focus-within {
   border-color: var(--color-primary);
 }
@@ -2418,7 +2436,13 @@ button.sync-state:focus-visible {
   flex-direction: column;
   overflow: hidden;
   padding: 1rem 0 0 1rem;
-  background: var(--color-bg);
+  /* A soft wash of the accent color, strongest at the top. */
+  background: linear-gradient(
+    175deg,
+    color-mix(in srgb, var(--color-primary) 13%, var(--color-bg)) 0%,
+    color-mix(in srgb, var(--color-primary) 4%, var(--color-bg)) 45%,
+    var(--color-bg) 100%
+  );
   border-right: 1px solid var(--color-border-soft);
 }
 
@@ -2472,12 +2496,12 @@ html:has(.notes-layout) {
 }
 
 /* Compact buttons in the narrow sidebar. */
-.notes-sidebar .list-toolbar .pill-button span,
+.notes-sidebar .search-row .pill-button span,
 .notes-sidebar .head-actions .pill-button span {
   display: none;
 }
 
-.notes-sidebar .list-toolbar .pill-button,
+.notes-sidebar .search-row .pill-button,
 .notes-sidebar .head-actions .pill-button {
   padding: 0.5rem;
 }
@@ -2486,7 +2510,7 @@ html:has(.notes-layout) {
   gap: 0.35rem;
 }
 
-.notes-sidebar .search {
+.notes-sidebar .search-row {
   margin-bottom: 1rem;
 }
 
@@ -2543,6 +2567,8 @@ html:has(.notes-layout) {
     overflow: visible;
     padding: 1rem;
     border-right: none;
+    /* The page scrolls under the list's sticky menu, which has the plain background. */
+    background: var(--color-bg);
   }
 
   /* On phones the page scrolls; the list's menu stays below the header. */
@@ -2921,20 +2947,14 @@ html:has(.notes-layout) {
 
 /* --- Sidebar views and folders --- */
 
-/* The view switch (created / due / folders / tasks) and, in the folder view, the new folder
-   button, which moves to a line of its own when both don't fit (the switch then fills its
-   line). */
+/* The view switch (created / due / folders / tasks), filling its line. */
 .list-toolbar {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 0.5rem;
   margin: -0.5rem 0 1.25rem;
 }
 
 .list-toolbar .segmented {
-  flex: 1 0 auto;
+  flex: 1 1 auto;
   margin-bottom: 0;
 }
 
@@ -2943,10 +2963,6 @@ html:has(.notes-layout) {
   white-space: nowrap;
   padding-left: 0.8rem;
   padding-right: 0.8rem;
-}
-
-.list-toolbar > .pill-button {
-  flex: none;
 }
 
 .notes-sidebar .list-toolbar .segmented button {
@@ -3013,12 +3029,6 @@ html:has(.notes-layout) {
   border: none;
   padding: 0.55rem 0.5rem 0.55rem 0;
   cursor: pointer;
-}
-
-/* The chevron sits where a note's sub-note toggle does. */
-.tree-toggle .note-gutter .tree-chevron {
-  grid-column: 1;
-  justify-self: center;
 }
 
 /* Where a note's icon is: after the gutter and the note link's padding. */
@@ -3199,11 +3209,13 @@ html:has(.notes-layout) {
     opacity: 0;
   }
 
-  .note-line:hover .note-add-sub {
+  .note-line:hover .note-add-sub,
+  .tree-row:hover .note-add-sub {
     opacity: 0.6;
   }
 
-  .note-line:hover .note-add-sub:hover {
+  .note-line:hover .note-add-sub:hover,
+  .tree-row:hover .note-add-sub:hover {
     opacity: 1;
   }
 }
