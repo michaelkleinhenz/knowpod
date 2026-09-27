@@ -28,6 +28,7 @@ interface Props {
   activeId?: string;
   aiReady: boolean;
   onSetDone: (r: Recording, done: boolean) => void;
+  onNewSub?: (parent: Recording) => void;
   // newFolder is bumped by the list's "New folder" button to start a folder at the top level.
   newFolder: number;
 }
@@ -36,7 +37,7 @@ interface Props {
 // deleted and nested; notes and folders are moved by dragging them onto a folder (or onto
 // the free space below, for the top level). Notes with sub-notes open like folders; a note
 // dropped onto another note becomes its sub-note.
-export function FolderTree({ notes, query, activeId, aiReady, onSetDone, newFolder }: Props) {
+export function FolderTree({ notes, query, activeId, aiReady, onSetDone, onNewSub, newFolder }: Props) {
   const { t } = useTranslation();
   const { folders, recordings, reloadFolders, reload, upsert } = useNotes();
   const open = useOpen();
@@ -261,6 +262,7 @@ export function FolderTree({ notes, query, activeId, aiReady, onSetDone, newFold
           aiReady={aiReady}
           meta={formatDate(when(r))}
           onSetDone={onSetDone}
+          onNewSub={onNewSub}
           onDragStart={(e) => {
             e.dataTransfer.setData(NOTE_TYPE, r.id);
             e.dataTransfer.effectAllowed = 'move';

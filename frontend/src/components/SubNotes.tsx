@@ -1,23 +1,20 @@
 import { ReactNode, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
 import { api, Recording } from '../api/client';
 import { useNotes } from '../context/NotesContext';
 import { errorText } from '../lib/errors';
 import { subNotes, withSubNotes } from '../lib/folders';
 import { formatDate, when } from '../lib/recordings';
 import { setOpen, useOpen } from '../lib/treeOpen';
-import { NewNoteIcon } from './Icons';
 import { NoteRow } from './NoteRow';
 
 // SubNotes lists the sub-notes of the open note below it, like the files of a folder whose
-// head is the note itself, and creates new ones. Sub-notes with sub-notes of their own open
-// and close like in the sidebar (and together with it).
+// head is the note itself; new ones are added with the + on the note's row in the sidebar.
+// Sub-notes with sub-notes of their own open and close like in the sidebar (and together
+// with it).
 export function SubNotes({ rec }: { rec: Recording }) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const { recordings, aiReady, upsert } = useNotes();
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const open = useOpen();
   const subs = useMemo(() => subNotes(recordings ?? []), [recordings]);
@@ -25,21 +22,6 @@ export function SubNotes({ rec }: { rec: Recording }) {
   // The notes below this one that open and close; the section opens or closes them all.
   const nested = kids.flatMap((k) => withSubNotes(k.id, subs));
   const allOpen = nested.length > 0 && nested.every((id) => open.has(id));
-
-  // create makes an empty text note under this one and opens it, ready to type its title.
-  async function create() {
-    setBusy(true);
-    setError(null);
-    try {
-      const sub = await api.createTextNote(t('conversations.untitled'), '', rec.id);
-      upsert(sub);
-      navigate(`/conversations/${sub.id}`, { state: { created: true } });
-    } catch (err) {
-      setError(errorText(err, t));
-    } finally {
-      setBusy(false);
-    }
-  }
 
   async function setDone(r: Recording, done: boolean) {
     setError(null);
@@ -87,9 +69,6 @@ export function SubNotes({ rec }: { rec: Recording }) {
               {t(allOpen ? 'subNotes.collapseAll' : 'subNotes.expandAll')}
             </button>
           )}
-          <button type="button" className="pill-button" onClick={() => void create()} disabled={busy}>
-            <NewNoteIcon /> <span>{t('subNotes.new')}</span>
-          </button>
         </div>
       </div>
       {error && <p className="error">{error}</p>}
