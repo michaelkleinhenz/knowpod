@@ -30,6 +30,26 @@ type User struct {
 	Pocket            Pocket     `bson:"pocket"`
 	// Language is the web UI language ("en", "de"); empty follows the browser.
 	Language string `bson:"language,omitempty"`
+	// TimeZone is the IANA time zone (e.g. "Europe/Berlin") task dates and reminders are
+	// meant in; the web app sets it from the browser. Empty is UTC.
+	TimeZone string `bson:"timeZone,omitempty"`
+}
+
+// Location returns the user's time zone, UTC when unset or unknown.
+func (u *User) Location() *time.Location {
+	return LoadLocation(u.TimeZone)
+}
+
+// LoadLocation returns the named time zone, UTC when empty or unknown.
+func LoadLocation(name string) *time.Location {
+	if name == "" {
+		return time.UTC
+	}
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		return time.UTC
+	}
+	return loc
 }
 
 // Languages lists the supported web UI languages.

@@ -13,9 +13,11 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	_ "time/tzdata" // users' time zones, also in images without a zoneinfo database
 
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/config"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/settings"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/openrouter"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/pocket"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/remarkable"
@@ -23,8 +25,12 @@ import (
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/service"
 	s3store "github.com/michaelkleinhenz/knowpod-service/backend/internal/storage/s3"
 	httpx "github.com/michaelkleinhenz/knowpod-service/backend/internal/transport/http"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/webpush"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/worker"
 )
+
+// reminderInterval is how often due task reminders are looked for.
+const reminderInterval = 30 * time.Second
 
 func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -55,6 +61,7 @@ func main() {
 	labelRepo := repo.NewLabelRepo(store)
 	folderRepo := repo.NewFolderRepo(store)
 	tabletRepo := repo.NewTabletLinkRepo(store)
+	pushRepo := repo.NewPushSubscriptionRepo(store)
 
 	// Object storage.
 	objects, err := s3store.New(ctx, s3store.Options{
@@ -137,22 +144,36 @@ func main() {
 	actions.Folders = folderSvc
 	userSvc.Folders = folderRepo
 	userSvc.Remarkable = remarkableSvc
+	userSvc.Push = pushRepo
+	actions.Users = users
+	authSvc.OnTimeZoneChanged = actions.RescheduleReminders
+	sender, err := pushSender(ctx, settingsRepo, cfg)
+	if err != nil {
+		// Everything else works without notifications.
+		log.Error("web push setup failed; notifications are off", "err", err)
+	}
+	var pusher service.Pusher
+	if sender != nil {
+		pusher = sender
+	}
+	notifySvc := service.NewNotificationService(pushRepo, users, recordings, pusher, log)
 	actions.OnRequeued = aiPipeline.Wake
 	wakeAI = aiPipeline.Wake // archived recordings move on to transcription right away
 
 	jobCtx, jobCancel := context.WithCancel(ctx)
 	var jobs sync.WaitGroup
-	jobs.Add(4)
+	jobs.Add(5)
 	go func() { defer jobs.Done(); pipeline.Start(jobCtx) }()
 	go func() { defer jobs.Done(); aiPipeline.Start(jobCtx) }()
 	go func() { defer jobs.Done(); purgeStaleUploads(jobCtx, uploadSvc, cfg.UploadTTL, log) }()
 	go func() { defer jobs.Done(); pullRemarkable(jobCtx, remarkableSvc, cfg.RemarkablePullInterval, log) }()
+	go func() { defer jobs.Done(); notifySvc.Run(jobCtx, reminderInterval) }()
 
 	// HTTP server.
 	srv := httpx.NewServer(httpx.Deps{
 		Cfg: cfg, Log: log, DB: store, Auth: authSvc, Users: userSvc, Devices: deviceSvc, Uploads: uploadSvc,
 		Manual: manualSvc, Actions: actions, Objects: objects, Pocket: pocketSvc, AI: aiSvc, Themes: themeSvc,
-		Labels: labelSvc, Folders: folderSvc, Remarkable: remarkableSvc,
+		Labels: labelSvc, Folders: folderSvc, Remarkable: remarkableSvc, Notifications: notifySvc,
 	})
 	httpServer := &http.Server{
 		Addr:              ":" + cfg.Port,
@@ -199,6 +220,26 @@ func setupBuiltInAdmin(ctx context.Context, auth *service.AuthService, recs *rep
 		log.Info("assigned existing data to the built-in admin", "recordings", nr, "devices", nd)
 	}
 	return nil
+}
+
+// pushSender loads the VAPID keys for Web Push, generating them on the first start.
+func pushSender(ctx context.Context, st *repo.SettingsRepo, cfg config.Config) (*webpush.Sender, error) {
+	fresh, err := webpush.GenerateKeys()
+	if err != nil {
+		return nil, err
+	}
+	keys, err := st.InitWebPush(ctx, &settings.WebPush{PrivateKey: fresh.Private, PublicKey: fresh.Public})
+	if err != nil {
+		return nil, err
+	}
+	subject := cfg.WebPushSubject
+	if subject == "" && cfg.AdminEmail != "" {
+		subject = "mailto:" + cfg.AdminEmail
+	}
+	if subject == "" {
+		subject = "mailto:knowpod@example.com"
+	}
+	return webpush.NewSender(webpush.Keys{Private: keys.PrivateKey, Public: keys.PublicKey}, subject, nil)
 }
 
 // purgeStaleUploads periodically deletes uploads that stopped progressing.

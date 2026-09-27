@@ -83,6 +83,9 @@ export interface Account {
   email: string;
   role: Role;
   language?: string;
+  // The IANA time zone task dates and reminders are meant in; the app keeps it in sync
+  // with the browser's.
+  timeZone?: string;
 }
 
 export interface Theme {
@@ -200,6 +203,61 @@ export interface Board {
   columns: BoardColumn[];
 }
 
+// RepeatUnit is the step of a recurring task; "weekday" is Monday to Friday.
+export type RepeatUnit = 'day' | 'weekday' | 'week' | 'month' | 'year';
+
+// Repeat makes a task recurring: every `every` units, on the given weekdays (0 = Sunday)
+// for weekly ones, on monthDay for monthly ones.
+export interface Repeat {
+  every: number;
+  unit: RepeatUnit;
+  weekdays?: number[];
+  monthDay?: number;
+}
+
+// Due is when a task is due, in the user's time zone: a date (YYYY-MM-DD), optionally a
+// time (HH:MM), how it repeats, and how many minutes before it (for a day without a time:
+// before 9:00) to remind; no remind sends no reminder.
+export interface Due {
+  date: string;
+  time?: string;
+  repeat?: Repeat;
+  remind?: number;
+}
+
+// Priority ranks a task: 1 is the most urgent, 3 the least, 0 none.
+export type Priority = 0 | 1 | 2 | 3;
+
+// TaskFields make a new note a task.
+export interface TaskFields {
+  task?: boolean;
+  due?: Due;
+  priority?: Priority;
+}
+
+// ActionItem is a follow-up the AI found in a conversation, offered as a task.
+export interface ActionItem {
+  id: string;
+  text: string;
+  owner?: string;
+  due?: string;
+  taskId?: string;
+  dismissed?: boolean;
+}
+
+// PushDevice is a browser that receives the user's notifications.
+export interface PushDevice {
+  id: string;
+  userAgent?: string;
+  createdAt: string;
+}
+
+export interface NotificationStatus {
+  available: boolean;
+  publicKey?: string;
+  devices: PushDevice[];
+}
+
 // RECORDINGS_LIMIT is how many notes the list loads.
 export const RECORDINGS_LIMIT = 200;
 
@@ -232,6 +290,8 @@ export interface Recording {
     themeId?: string;
     themeName?: string;
     editedAt?: string;
+    // Follow-ups found in the conversation; left out in the notes list.
+    actionItems?: ActionItem[];
     createdAt: string;
   };
   summaryOptions?: SummaryOptions;
@@ -239,6 +299,10 @@ export interface Recording {
   // IDs of the note's labels; done is the check mark of a note labeled "task".
   labels?: string[];
   done?: boolean;
+  // A task's due date and priority, and when its next reminder is sent.
+  due?: Due;
+  priority?: Priority;
+  remindAt?: string;
   // The folder the note is in; absent at the top level and for sub-notes.
   folderId?: string;
   // The note this one is a sub-note of; a sub-note is shown under it, wherever it is.
@@ -360,13 +424,24 @@ export const api = {
   retranscribe: (id: string) => request<Recording>('POST', `/recordings/${encodeURIComponent(id)}/retranscribe`),
   resummarize: (id: string, opts?: SummaryOptions) =>
     request<Recording>('POST', `/recordings/${encodeURIComponent(id)}/resummarize`, opts),
-  createTextNote: (title: string, markdown: string, parentId?: string) => request<Recording>('POST', '/recordings/text', { title, markdown, parentId }),
+  createTextNote: (title: string, markdown: string, parentId?: string, task?: TaskFields) =>
+    request<Recording>('POST', '/recordings/text', { title, markdown, parentId, ...task }),
   createBoard: (title: string, board: Board) => request<Recording>('POST', '/recordings/board', { title, board }),
   setBoard: (id: string, board: Board) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/board`, board),
   editSummary: (id: string, title: string, markdown: string) =>
     request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/summary`, { title, markdown }),
   setNoteLabels: (id: string, labels: string[]) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/labels`, { labels }),
   setNoteDone: (id: string, done: boolean) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/done`, { done }),
+  setNoteDue: (id: string, due: Due | null) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/due`, { due }),
+  setNotePriority: (id: string, priority: Priority) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/priority`, { priority }),
+  createActionItemTask: (id: string, itemId: string) =>
+    request<{ task: Recording; note: Recording }>('POST', `/recordings/${encodeURIComponent(id)}/action-items/${encodeURIComponent(itemId)}/task`),
+  dismissActionItem: (id: string, itemId: string, dismissed: boolean) =>
+    request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/action-items/${encodeURIComponent(itemId)}/dismissed`, { dismissed }),
+  notifications: () => request<NotificationStatus>('GET', '/me/notifications'),
+  subscribePush: (sub: PushSubscriptionJSON) => request<PushDevice>('POST', '/me/notifications/subscriptions', sub),
+  unsubscribePush: (id: string) => request<void>('DELETE', `/me/notifications/subscriptions/${encodeURIComponent(id)}`),
+  testNotification: () => request<{ sent: number }>('POST', '/me/notifications/test'),
   setNoteFolder: (id: string, folderId: string) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/folder`, { folderId }),
   setNoteParent: (id: string, parentId: string) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/parent`, { parentId }),
   folders: () => request<Folder[]>('GET', '/folders'),
@@ -396,7 +471,7 @@ export const api = {
   createTheme: (t: ThemeInput) => request<Theme>('POST', '/themes', t),
   updateTheme: (id: string, t: ThemeInput) => request<Theme>('PUT', `/themes/${encodeURIComponent(id)}`, t),
   deleteTheme: (id: string) => request<void>('DELETE', `/themes/${encodeURIComponent(id)}`),
-  savePreferences: (p: { language?: string }) => request<Account>('PUT', '/me/preferences', p),
+  savePreferences: (p: { language?: string; timeZone?: string }) => request<Account>('PUT', '/me/preferences', p),
   createDevice: (name: string) => request<DeviceWithToken>('POST', '/devices', { name }),
   rotateDeviceToken: (id: string) => request<DeviceWithToken>('POST', `/devices/${encodeURIComponent(id)}/token`),
   removeDevice: (id: string) => request<void>('DELETE', `/devices/${encodeURIComponent(id)}`),

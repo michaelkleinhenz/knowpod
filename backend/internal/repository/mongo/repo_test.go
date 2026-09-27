@@ -9,7 +9,9 @@ import (
 
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/device"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/push"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/settings"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/user"
 )
 
@@ -223,5 +225,80 @@ func TestNoteNumbers(t *testing.T) {
 	}
 	if list, _ := recs.List(ctx, recording.ListFilter{OwnerID: "ann", Number: 10}); len(list) != 1 || list[0].ID != rec.ID {
 		t.Fatalf("by number: %+v", list)
+	}
+}
+
+func TestReminderQueue(t *testing.T) {
+	ctx := context.Background()
+	repo := NewRecordingRepo(testStore(t))
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	soon, later := now.Add(-time.Minute), now.Add(time.Hour)
+	for i, at := range []*time.Time{&soon, &later, nil} {
+		rec := &recording.Recording{ID: NewID(), OwnerID: "u1", DeviceID: "text:u1", ClientID: NewID(), Status: recording.StatusSummarized,
+			Due: &recording.Due{Date: "2026-09-28"}, RemindAt: at, NotBefore: now, CreatedAt: now.Add(time.Duration(i) * time.Second), UpdatedAt: now}
+		if err := repo.Create(ctx, rec); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := repo.ClaimReminder(ctx, now)
+	if err != nil || got.RemindAt == nil || !got.RemindAt.Equal(soon) {
+		t.Fatalf("claimed %+v, %v", got, err)
+	}
+	if stored, _ := repo.Get(ctx, got.ID); stored.RemindAt != nil || stored.Due == nil {
+		t.Errorf("claimed reminder still pending: %+v", stored)
+	}
+	if _, err := repo.ClaimReminder(ctx, now); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("second claim: %v", err)
+	}
+	if err := repo.SetRemindAt(ctx, got.ID, &soon); err != nil {
+		t.Fatal(err)
+	}
+	if again, err := repo.ClaimReminder(ctx, now); err != nil || again.ID != got.ID {
+		t.Errorf("rescheduled claim: %v, %v", again, err)
+	}
+	if err := repo.SetRemindAt(ctx, "missing", nil); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("missing: %v", err)
+	}
+}
+
+func TestWebPushSettingsAndSubscriptions(t *testing.T) {
+	ctx := context.Background()
+	s := testStore(t)
+	st := NewSettingsRepo(s)
+	first, err := st.InitWebPush(ctx, &settings.WebPush{PrivateKey: "a", PublicKey: "A"})
+	if err != nil || first.PublicKey != "A" {
+		t.Fatalf("%+v, %v", first, err)
+	}
+	if again, err := st.InitWebPush(ctx, &settings.WebPush{PrivateKey: "b", PublicKey: "B"}); err != nil || again.PublicKey != "A" {
+		t.Errorf("keys replaced: %+v, %v", again, err)
+	}
+
+	subs := NewPushSubscriptionRepo(s)
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	for _, sub := range []*push.Subscription{
+		{ID: "s1", UserID: "u1", Endpoint: "https://p/1", CreatedAt: now},
+		{ID: "s2", UserID: "u1", Endpoint: "https://p/2", CreatedAt: now.Add(time.Second)},
+		{ID: "s3", UserID: "u2", Endpoint: "https://p/3", CreatedAt: now},
+		{ID: "s1", UserID: "u1", Endpoint: "https://p/1", UserAgent: "again", CreatedAt: now},
+	} {
+		if err := subs.Save(ctx, sub); err != nil {
+			t.Fatal(err)
+		}
+	}
+	list, err := subs.List(ctx, "u1")
+	if err != nil || len(list) != 2 || list[0].UserAgent != "again" {
+		t.Fatalf("%+v, %v", list, err)
+	}
+	if err := subs.Delete(ctx, "s2"); err != nil {
+		t.Fatal(err)
+	}
+	if err := subs.DeleteByUser(ctx, "u1"); err != nil {
+		t.Fatal(err)
+	}
+	if list, _ := subs.List(ctx, "u1"); len(list) != 0 {
+		t.Errorf("left %+v", list)
+	}
+	if list, _ := subs.List(ctx, "u2"); len(list) != 1 {
+		t.Errorf("u2 has %+v", list)
 	}
 }

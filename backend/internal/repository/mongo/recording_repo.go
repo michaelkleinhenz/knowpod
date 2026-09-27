@@ -139,7 +139,7 @@ func (r *RecordingRepo) List(ctx context.Context, f recording.ListFilter) ([]*re
 	}
 	opts := options.Find().SetSort(bson.D{{Key: "createdAt", Value: -1}}).SetSkip(int64(f.Offset))
 	if f.Brief {
-		opts.SetProjection(bson.M{"transcript": 0, "summary.markdown": 0})
+		opts.SetProjection(bson.M{"transcript": 0, "summary.markdown": 0, "summary.actionItems": 0})
 	}
 	if f.Limit > 0 {
 		opts.SetLimit(int64(f.Limit))
@@ -153,6 +153,35 @@ func (r *RecordingRepo) Claim(ctx context.Context, status recording.Status, now,
 		bson.M{"status": status, "notBefore": bson.M{"$lte": now}},
 		bson.M{"$set": bson.M{"notBefore": leaseUntil, "updatedAt": now}, "$inc": bson.M{"attempts": 1}},
 		options.FindOneAndUpdate().SetSort(bson.D{{Key: "notBefore", Value: 1}}).SetReturnDocument(options.After),
+	).Decode(&rec)
+	if err != nil {
+		return nil, mapErr(err)
+	}
+	return &rec, nil
+}
+
+func (r *RecordingRepo) SetRemindAt(ctx context.Context, id string, at *time.Time) error {
+	update := bson.M{"$unset": bson.M{"remindAt": ""}}
+	if at != nil {
+		update = bson.M{"$set": bson.M{"remindAt": *at}}
+	}
+	res, err := r.c.UpdateOne(ctx, bson.M{"_id": id}, update)
+	if err != nil {
+		return err
+	}
+	if res.MatchedCount == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+func (r *RecordingRepo) ClaimReminder(ctx context.Context, now time.Time) (*recording.Recording, error) {
+	var rec recording.Recording
+	err := r.c.FindOneAndUpdate(ctx,
+		bson.M{"remindAt": bson.M{"$lte": now}},
+		bson.M{"$unset": bson.M{"remindAt": ""}},
+		options.FindOneAndUpdate().SetSort(bson.D{{Key: "remindAt", Value: 1}}).
+			SetProjection(bson.M{"transcript": 0, "summary.markdown": 0, "summary.actionItems": 0}),
 	).Decode(&rec)
 	if err != nil {
 		return nil, mapErr(err)

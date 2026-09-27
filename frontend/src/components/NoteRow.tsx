@@ -5,6 +5,7 @@ import { Recording } from '../api/client';
 import { isTask } from '../lib/labels';
 import { noteType, statusLabel, title } from '../lib/recordings';
 import { ChevronIcon, NewNoteIcon, NoteIcon } from './Icons';
+import { TaskMeta } from './TaskControls';
 
 interface Props {
   rec: Recording;
@@ -13,6 +14,8 @@ interface Props {
   // meta is shown at the end of the row (the time, or the date in the folder view).
   meta: string;
   onSetDone: (r: Recording, done: boolean) => void;
+  // taskDate shows a task's due date on the row (off where the list is grouped by it).
+  taskDate?: boolean;
   // onNewSub, when set, shows a button that adds a sub-note to the note.
   onNewSub?: (r: Recording) => void;
   onDragStart?: (e: DragEvent) => void;
@@ -28,7 +31,7 @@ interface Props {
 // NoteRow is one note in the sidebar: its type icon (a check box for tasks), title,
 // number (to link it with "#12"), processing state and time, a button to add a sub-note,
 // and a toggle for its sub-notes if it has any.
-export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, onNewSub, onDragStart, sub, lineProps, drop, children }: Props) {
+export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = true, onNewSub, onDragStart, sub, lineProps, drop, children }: Props) {
   const { t } = useTranslation();
   const state = statusLabel(r, aiReady);
   const task = isTask(r);
@@ -46,6 +49,7 @@ export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, onNewSub, on
           <span className="conversation-title">
             {title(r)}
             {r.number ? <span className="note-row-number">#{r.number}</span> : null}
+            {task && <TaskMeta rec={r} showDue={taskDate} />}
             {state && <span className={`state-pill${r.status === 'failed' ? ' bad' : ''}`}>{state}</span>}
           </span>
           <span className="conversation-time">{meta}</span>

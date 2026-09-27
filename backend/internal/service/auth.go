@@ -45,6 +45,7 @@ type Account struct {
 	Email    string    `json:"email"`
 	Role     user.Role `json:"role"`
 	Language string    `json:"language,omitempty"` // web UI language; empty follows the browser
+	TimeZone string    `json:"timeZone,omitempty"` // IANA time zone of task dates; empty is UTC
 	All      bool      `json:"-"`
 }
 
@@ -73,6 +74,9 @@ type AuthService struct {
 	adminPassword string
 	sessionTTL    time.Duration
 	clock         func() time.Time
+	// OnTimeZoneChanged is called after a user changed their time zone, e.g. to move the
+	// reminders of their tasks. Optional.
+	OnTimeZoneChanged func(ctx context.Context, u *user.User) error
 }
 
 // NewAuthService builds the service. adminEmail/adminPassword are the built-in admin; empty
@@ -240,12 +244,14 @@ func account(u *user.User) *Account {
 	if !role.Valid() {
 		role = user.RoleUser
 	}
-	return &Account{ID: u.ID, Email: u.Email, Role: role, Language: u.Language}
+	return &Account{ID: u.ID, Email: u.Email, Role: role, Language: u.Language, TimeZone: u.TimeZone}
 }
 
 // Preferences are a user's own settings.
 type Preferences struct {
 	Language *string `json:"language,omitempty"`
+	// TimeZone is an IANA time zone name such as "Europe/Berlin".
+	TimeZone *string `json:"timeZone,omitempty"`
 }
 
 // UpdatePreferences changes the signed-in user's settings.
@@ -263,8 +269,22 @@ func (s *AuthService) UpdatePreferences(ctx context.Context, acc *Account, p Pre
 		}
 		u.Language = *p.Language
 	}
+	zoneChanged := false
+	if p.TimeZone != nil {
+		tz := strings.TrimSpace(*p.TimeZone)
+		if _, err := time.LoadLocation(tz); err != nil || len(tz) > 64 || strings.EqualFold(tz, "local") {
+			return nil, invalid("unknown time zone %q", tz)
+		}
+		zoneChanged = u.TimeZone != tz
+		u.TimeZone = tz
+	}
 	if err := s.users.Update(ctx, u); err != nil {
 		return nil, err
+	}
+	if zoneChanged && s.OnTimeZoneChanged != nil {
+		if err := s.OnTimeZoneChanged(ctx, u); err != nil {
+			return nil, err
+		}
 	}
 	return account(u), nil
 }

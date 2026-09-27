@@ -2,6 +2,7 @@ import { FormEvent, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { api } from '../api/client';
 import { useAuth } from '../auth';
+import { NotificationSettings } from '../components/NotificationSettings';
 import { PocketSetup } from '../components/PocketSetup';
 import { RemarkableSetup } from '../components/RemarkableSetup';
 import { errorText } from '../lib/errors';
@@ -89,6 +90,10 @@ export function Account() {
         </p>
         <h2 className="card-title">{t('account.changePassword')}</h2>
         <ChangePassword />
+      </section>
+      <section className="card" id="notifications">
+        <h2 className="card-title">{t('notifications.title')}</h2>
+        <NotificationSettings />
       </section>
       <section className="card">
         <h2 className="card-title">{t('account.pocketTitle')}</h2>

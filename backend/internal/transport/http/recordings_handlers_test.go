@@ -564,3 +564,42 @@ func TestNoteNumbers(t *testing.T) {
 		t.Fatalf("bob sees admin's #3: %+v", list)
 	}
 }
+
+func TestTaskEndpoints(t *testing.T) {
+	f := newAPIFixture(t)
+	c := f.signedIn(adminEmail, adminPassword)
+	var note recording.Recording
+	if res := c.do("POST", "/api/v1/recordings/text", map[string]any{
+		"title": "Pay rent", "markdown": "", "due": map[string]any{"date": "2099-10-01", "remind": 0}, "priority": 2,
+	}, nil, &note); res.StatusCode != 201 {
+		t.Fatalf("create: %d", res.StatusCode)
+	}
+	if note.Due == nil || note.Priority != 2 || note.RemindAt == nil || len(note.Labels) != 1 || note.Labels[0] != "task" {
+		t.Fatalf("created %+v", note)
+	}
+
+	var got recording.Recording
+	body := map[string]any{"due": map[string]any{"date": "2099-10-01", "time": "08:00", "repeat": map[string]any{"every": 1, "unit": "month"}}}
+	if res := c.do("PUT", "/api/v1/recordings/"+note.ID+"/due", body, nil, &got); res.StatusCode != 200 {
+		t.Fatalf("due: %d", res.StatusCode)
+	}
+	if got.Due.Repeat == nil || got.Due.Repeat.MonthDay != 1 || got.RemindAt != nil {
+		t.Errorf("due %+v, remind %v", got.Due, got.RemindAt)
+	}
+	if res := c.do("PUT", "/api/v1/recordings/"+note.ID+"/done", map[string]bool{"done": true}, nil, &got); res.StatusCode != 200 || got.Done || got.Due.Date != "2099-11-01" {
+		t.Errorf("checking off a monthly task: %d, %+v", res.StatusCode, got.Due)
+	}
+	if res := c.do("PUT", "/api/v1/recordings/"+note.ID+"/priority", map[string]int{"priority": 9}, nil, nil); res.StatusCode != 400 {
+		t.Errorf("priority 9: %d", res.StatusCode)
+	}
+	var cleared recording.Recording
+	if res := c.do("PUT", "/api/v1/recordings/"+note.ID+"/due", map[string]any{"due": nil}, nil, &cleared); res.StatusCode != 200 || cleared.Due != nil {
+		t.Errorf("clearing: %d %+v", res.StatusCode, cleared.Due)
+	}
+	if res := c.do("POST", "/api/v1/recordings/"+note.ID+"/action-items/x/task", nil, nil, nil); res.StatusCode != 404 {
+		t.Errorf("unknown action item: %d", res.StatusCode)
+	}
+	if res := f.browser().do("PUT", "/api/v1/recordings/"+note.ID+"/priority", map[string]int{"priority": 1}, nil, nil); res.StatusCode != 401 {
+		t.Errorf("signed out: %d", res.StatusCode)
+	}
+}

@@ -6,6 +6,7 @@ import { useNotes } from '../context/NotesContext';
 import { errorText } from '../lib/errors';
 import { flatTree, folderOf } from '../lib/folders';
 import { isTask, labelName, labelStyle, noteLabels } from '../lib/labels';
+import { TaskMeta } from './TaskControls';
 import { noteType, title, when } from '../lib/recordings';
 import { GripIcon, NewNoteIcon, NoteIcon, PencilIcon, TrashIcon } from './Icons';
 
@@ -460,6 +461,7 @@ export function Board({ rec, setRec }: { rec: Recording; setRec: (r: Recording) 
                   </div>
                   {(r.labels?.length ?? 0) > 0 && (
                     <div className="board-card-labels">
+                      {isTask(r) && <TaskMeta rec={r} />}
                       {noteLabels(r, labels).map((l) => (
                         <span key={l.id} className="label-chip small" style={labelStyle(l)}>
                           <span className="label-dot" aria-hidden="true" />

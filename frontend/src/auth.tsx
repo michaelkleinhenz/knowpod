@@ -58,6 +58,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAccount(a);
   }, []);
 
+  // Task dates and reminders are meant in the time zone of the browser the user works in.
+  const zone = account?.timeZone;
+  const signedIn = !!account;
+  useEffect(() => {
+    if (!signedIn) return;
+    let here = '';
+    try {
+      here = Intl.DateTimeFormat().resolvedOptions().timeZone ?? '';
+    } catch {
+      return;
+    }
+    if (!here || here === zone) return;
+    api
+      .savePreferences({ timeZone: here })
+      .then(update)
+      .catch(() => undefined); // offline or unknown zone: tried again next time
+  }, [signedIn, zone, update]);
+
   return <AuthContext.Provider value={{ account, loading, login, logout, update }}>{children}</AuthContext.Provider>;
 }
 

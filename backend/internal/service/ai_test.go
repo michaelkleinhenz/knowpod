@@ -133,7 +133,7 @@ func TestParseSummary(t *testing.T) {
 		"# Plain title\nBody text":                                "Plain title",
 		`{"title":"","summary":"only body"}`:                      "Untitled conversation",
 	} {
-		if got, _ := parseSummary(in); got != want {
+		if got, _, _ := parseSummary(in); got != want {
 			t.Errorf("parseSummary(%q) title = %q, want %q", in, got, want)
 		}
 	}

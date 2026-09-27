@@ -29,6 +29,7 @@ The code is layered so that the application logic depends only on interfaces:
 | `service` | Application logic: web UI sign-in, device tokens, the upload protocol and its disk spool, the archive stage. |
 | `worker` | Generic background pipeline: claims work from the database and runs stages. |
 | `audio` | WAV header parsing and WAV → FLAC encoding. |
+| `webpush` | Sends Web Push notifications: RFC 8291 payload encryption and VAPID (RFC 8292) signing, standard library only. |
 | `repository/mongo`, `storage/s3` | Production implementations of the ports. |
 | `repository/memory`, `storage/memory` | In-memory implementations, used by the tests. |
 | `transport/http` | Router, authentication middleware, handlers. Maps errors to HTTP status codes. |
@@ -282,9 +283,11 @@ model calls.
   OpenRouter's chat completions as an `input_audio` part with a verbatim-transcription
   prompt; the texts are joined.
 - **summarize** (`transcribed → summarized`): sends the transcript with a prompt that asks
-  for a JSON object with `title` and a Markdown `summary` in the transcript's language
-  (`response_format: json_object`). `parseSummary` tolerates code fences and surrounding
-  text. Empty transcripts get "No speech detected" without a model call.
+  for a JSON object with `title`, a Markdown `summary` in the transcript's language and
+  `actionItems` (`response_format: json_object`). `parseSummary` tolerates code fences and
+  surrounding text; `parseActionItems` keeps items with text, drops due dates that aren't
+  `YYYY-MM-DD` and gives each an ID. Empty transcripts get "No speech detected" without a
+  model call.
 
 The OpenRouter settings (key and models) live in the `settings` collection and are read on
 every stage run, so changes apply immediately.
@@ -362,6 +365,46 @@ A note can't go under itself or one of its own sub-notes, and notes nest at most
 `POST /recordings/text` takes an optional `parentId` to create a sub-note directly. Deleting
 a note moves its sub-notes to where it was (`RecordingRepository.MoveSubNotes`); `parentId`
 is kept by the worker like `folderId`.
+
+**Tasks** (`domain/recording/task.go`, `service/tasks.go`). A note labeled `task` has, besides
+`done`, an optional `due` (`date` YYYY-MM-DD, `time` HH:MM, `repeat`, `remind` in minutes
+before) and a `priority` (1–3). Dates are calendar days in the owner's time zone
+(`user.timeZone`, set by the web app from the browser through `PUT /me/preferences`), so a
+repeat like "every Monday at 9:00" stays at 9:00 across daylight saving changes.
+`PUT /recordings/{id}/due` and `/priority` label the note as a task; taking the label off
+clears `done`, `due` and `priority`. `POST /recordings/text` takes the same fields for quick
+add. `Repeat.Next` steps a date by day, weekday (Mon–Fri), week (optionally on listed
+weekdays), month (keeping `monthDay`, clamped to short months) or year; checking off a
+recurring task (`SetDone`) keeps it open and moves it to its first occurrence from today on
+(`Due.Advance`). The natural-language dates are parsed in the web app
+(`frontend/src/lib/dateParse.ts`); the API only takes the structured form.
+
+**Reminders** (`service/notifications.go`). Every change of a task's date, reminder or check
+mark recomputes `remindAt`, the UTC moment its next reminder is due (the due time, or 9:00
+for a day without a time, minus `remind`), or clears it when there is none, it is done, or
+the moment has passed. A time zone change recomputes the user's pending reminders
+(`RescheduleReminders`, via `AuthService.OnTimeZoneChanged`). `NotificationService.Run`
+(every 30 s, started in `main.go`) takes due reminders with `ClaimReminder`, an atomic
+`findOneAndUpdate` that unsets `remindAt`, so each reminder is sent at most once even across
+restarts, and sends `{title, body, url, tag}` in the owner's language to all their push
+subscriptions. `remindAt`, `due` and `priority` are kept by the worker like `labels`.
+
+**Web Push.** The VAPID key pair is generated on the first start and stored in `settings`
+(`InitWebPush` only inserts, so it never changes; browsers subscribed with its public key).
+`GET /me/notifications` returns the public key and the user's devices;
+`POST /me/notifications/subscriptions` stores a browser's `PushSubscription` in
+`pushSubscriptions` (ID = first 16 bytes of the SHA-256 of the endpoint, at most 20 per
+user). Endpoints must be on a browser push service's host (`pushServiceHosts`), so the
+server never sends requests to hosts a user picked. `webpush.Sender` encrypts each message for the subscription (aes128gcm, one record)
+and signs a VAPID JWT (ES256) for the push service's origin; a 404/410 answer deletes the
+subscription. In the browser, `public/push-sw.js` is imported into the generated service
+worker: it shows the notification and, on click, focuses the app and asks it to open the
+note (or opens a new window).
+
+**Action items.** The summary's `actionItems` (`id`, `text`, `owner`, `due`) are offered below
+the summary. `POST /recordings/{id}/action-items/{itemId}/task` creates a text note under the
+note, labeled `task`, due on the item's date with a reminder at 9:00, and stores its ID as
+the item's `taskId`; `PUT …/dismissed` hides an item. Re-summarizing replaces the items.
 
 `GET /recordings/{id}/summary` and `/transcript` return the texts as `.md` / `.txt`
 downloads (`transport/http/downloads_handlers.go`), or JSON with `?format=json`.

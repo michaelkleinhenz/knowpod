@@ -30,6 +30,8 @@ type RecordingService struct {
 	// Folders checks the folders notes are moved into. Optional; without it notes stay at
 	// the top level.
 	Folders *FolderService
+	// Users gives the time zone task dates are meant in. Optional; without it they are UTC.
+	Users ports.UserRepository
 	// OnRequeued is called when a recording was sent back into processing. Optional.
 	OnRequeued func()
 }
@@ -148,11 +150,12 @@ func (in SummaryEdit) clean() (title, markdown string, err error) {
 	return title, markdown, nil
 }
 
-// TextNoteInput creates a text note: its title and Markdown text, and optionally the note
-// it is a sub-note of.
+// TextNoteInput creates a text note: its title and Markdown text, optionally the note it is
+// a sub-note of, and optionally as a task with a date and priority.
 type TextNoteInput struct {
 	SummaryEdit
 	ParentID string `json:"parentId,omitempty"`
+	TaskFields
 }
 
 // CreateText creates a text note for the account's user. The title and Markdown text are
@@ -178,6 +181,9 @@ func (s *RecordingService) CreateText(ctx context.Context, acc *Account, in Text
 		Type: recording.TypeText, Status: recording.StatusSummarized, ParentID: parentID,
 		Summary:   &recording.Summary{Title: title, Markdown: markdown, CreatedAt: now},
 		NotBefore: now, CreatedAt: now, UpdatedAt: now,
+	}
+	if err := in.TaskFields.apply(s, ctx, rec); err != nil {
+		return nil, err
 	}
 	if err := s.recs.Create(ctx, rec); err != nil {
 		return nil, err
@@ -209,7 +215,7 @@ func (s *RecordingService) EditSummary(ctx context.Context, acc *Account, id str
 }
 
 // SetLabels replaces the note's labels. Unknown and duplicate IDs are refused. Taking the
-// task label off clears the note's check mark.
+// task label off clears the note's check mark, date and priority.
 func (s *RecordingService) SetLabels(ctx context.Context, acc *Account, id string, labels []string) (*recording.Recording, error) {
 	rec, err := s.Get(ctx, acc, id)
 	if err != nil {
@@ -230,12 +236,13 @@ func (s *RecordingService) SetLabels(ctx context.Context, acc *Account, id strin
 	}
 	rec.Labels = out
 	if !slices.Contains(out, label.Task) {
-		rec.Done = false
+		clearTask(rec)
 	}
 	return rec, s.save(ctx, rec)
 }
 
-// SetDone checks or unchecks a note labeled as a task.
+// SetDone checks or unchecks a note labeled as a task. Checking off a recurring task moves
+// it to its next date instead.
 func (s *RecordingService) SetDone(ctx context.Context, acc *Account, id string, done bool) (*recording.Recording, error) {
 	rec, err := s.Get(ctx, acc, id)
 	if err != nil {
@@ -244,7 +251,7 @@ func (s *RecordingService) SetDone(ctx context.Context, acc *Account, id string,
 	if !slices.Contains(rec.Labels, label.Task) {
 		return nil, invalid("only notes labeled as a task can be checked off")
 	}
-	rec.Done = done
+	s.completeTask(ctx, rec, done)
 	return rec, s.save(ctx, rec)
 }
 

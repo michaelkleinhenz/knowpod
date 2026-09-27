@@ -19,6 +19,19 @@ export function Layout({ children }: { children: ReactNode }) {
   // Close the mobile menu after navigating.
   useEffect(() => setOpen(false), [pathname]);
 
+  // A clicked notification opens its page here (see public/push-sw.js).
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    const onMessage = (e: MessageEvent) => {
+      const data = e.data as { type?: string; url?: string } | null;
+      if (data?.type !== 'knowpod:open' || !data.url) return;
+      const url = new URL(data.url, window.location.origin);
+      if (url.origin === window.location.origin) navigate(url.pathname + url.search);
+    };
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', onMessage);
+  }, [navigate]);
+
   async function handleLogout() {
     await logout();
     navigate('/login');

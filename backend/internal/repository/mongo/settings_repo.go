@@ -13,6 +13,9 @@ import (
 // openRouterSettingsID is the settings document holding the OpenRouter configuration.
 const openRouterSettingsID = "openrouter"
 
+// webPushSettingsID is the settings document holding the VAPID keys.
+const webPushSettingsID = "webpush"
+
 // SettingsRepo is the MongoDB implementation of ports.SettingsRepository. Each settings
 // group is one document in the settings collection.
 type SettingsRepo struct{ c *mongo.Collection }
@@ -32,6 +35,14 @@ func (r *SettingsRepo) OpenRouter(ctx context.Context) (*settings.OpenRouter, er
 		return nil, err
 	}
 	return &s, nil
+}
+
+func (r *SettingsRepo) InitWebPush(ctx context.Context, k *settings.WebPush) (*settings.WebPush, error) {
+	if _, err := r.c.UpdateOne(ctx, bson.M{"_id": webPushSettingsID}, bson.M{"$setOnInsert": k}, options.Update().SetUpsert(true)); err != nil {
+		return nil, err
+	}
+	var out settings.WebPush
+	return &out, r.c.FindOne(ctx, bson.M{"_id": webPushSettingsID}).Decode(&out)
 }
 
 func (r *SettingsRepo) SaveOpenRouter(ctx context.Context, s *settings.OpenRouter) error {

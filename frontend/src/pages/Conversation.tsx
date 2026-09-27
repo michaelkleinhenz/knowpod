@@ -4,9 +4,13 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api, Recording } from '../api/client';
 import { Board } from '../components/Board';
 import { CopyButton } from '../components/CopyButton';
-import { BackIcon, CopyIcon, DownloadIcon, RetranscribeIcon, TrashIcon } from '../components/Icons';
+import { BackIcon, CalendarIcon, CopyIcon, DownloadIcon, RetranscribeIcon, TrashIcon } from '../components/Icons';
 import { inline, Markdown } from '../components/Markdown';
 import { NoteLabels } from '../components/Labels';
+import { ActionItems } from '../components/ActionItems';
+import { PriorityFlag } from '../components/TaskControls';
+import { parseTask } from '../lib/dateParse';
+import { formatDue, formatRepeat } from '../lib/tasks';
 import { MoveToFolder } from '../components/MoveToFolder';
 import { SubNotes } from '../components/SubNotes';
 import { SummaryDetails } from '../components/SummaryDetails';
@@ -169,6 +173,9 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
   useEffect(() => {
     if (created) titleInput.current?.select();
   }, [created]);
+  // A date typed into the title ("Call Anna tomorrow 3pm") is offered as the task's date
+  // while the title is being edited; Enter takes it out of the title and sets it.
+  const [titleTyped, setTitleTyped] = useState(false);
 
   // Play from a moment: switch to the audio and start there once it is on the page.
   const seekTo = (ms: number) => {
@@ -248,6 +255,25 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
         ? { text: rec.transcript.text, label: t(isDocument ? 'conversation.copyDocumentText' : 'conversation.copyTranscript') }
         : null;
 
+  const typedDate = titleTyped && !isBoard ? parseTask(autosave.title) : null;
+  const titleDate = typedDate && (typedDate.due || typedDate.priority) && typedDate.title ? typedDate : null;
+  async function applyTitleDate() {
+    if (!titleDate) return;
+    setTitleTyped(false);
+    autosave.setTitle(titleDate.title);
+    setError(null);
+    try {
+      // The shorter title is saved first, so the date isn't saved over by it or vice versa.
+      await autosave.save();
+      let r = rec;
+      if (titleDate.due) r = await api.setNoteDue(rec.id, { remind: rec.due?.remind ?? 0, ...titleDate.due });
+      if (titleDate.priority) r = await api.setNotePriority(rec.id, titleDate.priority);
+      setRec(r);
+    } catch (err) {
+      setError(errorText(err, t));
+    }
+  }
+
   const state = statusLabel(rec, aiReady);
   // Where the note is: the folders above it, then the notes it is a sub-note of.
   const parents = notePath(rec, notes.recordings);
@@ -289,13 +315,30 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
               aria-label={t('editor.title')}
               maxLength={200}
               value={autosave.title}
-              onChange={(e) => autosave.setTitle(e.target.value)}
+              onChange={(e) => {
+                autosave.setTitle(e.target.value);
+                setTitleTyped(true);
+              }}
+              onBlur={() => setTimeout(() => setTitleTyped(false), 200)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                if (e.key !== 'Enter') return;
+                if (titleDate) {
+                  e.preventDefault();
+                  void applyTitleDate();
+                }
+                (e.target as HTMLInputElement).blur();
               }}
             />
           ) : (
             <h1>{titleOf(rec)}</h1>
+          )}
+          {titleDate && (
+            <button type="button" className="title-date-hint" onMouseDown={(e) => e.preventDefault()} onClick={() => void applyTitleDate()}>
+              <CalendarIcon size={12} />
+              {titleDate.due ? t('tasks.titleHint', { when: formatDue(titleDate.due) + (titleDate.due.repeat ? ` · ${formatRepeat(titleDate.due.repeat)}` : '') }) : t('tasks.titleHintPriority')}
+              <PriorityFlag priority={titleDate.priority} />
+              <kbd>↵</kbd>
+            </button>
           )}
           <p className="conversation-meta muted">
             {rec.number ? <span className="note-number">#{rec.number}</span> : null}
@@ -402,6 +445,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
                   onSaveShortcut={() => void autosave.save()}
                 />
               </Suspense>
+              {!isText && <ActionItems rec={rec} setRec={setRec} />}
               <p className="model-note">
                 {summary.model && t('conversation.summarizedWith', { model: summary.model })}
                 {summary.editedAt && (
@@ -589,16 +633,21 @@ export function Conversation() {
   const listedDone = listed?.done ?? false;
   const listedFolder = listed?.folderId ?? '';
   const listedParent = listed?.parentId ?? '';
+  const listedTask = JSON.stringify([listed?.due ?? null, listed?.priority ?? 0, listed?.remindAt ?? null]);
   useEffect(() => {
     if (!listed) return;
     setRecState((r) =>
       r &&
       r.id === listed.id &&
-      (r.done !== listed.done || (r.labels?.join(',') ?? '') !== listedLabels || (r.folderId ?? '') !== listedFolder || (r.parentId ?? '') !== listedParent)
-        ? { ...r, done: listed.done, labels: listed.labels, folderId: listed.folderId, parentId: listed.parentId }
+      (r.done !== listed.done ||
+        (r.labels?.join(',') ?? '') !== listedLabels ||
+        (r.folderId ?? '') !== listedFolder ||
+        (r.parentId ?? '') !== listedParent ||
+        JSON.stringify([r.due ?? null, r.priority ?? 0, r.remindAt ?? null]) !== listedTask)
+        ? { ...r, done: listed.done, labels: listed.labels, folderId: listed.folderId, parentId: listed.parentId, due: listed.due, priority: listed.priority, remindAt: listed.remindAt }
         : r,
     );
-  }, [listedLabels, listedDone, listedFolder, listedParent]);
+  }, [listedLabels, listedDone, listedFolder, listedParent, listedTask]);
 
   const inProgress = rec ? processing(rec) : false;
   useEffect(() => {

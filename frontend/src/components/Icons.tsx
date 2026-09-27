@@ -251,3 +251,50 @@ export function GripIcon() {
     </svg>
   );
 }
+
+// Small icons for task dates, repeats, priorities and reminders, sized to the text.
+function InlineIcon({ children, size = 14 }: { children: ReactNode; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {children}
+    </svg>
+  );
+}
+
+export function CalendarIcon({ size }: { size?: number }) {
+  return (
+    <InlineIcon size={size}>
+      <rect x="3.5" y="5" width="17" height="15.5" rx="2" />
+      <path d="M3.5 10h17M8 3v4M16 3v4" />
+    </InlineIcon>
+  );
+}
+
+export function RepeatIcon({ size = 12 }: { size?: number }) {
+  return (
+    <InlineIcon size={size}>
+      <path d="M17 2l3 3-3 3" />
+      <path d="M4 11V9a4 4 0 0 1 4-4h12" />
+      <path d="M7 22l-3-3 3-3" />
+      <path d="M20 13v2a4 4 0 0 1-4 4H4" />
+    </InlineIcon>
+  );
+}
+
+export function FlagIcon({ size = 14, filled = false }: { size?: number; filled?: boolean }) {
+  return (
+    <InlineIcon size={size}>
+      <path d="M5 21V4" />
+      <path d="M5 4h11l-2 4 2 4H5" fill={filled ? 'currentColor' : 'none'} />
+    </InlineIcon>
+  );
+}
+
+export function BellIcon({ size = 12 }: { size?: number }) {
+  return (
+    <InlineIcon size={size}>
+      <path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z" />
+      <path d="M10 20.5a2 2 0 0 0 4 0" />
+    </InlineIcon>
+  );
+}

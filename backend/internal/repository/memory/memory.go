@@ -12,6 +12,7 @@ import (
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/device"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/folder"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/label"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/push"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/settings"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/tablet"
@@ -45,8 +46,30 @@ func (m *Recordings) Create(_ context.Context, r *recording.Recording) error {
 		m.numbers[r.OwnerID]++
 		r.Number = m.numbers[r.OwnerID]
 	}
-	m.recs[r.ID] = *r
+	m.recs[r.ID] = clone(r)
 	return nil
+}
+
+// clone copies a recording with the parts a caller might change in place (task date,
+// summary and action items), like a database keeps its own copy.
+func clone(r *recording.Recording) recording.Recording {
+	c := *r
+	if r.Due != nil {
+		d := *r.Due
+		if d.Repeat != nil {
+			rp := *d.Repeat
+			rp.Weekdays = slices.Clone(rp.Weekdays)
+			d.Repeat = &rp
+		}
+		c.Due = &d
+	}
+	if r.Summary != nil {
+		s := *r.Summary
+		s.ActionItems = slices.Clone(s.ActionItems)
+		c.Summary = &s
+	}
+	c.Labels = slices.Clone(r.Labels)
+	return c
 }
 
 func (m *Recordings) Get(_ context.Context, id string) (*recording.Recording, error) {
@@ -56,7 +79,8 @@ func (m *Recordings) Get(_ context.Context, id string) (*recording.Recording, er
 	if !ok {
 		return nil, domain.ErrNotFound
 	}
-	return &r, nil
+	c := clone(&r)
+	return &c, nil
 }
 
 func (m *Recordings) GetByClientID(_ context.Context, deviceID, clientID string) (*recording.Recording, error) {
@@ -126,7 +150,7 @@ func (m *Recordings) Update(_ context.Context, r *recording.Recording) error {
 	if _, ok := m.recs[r.ID]; !ok {
 		return domain.ErrNotFound
 	}
-	m.recs[r.ID] = *r
+	m.recs[r.ID] = clone(r)
 	return nil
 }
 
@@ -157,7 +181,7 @@ func (m *Recordings) List(_ context.Context, f recording.ListFilter) ([]*recordi
 			r.Transcript = nil
 			if r.Summary != nil {
 				s := *r.Summary
-				s.Markdown = ""
+				s.Markdown, s.ActionItems = "", nil
 				r.Summary = &s
 			}
 		}
@@ -213,12 +237,43 @@ func (m *Recordings) filter(keep func(*recording.Recording) bool) []*recording.R
 	defer m.mu.Unlock()
 	out := []*recording.Recording{}
 	for _, r := range m.recs {
-		r := r
+		r := clone(&r)
 		if keep(&r) {
 			out = append(out, &r)
 		}
 	}
 	return out
+}
+
+func (m *Recordings) SetRemindAt(_ context.Context, id string, at *time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r, ok := m.recs[id]
+	if !ok {
+		return domain.ErrNotFound
+	}
+	r.RemindAt = at
+	m.recs[id] = r
+	return nil
+}
+
+func (m *Recordings) ClaimReminder(_ context.Context, now time.Time) (*recording.Recording, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var best *recording.Recording
+	for _, r := range m.recs {
+		if r.RemindAt != nil && !r.RemindAt.After(now) && (best == nil || r.RemindAt.Before(*best.RemindAt)) {
+			c := clone(&r)
+			best = &c
+		}
+	}
+	if best == nil {
+		return nil, domain.ErrNotFound
+	}
+	stored := m.recs[best.ID]
+	stored.RemindAt = nil
+	m.recs[best.ID] = stored
+	return best, nil
 }
 
 // Devices is an in-memory ports.DeviceRepository.
@@ -454,6 +509,7 @@ func (m *Sessions) Count() int {
 type Settings struct {
 	mu         sync.Mutex
 	openRouter settings.OpenRouter
+	webPush    *settings.WebPush
 }
 
 // NewSettings builds an empty repository.
@@ -470,6 +526,67 @@ func (m *Settings) SaveOpenRouter(_ context.Context, s *settings.OpenRouter) err
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.openRouter = *s
+	return nil
+}
+
+func (m *Settings) InitWebPush(_ context.Context, k *settings.WebPush) (*settings.WebPush, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.webPush == nil {
+		c := *k
+		m.webPush = &c
+	}
+	out := *m.webPush
+	return &out, nil
+}
+
+// PushSubscriptions is an in-memory ports.PushSubscriptionRepository.
+type PushSubscriptions struct {
+	mu   sync.Mutex
+	subs map[string]push.Subscription
+}
+
+// NewPushSubscriptions builds an empty repository.
+func NewPushSubscriptions() *PushSubscriptions {
+	return &PushSubscriptions{subs: map[string]push.Subscription{}}
+}
+
+func (m *PushSubscriptions) Save(_ context.Context, s *push.Subscription) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.subs[s.ID] = *s
+	return nil
+}
+
+func (m *PushSubscriptions) List(_ context.Context, userID string) ([]*push.Subscription, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := []*push.Subscription{}
+	for _, s := range m.subs {
+		if s.UserID == userID {
+			s := s
+			out = append(out, &s)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
+	return out, nil
+}
+
+func (m *PushSubscriptions) Delete(_ context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.subs, id)
+	return nil
+}
+
+func (m *PushSubscriptions) DeleteByUser(_ context.Context, userID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, s := range m.subs {
+		if s.UserID == userID {
+			delete(m.subs, id)
+		}
+	}
 	return nil
 }
 

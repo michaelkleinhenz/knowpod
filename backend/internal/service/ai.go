@@ -65,11 +65,18 @@ const (
 )
 
 // summaryPrompt is completed with the theme's structure and the output language.
-const summaryPrompt = summaryIntro + `Reply with a JSON object with exactly two string fields:
+const summaryPrompt = summaryIntro + `Reply with a JSON object with exactly these fields:
 - "title": a short, specific title for the conversation (at most 8 words, no quotes, no trailing period).
 - "summary": the summary in Markdown, structured as follows:
 %s
-%s Reply with the JSON object only.`
+- "actionItems": an array of the concrete tasks and follow-ups that someone committed to or was asked to do, in the order they came up; an empty array if there are none. Leave out vague intentions and things already done. Each item is an object with:
+  - "text": the task as a short imperative sentence (at most 15 words), e.g. "Send the revised offer to Anna".
+  - "owner": the name of the person who should do it, or "" if unclear.
+  - "due": the date it is due as YYYY-MM-DD if a date or deadline was stated (resolve relative dates such as "next Friday" from the recording date), otherwise "".
+%s Write the action items' text in the same language as the summary. Reply with the JSON object only.`
+
+// maxActionItems bounds the action items kept from one summary.
+const maxActionItems = 30
 
 // summarySystemPrompt builds the instructions for a theme, a language ("auto" or a key of
 // SummaryLanguages) and the highlights the user marked.
@@ -398,28 +405,61 @@ func (s *AIService) Summarize(ctx context.Context, rec *recording.Recording) err
 	if err != nil {
 		return fmt.Errorf("summarize: %w", err)
 	}
-	title, markdown := parseSummary(answer)
+	title, markdown, items := parseSummary(answer)
 	rec.Summary = &recording.Summary{Title: title, Markdown: markdown, Model: model, Language: language,
-		ThemeID: th.ID, ThemeName: th.Name, CreatedAt: s.clock().UTC()}
+		ThemeID: th.ID, ThemeName: th.Name, ActionItems: items, CreatedAt: s.clock().UTC()}
 	s.log.Info("recording summarized", "id", rec.ID, "model", model, "theme", th.ID, "language", language, "title", title)
 	return nil
 }
 
 // parseSummary reads the model's JSON answer. Models sometimes wrap it in a code fence or
 // add text around it; if no JSON can be found, the first line becomes the title.
-func parseSummary(answer string) (title, markdown string) {
+func parseSummary(answer string) (title, markdown string, items []recording.ActionItem) {
 	s := strings.TrimSpace(answer)
 	if i, j := strings.Index(s, "{"), strings.LastIndex(s, "}"); i >= 0 && j > i {
 		var out struct {
-			Title   string `json:"title"`
-			Summary string `json:"summary"`
+			Title       string            `json:"title"`
+			Summary     string            `json:"summary"`
+			ActionItems []json.RawMessage `json:"actionItems"`
 		}
 		if json.Unmarshal([]byte(s[i:j+1]), &out) == nil && (out.Title != "" || out.Summary != "") {
-			return cleanTitle(out.Title), strings.TrimSpace(out.Summary)
+			return cleanTitle(out.Title), strings.TrimSpace(out.Summary), parseActionItems(out.ActionItems)
 		}
 	}
 	first, rest, _ := strings.Cut(s, "\n")
-	return cleanTitle(strings.TrimLeft(first, "# ")), strings.TrimSpace(rest)
+	return cleanTitle(strings.TrimLeft(first, "# ")), strings.TrimSpace(rest), nil
+}
+
+// parseActionItems keeps the usable action items of the model's answer: items without text
+// are skipped, a bare string is taken as the text, and a due date that isn't YYYY-MM-DD is
+// dropped.
+func parseActionItems(raw []json.RawMessage) []recording.ActionItem {
+	var out []recording.ActionItem
+	for _, r := range raw {
+		var it struct {
+			Text  string `json:"text"`
+			Owner string `json:"owner"`
+			Due   string `json:"due"`
+		}
+		if json.Unmarshal(r, &it) != nil {
+			if json.Unmarshal(r, &it.Text) != nil {
+				continue
+			}
+		}
+		text := truncateRunes(strings.Join(strings.Fields(it.Text), " "), 300)
+		if text == "" {
+			continue
+		}
+		due := strings.TrimSpace(it.Due)
+		if _, err := recording.ParseDate(due); err != nil {
+			due = ""
+		}
+		out = append(out, recording.ActionItem{ID: newID()[:12], Text: text, Owner: truncateRunes(it.Owner, 80), Due: due})
+		if len(out) == maxActionItems {
+			break
+		}
+	}
+	return out
 }
 
 func cleanTitle(t string) string {

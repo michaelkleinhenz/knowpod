@@ -46,7 +46,9 @@ type Server struct {
 	folders *service.FolderService
 	// remarkable reads documents from users' reMarkable clouds.
 	remarkable *service.RemarkableService
-	now        func() time.Time
+	// notifications sends task reminders to users' browsers.
+	notifications *service.NotificationService
+	now           func() time.Time
 }
 
 // Deps are the server's constructor dependencies. Handlers of missing services are still
@@ -69,6 +71,8 @@ type Deps struct {
 	Folders *service.FolderService
 	// Remarkable is optional in tests that don't use it.
 	Remarkable *service.RemarkableService
+	// Notifications is optional in tests that don't use it.
+	Notifications *service.NotificationService
 }
 
 // NewServer builds the server.
@@ -80,7 +84,7 @@ func NewServer(d Deps) *Server {
 	return &Server{
 		cfg: d.Cfg, log: log, db: d.DB, auth: d.Auth, users: d.Users, devices: d.Devices, uploads: d.Uploads,
 		manual: d.Manual, actions: d.Actions, objects: d.Objects, pocket: d.Pocket, ai: d.AI, themes: d.Themes,
-		labels: d.Labels, folders: d.Folders, remarkable: d.Remarkable, now: time.Now,
+		labels: d.Labels, folders: d.Folders, remarkable: d.Remarkable, notifications: d.Notifications, now: time.Now,
 	}
 }
 
@@ -135,6 +139,10 @@ func (s *Server) Router() http.Handler {
 			u.Post("/me/remarkable/pair", s.handlePairRemarkable)
 			u.Post("/me/remarkable/pull", s.handlePullRemarkable)
 			u.Put("/me/preferences", s.handleUpdatePreferences)
+			u.Get("/me/notifications", s.handleNotificationStatus)
+			u.Post("/me/notifications/subscriptions", s.handleSubscribePush)
+			u.Delete("/me/notifications/subscriptions/{id}", s.handleUnsubscribePush)
+			u.Post("/me/notifications/test", s.handleTestNotification)
 			u.Get("/ai/status", s.handleAIStatus)
 			u.Get("/ai/models", s.handleOpenRouterModels)
 			u.Get("/ai/languages", s.handleSummaryLanguages)
@@ -172,6 +180,10 @@ func (s *Server) Router() http.Handler {
 			u.Put("/recordings/{id}/summary", s.handleEditSummary)
 			u.Put("/recordings/{id}/labels", s.handleSetNoteLabels)
 			u.Put("/recordings/{id}/done", s.handleSetNoteDone)
+			u.Put("/recordings/{id}/due", s.handleSetNoteDue)
+			u.Put("/recordings/{id}/priority", s.handleSetNotePriority)
+			u.Post("/recordings/{id}/action-items/{itemId}/task", s.handleCreateActionItemTask)
+			u.Put("/recordings/{id}/action-items/{itemId}/dismissed", s.handleDismissActionItem)
 			u.Put("/recordings/{id}/folder", s.handleSetNoteFolder)
 			u.Put("/recordings/{id}/parent", s.handleSetNoteParent)
 			u.Put("/recordings/{id}/board", s.handleSetBoard)
