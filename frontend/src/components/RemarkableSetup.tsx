@@ -5,7 +5,7 @@ import { errorText } from '../lib/errors';
 import { formatDate } from '../lib/recordings';
 
 // RemarkableSetup pairs the signed-in user's reMarkable cloud account with a one-time code and
-// shows what the last pull of the "reMarkable" folder found. Documents are only read, never
+// shows what the last pull found. Imported documents go into the knowpod folder "reMarkable". Documents are only read, never
 // changed on the tablet.
 export function RemarkableSetup() {
   const { t } = useTranslation();
@@ -58,16 +58,13 @@ export function RemarkableSetup() {
         </p>
         <ol className="steps">
           <li>
-            <Trans i18nKey="remarkable.step1" values={{ folder: settings.folder }} components={{ 1: folder }} />
-          </li>
-          <li>
             <Trans
-              i18nKey="remarkable.step2"
+              i18nKey="remarkable.step1"
               values={{ url: settings.connectUrl.replace(/^https:\/\//, '') }}
               components={{ 1: <a href={settings.connectUrl} target="_blank" rel="noreferrer" /> }}
             />
           </li>
-          <li>{t('remarkable.step3')}</li>
+          <li>{t('remarkable.step2')}</li>
         </ol>
         <form onSubmit={handlePair} className="form">
           <label>
@@ -107,11 +104,7 @@ export function RemarkableSetup() {
         {result && !settings.lastError && (
           <>
             <dt>{t('remarkable.found')}</dt>
-            <dd>
-              {result.folderFound
-                ? t('remarkable.result', { count: result.documents, imported: result.imported, updated: result.updated })
-                : t('remarkable.noFolder', { folder: settings.folder })}
-            </dd>
+            <dd>{t('remarkable.result', { count: result.documents, imported: result.imported, updated: result.updated })}</dd>
           </>
         )}
       </dl>

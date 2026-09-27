@@ -193,9 +193,11 @@ the hash of its own index, which lists its files (`.metadata`, `.content`, `<pag
 A pull (`RemarkableService.Pull`, and `PullAll` on a ticker in `main.go`) keeps each
 user's link in `tablets`: the root hash and a cache of all items (name, parent, folder,
 hash and a content hash that ignores the metadata). An unchanged root ends the pull; a
-changed one re-reads only items whose hash changed, eight at a time. Documents below the
-top-level folder named `reMarkable` (exact name first, else any case) are matched to notes
-by (`remarkable:<userId>`, document ID): new ones are created in `remote`; finished notes
+changed one re-reads only items whose hash changed, eight at a time. All documents that are
+not deleted and not in the trash (directly or through a folder) are matched to notes by
+(`remarkable:<userId>`, document ID): new ones are created in `remote` in the user's knowpod
+folder for reMarkable (`folderId` on the link; else a top-level folder named `reMarkable`,
+any case; else a new one); finished notes
 whose content hash differs are queued again. Pulls and pairing for one user are serialized
 by an in-process lock.
 
@@ -468,7 +470,8 @@ Indexes: `(deviceId, clientId)` unique; `(status, notBefore)` for claiming;
 `parentId` (absent at the top level), `createdAt`, `updatedAt`.
 
 **`tablets`**: users' reMarkable links, `_id` = user ID: `deviceToken` (never returned by
-the API), `pairedAt`, `rootHash` and `items` (the cache of the last pull), `lastPullAt`,
+the API), `pairedAt`, `rootHash` and `items` (the cache of the last pull), `folderId` (the knowpod
+folder new notes go into), `lastPullAt`,
 `lastError`, `lastResult`.
 
 **`settings`**: one document per settings group. `_id: "openrouter"` holds `apiKey`,
@@ -487,7 +490,7 @@ reason MongoDB runs as a replica set). Nothing uses it yet.
 | `service/themes_test.go`, `auth_test.go` | Themes (built-ins, own themes, isolation, fallback to Auto), summary prompts with theme/language/model, validation of summary options, language preference |
 | `service/*_test.go` | Users (built-in admin, create/update/delete with cascade, last-admin and self protection), per-user Pocket settings, browser uploads (formats, limits), ownership checks; upload protocol: chunks, idempotency, offsets, dropped connections, checksum reset, invalid audio, isolation between devices, purge; device tokens; sign-in with the default login, password change overriding it, session expiry and logout; transcription (FLAC chunks, passthrough, size limit), summaries and their parsing, OpenRouter settings and model filtering, delete/re-transcribe/re-summarize |
 | `remarkable/*_test.go` | Page files (v6 blocks, deleted items, erasers, highlighter colors; v5), index schemas, page order, PDF structure (cross-references, page size, title), PNG rendering, and the client against a fake cloud (`remarkabletest`): pairing, revoked tokens, file names, download limits |
-| `service/remarkable_test.go` | Pairing, the folder and its subfolders only (not trash, deleted or other folders), unchanged accounts costing two requests, rename vs. content change, notes in processing left alone, fetch and store of notebooks and PDFs, reading pages with a vision model, edited summaries kept |
+| `service/remarkable_test.go` | Pairing, all documents except trashed and deleted ones, the knowpod folder (created, reused, renamed, made again), unchanged accounts costing two requests, rename vs. content change, notes in processing left alone, fetch and store of notebooks and PDFs, reading pages with a vision model, edited summaries kept |
 | `worker/worker_test.go` | Archive stage end to end, retry/backoff, permanent failure, recovery, disabled stages waiting |
 | `openrouter/*_test.go` | Request shape for audio, error handling, model list |
 | `audio/speech_test.go` | Speech chunks: count, duration, mono 16 kHz output |

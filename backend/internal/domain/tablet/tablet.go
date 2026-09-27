@@ -17,6 +17,9 @@ type Link struct {
 	RootHash string `bson:"rootHash,omitempty"`
 	Items    []Item `bson:"items,omitempty"`
 
+	// FolderID is the knowpod folder new notes are put into (see the service).
+	FolderID string `bson:"folderId,omitempty"`
+
 	LastPullAt *time.Time  `bson:"lastPullAt,omitempty"`
 	LastError  string      `bson:"lastError,omitempty"`
 	LastResult *PullResult `bson:"lastResult,omitempty"`
@@ -37,10 +40,7 @@ type Item struct {
 
 // PullResult says what a pull found.
 type PullResult struct {
-	// FolderFound is false when the account has no top-level folder named like the one
-	// that is read.
-	FolderFound bool `bson:"folderFound" json:"folderFound"`
-	Documents   int  `bson:"documents" json:"documents"` // documents in the folder
-	Imported    int  `bson:"imported" json:"imported"`   // new notes
-	Updated     int  `bson:"updated" json:"updated"`     // notes queued again because the document changed
+	Documents int `bson:"documents" json:"documents"` // documents in the account (not in the trash)
+	Imported  int `bson:"imported" json:"imported"`   // new notes
+	Updated   int `bson:"updated" json:"updated"`     // notes queued again because the document changed
 }
