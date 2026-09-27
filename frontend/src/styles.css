@@ -94,6 +94,40 @@ a {
   font-size: 0.9rem;
 }
 
+/* Separates the main menu items from the signed-in user. */
+.nav-divider {
+  width: 1px;
+  height: 1.2rem;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.nav .nav-signout {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.3rem;
+  margin: -0.3rem -0.3rem -0.3rem -0.6rem;
+  border-radius: 6px;
+}
+
+.nav .nav-signout:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.nav-signout svg {
+  display: block;
+}
+
+/* The label is read out in the header and shown in the phone menu. */
+.nav-signout-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 .link-button {
   white-space: nowrap;
   background: none;
@@ -1040,6 +1074,24 @@ a {
   .nav a.active {
     background: rgba(255, 255, 255, 0.06);
     box-shadow: inset 3px 0 0 var(--color-primary);
+  }
+
+  .nav-divider {
+    display: none;
+  }
+
+  .nav .nav-signout {
+    margin: 0;
+    padding: 0.8rem 1.25rem;
+    border-radius: 0;
+  }
+
+  .nav-signout-text {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
   }
 
   .nav-user {

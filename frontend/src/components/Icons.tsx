@@ -165,6 +165,15 @@ export function TrashIcon() {
   );
 }
 
+// SignOutIcon is a door with an arrow leading out of it.
+export function SignOutIcon() {
+  return (
+    <ToolIcon>
+      <path d="M10 20H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h4M15 16l4-4-4-4M19 12H9" />
+    </ToolIcon>
+  );
+}
+
 export function TagIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useOffline } from '../api/offline';
 import { useAuth } from '../auth';
+import { SignOutIcon } from './Icons';
 
 // Layout is the app frame: a header with the navigation, which collapses into a menu
 // button on narrow screens.
@@ -69,9 +70,12 @@ export function Layout({ children }: { children: ReactNode }) {
               </NavLink>
               <NavLink to="/settings">{t('nav.settings')}</NavLink>
               {admin && <NavLink to="/admin">{t('nav.admin')}</NavLink>}
+              <span className="nav-divider" aria-hidden="true" />
               <span className="nav-user">{account.email}</span>
-              <button type="button" className="link-button" onClick={handleLogout}>
-                {t('nav.signOut')}
+              {/* An icon in the header; the phone menu also names it. */}
+              <button type="button" className="link-button nav-signout" title={t('nav.signOut')} onClick={handleLogout}>
+                <SignOutIcon />
+                <span className="nav-signout-text">{t('nav.signOut')}</span>
               </button>
             </nav>
           </>
