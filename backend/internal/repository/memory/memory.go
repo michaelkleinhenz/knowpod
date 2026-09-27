@@ -13,6 +13,7 @@ import (
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/filter"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/folder"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/label"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/oauth"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/push"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/settings"
@@ -1081,4 +1082,147 @@ func (m *TimeEntries) DeleteByOwner(_ context.Context, ownerID string) error {
 		}
 	}
 	return nil
+}
+
+// OAuth is an in-memory ports.OAuthRepository.
+type OAuth struct {
+	mu      sync.Mutex
+	clients map[string]oauth.Client // by ID
+	grants  map[string]oauth.Grant  // by ID
+}
+
+// NewOAuth builds an empty repository.
+func NewOAuth() *OAuth {
+	return &OAuth{clients: map[string]oauth.Client{}, grants: map[string]oauth.Grant{}}
+}
+
+func (m *OAuth) CreateClient(_ context.Context, c *oauth.Client) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.clients[c.ID]; ok {
+		return domain.ErrDuplicate
+	}
+	x := *c
+	x.RedirectURIs = slices.Clone(c.RedirectURIs)
+	m.clients[c.ID] = x
+	return nil
+}
+
+func (m *OAuth) GetClient(_ context.Context, id string) (*oauth.Client, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	c, ok := m.clients[id]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	c.RedirectURIs = slices.Clone(c.RedirectURIs)
+	return &c, nil
+}
+
+func (m *OAuth) CreateGrant(_ context.Context, g *oauth.Grant) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.grants[g.ID]; ok {
+		return domain.ErrDuplicate
+	}
+	m.grants[g.ID] = *g
+	return nil
+}
+
+func (m *OAuth) ClaimCode(_ context.Context, codeHash string) (*oauth.Grant, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, g := range m.grants {
+		if codeHash != "" && g.CodeHash == codeHash {
+			g.CodeHash = ""
+			m.grants[id] = g
+			return &g, nil
+		}
+	}
+	return nil, domain.ErrNotFound
+}
+
+func (m *OAuth) GetGrantByAccessHash(_ context.Context, hash string) (*oauth.Grant, error) {
+	return m.findGrant(func(g *oauth.Grant) bool { return hash != "" && g.AccessHash == hash })
+}
+
+func (m *OAuth) GetGrantByRefreshHash(_ context.Context, hash string) (*oauth.Grant, error) {
+	return m.findGrant(func(g *oauth.Grant) bool { return hash != "" && g.RefreshHash == hash })
+}
+
+func (m *OAuth) UpdateGrant(_ context.Context, g *oauth.Grant) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.grants[g.ID]; !ok {
+		return domain.ErrNotFound
+	}
+	m.grants[g.ID] = *g
+	return nil
+}
+
+func (m *OAuth) RotateGrant(_ context.Context, g *oauth.Grant, prevRefreshHash string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if x, ok := m.grants[g.ID]; !ok || x.RefreshHash != prevRefreshHash {
+		return domain.ErrNotFound
+	}
+	m.grants[g.ID] = *g
+	return nil
+}
+
+func (m *OAuth) TouchGrant(_ context.Context, id string, at time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if g, ok := m.grants[id]; ok {
+		g.LastUsedAt = &at
+		m.grants[id] = g
+	}
+	return nil
+}
+
+func (m *OAuth) ListGrants(_ context.Context, userID string) ([]*oauth.Grant, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := []*oauth.Grant{}
+	for _, g := range m.grants {
+		if g.UserID == userID {
+			g := g
+			out = append(out, &g)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	return out, nil
+}
+
+func (m *OAuth) DeleteGrant(_ context.Context, id string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.grants[id]; !ok {
+		return domain.ErrNotFound
+	}
+	delete(m.grants, id)
+	return nil
+}
+
+func (m *OAuth) DeleteGrantsByUser(_ context.Context, userID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, g := range m.grants {
+		if g.UserID == userID {
+			delete(m.grants, id)
+		}
+	}
+	return nil
+}
+
+func (m *OAuth) findGrant(match func(*oauth.Grant) bool) (*oauth.Grant, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, g := range m.grants {
+		g := g
+		if match(&g) {
+			return &g, nil
+		}
+	}
+	return nil, domain.ErrNotFound
 }

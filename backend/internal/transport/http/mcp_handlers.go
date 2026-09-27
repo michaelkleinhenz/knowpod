@@ -14,8 +14,9 @@ import (
 // The MCP server lets AI assistants (Claude, ChatGPT, …) read and write a user's notes and
 // tasks. It speaks the Model Context Protocol's Streamable HTTP transport in its simplest,
 // stateless form: every JSON-RPC request is POSTed to MCPPath and answered with one JSON
-// response; there are no sessions and no server-sent events. Each user enables it with an
-// access token of their own (Settings → Account), sent as "Authorization: Bearer kpm_…".
+// response; there are no sessions and no server-sent events. Assistants sign in through
+// OAuth (see oauth_handlers.go), or with the user's own access token (Settings → Account),
+// sent as "Authorization: Bearer kpm_…".
 
 // mcpProtocolVersions are the protocol versions the server speaks, newest first.
 var mcpProtocolVersions = []string{"2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"}
@@ -74,7 +75,8 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 			writeCode(w, http.StatusInternalServerError, "internal", "internal error")
 			return
 		}
-		w.Header().Set("WWW-Authenticate", `Bearer realm="knowpod", error="invalid_token"`)
+		// The metadata link starts OAuth in assistants that support it (MCP authorization).
+		w.Header().Set("WWW-Authenticate", `Bearer realm="knowpod", error="invalid_token", resource_metadata="`+resourceMetadataURL(r)+`"`)
 		writeCode(w, http.StatusUnauthorized, "invalid_token", "missing or invalid MCP access token")
 		return
 	}

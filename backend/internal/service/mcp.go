@@ -32,6 +32,8 @@ type MCPView struct {
 type MCPAccessService struct {
 	users ports.UserRepository
 	clock func() time.Time
+	// OAuth signs in the assistants connected through OAuth. Optional.
+	OAuth *OAuthService
 }
 
 // NewMCPAccessService builds the service.
@@ -76,9 +78,12 @@ func (s *MCPAccessService) Disable(ctx context.Context, acc *Account) error {
 	return s.users.Update(ctx, u)
 }
 
-// Authenticate resolves an MCP access token to the account of its user. Unknown tokens
-// return ErrUnauthorized.
+// Authenticate resolves an MCP access token, or an OAuth access token, to the account of
+// its user. Unknown tokens return ErrUnauthorized.
 func (s *MCPAccessService) Authenticate(ctx context.Context, token string) (*Account, error) {
+	if s.OAuth != nil && IsAccessToken(token) {
+		return s.OAuth.Authenticate(ctx, token)
+	}
 	if !strings.HasPrefix(token, mcpTokenPrefix) {
 		return nil, ErrUnauthorized
 	}
