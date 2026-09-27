@@ -386,3 +386,123 @@ func TestFolders(t *testing.T) {
 		t.Fatalf("move to top: %d", res.StatusCode)
 	}
 }
+
+func TestBoards(t *testing.T) {
+	f := newAPIFixture(t)
+	admin := f.signedIn(adminEmail, adminPassword)
+
+	var board recording.Recording
+	if res := admin.do("POST", "/api/v1/recordings/board", map[string]string{"title": " Sprint "}, nil, &board); res.StatusCode != 201 ||
+		board.Type != recording.TypeBoard || board.Status != recording.StatusSummarized || board.Summary == nil || board.Summary.Title != "Sprint" ||
+		board.Board == nil || len(board.Board.Columns) != 3 || board.Board.Columns[0].Name != "Todo" || board.Board.Columns[0].ID == "" {
+		t.Fatalf("create: %d %+v", res.StatusCode, board)
+	}
+	if n := f.worker.RunOnce(context.Background()); n != 0 {
+		t.Fatalf("worker processed %d boards", n)
+	}
+	path := "/api/v1/recordings/" + board.ID + "/board"
+
+	var work folder.Folder
+	admin.do("POST", "/api/v1/folders", service.FolderInput{Name: "Work"}, nil, &work)
+	var note recording.Recording
+	admin.do("POST", "/api/v1/recordings/text", map[string]string{"title": "Plan", "markdown": ""}, nil, &note)
+
+	cols := board.Board.Columns
+	for _, bad := range []recording.Board{
+		{Scope: recording.BoardScope{Kind: "folder", ID: "nope"}, Columns: cols},
+		{Scope: recording.BoardScope{Kind: "label", ID: ""}, Columns: cols},
+		{Scope: recording.BoardScope{Kind: "tag", ID: "x"}, Columns: cols},
+		{Scope: recording.BoardScope{Kind: "folder", ID: work.ID}},
+		{Columns: []recording.BoardColumn{{Name: " "}}},
+		{Columns: []recording.BoardColumn{{ID: "a", Name: "A"}, {ID: "a", Name: "B"}}},
+		{Columns: []recording.BoardColumn{{Name: "A", Notes: []string{note.ID}}, {Name: "B", Notes: []string{note.ID}}}},
+	} {
+		if res := admin.do("PUT", path, bad, nil, nil); res.StatusCode != 400 {
+			t.Errorf("set %+v: %d", bad, res.StatusCode)
+		}
+	}
+
+	// Rename a column, add one, and put the note into it.
+	set := recording.Board{
+		Scope:   recording.BoardScope{Kind: "folder", ID: work.ID},
+		Columns: []recording.BoardColumn{{ID: cols[0].ID, Name: "Backlog"}, cols[1], cols[2], {Name: " Review ", Notes: []string{note.ID}}},
+	}
+	var got recording.Recording
+	if res := admin.do("PUT", path, set, nil, &got); res.StatusCode != 200 || len(got.Board.Columns) != 4 ||
+		got.Board.Columns[0].Name != "Backlog" || got.Board.Columns[3].Name != "Review" || got.Board.Columns[3].ID == "" ||
+		len(got.Board.Columns[3].Notes) != 1 || got.Board.Scope.ID != work.ID {
+		t.Fatalf("set: %d %+v", res.StatusCode, got.Board)
+	}
+
+	// Only boards have columns.
+	if res := admin.do("PUT", "/api/v1/recordings/"+note.ID+"/board", set, nil, nil); res.StatusCode != 400 {
+		t.Fatalf("set on a text note: %d", res.StatusCode)
+	}
+	// Other users don't see it.
+	admin.do("POST", "/api/v1/admin/users", map[string]string{"email": "bob@example.com", "password": "bob-password"}, nil, nil)
+	bob := f.signedIn("bob@example.com", "bob-password")
+	if res := bob.do("PUT", path, set, nil, nil); res.StatusCode != 404 {
+		t.Fatalf("other user: %d", res.StatusCode)
+	}
+
+	// Deleting the folder points the board at the folder its notes moved into.
+	admin.do("DELETE", "/api/v1/folders/"+work.ID, nil, nil, nil)
+	if admin.do("GET", "/api/v1/recordings/"+board.ID, nil, nil, &got); got.Board.Scope.Kind != "folder" || got.Board.Scope.ID != "" {
+		t.Fatalf("scope after deleting the folder: %+v", got.Board.Scope)
+	}
+
+	// Deleting a label clears the scope of boards showing it.
+	var l service.LabelView
+	admin.do("POST", "/api/v1/labels", service.LabelInput{Name: "Work", Color: "#aa0000"}, nil, &l)
+	set.Scope = recording.BoardScope{Kind: "label", ID: l.ID}
+	if res := admin.do("PUT", path, set, nil, &got); res.StatusCode != 200 {
+		t.Fatalf("label scope: %d", res.StatusCode)
+	}
+	admin.do("DELETE", "/api/v1/labels/"+l.ID, nil, nil, nil)
+	if admin.do("GET", "/api/v1/recordings/"+board.ID, nil, nil, &got); got.Board.Scope.Kind != "" || len(got.Board.Columns) != 4 {
+		t.Fatalf("board after deleting its label: %+v", got.Board)
+	}
+
+	// Renamed like a text note.
+	if res := admin.do("PUT", "/api/v1/recordings/"+board.ID+"/summary", map[string]string{"title": "Q3", "markdown": ""}, nil, &got); res.StatusCode != 200 || got.Summary.Title != "Q3" {
+		t.Fatalf("rename: %d", res.StatusCode)
+	}
+}
+
+func TestNoteNumbers(t *testing.T) {
+	f := newAPIFixture(t)
+	admin := f.signedIn(adminEmail, adminPassword)
+	admin.do("POST", "/api/v1/admin/users", map[string]string{"email": "bob@example.com", "password": "bob-password"}, nil, nil)
+	bob := f.signedIn("bob@example.com", "bob-password")
+
+	// Every user counts their own notes, whatever their type.
+	var a1, a2, b1, a3 recording.Recording
+	admin.do("POST", "/api/v1/recordings/text", map[string]string{"title": "One", "markdown": ""}, nil, &a1)
+	admin.do("POST", "/api/v1/recordings/board", map[string]string{"title": "Two"}, nil, &a2)
+	bob.do("POST", "/api/v1/recordings/text", map[string]string{"title": "Bob's", "markdown": ""}, nil, &b1)
+	if a1.Number != 1 || a2.Number != 2 || b1.Number != 1 {
+		t.Fatalf("numbers: %d %d %d", a1.Number, a2.Number, b1.Number)
+	}
+	// Numbers are never reused.
+	admin.do("DELETE", "/api/v1/recordings/"+a2.ID, nil, nil, nil)
+	admin.do("POST", "/api/v1/recordings/text", map[string]string{"title": "Three", "markdown": "see #1"}, nil, &a3)
+	if a3.Number != 3 {
+		t.Fatalf("after delete: %d", a3.Number)
+	}
+	// Kept when the note is edited.
+	var edited recording.Recording
+	admin.do("PUT", "/api/v1/recordings/"+a3.ID+"/summary", map[string]string{"title": "Three", "markdown": "see #1 and #3"}, nil, &edited)
+	if edited.Number != 3 {
+		t.Fatalf("after edit: %d", edited.Number)
+	}
+
+	// Looked up by number, among one's own notes only.
+	var list []recording.Recording
+	if res := admin.do("GET", "/api/v1/recordings?number=1", nil, nil, &list); res.StatusCode != 200 || len(list) != 1 || list[0].ID != a1.ID {
+		t.Fatalf("by number: %d %+v", res.StatusCode, list)
+	}
+	list = nil
+	if bob.do("GET", "/api/v1/recordings?number=3", nil, nil, &list); len(list) != 0 {
+		t.Fatalf("bob sees admin's #3: %+v", list)
+	}
+}

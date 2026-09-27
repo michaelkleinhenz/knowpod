@@ -32,6 +32,9 @@ info:
     **Text notes** — besides audio recordings, notes can be plain Markdown text written in the
     web UI (`POST /recordings/text`, `type: text`). They skip transcription and summaries.
 
+    **Boards** — kanban boards (`POST /recordings/board`, `type: board`) show the notes of a
+    folder or a label as cards in columns ("Todo", "In Progress", "Done" to start with).
+
     **AI processing** — every archived recording is transcribed and then summarized through
     OpenRouter, with the API key and models set by an administrator
     (`PUT /admin/settings/openrouter`). Recordings wait in `stored` until that is configured.
@@ -759,6 +762,7 @@ paths:
       security: [{ sessionCookie: [] }, { adminToken: [] }]
       parameters:
         - { name: deviceId, in: query, schema: { type: string } }
+        - { name: number, in: query, description: The note with this number (see `number`), schema: { type: integer, format: int64 } }
         - { name: status, in: query, schema: { $ref: "#/components/schemas/Status" } }
         - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 200 } }
         - { name: offset, in: query, schema: { type: integer, default: 0 } }
@@ -826,6 +830,34 @@ paths:
               properties:
                 title: { type: string, maxLength: 200 }
                 markdown: { type: string, maxLength: 100000 }
+      responses:
+        "201":
+          description: Created
+          content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+
+  /recordings/board:
+    post:
+      tags: ["Recordings"]
+      summary: Create a board
+      description: |
+        Creates a note of type `board`: a kanban board of the notes in a folder or with a label
+        (its `scope`), sorted into columns. Notes in the scope that are in no column are shown in
+        the first one. Without columns the board gets "Todo", "In Progress" and "Done". Like a
+        text note, its title is kept in `summary` (rename it with
+        `PUT /recordings/{recordingId}/summary`); it is labeled, moved and deleted like any note.
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title: { type: string, maxLength: 200 }
+                board: { $ref: "#/components/schemas/Board" }
       responses:
         "201":
           description: Created
@@ -1081,6 +1113,28 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
 
+  /recordings/{recordingId}/board:
+    put:
+      tags: ["Recordings"]
+      summary: Change a board
+      description: |
+        Replaces a board's scope, its columns (rename, add, remove, reorder) and which notes are
+        in which column. Columns without an `id` get one.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Board" }
+      responses:
+        "200":
+          description: Saved
+          content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
   /recordings/{recordingId}/done:
     put:
       tags: ["Recordings", "Labels"]
@@ -1314,13 +1368,34 @@ components:
         lastSeenAt: { type: string, format: date-time }
         revokedAt: { type: string, format: date-time }
 
+    Board:
+      type: object
+      description: The setup of a board note.
+      properties:
+        scope:
+          type: object
+          description: The notes the board shows. An empty kind shows none.
+          properties:
+            kind: { type: string, enum: ["", folder, label] }
+            id: { type: string, description: 'A folder ID (empty for the top level) or a label ID' }
+        columns:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            type: object
+            properties:
+              id: { type: string, maxLength: 40 }
+              name: { type: string, maxLength: 60 }
+              notes: { type: array, items: { type: string }, description: IDs of the notes in the column, in order }
     Recording:
       type: object
       properties:
         id: { type: string }
         ownerId: { type: string, description: The user the recording belongs to }
-        deviceId: { type: string, description: '"pocket:<userId>" for Pocket, "upload:<userId>" for browser uploads, "text:<userId>" for text notes, "remarkable:<userId>" for reMarkable documents' }
-        type: { type: string, enum: [text, document], description: 'The kind of note: absent for audio recordings, "text" for Markdown notes (title and text in `summary`), "document" for reMarkable documents (the text read from the pages in `transcript`)' }
+        number: { type: integer, format: int64, description: 'The note''s number among its owner''s notes (1, 2, 3, …), never reused; "#12" in a note''s text links to note 12' }
+        deviceId: { type: string, description: '"pocket:<userId>" for Pocket, "upload:<userId>" for browser uploads, "text:<userId>" for text notes, "board:<userId>" for boards, "remarkable:<userId>" for reMarkable documents' }
+        type: { type: string, enum: [text, document, board], description: 'The kind of note: absent for audio recordings, "text" for Markdown notes (title and text in `summary`), "document" for reMarkable documents (the text read from the pages in `transcript`), "board" for kanban boards (title in `summary`, setup in `board`)' }
         source: { type: string, enum: [pocket, upload, remarkable], description: Absent for device uploads }
         title: { type: string, description: Title from the source (Pocket, the document's name on the reMarkable) }
         recordingId: { type: string, description: Device-assigned ID, the Pocket recording ID, or the reMarkable document ID }
@@ -1346,6 +1421,7 @@ components:
         labels: { type: array, items: { type: string }, description: IDs of the note's labels (see GET /labels) }
         done: { type: boolean, description: Check mark of a note labeled `task` }
         folderId: { type: string, description: The folder the note is in (see GET /folders); absent at the top level }
+        board: { $ref: "#/components/schemas/Board" }
         transcript:
           type: object
           properties:

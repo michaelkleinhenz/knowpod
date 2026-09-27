@@ -19,10 +19,12 @@ const (
 	CollLabels     = "labels"
 	CollFolders    = "folders"
 	CollTablets    = "tablets"
+	// CollCounters holds sequences, e.g. each user's last note number.
+	CollCounters = "counters"
 )
 
 // collections lists every collection the service owns. Setup creates any that are missing.
-var collections = []string{CollDevices, CollRecordings, CollUsers, CollSessions, CollSettings, CollThemes, CollLabels, CollFolders, CollTablets}
+var collections = []string{CollDevices, CollRecordings, CollUsers, CollSessions, CollSettings, CollThemes, CollLabels, CollFolders, CollTablets, CollCounters}
 
 // indexes lists the indexes per collection. Setup creates them; CreateMany on an existing
 // identical index is a no-op.
@@ -41,6 +43,9 @@ var indexes = map[string][]mongo.IndexModel{
 		// Listing, newest first.
 		{Keys: bson.D{{Key: "createdAt", Value: -1}}},
 		{Keys: bson.D{{Key: "ownerId", Value: 1}, {Key: "createdAt", Value: -1}}},
+		// Note numbers are unique per user.
+		{Keys: bson.D{{Key: "ownerId", Value: 1}, {Key: "number", Value: 1}},
+			Options: options.Index().SetUnique(true).SetPartialFilterExpression(bson.M{"number": bson.M{"$exists": true}})},
 	},
 	CollUsers: {
 		{Keys: bson.D{{Key: "email", Value: 1}}, Options: options.Index().SetUnique(true)},

@@ -40,6 +40,9 @@ const (
 	// or EPUB). File is its PDF or EPUB; the text read from its pages is kept as the
 	// Transcript and summarized like one.
 	TypeDocument Type = "document"
+	// TypeBoard: a kanban board of the user's notes. Its title is kept in Summary like a
+	// text note's; Board holds which notes it shows and its columns.
+	TypeBoard Type = "board"
 )
 
 // Source says where a recording came from.
@@ -85,7 +88,11 @@ type Object struct {
 type Recording struct {
 	ID string `bson:"_id" json:"id"`
 	// OwnerID is the user the recording belongs to.
-	OwnerID  string `bson:"ownerId" json:"ownerId"`
+	OwnerID string `bson:"ownerId" json:"ownerId"`
+	// Number identifies the note among its owner's notes (1, 2, 3, …), like an issue number;
+	// "#12" in a note's text links to note 12. It is assigned when the note is created and
+	// never reused.
+	Number   int64  `bson:"number,omitempty" json:"number,omitempty"`
 	DeviceID string `bson:"deviceId" json:"deviceId"`
 	Type     Type   `bson:"type,omitempty" json:"type,omitempty"`
 	Source   Source `bson:"source,omitempty" json:"source,omitempty"`
@@ -118,6 +125,9 @@ type Recording struct {
 	// FolderID is the folder the note is in; empty at the top level.
 	FolderID string `bson:"folderId,omitempty" json:"folderId,omitempty"`
 
+	// Board is the setup of a board note: its scope and columns.
+	Board *Board `bson:"board,omitempty" json:"board,omitempty"`
+
 	// Highlights are moments the user marked on the device while recording.
 	Highlights     []Highlight    `bson:"highlights,omitempty" json:"highlights,omitempty"`
 	Transcript     *Transcript    `bson:"transcript,omitempty" json:"transcript,omitempty"`
@@ -142,14 +152,54 @@ func (r *Recording) IsText() bool { return r.Type == TypeText }
 // IsDocument reports whether the note is a document from the reMarkable cloud.
 func (r *Recording) IsDocument() bool { return r.Type == TypeDocument }
 
-// KeepUserFields copies the fields a person changes at any time (labels, done, folder) from
-// the stored version, so that a processing step saving its long-held copy doesn't undo them.
+// IsBoard reports whether the note is a board.
+func (r *Recording) IsBoard() bool { return r.Type == TypeBoard }
+
+// KeepUserFields copies the fields a person changes at any time (labels, done, folder) and
+// the note number from the stored version, so that a processing step saving its long-held
+// copy doesn't undo them.
 func (r *Recording) KeepUserFields(stored *Recording) {
-	r.Labels, r.Done, r.FolderID = stored.Labels, stored.Done, stored.FolderID
+	r.Labels, r.Done, r.FolderID, r.Number = stored.Labels, stored.Done, stored.FolderID, stored.Number
 }
 
 // TextDeviceID returns the DeviceID of a user's text notes. Their ClientID is the note ID.
 func TextDeviceID(userID string) string { return "text:" + userID }
+
+// ScopeKind says what selects the notes shown on a board.
+type ScopeKind string
+
+const (
+	// ScopeNone: the board shows no notes until a scope is chosen.
+	ScopeNone ScopeKind = ""
+	// ScopeFolder: the notes in a folder (ID "" is the top level).
+	ScopeFolder ScopeKind = "folder"
+	// ScopeLabel: the notes carrying a label.
+	ScopeLabel ScopeKind = "label"
+)
+
+// BoardScope selects the notes a board shows.
+type BoardScope struct {
+	Kind ScopeKind `bson:"kind,omitempty" json:"kind"`
+	// ID is the folder or label.
+	ID string `bson:"id,omitempty" json:"id"`
+}
+
+// Board is a kanban board: the notes in its scope, sorted into columns. Notes in the scope
+// that are in no column are shown in the first one.
+type Board struct {
+	Scope   BoardScope    `bson:"scope" json:"scope"`
+	Columns []BoardColumn `bson:"columns" json:"columns"`
+}
+
+// BoardColumn is one column of a board, with the IDs of the notes put into it, in order.
+type BoardColumn struct {
+	ID    string   `bson:"id" json:"id"`
+	Name  string   `bson:"name" json:"name"`
+	Notes []string `bson:"notes,omitempty" json:"notes,omitempty"`
+}
+
+// BoardDeviceID returns the DeviceID of a user's boards. Their ClientID is the note ID.
+func BoardDeviceID(userID string) string { return "board:" + userID }
 
 // Highlight is a moment the user marked while recording (e.g. with a button on the device).
 type Highlight struct {
@@ -192,8 +242,10 @@ type ListFilter struct {
 	OwnerID  string
 	DeviceID string
 	Status   Status
-	Limit    int
-	Offset   int
+	// Number selects the owner's note with this number.
+	Number int64
+	Limit  int
+	Offset int
 	// Brief leaves out the transcript and the summary text (the summary title is kept),
 	// for lists.
 	Brief bool

@@ -45,6 +45,13 @@ AI worker ─────────────▶ transcript (status: transcr
   **documents** from the reMarkable. The
   notes list shows each note's type as an icon; text notes are edited, copied, downloaded
   and deleted like summaries.
+- Every note has a **number** of its own (#1, #2, … per user, never reused). Typing **#** in
+  a note's text opens a list of your notes, filtered by number (or title) as you type; the
+  chosen note is linked as "#12" (Ctrl/⌘+click opens it). Search also finds notes by number.
+- **Boards** are kanban boards, listed like any other note: each shows the notes of a folder or
+  with a label as cards, all starting in the first column. New boards have the columns Todo,
+  In Progress and Done; columns can be renamed, added and deleted, and cards are dragged
+  between them.
 - Notes can carry **labels**: colored chips in the note's header, with your own labels
   defined on the spot or under **Settings → Labels**. The built-in **Task** label adds a
   check box to the note's icon in the list; the check mark is saved.

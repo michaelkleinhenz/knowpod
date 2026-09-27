@@ -23,6 +23,8 @@ import (
 type Recordings struct {
 	mu   sync.Mutex
 	recs map[string]recording.Recording
+	// numbers is each owner's last note number.
+	numbers map[string]int64
 }
 
 // NewRecordings builds an empty repository.
@@ -35,6 +37,13 @@ func (m *Recordings) Create(_ context.Context, r *recording.Recording) error {
 		if x.ID == r.ID || (x.DeviceID == r.DeviceID && x.ClientID == r.ClientID) {
 			return domain.ErrDuplicate
 		}
+	}
+	if r.Number == 0 && r.OwnerID != "" {
+		if m.numbers == nil {
+			m.numbers = map[string]int64{}
+		}
+		m.numbers[r.OwnerID]++
+		r.Number = m.numbers[r.OwnerID]
 	}
 	m.recs[r.ID] = *r
 	return nil
@@ -65,10 +74,18 @@ func (m *Recordings) MoveFolder(_ context.Context, ownerID, from, to string) err
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for id, r := range m.recs {
-		if r.OwnerID == ownerID && r.FolderID == from {
-			r.FolderID = to
-			m.recs[id] = r
+		if r.OwnerID != ownerID {
+			continue
 		}
+		if r.FolderID == from {
+			r.FolderID = to
+		}
+		if r.Board != nil && r.Board.Scope.Kind == recording.ScopeFolder && r.Board.Scope.ID == from {
+			b := *r.Board
+			b.Scope.ID = to
+			r.Board = &b
+		}
+		m.recs[id] = r
 	}
 	return nil
 }
@@ -77,10 +94,15 @@ func (m *Recordings) RemoveLabel(_ context.Context, ownerID, labelID string) err
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for id, r := range m.recs {
-		if r.OwnerID != ownerID || !slices.Contains(r.Labels, labelID) {
+		if r.OwnerID != ownerID {
 			continue
 		}
 		r.Labels = slices.DeleteFunc(slices.Clone(r.Labels), func(l string) bool { return l == labelID })
+		if r.Board != nil && r.Board.Scope.Kind == recording.ScopeLabel && r.Board.Scope.ID == labelID {
+			b := *r.Board
+			b.Scope = recording.BoardScope{}
+			r.Board = &b
+		}
 		m.recs[id] = r
 	}
 	return nil
@@ -108,7 +130,7 @@ func (m *Recordings) Delete(_ context.Context, id string) error {
 
 func (m *Recordings) List(_ context.Context, f recording.ListFilter) ([]*recording.Recording, error) {
 	out := m.filter(func(r *recording.Recording) bool {
-		return (f.OwnerID == "" || r.OwnerID == f.OwnerID) && (f.DeviceID == "" || r.DeviceID == f.DeviceID) && (f.Status == "" || r.Status == f.Status)
+		return (f.OwnerID == "" || r.OwnerID == f.OwnerID) && (f.DeviceID == "" || r.DeviceID == f.DeviceID) && (f.Status == "" || r.Status == f.Status) && (f.Number == 0 || r.Number == f.Number)
 	})
 	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
 	if f.Offset >= len(out) {

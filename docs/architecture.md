@@ -310,6 +310,32 @@ never picks it up, and the summary machinery serves it as it is: it is edited wi
 "… - note.md") and deleted like any note. Retranscribe and resummarize answer 409 for it,
 and it has no audio or transcript. Future note types get their own `type` value.
 
+**Note numbers.** Every note has a `number`, counted per user like an issue number and
+never reused. `RecordingRepo.Create` takes the owner's next number from the `counters`
+collection (`{_id: "notes:<userId>", seq}`, incremented atomically); a unique partial index
+on `(ownerId, number)` guards it. At start-up `NumberNotes` numbers the notes from before
+numbers (oldest first, after ownerless notes got their owner) and first raises each counter
+to the highest number in use, so it is safe to run on every start. `GET /recordings?number=12`
+finds a note by number. In a note's text, "#12" links to note 12: the editor
+(`SummaryEditor.tsx`) offers the notes in a menu after "#" is typed (filtered by number
+prefix, or by title), inserts the chosen "#12" as plain text, so the Markdown stays plain, and
+marks the references as links with decorations (Ctrl/⌘+click opens them); the read-only
+Markdown renderer links them too. Links go to `/n/12`, which opens the note from the list or
+looks it up on the server.
+
+**Boards.** A board (`recording.type: "board"`, `service/boards.go`) is a kanban board of
+other notes. Like a text note it is stored `summarized` with its title in `summary` (renamed
+with `PUT /recordings/{id}/summary`), and is listed, labeled, moved and deleted like any
+note. Its `board` field holds a **scope** (`{kind: "folder"|"label", id}`; folder `""` is the
+top level, an empty kind shows nothing) and 1-20 **columns** (`{id, name, notes}`), where
+`notes` are the IDs of the notes put into that column, in order. The web UI works out the
+cards from the notes list: every note in the scope (never a board) is shown in its column,
+and notes in no column go to the end of the first. `POST /recordings/board` creates a board
+(default columns "Todo", "In Progress", "Done"; the UI sends them translated) and
+`PUT /recordings/{id}/board` replaces scope, columns and placements at once. Deleting a
+folder points boards showing it at the folder its notes moved into; deleting a label clears
+the scope of boards showing it (`MoveFolder` / `RemoveLabel` in the repository).
+
 **Labels** (`service/labels.go`). `GET /labels` lists the built-in labels (only `task`,
 named by the UI in its language) and the user's own; `POST`/`PUT`/`DELETE /labels/{id}`
 manage their own (built-in ones can't be changed). `PUT /recordings/{id}/labels` replaces a
@@ -423,8 +449,9 @@ implements the work.
 |---|---|
 | `_id` | Random 24-hex ID; the device's `uploadId` |
 | `ownerId` | The user it belongs to (indexed with `createdAt` for lists) |
-| `deviceId`, `clientId` | Device (or `pocket:<userId>` / `upload:<userId>` / `text:<userId>` / `remarkable:<userId>`) and its `recordingId` (unique together) |
-| `type` | The kind of note: absent for audio recordings, `text` for text notes (see below), `document` for reMarkable documents |
+| `deviceId`, `clientId` | Device (or `pocket:<userId>` / `upload:<userId>` / `text:<userId>` / `board:<userId>` / `remarkable:<userId>`) and its `recordingId` (unique together) |
+| `type` | The kind of note: absent for audio recordings, `text` for text notes (see below), `document` for reMarkable documents, `board` for boards |
+| `board` | A board's scope and columns (see **Boards** above) |
 | `file`, `pages` | A document's PDF or EPUB (S3 key, content type, size) and its page count |
 | `sourceRevision` | Content hash of the imported version of a reMarkable document |
 | `labels`, `done` | IDs of the note's labels (see below) and the check mark of a `task` note |
@@ -521,6 +548,10 @@ Each list entry shows an icon for the note's type (`NoteIcon` in `components/Ico
 sound wave for audio, lines of text for text notes). The list's **+** button creates an
 empty text note and opens it with its title selected; a text note's page has only the
 editor, with download, copy and delete (no view switcher, transcript, source or AI actions).
+The board button next to it creates a board (`components/Board.tsx`) and opens it: a scope
+picker, then the columns side by side. Cards are dragged between and within columns (or
+moved with their arrow buttons on touch screens), columns are renamed, added and deleted,
+and every change is saved at once with `PUT /recordings/{id}/board`.
 
 Labels (`components/Labels.tsx`) show as colored chips under the note's title; a popover
 toggles them and creates new ones, and **Settings → Labels** renames, recolors and deletes

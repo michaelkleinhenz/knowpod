@@ -25,7 +25,9 @@ func (s *Server) handleListRecordings(w http.ResponseWriter, r *http.Request) {
 		limit = 50
 	}
 	offset, _ := strconv.Atoi(q.Get("offset"))
+	number, _ := strconv.ParseInt(q.Get("number"), 10, 64)
 	list, err := s.actions.List(r.Context(), accountFrom(r.Context()), recording.ListFilter{
+		Number:   max(number, 0),
 		DeviceID: q.Get("deviceId"), Status: recording.Status(q.Get("status")), Limit: limit, Offset: max(offset, 0),
 		Brief: q.Get("full") == "",
 	})
@@ -192,6 +194,35 @@ func (s *Server) handleCreateTextNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, rec)
+}
+
+// handleCreateBoard creates a board note from a JSON body with its title and optionally its
+// scope and columns.
+func (s *Server) handleCreateBoard(w http.ResponseWriter, r *http.Request) {
+	var in service.BoardInput
+	if !decode(w, r, &in) {
+		return
+	}
+	rec, err := s.actions.CreateBoard(r.Context(), accountFrom(r.Context()), in)
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, rec)
+}
+
+// handleSetBoard replaces a board's scope, columns and card placements.
+func (s *Server) handleSetBoard(w http.ResponseWriter, r *http.Request) {
+	var in recording.Board
+	if !decode(w, r, &in) {
+		return
+	}
+	rec, err := s.actions.SetBoard(r.Context(), accountFrom(r.Context()), chi.URLParam(r, "id"), in)
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, rec)
 }
 
 // handleEditSummary saves a person's edits of a summary (title and Markdown text), which is

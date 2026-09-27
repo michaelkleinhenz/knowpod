@@ -36,10 +36,11 @@ type RecordingRepository interface {
 	ListStale(ctx context.Context, status recording.Status, before time.Time, limit int) ([]*recording.Recording, error)
 	// AssignOwnerless gives recordings without an owner to ownerID (data from before users).
 	AssignOwnerless(ctx context.Context, ownerID string) (int, error)
-	// RemoveLabel takes the label off all of ownerID's recordings.
+	// RemoveLabel takes the label off all of ownerID's recordings and clears the scope of
+	// boards showing it.
 	RemoveLabel(ctx context.Context, ownerID, labelID string) error
 	// MoveFolder moves all of ownerID's recordings in folder from into folder to ("" is the
-	// top level).
+	// top level), and points boards showing folder from at folder to.
 	MoveFolder(ctx context.Context, ownerID, from, to string) error
 }
 

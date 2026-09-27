@@ -80,6 +80,12 @@ func main() {
 	if err := setupBuiltInAdmin(ctx, authSvc, recordings, devices, log); err != nil {
 		fatal(log, "built-in admin setup failed", err)
 	}
+	// Notes from before note numbers get theirs (after ownerless notes got an owner).
+	if n, err := recordings.NumberNotes(ctx); err != nil {
+		fatal(log, "numbering notes failed", err)
+	} else if n > 0 {
+		log.Info("numbered existing notes", "notes", n)
+	}
 	deviceSvc := service.NewDeviceService(devices)
 	uploadSvc := service.NewUploadService(recordings, spool, cfg.MaxUploadBytes)
 	archiver := service.NewArchiver(spool, objects, cfg.KeepOriginalWAV, log)

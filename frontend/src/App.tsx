@@ -7,6 +7,7 @@ import { Account } from './pages/Account';
 import { Devices } from './pages/Devices';
 import { Conversation } from './pages/Conversation';
 import { Login } from './pages/Login';
+import { NoteByNumber } from './pages/NoteByNumber';
 import { NotesHome, NotesLayout } from './pages/NotesLayout';
 import { Settings } from './pages/Settings';
 import { Users } from './pages/Users';
@@ -38,6 +39,7 @@ export default function App() {
         >
           <Route path="/" element={<NotesHome />} />
           <Route path="/conversations/:id" element={<Conversation />} />
+          <Route path="/n/:number" element={<NoteByNumber />} />
         </Route>
         <Route
           path="/settings"

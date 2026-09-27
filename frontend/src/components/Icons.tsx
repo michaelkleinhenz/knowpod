@@ -5,7 +5,7 @@ import type { NoteType } from '../api/client';
 
 // NoteIcon shows a note as a page; its content says the note's type: a sound wave for audio
 // recordings, lines of text with a heading for text notes, handwriting for reMarkable
-// documents.
+// documents, columns of cards for boards.
 export function NoteIcon({ type, label }: { type: NoteType; label?: string }) {
   return (
     <svg
@@ -25,6 +25,18 @@ export function NoteIcon({ type, label }: { type: NoteType; label?: string }) {
           <path d="M7 18.5c1.2-2 2.2-2 2.8 0s1.8 2 3 0 2-2 2.7 0 1.8 2 3 0 1.5-1.5 2.5-.5" />
           <path d="M7 26c1.4-2.2 2.4-2.2 3 0s1.6 2.2 3 0" opacity="0.6" />
         </g>
+      ) : type === 'board' ? (
+        <>
+          <rect x="6" y="7" width="18" height="2.4" rx="1.2" fill="var(--color-muted)" opacity="0.45" />
+          <g fill="var(--color-primary)" opacity="0.8">
+            <rect x="6" y="13" width="5" height="5" rx="1" />
+            <rect x="6" y="20" width="5" height="5" rx="1" />
+            <rect x="6" y="27" width="5" height="4" rx="1" />
+            <rect x="12.5" y="13" width="5" height="5" rx="1" />
+            <rect x="19" y="13" width="5" height="5" rx="1" opacity="0.6" />
+            <rect x="19" y="20" width="5" height="5" rx="1" opacity="0.6" />
+          </g>
+        </>
       ) : type === 'text' ? (
         <>
           <rect x="7" y="8" width="12" height="2.6" rx="1.3" fill="var(--color-primary)" opacity="0.8" />
@@ -204,6 +216,15 @@ export function PencilIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4" />
+    </svg>
+  );
+}
+
+export function NewBoardIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M9 4v16M15 4v16" />
     </svg>
   );
 }

@@ -104,3 +104,8 @@ export function useNotes(): NotesState {
   if (!ctx) throw new Error('useNotes must be used inside NotesProvider');
   return ctx;
 }
+
+// useNotesIfAny returns the notes state, or null outside the notes pages.
+export function useNotesIfAny(): NotesState | null {
+  return useContext(NotesContext);
+}
