@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api } from '../api/client';
 import { useAuth } from '../auth';
+import { DesktopAppSetup } from '../components/DesktopAppSetup';
 import { LabelSettings } from '../components/LabelSettings';
 import { FilterSettings } from '../components/SavedFilters';
 import { TabbedPage, useTab } from '../components/Tabs';
@@ -128,6 +129,9 @@ export function Settings() {
           </section>
           <section className="card">
             <AppearanceSettings />
+          </section>
+          <section className="card">
+            <DesktopAppSetup />
           </section>
           <section className="card">
             <About />
