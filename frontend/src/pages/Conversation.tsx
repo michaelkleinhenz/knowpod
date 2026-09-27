@@ -4,7 +4,7 @@ import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api, Recording } from '../api/client';
 import { Board } from '../components/Board';
 import { CopyButton } from '../components/CopyButton';
-import { CopyIcon, DownloadIcon, RetranscribeIcon, TrashIcon } from '../components/Icons';
+import { BackIcon, CopyIcon, DownloadIcon, RetranscribeIcon, TrashIcon } from '../components/Icons';
 import { inline, Markdown } from '../components/Markdown';
 import { NoteLabels } from '../components/Labels';
 import { MoveToFolder } from '../components/MoveToFolder';
@@ -610,7 +610,8 @@ export function Conversation() {
   return (
     <section className={`conversation${rec?.type === 'board' ? ' board-note' : ''}`}>
       <Link to="/" className="back-link">
-        {t('conversation.back')}
+        <BackIcon />
+        <span>{t('conversation.back')}</span>
       </Link>
       {rec ? (
         <NoteBody
