@@ -328,9 +328,9 @@ curl -H "Authorization: Bearer $ADMIN_TOKEN" "$API/recordings/<id>/summary?forma
 
 ## Tasks and reminders
 
-Any note can be a task: the **Date** button in its header sets a due date (typed as
-"tomorrow 3pm", "every monday", "jeden Monat am 1." or picked), an optional time, a repeat
-rule, a reminder and a priority (P1–P3), and puts the **Task** label on it. Typing a date
+Any note can be a task: the **Date** button on the note's page (in its header, or in its
+sidebar on wide screens) sets a due date (typed as "tomorrow 3pm", "every monday", "jeden
+Monat am 1." or picked), an optional time, a repeat rule, a reminder and a priority (P1–P3), and puts the **Task** label on it. Typing a date
 into a note's title offers it as the task's date (Enter takes it out of the title). The
 **Tasks** view of the notes list shows the open tasks by due date (overdue, today, the next
 days, later, no date) and adds tasks from one line ("Call Anna tomorrow 3pm p1"). Checking

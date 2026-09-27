@@ -72,12 +72,16 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
   with a label as cards, all starting in the first column. New boards have the columns Todo,
   In Progress and Done; columns can be renamed, added and deleted, and cards are dragged
   between them.
-- Notes can carry **labels**: colored chips in the note's header, with your own labels
+- A note's page shows its title, then one compact row with its number, date, labels and
+  icon actions. On wide screens a sidebar next to the note (not on boards) holds its task
+  (check box, date, priority), its labels and its details (type, duration, folder, boards,
+  status, model); on narrower ones they stay in the header.
+- Notes can carry **labels**: colored chips on the note's page, with your own labels
   defined on the spot or under **Settings → Labels**. The built-in **Task** label adds a
   check box to the note's icon in the list; the check mark is saved.
 - **Tasks** have a due date, an optional time, a repeat rule ("every weekday", "every 2
-  weeks"), a reminder and a priority (P1–P3), set from the **Date** button in the note's
-  header. Dates can be typed in English or German ("tomorrow 3pm", "jeden Montag", "am
+  weeks"), a reminder and a priority (P1–P3), set from the **Date** button on the note's
+  page. Dates can be typed in English or German ("tomorrow 3pm", "jeden Montag", "am
   5.10."), also in a note's title. The **Tasks** view lists the open tasks by due date and
   adds new ones from one line ("Call Anna tomorrow 3pm p1"); checking off a recurring task
   moves it to its next date.

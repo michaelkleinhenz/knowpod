@@ -7,9 +7,9 @@ import { Board, boardLanes } from '../components/Board';
 import { CopyButton } from '../components/CopyButton';
 import { BackIcon, CalendarIcon, CopyIcon, DownloadIcon, NewNoteIcon, RetranscribeIcon, TrashIcon } from '../components/Icons';
 import { inline, Markdown } from '../components/Markdown';
-import { NoteLabels } from '../components/Labels';
+import { NoteDone, NoteLabels } from '../components/Labels';
 import { ActionItems } from '../components/ActionItems';
-import { PriorityFlag } from '../components/TaskControls';
+import { PriorityFlag, TaskControls } from '../components/TaskControls';
 import { parseTask } from '../lib/dateParse';
 import { formatDue, formatRepeat } from '../lib/tasks';
 import { MoveToFolder } from '../components/MoveToFolder';
@@ -345,310 +345,414 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
   // Documents name their tabs and actions after pages instead of audio.
   const tabLabel = (id: Tab) => (isDocument && id !== 'summary' ? t(`conversation.documentTabs.${id}`) : t(`conversation.tabs.${id}`));
   const canReread = isDocument ? !!rec.file : !!rec.audio;
+  // Boards use the whole width; other notes show their labels, date and details in a sidebar
+  // when there is room for it (see .note-layout in styles.css).
+  const withAside = !isBoard;
+  const whenText = (
+    <>
+      <span className="nowrap">{d.toLocaleDateString(locale(), { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })},</span>{' '}
+      <span className="nowrap">{d.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' })}</span>
+    </>
+  );
+  const location =
+    folder.length > 0 || parents.length > 0 ? (
+      <>
+        {folder.join(' / ')}
+        {parents.map((p, i) => (
+          <span key={p.id}>
+            {(i > 0 || folder.length > 0) && ' / '}
+            <Link to={`/conversations/${p.id}`}>{titleOf(p)}</Link>
+          </span>
+        ))}
+      </>
+    ) : null;
+  const lanePills =
+    lanes.length > 0
+      ? lanes.map(({ board, lane }) => (
+          <Link
+            key={board.id}
+            to={`/conversations/${board.id}`}
+            className="state-pill lane-pill"
+            title={t('conversation.laneTitle', { board: titleOf(board), lane })}
+            aria-label={t('conversation.laneTitle', { board: titleOf(board), lane })}
+          >
+            {lane}
+          </Link>
+        ))
+      : null;
+
+  // The note's icon actions: for the shown tab (details, download, copy), then for the whole note.
+  const tools = (
+    <div className="note-tools">
+      {tab === 'summary' && rec.transcript && <SummaryDetails rec={rec} onRegenerate={(fn) => regenerate(fn)} />}
+      {download && (
+        <a className="icon-button" href={download.href} download title={download.label} aria-label={download.label}>
+          <DownloadIcon />
+        </a>
+      )}
+      {copy && <CopyButton className="icon-button" icon={<CopyIcon />} text={copy.text} label={copy.label} />}
+      {!isBoard && <span className="tool-divider" aria-hidden="true" />}
+      {!isText && !isBoard && (
+        <button
+          type="button"
+          className="icon-button"
+          disabled={busy || !canReread}
+          title={
+            isDocument
+              ? canReread
+                ? t('conversation.rereadTitle')
+                : t('conversation.documentNotStored')
+              : canReread
+                ? t('conversation.retranscribeTitle')
+                : t('conversation.notArchived')
+          }
+          aria-label={t(isDocument ? 'conversation.reread' : 'conversation.retranscribe')}
+          onClick={() =>
+            act(
+              async () => {
+                autosave.discard();
+                await api.retranscribe(rec.id);
+              },
+              t(isDocument ? 'conversation.rereadConfirm' : 'conversation.retranscribeConfirm'),
+            )
+          }
+        >
+          <RetranscribeIcon />
+        </button>
+      )}
+      <button type="button" className="icon-button" disabled={busy} title={t('subNotes.new')} aria-label={t('subNotes.newLabel', { title: titleOf(rec) })} onClick={() => void createSub()}>
+        <NewNoteIcon />
+      </button>
+      <MoveToFolder rec={rec} setRec={setRec} />
+      {!rec.deletedAt && (
+        <button type="button" className="icon-button danger" disabled={busy} title={t('conversation.moveToTrash')} aria-label={t('conversation.moveToTrash')} onClick={handleDelete}>
+          <TrashIcon />
+        </button>
+      )}
+    </div>
+  );
 
   return (
-    <>
-      <div className="conversation-header">
-        <div className="title-block">
-          {editable ? (
-            <input
-              ref={titleInput}
-              className="title-input"
-              aria-label={t('editor.title')}
-              maxLength={200}
-              value={autosave.title}
-              onChange={(e) => {
-                autosave.setTitle(e.target.value);
-                setTitleTyped(true);
-              }}
-              onBlur={() => setTimeout(() => setTitleTyped(false), 200)}
-              onKeyDown={(e) => {
-                if (e.key !== 'Enter') return;
-                if (titleDate) {
-                  e.preventDefault();
-                  void applyTitleDate();
-                }
-                (e.target as HTMLInputElement).blur();
-              }}
-            />
-          ) : (
-            <h1>{titleOf(rec)}</h1>
-          )}
-          {titleDate && (
-            <button type="button" className="title-date-hint" onMouseDown={(e) => e.preventDefault()} onClick={() => void applyTitleDate()}>
-              <CalendarIcon size={12} />
-              {titleDate.due ? t('tasks.titleHint', { when: formatDue(titleDate.due) + (titleDate.due.repeat ? ` · ${formatRepeat(titleDate.due.repeat)}` : '') }) : t('tasks.titleHintPriority')}
-              <PriorityFlag priority={titleDate.priority} />
-              <kbd>↵</kbd>
-            </button>
-          )}
-          <p className="conversation-meta muted">
-            {editable && <SyncState sync={autosave.sync} error={autosave.error} onRetry={() => void autosave.save()} />}
-            {rec.number ? <span className="note-number">#{rec.number}</span> : null}
-            <span className="nowrap">{d.toLocaleDateString(locale(), { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })},</span>{' '}
-            <span className="nowrap">{d.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' })}</span>
-            {rec.format?.durationMs ? ` · ${formatDuration(rec.format.durationMs)}` : ''}
-            {isDocument && rec.pages ? ` · ${t('conversation.pages', { count: rec.pages })}` : ''}
-            {sourceBadge && ` · ${sourceBadge}`}
-            {folder.length > 0 && ` · ${folder.join(' / ')}`}
-            {parents.length > 0 && (
-              <>
-                {folder.length > 0 ? ' / ' : ' · '}
-                {parents.map((p, i) => (
-                  <span key={p.id}>
-                    {i > 0 && ' / '}
-                    <Link to={`/conversations/${p.id}`}>{titleOf(p)}</Link>
-                  </span>
-                ))}
-              </>
+    <div className={withAside ? 'note-layout' : undefined}>
+      <div className="note-main">
+        <div className="conversation-header">
+          <div className="title-block">
+            {editable ? (
+              <input
+                ref={titleInput}
+                className="title-input"
+                aria-label={t('editor.title')}
+                maxLength={200}
+                value={autosave.title}
+                onChange={(e) => {
+                  autosave.setTitle(e.target.value);
+                  setTitleTyped(true);
+                }}
+                onBlur={() => setTimeout(() => setTitleTyped(false), 200)}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter') return;
+                  if (titleDate) {
+                    e.preventDefault();
+                    void applyTitleDate();
+                  }
+                  (e.target as HTMLInputElement).blur();
+                }}
+              />
+            ) : (
+              <h1>{titleOf(rec)}</h1>
             )}
-            {lanes.map(({ board, lane }) => (
-              <Link
-                key={board.id}
-                to={`/conversations/${board.id}`}
-                className="state-pill lane-pill"
-                title={t('conversation.laneTitle', { board: titleOf(board), lane })}
-                aria-label={t('conversation.laneTitle', { board: titleOf(board), lane })}
-              >
-                {lane}
-              </Link>
-            ))}
-            {state && <span className={`state-pill${rec.status === 'failed' ? ' bad' : ''}`}>{state}</span>}
-          </p>
-          <NoteLabels rec={rec} setRec={setRec} />
-        </div>
-      </div>
-      {rec.deletedAt && (
-        <div className="notice trash-notice">
-          <p>{t('conversation.inTrash', { date: formatDate(purgeDate(rec.deletedAt)) })}</p>
-          <div className="trash-actions">
-            <button type="button" className="pill-button" disabled={busy} onClick={() => void handleRestore()}>
-              {t('conversation.restore')}
-            </button>
-            <button type="button" className="pill-button danger" disabled={busy} onClick={() => void handleDeleteForever()}>
-              {t('conversation.deleteForever')}
-            </button>
+            {titleDate && (
+              <button type="button" className="title-date-hint" onMouseDown={(e) => e.preventDefault()} onClick={() => void applyTitleDate()}>
+                <CalendarIcon size={12} />
+                {titleDate.due ? t('tasks.titleHint', { when: formatDue(titleDate.due) + (titleDate.due.repeat ? ` · ${formatRepeat(titleDate.due.repeat)}` : '') }) : t('tasks.titleHintPriority')}
+                <PriorityFlag priority={titleDate.priority} />
+                <kbd>↵</kbd>
+              </button>
+            )}
+          </div>
+          {/* The date and labels share a row with the note's icon actions when there is room. */}
+          <div className="note-meta-row">
+            <p className="conversation-meta muted">
+              {editable && <SyncState sync={autosave.sync} error={autosave.error} onRetry={() => void autosave.save()} />}
+              {rec.number ? <span className="note-number">#{rec.number}</span> : null}
+              <span className="meta-item">{whenText}</span>
+              {rec.format?.durationMs ? <span className="meta-item meta-extra">{formatDuration(rec.format.durationMs)}</span> : null}
+              {isDocument && rec.pages ? <span className="meta-item meta-extra">{t('conversation.pages', { count: rec.pages })}</span> : null}
+              {sourceBadge && <span className="meta-item meta-extra">{sourceBadge}</span>}
+              {location && <span className="meta-item meta-extra">{location}</span>}
+              {lanePills && <span className="meta-extra">{lanePills}</span>}
+              {state && <span className={`state-pill${rec.status === 'failed' ? ' bad' : ''}`}>{state}</span>}
+            </p>
+            <div className="header-labels">
+              <NoteLabels rec={rec} setRec={setRec} />
+            </div>
+            {tools}
           </div>
         </div>
-      )}
-      {error && <p className="error">{error}</p>}
-
-      <div className="note-bar">
-        {!isText && !isBoard && (
-          <div className="segmented" role="tablist" aria-label={t('conversation.viewLabel')}>
-            {TABS.map((id) => (
-              <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}>
-                {tabLabel(id)}
+        {rec.deletedAt && (
+          <div className="notice trash-notice">
+            <p>{t('conversation.inTrash', { date: formatDate(purgeDate(rec.deletedAt)) })}</p>
+            <div className="trash-actions">
+              <button type="button" className="pill-button" disabled={busy} onClick={() => void handleRestore()}>
+                {t('conversation.restore')}
               </button>
-            ))}
+              <button type="button" className="pill-button danger" disabled={busy} onClick={() => void handleDeleteForever()}>
+                {t('conversation.deleteForever')}
+              </button>
+            </div>
           </div>
         )}
-        {/* Actions for the shown tab (details, download, copy), then for the whole note. */}
-        <div className="note-tools">
-          {tab === 'summary' && rec.transcript && <SummaryDetails rec={rec} onRegenerate={(fn) => regenerate(fn)} />}
-          {download && (
-            <a className="icon-button" href={download.href} download title={download.label} aria-label={download.label}>
-              <DownloadIcon />
-            </a>
-          )}
-          {copy && <CopyButton className="icon-button" icon={<CopyIcon />} text={copy.text} label={copy.label} />}
-          {!isBoard && <span className="tool-divider" aria-hidden="true" />}
-          {!isText && !isBoard && (
-            <button
-              type="button"
-              className="icon-button"
-              disabled={busy || !canReread}
-              title={
-                isDocument
-                  ? canReread
-                    ? t('conversation.rereadTitle')
-                    : t('conversation.documentNotStored')
-                  : canReread
-                    ? t('conversation.retranscribeTitle')
-                    : t('conversation.notArchived')
-              }
-              aria-label={t(isDocument ? 'conversation.reread' : 'conversation.retranscribe')}
-              onClick={() =>
-                act(
-                  async () => {
-                    autosave.discard();
-                    await api.retranscribe(rec.id);
-                  },
-                  t(isDocument ? 'conversation.rereadConfirm' : 'conversation.retranscribeConfirm'),
-                )
-              }
-            >
-              <RetranscribeIcon />
-            </button>
-          )}
-          <button type="button" className="icon-button" disabled={busy} title={t('subNotes.new')} aria-label={t('subNotes.newLabel', { title: titleOf(rec) })} onClick={() => void createSub()}>
-            <NewNoteIcon />
-          </button>
-          <MoveToFolder rec={rec} setRec={setRec} />
-          {!rec.deletedAt && (
-            <button type="button" className="icon-button danger" disabled={busy} title={t('conversation.moveToTrash')} aria-label={t('conversation.moveToTrash')} onClick={handleDelete}>
-              <TrashIcon />
-            </button>
-          )}
-        </div>
-      </div>
+        {error && <p className="error">{error}</p>}
 
-      <div className="conversation-body" role={isText || isBoard ? undefined : 'tabpanel'}>
-        {isBoard && <Board rec={rec} setRec={setRec} />}
-        {/* The summary stays mounted on other tabs so unsaved edits and the undo history survive. */}
-        <div hidden={tab !== 'summary' || isBoard}>
-          {isBoard ? null : summary ? (
-            <>
-              <Suspense
-                fallback={
-                  <div className="prose editor-content">
-                    <Markdown text={summary.markdown ?? ''} noteLinks />
-                  </div>
-                }
-              >
-                <SummaryEditor
-                  notes={notes.recordings}
-                  noteId={rec.id}
-                  onOpenNote={(n) => navigate(noteRefPath(n))}
-                  markdown={summary.markdown ?? ''}
-                  onReady={autosave.editorReady}
-                  onChange={autosave.changed}
-                  onSaveShortcut={() => void autosave.save()}
-                />
-              </Suspense>
-              {!isText && <ActionItems rec={rec} setRec={setRec} />}
-              <p className="model-note">
-                {summary.model && t('conversation.summarizedWith', { model: summary.model })}
-                {summary.editedAt && (
-                  <>
-                    {summary.model && ' · '}
-                    {t('editor.edited', { date: formatDate(summary.editedAt, { dateStyle: 'medium', timeStyle: 'short' }) })}
-                  </>
-                )}
-              </p>
-            </>
-          ) : (
-            pending(t('conversation.noSummary'))
-          )}
-        </div>
-
-        {tab === 'transcript' &&
-          isDocument &&
-          (rec.transcript ? (
-            <>
-              {rec.transcript.text ? (
-                <div className="prose">
-                  <Markdown text={rec.transcript.text} />
-                </div>
-              ) : (
-                <p className="muted">{rec.transcript.model ? t('conversation.noText') : t('conversation.textNotRead')}</p>
-              )}
-              {rec.transcript.model && <p className="model-note">{t('conversation.readWith', { model: rec.transcript.model })}</p>}
-            </>
-          ) : (
-            pending(t('conversation.noDocumentText'))
-          ))}
-
-        {tab === 'transcript' &&
-          !isDocument &&
-          (rec.transcript ? (
-            <>
-              {rec.transcript.text ? (
-                <Transcript text={rec.transcript.text} onSeek={seekTo} />
-              ) : (
-                <p className="muted">{t('conversation.noSpeech')}</p>
-              )}
-              <p className="model-note">{t('conversation.transcribedWith', { model: rec.transcript.model })}</p>
-            </>
-          ) : (
-            pending(t('conversation.noTranscript'))
-          ))}
-
-        {tab === 'source' &&
-          isDocument &&
-          (rec.file ? (
-            <div className="source">
-              {rec.file.contentType === 'application/pdf' ? (
-                <iframe className="document-frame" src={api.fileURL(rec.id)} title={t('conversation.documentFrame', { title: titleOf(rec) })} />
-              ) : (
-                <p>
-                  <a className="pill-button" href={api.fileURL(rec.id, true)} download>
-                    <DownloadIcon /> <span>{t('conversation.downloadDocument')}</span>
-                  </a>
-                </p>
-              )}
-              <dl className="facts">
-                <dt>{t('conversation.file')}</dt>
-                <dd>
-                  {rec.file.contentType === 'application/pdf' ? 'PDF' : 'EPUB'} · {formatBytes(rec.file.size)}
-                  {rec.pages ? ` · ${t('conversation.pages', { count: rec.pages })}` : ''}
-                </dd>
-                {rec.title && (
-                  <>
-                    <dt>{t('conversation.remarkableName')}</dt>
-                    <dd>{rec.title}</dd>
-                  </>
-                )}
-                <dt>{t('conversation.source')}</dt>
-                <dd>{inline(`${t('conversation.remarkableDocument')} \`${rec.recordingId}\``)}</dd>
-              </dl>
+        {!isText && !isBoard && (
+          <div className="note-bar">
+            <div className="segmented" role="tablist" aria-label={t('conversation.viewLabel')}>
+              {TABS.map((id) => (
+                <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}>
+                  {tabLabel(id)}
+                </button>
+              ))}
             </div>
-          ) : (
-            <p className="muted">{state ?? t('conversation.documentUnavailable')}</p>
-          ))}
+          </div>
+        )}
 
-        {tab === 'source' &&
-          !isDocument &&
-          (rec.audio ? (
-            <div className="source">
-              <audio
-                ref={audio}
-                controls
-                preload="metadata"
-                src={api.audioURL(rec.id)}
-                onLoadedMetadata={(e) => {
-                  const d = e.currentTarget.duration;
-                  if (!durationMs && Number.isFinite(d)) setDurationMs(d * 1000);
-                  if (seek !== null) {
-                    e.currentTarget.currentTime = seek / 1000;
-                    setSeek(null);
+        <div className="conversation-body" role={isText || isBoard ? undefined : 'tabpanel'}>
+          {isBoard && <Board rec={rec} setRec={setRec} />}
+          {/* The summary stays mounted on other tabs so unsaved edits and the undo history survive. */}
+          <div hidden={tab !== 'summary' || isBoard}>
+            {isBoard ? null : summary ? (
+              <>
+                <Suspense
+                  fallback={
+                    <div className="prose editor-content">
+                      <Markdown text={summary.markdown ?? ''} noteLinks />
+                    </div>
                   }
-                }}
-              >
-                {t('conversation.noAudioSupport')}
-              </audio>
-              {highlights.length > 0 && <Highlights highlights={highlights} durationMs={durationMs} onSeek={seekTo} />}
-              <dl className="facts">
-                <dt>{t('conversation.file')}</dt>
-                <dd>
-                  {rec.audio.contentType} · {formatBytes(rec.audio.size)}
-                </dd>
-                {rec.format && (
-                  <>
-                    <dt>{t('conversation.audio')}</dt>
-                    <dd>
-                      {new Intl.NumberFormat(locale()).format(rec.format.sampleRate / 1000)} kHz ·{' '}
-                      {rec.format.channels === 1 ? t('conversation.mono') : t('conversation.channels', { count: rec.format.channels })} ·{' '}
-                      {rec.format.bitsPerSample} bit · {formatDuration(rec.format.durationMs)}
-                    </dd>
-                  </>
+                >
+                  <SummaryEditor
+                    notes={notes.recordings}
+                    noteId={rec.id}
+                    onOpenNote={(n) => navigate(noteRefPath(n))}
+                    markdown={summary.markdown ?? ''}
+                    onReady={autosave.editorReady}
+                    onChange={autosave.changed}
+                    onSaveShortcut={() => void autosave.save()}
+                  />
+                </Suspense>
+                {!isText && <ActionItems rec={rec} setRec={setRec} />}
+                <p className="model-note">
+                  {summary.model && t('conversation.summarizedWith', { model: summary.model })}
+                  {summary.editedAt && (
+                    <>
+                      {summary.model && ' · '}
+                      {t('editor.edited', { date: formatDate(summary.editedAt, { dateStyle: 'medium', timeStyle: 'short' }) })}
+                    </>
+                  )}
+                </p>
+              </>
+            ) : (
+              pending(t('conversation.noSummary'))
+            )}
+          </div>
+
+          {tab === 'transcript' &&
+            isDocument &&
+            (rec.transcript ? (
+              <>
+                {rec.transcript.text ? (
+                  <div className="prose">
+                    <Markdown text={rec.transcript.text} />
+                  </div>
+                ) : (
+                  <p className="muted">{rec.transcript.model ? t('conversation.noText') : t('conversation.textNotRead')}</p>
                 )}
-                <dt>{t('conversation.source')}</dt>
-                <dd>
-                  {rec.source === 'pocket'
-                    ? inline(`${t('conversation.pocketRecording')} \`${rec.recordingId}\``)
-                    : rec.source === 'upload'
-                      ? t('conversation.browserUpload')
-                      : inline(`${t('conversation.deviceUpload')} \`${rec.recordingId}\``)}
-                </dd>
-              </dl>
-            </div>
-          ) : (
-            <p className="muted">{state ?? t('conversation.audioUnavailable')}</p>
-          ))}
+                {rec.transcript.model && <p className="model-note">{t('conversation.readWith', { model: rec.transcript.model })}</p>}
+              </>
+            ) : (
+              pending(t('conversation.noDocumentText'))
+            ))}
+
+          {tab === 'transcript' &&
+            !isDocument &&
+            (rec.transcript ? (
+              <>
+                {rec.transcript.text ? (
+                  <Transcript text={rec.transcript.text} onSeek={seekTo} />
+                ) : (
+                  <p className="muted">{t('conversation.noSpeech')}</p>
+                )}
+                <p className="model-note">{t('conversation.transcribedWith', { model: rec.transcript.model })}</p>
+              </>
+            ) : (
+              pending(t('conversation.noTranscript'))
+            ))}
+
+          {tab === 'source' &&
+            isDocument &&
+            (rec.file ? (
+              <div className="source">
+                {rec.file.contentType === 'application/pdf' ? (
+                  <iframe className="document-frame" src={api.fileURL(rec.id)} title={t('conversation.documentFrame', { title: titleOf(rec) })} />
+                ) : (
+                  <p>
+                    <a className="pill-button" href={api.fileURL(rec.id, true)} download>
+                      <DownloadIcon /> <span>{t('conversation.downloadDocument')}</span>
+                    </a>
+                  </p>
+                )}
+                <dl className="facts">
+                  <dt>{t('conversation.file')}</dt>
+                  <dd>
+                    {rec.file.contentType === 'application/pdf' ? 'PDF' : 'EPUB'} · {formatBytes(rec.file.size)}
+                    {rec.pages ? ` · ${t('conversation.pages', { count: rec.pages })}` : ''}
+                  </dd>
+                  {rec.title && (
+                    <>
+                      <dt>{t('conversation.remarkableName')}</dt>
+                      <dd>{rec.title}</dd>
+                    </>
+                  )}
+                  <dt>{t('conversation.source')}</dt>
+                  <dd>{inline(`${t('conversation.remarkableDocument')} \`${rec.recordingId}\``)}</dd>
+                </dl>
+              </div>
+            ) : (
+              <p className="muted">{state ?? t('conversation.documentUnavailable')}</p>
+            ))}
+
+          {tab === 'source' &&
+            !isDocument &&
+            (rec.audio ? (
+              <div className="source">
+                <audio
+                  ref={audio}
+                  controls
+                  preload="metadata"
+                  src={api.audioURL(rec.id)}
+                  onLoadedMetadata={(e) => {
+                    const d = e.currentTarget.duration;
+                    if (!durationMs && Number.isFinite(d)) setDurationMs(d * 1000);
+                    if (seek !== null) {
+                      e.currentTarget.currentTime = seek / 1000;
+                      setSeek(null);
+                    }
+                  }}
+                >
+                  {t('conversation.noAudioSupport')}
+                </audio>
+                {highlights.length > 0 && <Highlights highlights={highlights} durationMs={durationMs} onSeek={seekTo} />}
+                <dl className="facts">
+                  <dt>{t('conversation.file')}</dt>
+                  <dd>
+                    {rec.audio.contentType} · {formatBytes(rec.audio.size)}
+                  </dd>
+                  {rec.format && (
+                    <>
+                      <dt>{t('conversation.audio')}</dt>
+                      <dd>
+                        {new Intl.NumberFormat(locale()).format(rec.format.sampleRate / 1000)} kHz ·{' '}
+                        {rec.format.channels === 1 ? t('conversation.mono') : t('conversation.channels', { count: rec.format.channels })} ·{' '}
+                        {rec.format.bitsPerSample} bit · {formatDuration(rec.format.durationMs)}
+                      </dd>
+                    </>
+                  )}
+                  <dt>{t('conversation.source')}</dt>
+                  <dd>
+                    {rec.source === 'pocket'
+                      ? inline(`${t('conversation.pocketRecording')} \`${rec.recordingId}\``)
+                      : rec.source === 'upload'
+                        ? t('conversation.browserUpload')
+                        : inline(`${t('conversation.deviceUpload')} \`${rec.recordingId}\``)}
+                  </dd>
+                </dl>
+              </div>
+            ) : (
+              <p className="muted">{state ?? t('conversation.audioUnavailable')}</p>
+            ))}
+        </div>
+        <SubNotes rec={rec} />
       </div>
-      <SubNotes rec={rec} />
-    </>
+      {withAside && (
+        <aside className="note-aside" aria-label={t('noteInfo.title')}>
+          <section>
+            <h2>{t('noteInfo.task')}</h2>
+            <div className="note-aside-task">
+              <NoteDone rec={rec} setRec={setRec} />
+              <TaskControls rec={rec} setRec={setRec} />
+            </div>
+          </section>
+          <section>
+            <h2>{t('labels.title')}</h2>
+            <NoteLabels rec={rec} setRec={setRec} withTask={false} />
+          </section>
+          <section>
+            <h2>{t('noteInfo.details')}</h2>
+            <dl className="note-facts">
+              {rec.number ? (
+                <>
+                  <dt>{t('noteInfo.number')}</dt>
+                  <dd>
+                    <span className="note-number">#{rec.number}</span>
+                  </dd>
+                </>
+              ) : null}
+              <dt>{t('noteInfo.created')}</dt>
+              <dd>{formatDate(d, { dateStyle: 'medium', timeStyle: 'short' })}</dd>
+              {sourceBadge && (
+                <>
+                  <dt>{t('noteInfo.type')}</dt>
+                  <dd>{sourceBadge}</dd>
+                </>
+              )}
+              {rec.format?.durationMs ? (
+                <>
+                  <dt>{t('noteInfo.duration')}</dt>
+                  <dd>{formatDuration(rec.format.durationMs)}</dd>
+                </>
+              ) : null}
+              {isDocument && rec.pages ? (
+                <>
+                  <dt>{t('noteInfo.pages')}</dt>
+                  <dd>{t('conversation.pages', { count: rec.pages })}</dd>
+                </>
+              ) : null}
+              {location && (
+                <>
+                  <dt>{t('noteInfo.location')}</dt>
+                  <dd>{location}</dd>
+                </>
+              )}
+              {lanePills && (
+                <>
+                  <dt>{t('noteInfo.boards')}</dt>
+                  <dd className="note-facts-pills">{lanePills}</dd>
+                </>
+              )}
+              {state && (
+                <>
+                  <dt>{t('noteInfo.status')}</dt>
+                  <dd>
+                    <span className={`state-pill${rec.status === 'failed' ? ' bad' : ''}`}>{state}</span>
+                  </dd>
+                </>
+              )}
+              {summary?.editedAt && (
+                <>
+                  <dt>{t('noteInfo.edited')}</dt>
+                  <dd>{formatDate(summary.editedAt, { dateStyle: 'medium', timeStyle: 'short' })}</dd>
+                </>
+              )}
+              {summary?.model && (
+                <>
+                  <dt>{t('noteInfo.summaryModel')}</dt>
+                  <dd>{summary.model}</dd>
+                </>
+              )}
+            </dl>
+          </section>
+        </aside>
+      )}
+    </div>
   );
 }
 
@@ -728,7 +832,7 @@ export function Conversation() {
   }, [inProgress, load]);
 
   return (
-    <section className={`conversation${rec?.type === 'board' ? ' board-note' : ''}`}>
+    <section className={`conversation${rec?.type === 'board' ? ' board-note' : rec ? ' with-aside' : ''}`}>
       <Link to="/" className="back-link">
         <BackIcon />
         <span>{t('conversation.back')}</span>

@@ -3773,3 +3773,156 @@ a.note-ref:hover {
     gap: 0.35rem;
   }
 }
+
+/* --- Note header row and details sidebar --- */
+
+/* Below the title, one row holds the date, the labels and the note's icon actions; it wraps
+   onto more lines when it doesn't fit. */
+.note-meta-row {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.5rem;
+  min-width: 0;
+}
+
+/* The labels flow one by one in the row, so the icon actions can share their last line. */
+.note-meta-row .header-labels,
+.note-meta-row .note-labels {
+  display: contents;
+}
+
+.note-meta-row .conversation-meta {
+  margin-right: 0.25rem;
+}
+
+.note-meta-row .label-add-button {
+  margin: 0.15rem 0;
+}
+
+.note-meta-row .note-tools {
+  margin-left: auto;
+}
+
+.meta-item + .meta-item::before {
+  content: '·';
+  margin: 0 0.35em;
+}
+
+/* Notes (not boards) get a column for their task, labels and details when the note is wide
+   enough; below that everything stays in the header. The width is the note's own, so it
+   also follows the notes list being dragged wider or narrower. */
+.conversation.with-aside {
+  container: note / inline-size;
+}
+
+.notes-main .conversation.with-aside,
+.conversation.with-aside {
+  max-width: 1056px;
+}
+
+.note-main {
+  min-width: 0;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.board-note .note-main {
+  max-width: none;
+}
+
+@container note (min-width: 52rem) {
+  .note-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 16rem;
+    gap: 2.5rem;
+    align-items: start;
+  }
+
+  .note-layout .note-main {
+    max-width: none;
+    margin: 0;
+  }
+
+  .note-layout .note-aside {
+    display: block;
+  }
+
+  /* The sidebar shows these; the header keeps the number, date and state. */
+  .note-layout .header-labels,
+  .note-layout .meta-extra {
+    display: none;
+  }
+}
+
+.note-aside {
+  display: none;
+  font-size: 0.85rem;
+  border-left: 1px solid var(--color-border);
+  padding: 0.25rem 0 0.25rem 1.25rem;
+}
+
+.note-aside section + section {
+  margin-top: 1.25rem;
+}
+
+.note-aside h2 {
+  margin: 0 0 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.note-aside-task {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.75rem;
+}
+
+.note-aside .note-labels {
+  margin: 0;
+}
+
+.note-aside .label-add-button {
+  margin: 0.15rem 0;
+}
+
+/* The pickers open towards the note, not off the right edge. */
+.note-aside .label-popover {
+  left: auto;
+  right: 0;
+}
+
+.note-facts {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.35rem 0.75rem;
+  margin: 0;
+}
+
+.note-facts dt {
+  color: var(--color-muted);
+}
+
+.note-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.note-facts .note-number {
+  margin-right: 0;
+}
+
+.note-facts .state-pill {
+  margin-left: 0;
+}
+
+.note-facts-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
