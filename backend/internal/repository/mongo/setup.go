@@ -19,12 +19,14 @@ const (
 	CollLabels     = "labels"
 	CollFolders    = "folders"
 	CollTablets    = "tablets"
+	// CollPushSubscriptions holds the browsers that receive users' notifications.
+	CollPushSubscriptions = "pushSubscriptions"
 	// CollCounters holds sequences, e.g. each user's last note number.
 	CollCounters = "counters"
 )
 
 // collections lists every collection the service owns. Setup creates any that are missing.
-var collections = []string{CollDevices, CollRecordings, CollUsers, CollSessions, CollSettings, CollThemes, CollLabels, CollFolders, CollTablets, CollCounters}
+var collections = []string{CollDevices, CollRecordings, CollUsers, CollSessions, CollSettings, CollThemes, CollLabels, CollFolders, CollTablets, CollCounters, CollPushSubscriptions}
 
 // indexes lists the indexes per collection. Setup creates them; CreateMany on an existing
 // identical index is a no-op.
@@ -46,6 +48,9 @@ var indexes = map[string][]mongo.IndexModel{
 		// Sub-notes of a note.
 		{Keys: bson.D{{Key: "ownerId", Value: 1}, {Key: "parentId", Value: 1}},
 			Options: options.Index().SetPartialFilterExpression(bson.M{"parentId": bson.M{"$exists": true}})},
+		// Reminders due to be sent.
+		{Keys: bson.D{{Key: "remindAt", Value: 1}},
+			Options: options.Index().SetPartialFilterExpression(bson.M{"remindAt": bson.M{"$exists": true}})},
 		// Note numbers are unique per user.
 		{Keys: bson.D{{Key: "ownerId", Value: 1}, {Key: "number", Value: 1}},
 			Options: options.Index().SetUnique(true).SetPartialFilterExpression(bson.M{"number": bson.M{"$exists": true}})},
@@ -63,6 +68,9 @@ var indexes = map[string][]mongo.IndexModel{
 	},
 	CollFolders: {
 		{Keys: bson.D{{Key: "ownerId", Value: 1}, {Key: "name", Value: 1}}},
+	},
+	CollPushSubscriptions: {
+		{Keys: bson.D{{Key: "userId", Value: 1}}},
 	},
 	CollSessions: {
 		// MongoDB deletes sessions once they expire.

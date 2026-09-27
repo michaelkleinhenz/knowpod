@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: knowpod-service API
-  version: 0.10.0
+  version: 0.11.0
   description: |
     Backend for the knowpod AI audio recorder.
 
@@ -34,6 +34,17 @@ info:
 
     **Boards** — kanban boards (`POST /recordings/board`, `type: board`) show the notes of a
     folder or a label as cards in columns ("Todo", "In Progress", "Done" to start with).
+
+    **Tasks** — notes labeled `task` have a check mark (`PUT /recordings/{id}/done`), a due
+    date with an optional time, repeat rule and reminder (`PUT /recordings/{id}/due`) and a
+    priority (`PUT /recordings/{id}/priority`). Setting a date or priority labels a note as a
+    task. Checking off a recurring task moves it to its next date. Dates are meant in the
+    user's time zone (`PUT /me/preferences`). Summaries list the **action items** found in the
+    conversation (`summary.actionItems`); `POST /recordings/{id}/action-items/{itemId}/task`
+    turns one into a task under the note.
+
+    **Notifications** — reminders are sent through Web Push to the browsers and installed apps
+    the user turned them on in (`/me/notifications`).
 
     **AI processing** — every archived recording is transcribed and then summarized through
     OpenRouter, with the API key and models set by an administrator
@@ -70,6 +81,10 @@ tags:
     description: Labels for notes, with colors. The built-in "task" label plus your own.
   - name: Folders
     description: Folders the notes are sorted into; folders can hold folders.
+  - name: Tasks
+    description: Due dates, repeat rules, reminders and priorities of notes labeled as tasks, and tasks made from action items.
+  - name: Notifications
+    description: Task reminders sent through Web Push to your browsers and installed apps.
   - name: "Admin: users"
     description: Create, change and delete users. Administrators only.
   - name: "Admin: AI settings"
@@ -424,6 +439,7 @@ paths:
               type: object
               properties:
                 language: { type: string, enum: ["", en, de], description: Web UI language; empty follows the browser }
+                timeZone: { type: string, example: Europe/Berlin, description: IANA time zone task dates and reminders are meant in; empty is UTC. Changing it moves pending reminders. }
       responses:
         "200":
           description: Saved
@@ -831,6 +847,9 @@ paths:
                 title: { type: string, maxLength: 200 }
                 markdown: { type: string, maxLength: 100000 }
                 parentId: { type: string, description: Creates the note as a sub-note of this note }
+                task: { type: boolean, description: Labels the note as a task (implied by `due` or `priority`) }
+                due: { $ref: "#/components/schemas/Due" }
+                priority: { $ref: "#/components/schemas/Priority" }
       responses:
         "201":
           description: Created
@@ -1190,6 +1209,185 @@ paths:
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
         "404": { $ref: "#/components/responses/Error" }
 
+  /recordings/{recordingId}/due:
+    put:
+      tags: ["Recordings", "Tasks"]
+      summary: Set when a task is due
+      description: |
+        Sets the due date, optional time, repeat rule and reminder, or clears them (`due: null`).
+        A note gets the `task` label when a date is set. The reminder is sent at the given
+        number of minutes before the due time (for a day without a time: before 9:00), in the
+        user's time zone, unless that moment has passed.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [due]
+              properties:
+                due: { allOf: [{ $ref: "#/components/schemas/Due" }], nullable: true }
+      responses:
+        "200":
+          description: Saved
+          content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /recordings/{recordingId}/priority:
+    put:
+      tags: ["Recordings", "Tasks"]
+      summary: Set a task's priority
+      description: 1 is the most urgent, 3 the least; 0 clears it. A note gets the `task` label when a priority is set.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [priority]
+              properties:
+                priority: { $ref: "#/components/schemas/Priority" }
+      responses:
+        "200":
+          description: Saved
+          content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /recordings/{recordingId}/action-items/{itemId}/task:
+    post:
+      tags: ["Recordings", "Tasks"]
+      summary: Make a task of an action item
+      description: |
+        Creates a text note labeled `task` under the note, titled with the action item's text
+        and due on its date (with a reminder at 9:00), and remembers it as the item's `taskId`.
+        The body is optional and overrides the defaults.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+        - { name: itemId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string, maxLength: 200 }
+                markdown: { type: string, maxLength: 100000 }
+                due: { $ref: "#/components/schemas/Due" }
+                priority: { $ref: "#/components/schemas/Priority" }
+      responses:
+        "201":
+          description: The new task and the note it came from
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task: { $ref: "#/components/schemas/Recording" }
+                  note: { $ref: "#/components/schemas/Recording" }
+        "400": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409":
+          description: A task was already made of this action item
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /recordings/{recordingId}/action-items/{itemId}/dismissed:
+    put:
+      tags: ["Recordings", "Tasks"]
+      summary: Dismiss an action item
+      description: Hides an action item you don't want as a task, or shows it again.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+        - { name: itemId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [dismissed]
+              properties:
+                dismissed: { type: boolean }
+      responses:
+        "200":
+          description: Saved
+          content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /me/notifications:
+    get:
+      tags: ["Notifications"]
+      summary: Your notification setup
+      description: Whether the server can send notifications, the VAPID public key browsers subscribe with (`applicationServerKey`), and the browsers that receive yours.
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: Setup
+          content: { application/json: { schema: { $ref: "#/components/schemas/NotificationStatus" } } }
+
+  /me/notifications/subscriptions:
+    post:
+      tags: ["Notifications"]
+      summary: Receive notifications in this browser
+      description: Takes the browser's `PushSubscription.toJSON()`. The endpoint must belong to a browser push service (Google, Mozilla, Apple, Microsoft). Subscribing the same browser again replaces its subscription.
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [endpoint, keys]
+              properties:
+                endpoint: { type: string, format: uri }
+                keys:
+                  type: object
+                  properties:
+                    p256dh: { type: string }
+                    auth: { type: string }
+      responses:
+        "201":
+          description: Subscribed
+          content: { application/json: { schema: { $ref: "#/components/schemas/PushDevice" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "409":
+          description: Notifications are not available on this server
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /me/notifications/subscriptions/{id}:
+    delete:
+      tags: ["Notifications"]
+      summary: Stop notifications to a browser
+      description: The ID is a device's `id` from GET /me/notifications, i.e. the first 16 bytes of the SHA-256 of its endpoint, in hex.
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "204": { description: Stopped }
+
+  /me/notifications/test:
+    post:
+      tags: ["Notifications"]
+      summary: Send a test notification
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: How many browsers took it
+          content: { application/json: { schema: { type: object, properties: { sent: { type: integer } } } } }
+        "409":
+          description: Notifications are not available on this server
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
   /admin/users:
     get:
       tags: ["Admin: users"]
@@ -1417,6 +1615,54 @@ components:
               id: { type: string, maxLength: 40 }
               name: { type: string, maxLength: 60 }
               notes: { type: array, items: { type: string }, description: IDs of the notes in the column, in order }
+    Due:
+      type: object
+      description: When a task is due, in the owner's time zone.
+      required: [date]
+      properties:
+        date: { type: string, format: date, example: "2026-09-28" }
+        time: { type: string, pattern: '^\d{2}:\d{2}$', example: "15:30", description: Absent for the whole day }
+        remind: { type: integer, minimum: 0, maximum: 40320, description: 'Minutes before the due time (a day without a time: before 9:00) to send a reminder; absent sends none' }
+        repeat:
+          type: object
+          description: Makes the task recurring; checking it off moves it to the next date.
+          required: [every, unit]
+          properties:
+            every: { type: integer, minimum: 1, maximum: 365 }
+            unit: { type: string, enum: [day, weekday, week, month, year], description: '"weekday" is Monday to Friday (every must be 1)' }
+            weekdays: { type: array, items: { type: integer, minimum: 0, maximum: 6 }, description: 'Weekly: the days (0 = Sunday)' }
+            monthDay: { type: integer, minimum: 1, maximum: 31, description: 'Monthly: the day of the month (defaults to the date''s); months without it use their last day' }
+
+    Priority:
+      type: integer
+      minimum: 0
+      maximum: 3
+      description: 1 is the most urgent, 3 the least; 0 or absent is none.
+
+    ActionItem:
+      type: object
+      properties:
+        id: { type: string }
+        text: { type: string }
+        owner: { type: string, description: Who should do it, if named }
+        due: { type: string, format: date, description: The date named in the conversation }
+        taskId: { type: string, description: The task made from it }
+        dismissed: { type: boolean }
+
+    NotificationStatus:
+      type: object
+      properties:
+        available: { type: boolean, description: Whether the server can send notifications }
+        publicKey: { type: string, description: VAPID public key (base64url) for PushManager.subscribe }
+        devices: { type: array, items: { $ref: "#/components/schemas/PushDevice" } }
+
+    PushDevice:
+      type: object
+      properties:
+        id: { type: string }
+        userAgent: { type: string }
+        createdAt: { type: string, format: date-time }
+
     Recording:
       type: object
       properties:
@@ -1449,6 +1695,9 @@ components:
         highlights: { type: array, items: { $ref: "#/components/schemas/Highlight" } }
         labels: { type: array, items: { type: string }, description: IDs of the note's labels (see GET /labels) }
         done: { type: boolean, description: Check mark of a note labeled `task` }
+        due: { $ref: "#/components/schemas/Due" }
+        priority: { $ref: "#/components/schemas/Priority" }
+        remindAt: { type: string, format: date-time, description: When the task's next reminder is sent; absent when none is pending }
         folderId: { type: string, description: The folder the note is in (see GET /folders); absent at the top level and for sub-notes }
         parentId: { type: string, description: The note this one is a sub-note of; absent otherwise }
         board: { $ref: "#/components/schemas/Board" }
@@ -1468,6 +1717,7 @@ components:
             themeId: { type: string }
             themeName: { type: string }
             editedAt: { type: string, format: date-time, description: Set when a person edited the summary }
+            actionItems: { type: array, items: { $ref: "#/components/schemas/ActionItem" }, description: 'Follow-ups found in the conversation; left out in lists' }
             createdAt: { type: string, format: date-time }
         attempts: { type: integer }
         lastError: { type: string }
@@ -1483,6 +1733,7 @@ components:
         email: { type: string, format: email }
         role: { type: string, enum: [user, admin] }
         language: { type: string, description: Web UI language (en, de); absent follows the browser }
+        timeZone: { type: string, description: IANA time zone of task dates and reminders; absent is UTC }
 
     User:
       type: object

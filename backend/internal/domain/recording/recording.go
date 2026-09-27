@@ -122,6 +122,12 @@ type Recording struct {
 	Labels []string `bson:"labels,omitempty" json:"labels,omitempty"`
 	// Done is the check mark of a note labeled as a task.
 	Done bool `bson:"done,omitempty" json:"done,omitempty"`
+	// Due is when a task is due; Priority ranks it. Both belong to notes labeled as a task.
+	Due      *Due     `bson:"due,omitempty" json:"due,omitempty"`
+	Priority Priority `bson:"priority,omitempty" json:"priority,omitempty"`
+	// RemindAt is when the task's next reminder is sent; nil when none is pending (no
+	// reminder, done, or already sent).
+	RemindAt *time.Time `bson:"remindAt,omitempty" json:"remindAt,omitempty"`
 	// FolderID is the folder the note is in; empty at the top level.
 	FolderID string `bson:"folderId,omitempty" json:"folderId,omitempty"`
 	// ParentID is the note this one is a sub-note of, like a file in a folder whose head is a
@@ -158,11 +164,12 @@ func (r *Recording) IsDocument() bool { return r.Type == TypeDocument }
 // IsBoard reports whether the note is a board.
 func (r *Recording) IsBoard() bool { return r.Type == TypeBoard }
 
-// KeepUserFields copies the fields a person changes at any time (labels, done, folder,
-// parent note) and the note number from the stored version, so that a processing step
-// saving its long-held copy doesn't undo them.
+// KeepUserFields copies the fields a person changes at any time (labels, task fields,
+// folder, parent note) and the note number from the stored version, so that a processing
+// step saving its long-held copy doesn't undo them.
 func (r *Recording) KeepUserFields(stored *Recording) {
 	r.Labels, r.Done, r.FolderID, r.ParentID, r.Number = stored.Labels, stored.Done, stored.FolderID, stored.ParentID, stored.Number
+	r.Due, r.Priority, r.RemindAt = stored.Due, stored.Priority, stored.RemindAt
 }
 
 // TextDeviceID returns the DeviceID of a user's text notes. Their ClientID is the note ID.
@@ -228,8 +235,10 @@ type Summary struct {
 	ThemeID   string `bson:"themeId,omitempty" json:"themeId,omitempty"`
 	ThemeName string `bson:"themeName,omitempty" json:"themeName,omitempty"`
 	// EditedAt is set when a person changed the title or text; regenerating replaces the edits.
-	EditedAt  *time.Time `bson:"editedAt,omitempty" json:"editedAt,omitempty"`
-	CreatedAt time.Time  `bson:"createdAt" json:"createdAt"`
+	EditedAt *time.Time `bson:"editedAt,omitempty" json:"editedAt,omitempty"`
+	// ActionItems are the follow-ups found in the conversation, offered as tasks.
+	ActionItems []ActionItem `bson:"actionItems,omitempty" json:"actionItems,omitempty"`
+	CreatedAt   time.Time    `bson:"createdAt" json:"createdAt"`
 }
 
 // SummaryOptions choose how a recording is summarized. Empty fields use the defaults: the

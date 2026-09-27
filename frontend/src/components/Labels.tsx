@@ -6,6 +6,7 @@ import { useNotes } from '../context/NotesContext';
 import { errorText } from '../lib/errors';
 import { isTask, LABEL_COLORS, labelName, labelStyle, noteLabels } from '../lib/labels';
 import { CheckIcon, TagIcon } from './Icons';
+import { TaskControls } from './TaskControls';
 
 export function LabelChip({ label, onRemove }: { label: Label; onRemove?: () => void }) {
   const { t } = useTranslation();
@@ -151,6 +152,7 @@ export function NoteLabels({ rec, setRec }: { rec: Recording; setRec: (r: Record
           {rec.done ? t('labels.done') : t('labels.open')}
         </label>
       )}
+      {rec.type !== 'board' && <TaskControls rec={rec} setRec={setRec} />}
       {noteLabels(rec, labels).map((l) => (
         <LabelChip key={l.id} label={l} onRemove={() => act(() => toggle(l.id))} />
       ))}

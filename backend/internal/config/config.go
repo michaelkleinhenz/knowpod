@@ -45,6 +45,10 @@ type Config struct {
 	// OpenRouterAPIURL is the OpenRouter endpoint (the API key and models are set in the UI).
 	OpenRouterAPIURL string
 
+	// WebPushSubject identifies the service to browser push services (a mailto: or https:
+	// URL); empty uses mailto:ADMIN_EMAIL.
+	WebPushSubject string
+
 	// Uploads.
 	UploadDir       string        // local spool for in-flight and not yet archived WAV files
 	MaxUploadBytes  int64         // largest accepted WAV file
@@ -71,6 +75,7 @@ func Load() Config {
 		S3Prefix:               env("AWS_S3_PREFIX", ""),
 		PocketAPIURL:           env("POCKET_API_URL", "https://public.heypocketai.com/api/v1"),
 		OpenRouterAPIURL:       env("OPENROUTER_API_URL", "https://openrouter.ai/api/v1"),
+		WebPushSubject:         env("WEBPUSH_SUBJECT", ""),
 		RemarkableAuthURL:      env("REMARKABLE_AUTH_URL", ""),
 		RemarkableSyncURL:      env("REMARKABLE_SYNC_URL", ""),
 		RemarkablePullInterval: envDuration("REMARKABLE_PULL_INTERVAL", 15*time.Minute),

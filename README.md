@@ -55,6 +55,17 @@ AI worker ─────────────▶ transcript (status: transcr
 - Notes can carry **labels**: colored chips in the note's header, with your own labels
   defined on the spot or under **Settings → Labels**. The built-in **Task** label adds a
   check box to the note's icon in the list; the check mark is saved.
+- **Tasks** have a due date, an optional time, a repeat rule ("every weekday", "every 2
+  weeks"), a reminder and a priority (P1–P3), set from the **Date** button in the note's
+  header. Dates can be typed in English or German ("tomorrow 3pm", "jeden Montag", "am
+  5.10."), also in a note's title. The **Tasks** view lists the open tasks by due date and
+  adds new ones from one line ("Call Anna tomorrow 3pm p1"); checking off a recurring task
+  moves it to its next date.
+- Summaries list the **action items** found in the conversation; each becomes a task under
+  the note with one click, due on the date that was named.
+- **Reminders** arrive as push notifications in every browser or installed app they are
+  turned on in (**Account → Notifications**), on phones too (on iPhone: from the Home Screen
+  app).
 - The notes list shows notes **by time** (grouped by day) or in **folders**, like files.
   Folders can be nested, renamed and deleted (their notes move up, nothing is lost); drag
   notes and folders onto a folder to move them, or use the note's **Move to folder** button.
@@ -182,6 +193,7 @@ Environment variables only.
 | `ADMIN_TOKEN` | _(empty: disabled)_ | Bearer token for scripts: the whole API (except the device upload API) as the built-in admin, seeing all users' data |
 | `POCKET_API_URL` | `https://public.heypocketai.com/api/v1` | Pocket API base URL |
 | `REMARKABLE_PULL_INTERVAL` | `15m` | How often paired reMarkable accounts are checked for new and changed documents; `0` turns the automatic import off (the **Import now** button still works) |
+| `WEBPUSH_SUBJECT` | `mailto:` + `ADMIN_EMAIL` | Contact (`mailto:` or `https:` URL) sent to browser push services with notifications |
 | `REMARKABLE_AUTH_URL`, `REMARKABLE_SYNC_URL` | _(empty: the public reMarkable cloud)_ | reMarkable cloud endpoints, e.g. for a self-hosted compatible server |
 | `AWS_S3_BUCKET_NAME` | _(required)_ | Existing bucket for the audio files |
 | `AWS_S3_PREFIX` | _(empty)_ | Key prefix inside the bucket |

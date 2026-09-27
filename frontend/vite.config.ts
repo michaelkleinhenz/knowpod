@@ -5,6 +5,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 // The web app is installable (PWA): a manifest plus a service worker that caches the app
 // shell so it starts instantly and offline. The service worker never answers API calls;
 // the app itself keeps copies of the user's notes for offline reading (src/api/offline.ts).
+// It also shows task reminders sent through Web Push (public/push-sw.js).
 // In dev the /api path is proxied to the Go backend so URLs match production, where
 // the backend serves both the embedded SPA and the API from one origin.
 export default defineConfig({
@@ -33,6 +34,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,webmanifest}'],
+        // Shows the task reminders sent through Web Push (public/push-sw.js).
+        importScripts: ['push-sw.js'],
         navigateFallback: '/index.html',
         // Never answer API calls, audio, the health check or the API description from the
         // app-shell fallback.

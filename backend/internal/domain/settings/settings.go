@@ -26,5 +26,12 @@ func (o *OpenRouter) DocumentReader() string {
 	return o.TranscriptionModel
 }
 
+// WebPush is the server's VAPID key pair for Web Push notifications, base64url-encoded. It
+// is generated on first start; browsers subscribe with the public key, so it never changes.
+type WebPush struct {
+	PrivateKey string `bson:"privateKey"`
+	PublicKey  string `bson:"publicKey"`
+}
+
 // CanSummarize reports whether summarization is configured.
 func (o *OpenRouter) CanSummarize() bool { return o.APIKey != "" && o.SummaryModel != "" }

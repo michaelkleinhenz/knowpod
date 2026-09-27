@@ -7,19 +7,22 @@ import { useAuth } from '../auth';
 import { FolderTree } from './FolderTree';
 import { NewBoardIcon, NewFolderIcon, NewNoteIcon, RefreshIcon, SearchIcon, UploadIcon } from './Icons';
 import { NoteRow } from './NoteRow';
+import { TasksView } from './TasksView';
 import { errorText } from '../lib/errors';
 import { dayKey, dayLabel, formatTime, title, when } from '../lib/recordings';
 
 const ACCEPT = '.wav,.mp3,audio/wav,audio/x-wav,audio/wave,audio/mpeg';
 
-// The list shows the notes by time (grouped by day) or in their folders, like files.
-type View = 'timeline' | 'folders';
-const VIEWS: View[] = ['timeline', 'folders'];
+// The list shows the notes by time (grouped by day), in their folders, like files, or the
+// open tasks by when they are due.
+type View = 'timeline' | 'folders' | 'tasks';
+const VIEWS: View[] = ['timeline', 'folders', 'tasks'];
 const VIEW_KEY = 'knowpod.notesView';
 
 function loadView(): View {
   try {
-    return localStorage.getItem(VIEW_KEY) === 'folders' ? 'folders' : 'timeline';
+    const v = localStorage.getItem(VIEW_KEY);
+    return VIEWS.includes(v as View) ? (v as View) : 'timeline';
   } catch {
     return 'timeline';
   }
@@ -258,7 +261,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
       {error && <p className="error">{error}</p>}
       {createError && <p className="error">{createError}</p>}
       {!recordings && !error && <p className="muted">{t('common.loading')}</p>}
-      {recordings && recordings.length === 0 && (
+      {recordings && recordings.length === 0 && view !== 'tasks' && (
         <div className="empty">
           <p className="muted">{t('conversations.empty')}</p>
           <p className="muted">
@@ -274,7 +277,9 @@ export function NotesList({ activeId }: { activeId?: string }) {
           </div>
         </div>
       )}
-      {recordings && recordings.length > 0 && matches.length === 0 && (
+      {view === 'tasks' && recordings && <TasksView notes={matches} activeId={activeId} aiReady={aiReady} onSetDone={(r, d) => void setDone(r, d)} />}
+
+      {recordings && recordings.length > 0 && matches.length === 0 && view !== 'tasks' && (
         <p className="muted empty">{t('conversations.noMatch', { query })}</p>
       )}
 

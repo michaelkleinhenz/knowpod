@@ -11,6 +11,7 @@ import (
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/device"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/folder"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/label"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/push"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/settings"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/tablet"
@@ -45,6 +46,12 @@ type RecordingRepository interface {
 	// MoveSubNotes moves all of ownerID's sub-notes of note from to where that note was:
 	// under parent toParent, or into folder toFolder when toParent is empty.
 	MoveSubNotes(ctx context.Context, ownerID, from, toParent, toFolder string) error
+	// SetRemindAt changes only when the recording's next reminder is sent (nil: none).
+	SetRemindAt(ctx context.Context, id string, at *time.Time) error
+	// ClaimReminder atomically takes a recording whose reminder is due (RemindAt <= now) and
+	// clears its RemindAt, so each reminder is sent once. Returns domain.ErrNotFound when
+	// none is due.
+	ClaimReminder(ctx context.Context, now time.Time) (*recording.Recording, error)
 }
 
 // DeviceRepository persists devices. Lookups of missing documents return domain.ErrNotFound.
@@ -86,6 +93,18 @@ type SessionRepository interface {
 type SettingsRepository interface {
 	OpenRouter(ctx context.Context) (*settings.OpenRouter, error)
 	SaveOpenRouter(ctx context.Context, s *settings.OpenRouter) error
+	// InitWebPush stores the VAPID keys unless keys are stored already, and returns the
+	// stored ones.
+	InitWebPush(ctx context.Context, k *settings.WebPush) (*settings.WebPush, error)
+}
+
+// PushSubscriptionRepository persists the browsers that receive users' notifications. Save
+// creates or replaces a subscription (by ID).
+type PushSubscriptionRepository interface {
+	Save(ctx context.Context, s *push.Subscription) error
+	List(ctx context.Context, userID string) ([]*push.Subscription, error)
+	Delete(ctx context.Context, id string) error
+	DeleteByUser(ctx context.Context, userID string) error
 }
 
 // ThemeRepository persists users' own summary themes. Get of a missing theme returns

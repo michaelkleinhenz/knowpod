@@ -54,6 +54,9 @@ type UserService struct {
 	Labels ports.LabelRepository
 	// Folders holds users' folders, removed with the user. Optional.
 	Folders ports.FolderRepository
+	// Push holds the browsers that receive users' notifications, removed with the user.
+	// Optional.
+	Push ports.PushSubscriptionRepository
 	// Remarkable forgets users' reMarkable links with the user. Optional.
 	Remarkable interface {
 		DeleteByOwner(ctx context.Context, userID string) error
@@ -233,6 +236,11 @@ func (s *UserService) Delete(ctx context.Context, actor *Account, id string) err
 	}
 	if s.Remarkable != nil {
 		if err := s.Remarkable.DeleteByOwner(ctx, u.ID); err != nil {
+			return err
+		}
+	}
+	if s.Push != nil {
+		if err := s.Push.DeleteByUser(ctx, u.ID); err != nil {
 			return err
 		}
 	}

@@ -318,6 +318,45 @@ curl -H "Authorization: Bearer $ADMIN_TOKEN" -OJ $API/recordings/<id>/transcript
 curl -H "Authorization: Bearer $ADMIN_TOKEN" "$API/recordings/<id>/summary?format=json"
 ```
 
+## Tasks and reminders
+
+Any note can be a task: the **Date** button in its header sets a due date (typed as
+"tomorrow 3pm", "every monday", "jeden Monat am 1." or picked), an optional time, a repeat
+rule, a reminder and a priority (P1–P3), and puts the **Task** label on it. Typing a date
+into a note's title offers it as the task's date (Enter takes it out of the title). The
+**Tasks** view of the notes list shows the open tasks by due date (overdue, today, the next
+days, later, no date) and adds tasks from one line ("Call Anna tomorrow 3pm p1"). Checking
+off a recurring task moves it to its next date.
+
+Summaries list the **action items** found in the conversation (who does what, by when).
+**Make task** turns one into a task under the note, due on the date that was named, with a
+reminder at 9:00.
+
+Dates are meant in the user's time zone, which the web app takes from the browser it is used
+in (changing it moves the pending reminders). A task without a time is reminded at 9:00 on
+its day, minus the chosen lead time.
+
+## Notifications
+
+Reminders are sent as push notifications (Web Push) to every browser or installed app in
+which the user turned them on under **Account → Notifications**; **Send a test** checks the
+setup. The server generates its VAPID key pair on the first start and keeps it in the
+`settings` collection; there is nothing to configure. `WEBPUSH_SUBJECT` (a `mailto:` or
+`https:` URL, default `mailto:` + `ADMIN_EMAIL`) tells the browsers' push services whom to
+contact about the sender.
+
+- **iPhone and iPad** (iOS 16.4 or later): notifications only work in the installed app.
+  Add knowpod to the Home Screen first (**Share → Add to Home Screen**), open it from there,
+  then turn notifications on.
+- **Android, desktop Chrome, Edge, Firefox, Safari**: works in the browser and in the
+  installed app.
+- The server must be able to reach the push services over HTTPS (e.g.
+  `fcm.googleapis.com`, `updates.push.services.mozilla.com`, `web.push.apple.com`).
+
+The reminder job checks every 30 seconds. Each reminder is taken from the database before it
+is sent, so it goes out at most once; if the server is down at the time, it goes out when it
+is back. Subscriptions that the push service reports as gone are forgotten.
+
 ## Uploading audio files
 
 On **Notes**, **Upload** (or dragging files onto the page) sends WAV and MP3 files
@@ -333,7 +372,8 @@ that large.
 The web UI is an installable web app (PWA): in Chrome/Edge use **Install app** in the
 address bar or menu, on Android **Add to home screen**, on iOS Safari **Share → Add to Home
 Screen**. It then opens in its own window without browser controls. The app shell is cached
-by a service worker so it starts instantly; notes and all other data are always
+by a service worker so it starts instantly (the same service worker shows
+[notifications](#notifications)); notes and all other data are always
 loaded live (API responses are never cached), so the app needs a connection to show
 content. New versions are picked up automatically on the next start. Installing requires
 HTTPS (or `localhost`).
@@ -469,7 +509,10 @@ wipe it while `received` recordings exist.
   piece; splitting it would need an MP3/AAC decoder).
 - Speaker labels ("Speaker 1") are assigned per 5-minute piece and may not match across
   pieces of long recordings.
-- The notes list loads the newest 200 recordings.
+- The notes list loads the newest 200 recordings, so the Tasks view only shows tasks among
+  them.
+- A user's time zone follows the browser last used, so a phone and a laptop in different
+  time zones take turns.
 - The client IP for the login rate limit is taken from `X-Forwarded-For` / `X-Real-IP`.
   Without a proxy that sets these, clients can spoof them and bypass the limit.
 - No API to delete recordings or their objects.
