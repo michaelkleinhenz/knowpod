@@ -65,10 +65,18 @@ func (m *Recordings) MoveFolder(_ context.Context, ownerID, from, to string) err
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for id, r := range m.recs {
-		if r.OwnerID == ownerID && r.FolderID == from {
-			r.FolderID = to
-			m.recs[id] = r
+		if r.OwnerID != ownerID {
+			continue
 		}
+		if r.FolderID == from {
+			r.FolderID = to
+		}
+		if r.Board != nil && r.Board.Scope.Kind == recording.ScopeFolder && r.Board.Scope.ID == from {
+			b := *r.Board
+			b.Scope.ID = to
+			r.Board = &b
+		}
+		m.recs[id] = r
 	}
 	return nil
 }
@@ -77,10 +85,15 @@ func (m *Recordings) RemoveLabel(_ context.Context, ownerID, labelID string) err
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for id, r := range m.recs {
-		if r.OwnerID != ownerID || !slices.Contains(r.Labels, labelID) {
+		if r.OwnerID != ownerID {
 			continue
 		}
 		r.Labels = slices.DeleteFunc(slices.Clone(r.Labels), func(l string) bool { return l == labelID })
+		if r.Board != nil && r.Board.Scope.Kind == recording.ScopeLabel && r.Board.Scope.ID == labelID {
+			b := *r.Board
+			b.Scope = recording.BoardScope{}
+			r.Board = &b
+		}
 		m.recs[id] = r
 	}
 	return nil

@@ -10,7 +10,7 @@ export function title(r: Recording): string {
 
 // noteType says what kind of note a recording is; notes from before types are audio.
 export function noteType(r: Recording): NoteType {
-  return r.type === 'text' || r.type === 'document' ? r.type : 'audio';
+  return r.type === 'text' || r.type === 'document' || r.type === 'board' ? r.type : 'audio';
 }
 
 // when is the moment a conversation happened.

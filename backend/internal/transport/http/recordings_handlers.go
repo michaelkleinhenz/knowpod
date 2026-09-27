@@ -194,6 +194,35 @@ func (s *Server) handleCreateTextNote(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, rec)
 }
 
+// handleCreateBoard creates a board note from a JSON body with its title and optionally its
+// scope and columns.
+func (s *Server) handleCreateBoard(w http.ResponseWriter, r *http.Request) {
+	var in service.BoardInput
+	if !decode(w, r, &in) {
+		return
+	}
+	rec, err := s.actions.CreateBoard(r.Context(), accountFrom(r.Context()), in)
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, rec)
+}
+
+// handleSetBoard replaces a board's scope, columns and card placements.
+func (s *Server) handleSetBoard(w http.ResponseWriter, r *http.Request) {
+	var in recording.Board
+	if !decode(w, r, &in) {
+		return
+	}
+	rec, err := s.actions.SetBoard(r.Context(), accountFrom(r.Context()), chi.URLParam(r, "id"), in)
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, rec)
+}
+
 // handleEditSummary saves a person's edits of a summary (title and Markdown text), which is
 // also how text notes are edited.
 func (s *Server) handleEditSummary(w http.ResponseWriter, r *http.Request) {

@@ -45,6 +45,10 @@ AI worker ─────────────▶ transcript (status: transcr
   **documents** from the reMarkable. The
   notes list shows each note's type as an icon; text notes are edited, copied, downloaded
   and deleted like summaries.
+- **Boards** are kanban boards, listed like any other note: each shows the notes of a folder or
+  with a label as cards, all starting in the first column. New boards have the columns Todo,
+  In Progress and Done; columns can be renamed, added and deleted, and cards are dragged
+  between them.
 - Notes can carry **labels**: colored chips in the note's header, with your own labels
   defined on the spot or under **Settings → Labels**. The built-in **Task** label adds a
   check box to the note's icon in the list; the check mark is saved.

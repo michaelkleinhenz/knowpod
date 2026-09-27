@@ -40,6 +40,9 @@ const (
 	// or EPUB). File is its PDF or EPUB; the text read from its pages is kept as the
 	// Transcript and summarized like one.
 	TypeDocument Type = "document"
+	// TypeBoard: a kanban board of the user's notes. Its title is kept in Summary like a
+	// text note's; Board holds which notes it shows and its columns.
+	TypeBoard Type = "board"
 )
 
 // Source says where a recording came from.
@@ -118,6 +121,9 @@ type Recording struct {
 	// FolderID is the folder the note is in; empty at the top level.
 	FolderID string `bson:"folderId,omitempty" json:"folderId,omitempty"`
 
+	// Board is the setup of a board note: its scope and columns.
+	Board *Board `bson:"board,omitempty" json:"board,omitempty"`
+
 	// Highlights are moments the user marked on the device while recording.
 	Highlights     []Highlight    `bson:"highlights,omitempty" json:"highlights,omitempty"`
 	Transcript     *Transcript    `bson:"transcript,omitempty" json:"transcript,omitempty"`
@@ -142,6 +148,9 @@ func (r *Recording) IsText() bool { return r.Type == TypeText }
 // IsDocument reports whether the note is a document from the reMarkable cloud.
 func (r *Recording) IsDocument() bool { return r.Type == TypeDocument }
 
+// IsBoard reports whether the note is a board.
+func (r *Recording) IsBoard() bool { return r.Type == TypeBoard }
+
 // KeepUserFields copies the fields a person changes at any time (labels, done, folder) from
 // the stored version, so that a processing step saving its long-held copy doesn't undo them.
 func (r *Recording) KeepUserFields(stored *Recording) {
@@ -150,6 +159,42 @@ func (r *Recording) KeepUserFields(stored *Recording) {
 
 // TextDeviceID returns the DeviceID of a user's text notes. Their ClientID is the note ID.
 func TextDeviceID(userID string) string { return "text:" + userID }
+
+// ScopeKind says what selects the notes shown on a board.
+type ScopeKind string
+
+const (
+	// ScopeNone: the board shows no notes until a scope is chosen.
+	ScopeNone ScopeKind = ""
+	// ScopeFolder: the notes in a folder (ID "" is the top level).
+	ScopeFolder ScopeKind = "folder"
+	// ScopeLabel: the notes carrying a label.
+	ScopeLabel ScopeKind = "label"
+)
+
+// BoardScope selects the notes a board shows.
+type BoardScope struct {
+	Kind ScopeKind `bson:"kind,omitempty" json:"kind"`
+	// ID is the folder or label.
+	ID string `bson:"id,omitempty" json:"id"`
+}
+
+// Board is a kanban board: the notes in its scope, sorted into columns. Notes in the scope
+// that are in no column are shown in the first one.
+type Board struct {
+	Scope   BoardScope    `bson:"scope" json:"scope"`
+	Columns []BoardColumn `bson:"columns" json:"columns"`
+}
+
+// BoardColumn is one column of a board, with the IDs of the notes put into it, in order.
+type BoardColumn struct {
+	ID    string   `bson:"id" json:"id"`
+	Name  string   `bson:"name" json:"name"`
+	Notes []string `bson:"notes,omitempty" json:"notes,omitempty"`
+}
+
+// BoardDeviceID returns the DeviceID of a user's boards. Their ClientID is the note ID.
+func BoardDeviceID(userID string) string { return "board:" + userID }
 
 // Highlight is a moment the user marked while recording (e.g. with a button on the device).
 type Highlight struct {

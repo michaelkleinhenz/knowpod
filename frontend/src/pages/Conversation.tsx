@@ -2,6 +2,7 @@ import { lazy, ReactNode, Suspense, useCallback, useEffect, useRef, useState } f
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api, Recording } from '../api/client';
+import { Board } from '../components/Board';
 import { CopyButton } from '../components/CopyButton';
 import { CopyIcon, DownloadIcon, RetranscribeIcon, TrashIcon } from '../components/Icons';
 import { inline, Markdown } from '../components/Markdown';
@@ -161,6 +162,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
   const highlights = rec.highlights ?? [];
   const isText = noteType(rec) === 'text';
   const isDocument = noteType(rec) === 'document';
+  const isBoard = noteType(rec) === 'board';
   const titleInput = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (created) titleInput.current?.select();
@@ -179,6 +181,11 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
     setSeek(null);
   }, [seek, tab]);
   const autosave = useAutosave(rec.id, summary?.title ?? titleOf(rec), setRec);
+  // A board has no text; only its title is saved like a summary's.
+  const { editorReady } = autosave;
+  useEffect(() => {
+    if (isBoard) editorReady(() => '');
+  }, [isBoard, editorReady]);
 
   async function act(action: () => Promise<unknown>, confirmText?: string) {
     if (confirmText && !window.confirm(confirmText)) return;
@@ -205,7 +212,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
   };
 
   async function handleDelete() {
-    const confirmKey = isText ? 'conversation.deleteTextConfirm' : isDocument ? 'conversation.deleteDocumentConfirm' : 'conversation.deleteConfirm';
+    const confirmKey = isText ? 'conversation.deleteTextConfirm' : isBoard ? 'conversation.deleteBoardConfirm' : isDocument ? 'conversation.deleteDocumentConfirm' : 'conversation.deleteConfirm';
     if (!window.confirm(t(confirmKey, { title: autosave.title || titleOf(rec) }))) return;
     setBusy(true);
     try {
@@ -252,7 +259,9 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
     );
   const sourceBadge = isText
     ? t('conversations.types.text')
-    : rec.source === 'pocket'
+    : isBoard
+      ? t('conversations.types.board')
+      : rec.source === 'pocket'
       ? t('conversation.sourcePocket')
       : rec.source === 'upload'
         ? t('conversation.sourceUpload')
@@ -297,7 +306,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
       {error && <p className="error">{error}</p>}
 
       <div className="note-bar">
-        {!isText && (
+        {!isText && !isBoard && (
           <div className="segmented" role="tablist" aria-label={t('conversation.viewLabel')}>
             {TABS.map((id) => (
               <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}>
@@ -315,8 +324,8 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
             </a>
           )}
           {copy && <CopyButton className="icon-button" icon={<CopyIcon />} text={copy.text} label={copy.label} />}
-          <span className="tool-divider" aria-hidden="true" />
-          {!isText && (
+          {!isBoard && <span className="tool-divider" aria-hidden="true" />}
+          {!isText && !isBoard && (
             <button
               type="button"
               className="icon-button"
@@ -352,10 +361,11 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
         </div>
       </div>
 
-      <div className="conversation-body" role={isText ? undefined : 'tabpanel'}>
+      <div className="conversation-body" role={isText || isBoard ? undefined : 'tabpanel'}>
+        {isBoard && <Board rec={rec} setRec={setRec} />}
         {/* The summary stays mounted on other tabs so unsaved edits and the undo history survive. */}
-        <div hidden={tab !== 'summary'}>
-          {summary ? (
+        <div hidden={tab !== 'summary' || isBoard}>
+          {isBoard ? null : summary ? (
             <>
               <Suspense
                 fallback={
@@ -573,7 +583,7 @@ export function Conversation() {
   }, [inProgress, load]);
 
   return (
-    <section className="conversation">
+    <section className={`conversation${rec?.type === 'board' ? ' board-note' : ''}`}>
       <Link to="/" className="back-link">
         {t('conversation.back')}
       </Link>

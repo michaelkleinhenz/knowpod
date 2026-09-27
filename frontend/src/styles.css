@@ -2681,3 +2681,240 @@ html:has(.notes-layout) {
   font-size: 0.85rem;
   margin: 0.3rem 0.5rem;
 }
+
+/* --- Boards --- */
+
+/* A board uses the whole width next to the sidebar. */
+.notes-main .conversation.board-note,
+.conversation.board-note {
+  max-width: none;
+}
+
+.board-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.board-scope {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--color-muted);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.board-scope select {
+  font: inherit;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 0.35rem 0.5rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.board-columns {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.9rem;
+  overflow-x: auto;
+  padding-bottom: 0.75rem;
+  -webkit-overflow-scrolling: touch;
+}
+
+.board-column {
+  flex: 0 0 270px;
+  display: flex;
+  flex-direction: column;
+  min-height: 8rem;
+  background: var(--color-bg);
+  border: 1px solid #dde2e9;
+  border-radius: 10px;
+  padding: 0.5rem;
+  transition: box-shadow 0.1s;
+}
+
+.board-column.drop-target {
+  box-shadow: inset 0 0 0 2px var(--color-primary);
+}
+
+.board-column-head {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 2rem;
+  padding: 0 0.1rem 0.4rem 0.35rem;
+}
+
+.board-column-name {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+  cursor: text;
+}
+
+.board-count {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-muted);
+  background: var(--color-surface);
+  border-radius: 999px;
+  padding: 0 0.45rem;
+}
+
+.board-column-name-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 650;
+  border: 1px solid var(--color-primary);
+  border-radius: 6px;
+  padding: 0.2rem 0.4rem;
+}
+
+.board-column-tools {
+  display: inline-flex;
+  opacity: 0.6;
+}
+
+.board-column:hover .board-column-tools,
+.board-column-tools:focus-within {
+  opacity: 1;
+}
+
+.icon-button.small {
+  width: 1.75rem;
+  height: 1.75rem;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.board-cards {
+  flex: 1;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-height: 3rem;
+}
+
+.board-card {
+  background: var(--color-surface);
+  border: 1px solid #dde2e9;
+  border-radius: 8px;
+  padding: 0.45rem 0.35rem 0.45rem 0.55rem;
+  box-shadow: 0 1px 2px rgba(30, 42, 58, 0.06);
+  cursor: grab;
+  -webkit-user-drag: element;
+}
+
+.board-card:hover {
+  border-color: var(--color-border);
+}
+
+.board-card.dragging {
+  opacity: 0.45;
+}
+
+.board-card.drop-before {
+  box-shadow: 0 -3px 0 var(--color-primary);
+}
+
+.board-card-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.board-card-main .icon-button.small {
+  width: 1.4rem;
+  height: 1.4rem;
+}
+
+.board-card .doc-icon {
+  flex: none;
+  width: 16px;
+  height: 20px;
+}
+
+.board-card-check {
+  flex: none;
+  margin: 0.15rem 0 0;
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--color-primary);
+}
+
+.board-card-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.92rem;
+  font-weight: 500;
+  color: var(--color-text);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.board-card-title:hover {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+.board-card.done .board-card-title {
+  color: var(--color-muted);
+  text-decoration: line-through;
+}
+
+.board-card-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin: 0.4rem 0 0.05rem 1.5rem;
+}
+
+.label-chip.small {
+  font-size: 0.7rem;
+  padding: 0 0.45rem;
+}
+
+.board-card-move {
+  flex: none;
+  display: inline-flex;
+  margin: -0.1rem 0 0 auto;
+  opacity: 0;
+}
+
+.board-card:hover .board-card-move,
+.board-card-move:focus-within {
+  opacity: 1;
+}
+
+/* Touch screens can't hover or drag reliably: always show the move buttons. */
+@media (hover: none) {
+  .board-card-move,
+  .board-column-tools {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 900px) {
+  .board-column {
+    flex-basis: min(80vw, 270px);
+  }
+}

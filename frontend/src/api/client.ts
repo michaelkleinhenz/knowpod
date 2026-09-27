@@ -139,15 +139,40 @@ export type RecordingStatus =
   | 'failed';
 
 // NoteType is the kind of note: an audio recording (transcribed and summarized), a text
-// note written in the editor, whose title and text live in summary, or a document from the
-// reMarkable cloud, whose text read from the pages is its transcript.
-export type NoteType = 'audio' | 'text' | 'document';
+// note written in the editor, whose title and text live in summary, a document from the
+// reMarkable cloud, whose text read from the pages is its transcript, or a kanban board of
+// other notes, whose title lives in summary.
+export type NoteType = 'audio' | 'text' | 'document' | 'board';
+
+// BoardScope selects the notes a board shows: those in a folder (id '' is the top level) or
+// with a label. An empty kind shows none.
+export interface BoardScope {
+  kind: '' | 'folder' | 'label';
+  id: string;
+}
+
+// BoardColumn is a column of a board with the IDs of the notes put into it, in order.
+export interface BoardColumn {
+  id: string;
+  name: string;
+  notes?: string[];
+}
+
+// Board is a board note's setup. Notes in the scope that are in no column are shown in the
+// first one.
+export interface Board {
+  scope: BoardScope;
+  columns: BoardColumn[];
+}
+
+// RECORDINGS_LIMIT is how many notes the list loads.
+export const RECORDINGS_LIMIT = 200;
 
 export interface Recording {
   id: string;
   deviceId: string;
   // Absent for audio recordings.
-  type?: 'text' | 'document';
+  type?: 'text' | 'document' | 'board';
   source?: 'pocket' | 'upload' | 'remarkable';
   title?: string;
   recordingId: string;
@@ -178,6 +203,8 @@ export interface Recording {
   done?: boolean;
   // The folder the note is in; absent at the top level.
   folderId?: string;
+  // A board's scope and columns.
+  board?: Board;
   lastError?: string;
 }
 
@@ -281,13 +308,15 @@ export const api = {
   unpairRemarkable: () => request<void>('DELETE', '/me/remarkable'),
   pullRemarkable: () => request<RemarkableSettings>('POST', '/me/remarkable/pull'),
   aiStatus: () => request<{ transcription: boolean; summary: boolean }>('GET', '/ai/status'),
-  recordings: () => request<Recording[]>('GET', '/recordings?limit=200'),
+  recordings: () => request<Recording[]>('GET', `/recordings?limit=${RECORDINGS_LIMIT}`),
   recording: (id: string) => request<Recording>('GET', `/recordings/${encodeURIComponent(id)}`),
   deleteRecording: (id: string) => request<void>('DELETE', `/recordings/${encodeURIComponent(id)}`),
   retranscribe: (id: string) => request<Recording>('POST', `/recordings/${encodeURIComponent(id)}/retranscribe`),
   resummarize: (id: string, opts?: SummaryOptions) =>
     request<Recording>('POST', `/recordings/${encodeURIComponent(id)}/resummarize`, opts),
   createTextNote: (title: string, markdown: string) => request<Recording>('POST', '/recordings/text', { title, markdown }),
+  createBoard: (title: string, board: Board) => request<Recording>('POST', '/recordings/board', { title, board }),
+  setBoard: (id: string, board: Board) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/board`, board),
   editSummary: (id: string, title: string, markdown: string) =>
     request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/summary`, { title, markdown }),
   setNoteLabels: (id: string, labels: string[]) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/labels`, { labels }),

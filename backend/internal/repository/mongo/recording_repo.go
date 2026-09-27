@@ -102,12 +102,24 @@ func (r *RecordingRepo) MoveFolder(ctx context.Context, ownerID, from, to string
 	if to == "" {
 		update = bson.M{"$unset": bson.M{"folderId": ""}}
 	}
-	_, err := r.c.UpdateMany(ctx, filter, update)
+	if _, err := r.c.UpdateMany(ctx, filter, update); err != nil {
+		return err
+	}
+	// Boards showing the folder show the one its notes moved into.
+	_, err := r.c.UpdateMany(ctx,
+		bson.M{"ownerId": ownerID, "board.scope.kind": recording.ScopeFolder, "board.scope.id": from},
+		bson.M{"$set": bson.M{"board.scope.id": to}})
 	return err
 }
 
 func (r *RecordingRepo) RemoveLabel(ctx context.Context, ownerID, labelID string) error {
-	_, err := r.c.UpdateMany(ctx, bson.M{"ownerId": ownerID, "labels": labelID}, bson.M{"$pull": bson.M{"labels": labelID}})
+	if _, err := r.c.UpdateMany(ctx, bson.M{"ownerId": ownerID, "labels": labelID}, bson.M{"$pull": bson.M{"labels": labelID}}); err != nil {
+		return err
+	}
+	// Boards showing the label show nothing until another scope is chosen.
+	_, err := r.c.UpdateMany(ctx,
+		bson.M{"ownerId": ownerID, "board.scope.kind": recording.ScopeLabel, "board.scope.id": labelID},
+		bson.M{"$set": bson.M{"board.scope": recording.BoardScope{}}})
 	return err
 }
 

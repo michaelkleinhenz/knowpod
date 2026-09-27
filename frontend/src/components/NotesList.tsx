@@ -5,7 +5,7 @@ import { api, Recording } from '../api/client';
 import { useNotes } from '../context/NotesContext';
 import { useAuth } from '../auth';
 import { FolderTree } from './FolderTree';
-import { NewFolderIcon, NewNoteIcon, RefreshIcon, SearchIcon, UploadIcon } from './Icons';
+import { NewBoardIcon, NewFolderIcon, NewNoteIcon, RefreshIcon, SearchIcon, UploadIcon } from './Icons';
 import { NoteRow } from './NoteRow';
 import { errorText } from '../lib/errors';
 import { dayKey, dayLabel, formatTime, title, when } from '../lib/recordings';
@@ -103,6 +103,23 @@ export function NotesList({ activeId }: { activeId?: string }) {
     }
   }
 
+  // createBoard makes a board with the three default columns and opens it, ready to type
+  // its title and choose the folder or label it shows.
+  async function createBoard() {
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const columns = (['todo', 'inProgress', 'done'] as const).map((k) => ({ id: '', name: t(`board.defaultColumns.${k}`) }));
+      const rec = await api.createBoard(t('board.untitled'), { scope: { kind: '', id: '' }, columns });
+      upsert(rec);
+      navigate(`/conversations/${rec.id}`, { state: { created: true } });
+    } catch (err) {
+      setCreateError(errorText(err, t));
+    } finally {
+      setCreating(false);
+    }
+  }
+
   function handleFiles(e: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     e.target.value = '';
@@ -149,6 +166,9 @@ export function NotesList({ activeId }: { activeId?: string }) {
         <div className="head-actions">
           <button type="button" className="pill-button icon-only-mobile" onClick={createText} disabled={creating} aria-label={t('conversations.newNote')}>
             <NewNoteIcon /> <span>{t('conversations.newNote')}</span>
+          </button>
+          <button type="button" className="pill-button icon-only-mobile" onClick={createBoard} disabled={creating} title={t('conversations.newBoard')} aria-label={t('conversations.newBoard')}>
+            <NewBoardIcon /> <span>{t('conversations.newBoard')}</span>
           </button>
           <button type="button" className="pill-button icon-only-mobile" onClick={() => fileInput.current?.click()} aria-label={t('conversations.uploadAudio')}>
             <UploadIcon /> <span>{t('conversations.upload')}</span>
