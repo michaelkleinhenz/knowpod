@@ -9,3 +9,4 @@ backend/internal/web/dist/*
 backend/data/
 # Local secrets for docker compose (see .env.example).
 .env
+desktop/dist/

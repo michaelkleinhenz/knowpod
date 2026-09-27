@@ -94,6 +94,40 @@ a {
   font-size: 0.9rem;
 }
 
+/* Separates the main menu items from the signed-in user. */
+.nav-divider {
+  width: 1px;
+  height: 1.2rem;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.nav .nav-signout {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.3rem;
+  margin: -0.3rem -0.3rem -0.3rem -0.6rem;
+  border-radius: 6px;
+}
+
+.nav .nav-signout:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.nav-signout svg {
+  display: block;
+}
+
+/* The label is read out in the header and shown in the phone menu. */
+.nav-signout-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 .link-button {
   white-space: nowrap;
   background: none;
@@ -801,18 +835,31 @@ a {
   font-size: 0.9rem;
 }
 
-/* The save state is a small dot before the note's number. */
-.conversation-meta .sync-state {
-  width: 1rem;
-  height: 1rem;
-  margin: 0 0.3rem 0 -0.2rem;
-  border-radius: 50%;
-  vertical-align: -0.1rem;
+/* The save state is a small dot in the top right corner of the note. */
+.note-main {
+  position: relative;
 }
 
-.conversation-meta .sync-dot {
+.note-sync {
+  position: absolute;
+  top: 0;
+  right: -0.35rem;
+  z-index: 1;
+}
+
+.note-sync .sync-state {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+}
+
+.note-sync .sync-dot {
   width: 0.5rem;
   height: 0.5rem;
+}
+
+.note-sync ~ .conversation-header .title-block {
+  padding-right: 1.25rem;
 }
 
 .lane-pill {
@@ -1027,6 +1074,24 @@ a {
   .nav a.active {
     background: rgba(255, 255, 255, 0.06);
     box-shadow: inset 3px 0 0 var(--color-primary);
+  }
+
+  .nav-divider {
+    display: none;
+  }
+
+  .nav .nav-signout {
+    margin: 0;
+    padding: 0.8rem 1.25rem;
+    border-radius: 0;
+  }
+
+  .nav-signout-text {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
   }
 
   .nav-user {
@@ -3772,4 +3837,179 @@ a.note-ref:hover {
     flex-direction: column;
     gap: 0.35rem;
   }
+}
+
+/* --- Note header row and details sidebar --- */
+
+/* Below the title, one row holds the date, the labels and the note's icon actions; it wraps
+   onto more lines when it doesn't fit. */
+.note-meta-row {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.5rem;
+  min-width: 0;
+}
+
+/* The labels flow one by one in the row, so the icon actions can share their last line. */
+.note-meta-row .header-labels,
+.note-meta-row .note-labels {
+  display: contents;
+}
+
+.note-meta-row .conversation-meta {
+  margin-right: 0.25rem;
+}
+
+.note-meta-row .label-add-button {
+  margin: 0.15rem 0;
+}
+
+.note-meta-row .header-tools {
+  margin-left: auto;
+}
+
+.meta-item + .meta-item::before {
+  content: '·';
+  margin: 0 0.35em;
+}
+
+/* Notes (not boards) get a column for their task, labels and details when the note is wide
+   enough; below that everything stays in the header. The width is the note's own, so it
+   also follows the notes list being dragged wider or narrower. */
+.conversation.with-aside {
+  container: note / inline-size;
+}
+
+.notes-main .conversation.with-aside,
+.conversation.with-aside {
+  max-width: 1072px;
+}
+
+.note-main {
+  min-width: 0;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.board-note .note-main {
+  max-width: none;
+}
+
+@container note (min-width: 52rem) {
+  .note-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 17rem;
+    gap: 2.5rem;
+    align-items: start;
+  }
+
+  .note-layout .note-main {
+    max-width: none;
+    margin: 0;
+  }
+
+  .note-layout .note-aside {
+    display: block;
+  }
+
+  /* The sidebar shows these; the header keeps only a processing state. */
+  .note-layout .header-labels,
+  .note-layout .header-tools,
+  .note-layout .meta-extra,
+  .note-layout .note-meta-row:not(:has(.state-pill)) {
+    display: none;
+  }
+
+  .note-layout .conversation-meta .state-pill {
+    margin-left: 0;
+  }
+}
+
+.note-aside {
+  display: none;
+  font-size: 0.85rem;
+  border-left: 1px solid var(--color-border);
+  padding: 0.25rem 0 0.25rem 1.25rem;
+}
+
+.note-aside section + section,
+.note-aside .note-tools + section {
+  margin-top: 1.25rem;
+}
+
+/* The icon actions head the sidebar, starting at its left edge. */
+.note-aside .note-tools {
+  justify-content: flex-start;
+  margin: -0.4rem 0 0 -0.5rem;
+}
+
+.note-aside .note-tools .icon-button {
+  width: 2rem;
+  height: 2rem;
+}
+
+.note-aside .note-tools .tool-divider {
+  margin: 0 0.2rem;
+}
+
+.note-aside h2 {
+  margin: 0 0 0.4rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.note-aside-task {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.75rem;
+}
+
+.note-aside .note-labels {
+  margin: 0;
+}
+
+.note-aside .label-add-button {
+  margin: 0.15rem 0;
+}
+
+/* The pickers open towards the note, not off the right edge. */
+.note-aside .label-popover {
+  left: auto;
+  right: 0;
+}
+
+.note-facts {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.35rem 0.75rem;
+  margin: 0;
+}
+
+.note-facts dt {
+  color: var(--color-muted);
+}
+
+.note-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.note-facts .note-number {
+  margin-right: 0;
+}
+
+.note-facts .state-pill {
+  margin-left: 0;
+}
+
+.note-facts-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
 }

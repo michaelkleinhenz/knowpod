@@ -122,9 +122,33 @@ function LabelPicker({ rec, onToggle, onClose }: { rec: Recording; onToggle: (id
   );
 }
 
-// NoteLabels shows a note's labels in its header, a check box when it is a task, and the
-// button that opens the label picker.
-export function NoteLabels({ rec, setRec }: { rec: Recording; setRec: (r: Recording) => void }) {
+// NoteDone is the check box of a note that is a task.
+export function NoteDone({ rec, setRec }: { rec: Recording; setRec: (r: Recording) => void }) {
+  const { t } = useTranslation();
+  const [error, setError] = useState<string | null>(null);
+  if (!isTask(rec)) return null;
+  const toggle = async (done: boolean) => {
+    setError(null);
+    try {
+      setRec(await api.setNoteDone(rec.id, done));
+    } catch (err) {
+      setError(errorText(err, t));
+    }
+  };
+  return (
+    <>
+      <label className={`task-toggle${rec.done ? ' done' : ''}`}>
+        <input type="checkbox" checked={!!rec.done} onChange={(e) => void toggle(e.target.checked)} />
+        {rec.done ? t('labels.done') : t('labels.open')}
+      </label>
+      {error && <p className="error">{error}</p>}
+    </>
+  );
+}
+
+// NoteLabels shows a note's labels, the button that opens the label picker and, unless
+// withTask is off (the note's sidebar shows them apart), its check box and date.
+export function NoteLabels({ rec, setRec, withTask = true }: { rec: Recording; setRec: (r: Recording) => void; withTask?: boolean }) {
   const { t } = useTranslation();
   const { labels } = useNotes();
   const [open, setOpen] = useState(false);
@@ -146,13 +170,8 @@ export function NoteLabels({ rec, setRec }: { rec: Recording; setRec: (r: Record
 
   return (
     <div className="note-labels">
-      {isTask(rec) && (
-        <label className={`task-toggle${rec.done ? ' done' : ''}`}>
-          <input type="checkbox" checked={!!rec.done} onChange={(e) => act(async () => setRec(await api.setNoteDone(rec.id, e.target.checked)))} />
-          {rec.done ? t('labels.done') : t('labels.open')}
-        </label>
-      )}
-      {rec.type !== 'board' && <TaskControls rec={rec} setRec={setRec} />}
+      {withTask && <NoteDone rec={rec} setRec={setRec} />}
+      {withTask && rec.type !== 'board' && <TaskControls rec={rec} setRec={setRec} />}
       {noteLabels(rec, labels).map((l) => (
         <LabelChip key={l.id} label={l} onRemove={() => act(() => toggle(l.id))} />
       ))}

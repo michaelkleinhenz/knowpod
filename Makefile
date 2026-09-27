@@ -1,7 +1,12 @@
 # knowpod-service build. The frontend is built separately and embedded into the backend binary so a
 # single artifact serves both the web UI and the API.
 
-.PHONY: build frontend backend test clean
+.PHONY: build frontend backend test clean desktop-deps desktop-run desktop desktop-linux desktop-windows desktop-mac desktop-all
+
+# Server the desktop app connects to on its first start, e.g.
+# `make desktop SERVER_URL=https://knowpod.example.com`. Without it the app asks for one.
+SERVER_URL ?=
+DESKTOP_FLAGS = --publish never $(if $(SERVER_URL),-c.extraMetadata.defaultServerUrl=$(SERVER_URL))
 
 # Build the single self-contained binary (frontend embedded in the backend).
 build: backend
@@ -16,10 +21,40 @@ frontend:
 backend: frontend
 	cd backend && CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/server ./cmd/server
 
+# Desktop app (Electron, in desktop/): a native window around the web UI of a knowpod server.
+# Installers land in desktop/dist. Build each platform on its own OS (macOS for desktop-mac,
+# Windows or Linux with Wine for desktop-windows); desktop-all builds all three where the host
+# can (a Mac, with Wine installed).
+desktop-deps:
+	cd desktop && npm ci
+
+# Start the desktop app from source (SERVER_URL overrides the saved server for this run).
+desktop-run: desktop-deps
+	cd desktop && KNOWPOD_SERVER_URL=$(SERVER_URL) npx electron .
+
+# Installers for the current OS.
+desktop: desktop-deps
+	cd desktop && npx electron-builder $(DESKTOP_FLAGS)
+
+# Linux: AppImage, .deb and .tar.gz.
+desktop-linux: desktop-deps
+	cd desktop && npx electron-builder --linux $(DESKTOP_FLAGS)
+
+# Windows: NSIS installer and .zip.
+desktop-windows: desktop-deps
+	cd desktop && npx electron-builder --win $(DESKTOP_FLAGS)
+
+# macOS: .dmg and .zip.
+desktop-mac: desktop-deps
+	cd desktop && npx electron-builder --mac $(DESKTOP_FLAGS)
+
+desktop-all: desktop-deps
+	cd desktop && npx electron-builder --linux --win --mac $(DESKTOP_FLAGS)
+
 test:
 	cd backend && go test ./...
 
 clean:
-	rm -rf backend/bin frontend/dist
+	rm -rf backend/bin frontend/dist desktop/dist
 	find backend/internal/web/dist -mindepth 1 ! -name index.html -delete
 	git checkout -- backend/internal/web/dist/index.html 2>/dev/null || true

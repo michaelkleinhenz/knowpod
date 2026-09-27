@@ -1,10 +1,37 @@
 # knowpod-service
 
-Backend for the knowpod AI audio recorder. Recorder gadgets push WAV recordings to this
-service, which verifies them, transcodes them losslessly to FLAC, archives them in S3, and
-then transcribes and summarizes them with AI models through OpenRouter.
-Metadata lives in MongoDB. A Go backend with an embedded React web UI (password sign-in),
-built and shipped as a single binary.
+knowpod is a universal note taking and todo management app that brings everything you
+capture into one place, and the service behind it. It integrates with your productivity
+tools and gadgets: conversations recorded on AI audio recorders arrive transcribed and
+summarized, handwritten reMarkable notebooks arrive as searchable text, and everything else
+you write or plan lives next to them as notes, tasks and boards. Use it in the browser, as
+an installed app on your phone, or as a desktop app on Windows, macOS and Linux.
+
+A Go backend with an embedded React web UI, built and shipped as a single binary. Metadata
+lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
+
+## What it does
+
+- **Notes of every kind.** Markdown text notes, transcribed and summarized recordings,
+  imported documents and kanban boards, organized in folders, sub-notes and labels, linked
+  to each other by number, searchable, and available offline.
+- **Todo management.** Any note can be a task with a due date, time, repeat rule, priority
+  and reminder, typed in plain English or German ("Call Anna tomorrow 3pm p1"). Action items
+  from your conversations become tasks in one click, and reminders arrive as push
+  notifications on your phone and computer.
+- **Integrations with your tools and gadgets.**
+
+  | Source | What arrives in knowpod |
+  |---|---|
+  | knowpod recorders and other gadgets | Recordings over a resumable [upload API](docs/device-protocol.md), transcribed and summarized, with highlights |
+  | [Pocket](https://heypocket.com) recorders | Recordings through a personal webhook |
+  | [reMarkable](https://remarkable.com) tablets | Notebooks, PDFs and EPUBs, with handwriting read into text |
+  | Audio files | WAV and MP3 uploads from the browser |
+  | AI models ([OpenRouter](https://openrouter.ai)) | Transcripts, titles, summaries and action items |
+  | Scripts and your own tools | The full [REST API](backend/api/openapi.yaml), downloads as Markdown and text |
+
+- **Everywhere you work.** A responsive web app, installable on phones and desktops (PWA),
+  and a native [desktop app](#desktop-app); English and German.
 
 ## Tech stack
 
@@ -12,20 +39,13 @@ built and shipped as a single binary.
 |---|---|
 | Backend | Go 1.24, chi router, official MongoDB driver, AWS SDK v2 |
 | Database | MongoDB 7 as a single-node replica set (for multi-document transactions) |
-| Audio storage | Amazon S3 (an existing bucket) |
+| File storage | Amazon S3 (an existing bucket) for audio and documents |
 | Transcoding | Pure-Go FLAC encoder ([mewkiz/flac](https://github.com/mewkiz/flac)), no external binaries |
 | Frontend | React 18 + TypeScript, Vite, react-router |
 | Deploy | One binary (frontend embedded in the backend), Docker / docker-compose |
+| Desktop app | Electron + electron-builder (Windows, macOS, Linux), optional |
 
-## How recordings flow
-
-```
-gadget ──POST /uploads──▶ upload created (status: uploading)
-       ──PATCH chunks──▶ streamed to the local spool (UPLOAD_DIR), resumable
-                         last byte: SHA-256 + WAV header verified (status: received)
-background worker ─────▶ WAV → FLAC, uploaded to S3 (status: stored), spool cleaned up
-AI worker ─────────────▶ transcript (status: transcribed) → title + summary (status: summarized)
-```
+## Features
 
 - **Users** sign in with email and password and each see only their own notes and
   devices. Admins manage users and the AI settings. The built-in admin is `ADMIN_EMAIL`,
@@ -52,12 +72,18 @@ AI worker ─────────────▶ transcript (status: transcr
   with a label as cards, all starting in the first column. New boards have the columns Todo,
   In Progress and Done; columns can be renamed, added and deleted, and cards are dragged
   between them.
-- Notes can carry **labels**: colored chips in the note's header, with your own labels
+- A note's page shows its title, then one compact row with its number, date, labels and
+  icon actions; a dot in the top right corner shows whether its edits are saved. On wide
+  screens a sidebar next to the note (not on boards) holds its icon actions, task (check
+  box, date, priority), labels and details (date, type, duration, folder, boards, status,
+  model), and the header keeps only the title; on narrower screens they stay in
+  the header.
+- Notes can carry **labels**: colored chips on the note's page, with your own labels
   defined on the spot or under **Settings → Labels**. The built-in **Task** label adds a
   check box to the note's icon in the list; the check mark is saved.
 - **Tasks** have a due date, an optional time, a repeat rule ("every weekday", "every 2
-  weeks"), a reminder and a priority (P1–P3), set from the **Date** button in the note's
-  header. Dates can be typed in English or German ("tomorrow 3pm", "jeden Montag", "am
+  weeks"), a reminder and a priority (P1–P3), set from the **Date** button on the note's
+  page. Dates can be typed in English or German ("tomorrow 3pm", "jeden Montag", "am
   5.10."), also in a note's title. The **Tasks** view lists the open tasks by due date and
   adds new ones from one line ("Call Anna tomorrow 3pm p1"); checking off a recurring task
   moves it to its next date.
@@ -105,8 +131,23 @@ AI worker ─────────────▶ transcript (status: transcr
 - The web UI is available in English and German; each user picks the language in
   **Settings**.
 - The web UI works on phones and can be installed as an app (PWA).
+- A **desktop app** for Windows, macOS and Linux is an alternative to the browser: the same
+  web UI in a native window, signed in to and talking to the server exactly like the web app
+  (see [Desktop app](#desktop-app)).
 
-Supported input: integer PCM WAV, 8/16/24 bit, 1–8 channels, up to 4 GiB.
+## How recordings flow
+
+Recordings from gadgets go through a pipeline before they appear as notes:
+
+```
+gadget ──POST /uploads──▶ upload created (status: uploading)
+       ──PATCH chunks──▶ streamed to the local spool (UPLOAD_DIR), resumable
+                         last byte: SHA-256 + WAV header verified (status: received)
+background worker ─────▶ WAV → FLAC, uploaded to S3 (status: stored), spool cleaned up
+AI worker ─────────────▶ transcript (status: transcribed) → title + summary (status: summarized)
+```
+
+Supported gadget input: integer PCM WAV, 8/16/24 bit, 1–8 channels, up to 4 GiB.
 
 ## Documentation
 
@@ -114,7 +155,7 @@ Supported input: integer PCM WAV, 8/16/24 bit, 1–8 channels, up to 4 GiB.
 |---|---|
 | [Device upload protocol](docs/device-protocol.md) | Implementing the upload client on the gadget: requests, error handling, retry logic |
 | [Architecture](docs/architecture.md) | Backend developers: components, recording lifecycle, worker, data model, adding processing stages |
-| [Operations](docs/operations.md) | Deploying and running: Railway, AWS/IAM setup, users and sign-in, Pocket, reMarkable, uploads, installing the app, AI settings, devices, monitoring, recovery, limitations |
+| [Operations](docs/operations.md) | Deploying and running: Railway, AWS/IAM setup, users and sign-in, Pocket, reMarkable, uploads, installing the app, desktop app, AI settings, devices, monitoring, recovery, limitations |
 | [OpenAPI spec](backend/api/openapi.yaml) | The formal API definition. The service serves it at `/api/v1/openapi.yaml` and `/api/v1/openapi.json`, and the Devices tab links to it. |
 
 ## Quick start (Docker)
@@ -169,6 +210,28 @@ Production runs on [Railway](https://railway.com) with the root `Dockerfile` and
 make build
 ./backend/bin/server      # requires MongoDB and an S3 bucket (see Configuration)
 ```
+
+## Desktop app
+
+`desktop/` holds an Electron app: a native window around the web UI. It contains no backend
+and no copy of the frontend; it loads the web app from a knowpod server and uses the API
+exactly as the browser does (same session cookie, same offline copies). On the first start
+it asks for the server's address (**File → Change Server…** changes it later).
+
+```bash
+make desktop-run SERVER_URL=http://localhost:8080   # start it from source against a server
+make desktop                                        # installers for this OS, in desktop/dist
+make desktop-linux                                  # AppImage, .deb, .tar.gz
+make desktop-windows                                # NSIS installer (needs Windows or Wine), .zip
+make desktop-mac                                    # .dmg, .zip (needs macOS)
+make desktop SERVER_URL=https://knowpod.example.com # preset the server, no question on first start
+```
+
+Requires Node.js 22. Build each platform on its own OS; the **Desktop app** GitHub Actions
+workflow (`.github/workflows/desktop.yml`, run by hand or on a `desktop-v*` tag) builds all
+three and keeps the installers as artifacts. The builds are not code-signed, so macOS
+Gatekeeper and Windows SmartScreen warn on first open. The desktop app can't receive push
+notifications (see [Operations](docs/operations.md#desktop-app)).
 
 ## Local development
 
@@ -242,6 +305,7 @@ backend/
     transport/http/    router, middleware, handlers
     web/               embedded frontend (dist/) + SPA handler
     worker/            background pipeline: claim, run stages, retry/backoff
+desktop/               Electron desktop app (main process, server setup page, packaging config)
 docs/                  device protocol, architecture, operations
 frontend/
   public/              app icons (favicon.svg, PWA and Apple touch icons)

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, NotificationStatus } from '../api/client';
 import { errorText } from '../lib/errors';
-import { currentSubscription, deviceId, isInstalled, isIOS, pushSupported, subscribe, unsubscribe } from '../lib/push';
+import { currentSubscription, deviceId, isDesktopApp, isInstalled, isIOS, pushSupported, subscribe, unsubscribe } from '../lib/push';
 import { formatDate } from '../lib/recordings';
 
 // deviceName makes a short name of a browser's user agent, e.g. "Safari on iPhone".
@@ -72,7 +72,7 @@ export function NotificationSettings() {
       {status && !status.available ? (
         <p className="notice">{t('notifications.unavailable')}</p>
       ) : !supported ? (
-        <p className="notice">{isIOS() && !isInstalled() ? t('notifications.iosInstall') : t('notifications.unsupported')}</p>
+        <p className="notice">{isDesktopApp() ? t('notifications.desktop') : isIOS() && !isInstalled() ? t('notifications.iosInstall') : t('notifications.unsupported')}</p>
       ) : (
         <>
           <p className="notification-state">

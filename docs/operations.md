@@ -328,9 +328,9 @@ curl -H "Authorization: Bearer $ADMIN_TOKEN" "$API/recordings/<id>/summary?forma
 
 ## Tasks and reminders
 
-Any note can be a task: the **Date** button in its header sets a due date (typed as
-"tomorrow 3pm", "every monday", "jeden Monat am 1." or picked), an optional time, a repeat
-rule, a reminder and a priority (P1–P3), and puts the **Task** label on it. Typing a date
+Any note can be a task: the **Date** button on the note's page (in its header, or in its
+sidebar on wide screens) sets a due date (typed as "tomorrow 3pm", "every monday", "jeden
+Monat am 1." or picked), an optional time, a repeat rule, a reminder and a priority (P1–P3), and puts the **Task** label on it. Typing a date
 into a note's title offers it as the task's date (Enter takes it out of the title). The
 **Tasks** view of the notes list shows the open tasks by due date (overdue, today, the next
 days, later, no date) and adds tasks from one line ("Call Anna tomorrow 3pm p1"). Checking
@@ -358,6 +358,8 @@ contact about the sender.
   then turn notifications on.
 - **Android, desktop Chrome, Edge, Firefox, Safari**: works in the browser and in the
   installed app.
+- **Desktop app**: can't receive notifications (Electron has no push service); turn them on
+  in a browser or on a phone instead.
 - The server must be able to reach the push services over HTTPS (e.g.
   `fcm.googleapis.com`, `updates.push.services.mozilla.com`, `web.push.apple.com`).
 
@@ -385,6 +387,27 @@ by a service worker so it starts instantly (the same service worker shows
 loaded live (API responses are never cached), so the app needs a connection to show
 content. New versions are picked up automatically on the next start. Installing requires
 HTTPS (or `localhost`).
+
+## Desktop app
+
+As an alternative to the browser, knowpod runs as a desktop app on Windows, macOS and Linux
+(built with `make desktop`, see the [README](../README.md#desktop-app)). It is only a window
+around the web UI: it loads the web app from your server and signs in and calls the API
+exactly like the browser, so nothing changes on the server and no extra configuration or
+CORS setting is needed. New server versions reach it like the web app, on the next start.
+
+- On the first start it asks for the server's address (the one opened in the browser), unless
+  one was set when it was built (`SERVER_URL`). **File → Change Server…** (on macOS in the
+  app menu) changes it; `KNOWPOD_SERVER_URL` in the environment overrides it for one run.
+- The address and the window size are kept in the app's data folder (`config.json` under
+  `%APPDATA%\knowpod`, `~/Library/Application Support/knowpod` or `~/.config/knowpod`); the
+  sign-in and offline copies too, like in a browser profile.
+- Links to other sites open in the default browser; downloads ask where to save.
+- The server should be served over HTTPS, as for the browser (the session cookie and
+  offline support depend on it); `http://localhost` works for development.
+- Notifications aren't available in the desktop app (see [Notifications](#notifications)).
+- The installers are not code-signed: on macOS open the app with right-click → **Open** the
+  first time, on Windows choose **More info → Run anyway**.
 
 ## AI processing (OpenRouter)
 
