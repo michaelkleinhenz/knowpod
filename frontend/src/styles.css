@@ -766,15 +766,46 @@ a {
   flex: 1;
   min-width: 0;
   display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+/* The title stays on one line, shortened to fit; the note's number always shows. */
+.note-title-line {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.note-title-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-title-line > :not(.note-title-text) {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* A task's date and priority and the processing state, below the title. */
+.note-title-extra {
+  display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.25rem 0.6rem;
-  overflow-wrap: anywhere;
+}
+
+.note-title-extra:empty {
+  display: none;
 }
 
 .conversation-time {
   flex: none;
   font-size: 0.85rem;
+  white-space: nowrap;
   color: var(--color-muted);
 }
 
@@ -2315,6 +2346,10 @@ html:has(.notes-layout) {
   padding: 0.5rem;
 }
 
+.notes-sidebar .head-actions {
+  gap: 0.35rem;
+}
+
 .notes-sidebar .search {
   margin-bottom: 1rem;
 }
@@ -2707,7 +2742,7 @@ html:has(.notes-layout) {
   --icon-w: 30px;
   position: absolute;
   top: 50%;
-  left: calc(0.5rem + (var(--icon-w) - 18px) / 2);
+  left: calc(var(--note-gutter) + 0.5rem + (var(--icon-w) - 18px) / 2);
   width: 18px;
   height: 18px;
   margin: 0;
@@ -2770,6 +2805,12 @@ html:has(.notes-layout) {
   margin-left: 0.95rem;
 }
 
+/* Sub-notes hang from their note's toggle. */
+.tree-children.sub-note-list {
+  padding-left: 0.1rem;
+  margin-left: 0.65rem;
+}
+
 .tree-row {
   display: flex;
   align-items: center;
@@ -2804,18 +2845,6 @@ html:has(.notes-layout) {
 .tree-toggle .folder-icon {
   flex: none;
   color: var(--color-primary);
-}
-
-/* The trash sits below the folders and notes, set apart by a line. */
-.trash-folder {
-  margin-top: 0.4rem;
-  border-top: 1px solid var(--color-border);
-  padding-top: 0.25rem;
-}
-
-.trash-folder .tree-toggle > svg:not(.tree-chevron) {
-  flex: none;
-  color: var(--color-muted);
 }
 
 .tree-chevron {
@@ -2895,8 +2924,9 @@ html:has(.notes-layout) {
   -webkit-user-drag: element;
 }
 
-/* A note's row; the check box of a task and the toggle of its sub-notes sit on it. */
+/* A note's row; the check box of a task sits on it. */
 .note-line {
+  --note-gutter: 2.6rem;
   position: relative;
   display: flex;
   align-items: center;
@@ -2913,36 +2943,45 @@ html:has(.notes-layout) {
   box-shadow: inset 0 0 0 2px var(--color-primary);
 }
 
-.note-sub-toggle {
+/* In front of every note, so that all icons and times line up: the toggle of its sub-notes
+   (if it has any) and the button to add one, each in its own place. */
+.note-gutter {
   flex: none;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  width: var(--note-gutter);
+}
+
+.note-sub-toggle,
+.note-add-sub {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
+  justify-content: center;
+  height: 1.6rem;
   font: inherit;
   background: none;
   border: none;
   border-radius: 6px;
-  padding: 0.4rem;
+  padding: 0;
+  color: var(--color-muted);
   cursor: pointer;
+}
+
+.note-sub-toggle {
+  grid-column: 1;
 }
 
 .note-sub-toggle:hover,
 .note-sub-toggle:focus-visible {
+  color: var(--color-text);
   background: var(--color-surface);
 }
 
 /* Adds a sub-note; faint, and on devices with a pointer only shown on the row's hover. */
 .note-add-sub {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  background: none;
-  border: none;
-  border-radius: 6px;
-  padding: 0.4rem;
-  color: var(--color-muted);
+  grid-column: 2;
   opacity: 0.45;
-  cursor: pointer;
 }
 
 .note-add-sub svg {
@@ -2962,9 +3001,18 @@ html:has(.notes-layout) {
     opacity: 0;
   }
 
-  .note-line:hover > .note-add-sub {
+  .note-line:hover .note-add-sub {
     opacity: 0.6;
   }
+
+  .note-line:hover .note-add-sub:hover {
+    opacity: 1;
+  }
+}
+
+/* How many sub-notes a note has, next to its number. */
+.note-sub-count {
+  font-size: 0.75rem;
 }
 
 /* The note's number, for linking it with "#12". */
@@ -3643,16 +3691,38 @@ a.note-ref:hover {
   flex: 1;
   min-width: 0;
   font: inherit;
-  font-size: 16px;
+  font-size: 0.9rem;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 8px;
   padding: 0.5rem 0.7rem;
 }
 
-.quick-add .small-button {
-  padding: 0.3rem 0.8rem;
-  border-radius: 8px;
+/* Round like the list's other buttons (not the usual solid submit button). */
+.quick-add .quick-add-button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+}
+
+.quick-add .quick-add-button:hover:not(:disabled) {
+  background: var(--color-surface);
+  border-color: var(--color-primary);
+}
+
+/* 16px on touch screens, so iOS doesn't zoom in on focus. */
+@media (pointer: coarse) {
+  .quick-add input {
+    font-size: 16px;
+  }
 }
 
 .quick-add-preview {
@@ -4503,4 +4573,54 @@ a.note-ref:hover {
   .time-log-head .head-actions {
     margin-left: 0;
   }
+}
+
+/* --- Trash --- */
+
+/* The trash button, last in the list's head, shows only the trash while on. */
+.pill-button.trash-toggle.active {
+  color: var(--color-primary-dark);
+  background: #e6edf5;
+  border-color: var(--color-primary);
+}
+
+.pill-button.trash-toggle.drop {
+  border-color: var(--color-error);
+  box-shadow: 0 0 0 2px var(--color-error);
+}
+
+.trash-toggle {
+  position: relative;
+}
+
+.trash-count {
+  position: absolute;
+  top: -0.35rem;
+  right: -0.35rem;
+  min-width: 1.1rem;
+  height: 1.1rem;
+  padding: 0 0.25rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  line-height: 1.1rem;
+  text-align: center;
+  color: var(--color-muted);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+}
+
+.notes-sidebar .head-actions .trash-toggle .trash-count {
+  display: inline-block;
+}
+
+.trash-view-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.trash-view-head .day-heading {
+  margin: 0;
 }

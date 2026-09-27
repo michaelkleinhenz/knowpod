@@ -4,8 +4,8 @@ import type { NoteType } from '../api/client';
 // Small inline icons (stroke uses currentColor).
 
 // NoteIcon shows a note as a page; its content says the note's type: a sound wave for audio
-// recordings, lines of text with a heading for text notes, handwriting for reMarkable
-// documents, columns of cards for boards.
+// recordings, lines of text with a heading for text notes, the reMarkable logo for documents imported
+// from the reMarkable, columns of cards for boards.
 export function NoteIcon({ type, label }: { type: NoteType; label?: string }) {
   return (
     <svg
@@ -20,11 +20,10 @@ export function NoteIcon({ type, label }: { type: NoteType; label?: string }) {
       {label && <title>{label}</title>}
       <rect x="0.5" y="0.5" width="29" height="37" rx="4" fill="var(--color-surface)" stroke="var(--color-border)" />
       {type === 'document' ? (
-        <g fill="none" stroke="var(--color-primary)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" opacity="0.8">
-          <path d="M7 11c1.5-2.5 2.5-2.5 3 0s1.5 2.5 3 0 2.5-2.5 3 0" />
-          <path d="M7 18.5c1.2-2 2.2-2 2.8 0s1.8 2 3 0 2-2 2.7 0 1.8 2 3 0 1.5-1.5 2.5-.5" />
-          <path d="M7 26c1.4-2.2 2.4-2.2 3 0s1.6 2.2 3 0" opacity="0.6" />
-        </g>
+        // The reMarkable logo: its "rM" monogram.
+        <text x="15" y="23.5" textAnchor="middle" fill="var(--color-text)" fontFamily="Georgia, 'Times New Roman', serif" fontSize="13" fontWeight="600" letterSpacing="-0.6">
+          rM
+        </text>
       ) : type === 'board' ? (
         <>
           <rect x="6" y="7" width="18" height="2.4" rx="1.2" fill="var(--color-muted)" opacity="0.45" />

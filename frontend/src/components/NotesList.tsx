@@ -4,15 +4,16 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api, Recording } from '../api/client';
 import { useNotes } from '../context/NotesContext';
 import { useAuth } from '../auth';
-import { FolderTree } from './FolderTree';
+import { FolderTree, NOTE_TYPE } from './FolderTree';
 import { FilterBar } from './SavedFilters';
 import { TimerBar } from './TimeControls';
-import { NewBoardIcon, NewFolderIcon, NewNoteIcon, RefreshIcon, SearchIcon, UploadIcon } from './Icons';
-import { NoteRow } from './NoteRow';
+import { NewBoardIcon, NewFolderIcon, NewNoteIcon, RefreshIcon, SearchIcon, TrashIcon, UploadIcon } from './Icons';
+import { NoteTreeRows, useNoteTree } from './NoteTree';
 import { TasksView } from './TasksView';
+import { TrashView } from './TrashView';
 import { errorText } from '../lib/errors';
 import { parseFilter, searchMatcher } from '../lib/filterQuery';
-import { dayKey, dayLabel, formatTime, when } from '../lib/recordings';
+import { dayKey, dayLabel, formatDate, formatTime, when } from '../lib/recordings';
 
 const ACCEPT = '.wav,.mp3,audio/wav,audio/x-wav,audio/wave,audio/mpeg';
 
@@ -57,7 +58,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
   const { t } = useTranslation();
   const { account } = useAuth();
   const navigate = useNavigate();
-  const { recordings, folders, filters, filterContext, trash, aiReady, error, refreshing, reload: load, upsert } = useNotes();
+  const { recordings, folders, filters, filterContext, trash, moveToTrash, aiReady, error, refreshing, reload: load, upsert } = useNotes();
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -66,6 +67,9 @@ export function NotesList({ activeId }: { activeId?: string }) {
   const [view, setViewState] = useState(loadView);
   const [newFolder, setNewFolder] = useState(0);
   const [activeFilterId, setActiveFilterState] = useState(loadFilter);
+  // showTrash shows only the trash instead of the notes.
+  const [showTrash, setShowTrash] = useState(false);
+  const [trashDrop, setTrashDrop] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const setView = (v: View) => {
@@ -187,8 +191,11 @@ export function NotesList({ activeId }: { activeId?: string }) {
   }, [query, activeFilter, filterContext]);
   const matches = useMemo(() => (search ? (recordings ?? []).filter(search) : (recordings ?? [])), [recordings, search]);
 
+  // The timeline lists the notes by day, each sub-note under its parent note, whose time
+  // orders them.
+  const tree = useNoteTree(recordings ?? matches, matches);
   const groups = useMemo(() => {
-    const list = matches.slice().sort((a, b) => when(b).getTime() - when(a).getTime());
+    const list = tree.roots.filter((r) => tree.shown.get(r.id)).sort((a, b) => when(b).getTime() - when(a).getTime());
     const out: { key: string; day: Date; items: Recording[] }[] = [];
     for (const r of list) {
       const d = when(r);
@@ -197,7 +204,29 @@ export function NotesList({ activeId }: { activeId?: string }) {
       out[out.length - 1].items.push(r);
     }
     return out;
-  }, [matches]);
+  }, [tree]);
+
+  // Notes dragged onto the trash button (from the folder view) are moved to the trash.
+  const trashDropProps = {
+    onDragOver: (e: DragEvent) => {
+      if (!e.dataTransfer.types.includes(NOTE_TYPE)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = 'move';
+      setTrashDrop(true);
+    },
+    onDragLeave: () => setTrashDrop(false),
+    onDrop: (e: DragEvent) => {
+      if (!e.dataTransfer.types.includes(NOTE_TYPE)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setTrashDrop(false);
+      const r = recordings?.find((n) => n.id === e.dataTransfer.getData(NOTE_TYPE));
+      if (!r) return;
+      setCreateError(null);
+      moveToTrash(r).catch((err) => setCreateError(errorText(err, t)));
+    },
+  };
 
   return (
     <section
@@ -217,7 +246,14 @@ export function NotesList({ activeId }: { activeId?: string }) {
           <button type="button" className="pill-button icon-only-mobile" onClick={createText} disabled={creating} aria-label={t('conversations.newNote')}>
             <NewNoteIcon /> <span>{t('conversations.newNote')}</span>
           </button>
-          <button type="button" className="pill-button icon-only-mobile" onClick={createBoard} disabled={creating} title={t('conversations.newBoard')} aria-label={t('conversations.newBoard')}>
+          <button
+            type="button"
+            className="pill-button icon-only-mobile"
+            onClick={createBoard}
+            disabled={creating}
+            title={t('conversations.newBoard')}
+            aria-label={t('conversations.newBoard')}
+          >
             <NewBoardIcon /> <span>{t('conversations.newBoard')}</span>
           </button>
           <button type="button" className="pill-button icon-only-mobile" onClick={() => fileInput.current?.click()} aria-label={t('conversations.uploadAudio')}>
@@ -225,6 +261,18 @@ export function NotesList({ activeId }: { activeId?: string }) {
           </button>
           <button type="button" className="pill-button icon-only-mobile" onClick={load} disabled={refreshing} aria-label={t('common.refresh')}>
             <RefreshIcon /> <span>{refreshing ? t('common.refreshing') : t('common.refresh')}</span>
+          </button>
+          <button
+            type="button"
+            className={`pill-button icon-only-mobile trash-toggle${showTrash ? ' active' : ''}${trashDrop ? ' drop' : ''}`}
+            aria-pressed={showTrash}
+            title={t(showTrash ? 'trash.hide' : 'trash.show')}
+            aria-label={t(showTrash ? 'trash.hide' : 'trash.show')}
+            onClick={() => setShowTrash((v) => !v)}
+            {...trashDropProps}
+          >
+            <TrashIcon /> <span>{t('trash.title')}</span>
+            {!!trash?.length && <span className="trash-count">{trash.length}</span>}
           </button>
         </div>
         <input ref={fileInput} type="file" accept={ACCEPT} multiple hidden onChange={handleFiles} />
@@ -234,30 +282,28 @@ export function NotesList({ activeId }: { activeId?: string }) {
 
       <label className="search">
         <SearchIcon />
-        <input
-          type="search"
-          placeholder={t('common.search')}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          aria-label={t('conversations.searchLabel')}
-        />
+        <input type="search" placeholder={t('common.search')} value={query} onChange={(e) => setQuery(e.target.value)} aria-label={t('conversations.searchLabel')} />
       </label>
       <FilterBar query={query} setQuery={setQuery} active={activeFilter?.id ?? null} setActive={setActiveFilter} />
 
-      <div className="list-toolbar">
-        <div className="segmented" role="tablist" aria-label={t('folders.viewLabel')}>
-          {VIEWS.map((v) => (
-            <button key={v} type="button" role="tab" aria-selected={view === v} className={view === v ? 'active' : ''} onClick={() => setView(v)}>
-              {t(`folders.views.${v}`)}
+      {showTrash && recordings && <TrashView search={search} activeId={activeId} aiReady={aiReady} onSetDone={(r, d) => void setDone(r, d)} />}
+
+      {!showTrash && (
+        <div className="list-toolbar">
+          <div className="segmented" role="tablist" aria-label={t('folders.viewLabel')}>
+            {VIEWS.map((v) => (
+              <button key={v} type="button" role="tab" aria-selected={view === v} className={view === v ? 'active' : ''} onClick={() => setView(v)}>
+                {t(`folders.views.${v}`)}
+              </button>
+            ))}
+          </div>
+          {view === 'folders' && (
+            <button type="button" className="pill-button" title={t('folders.new')} aria-label={t('folders.new')} onClick={() => setNewFolder((n) => n + 1)}>
+              <NewFolderIcon /> <span>{t('folders.new')}</span>
             </button>
-          ))}
+          )}
         </div>
-        {view === 'folders' && (
-          <button type="button" className="pill-button" title={t('folders.new')} aria-label={t('folders.new')} onClick={() => setNewFolder((n) => n + 1)}>
-            <NewFolderIcon /> <span>{t('folders.new')}</span>
-          </button>
-        )}
-      </div>
+      )}
 
       {uploads.length > 0 && (
         <ul className="upload-list" aria-live="polite">
@@ -284,17 +330,13 @@ export function NotesList({ activeId }: { activeId?: string }) {
 
       {!aiReady && recordings && recordings.length > 0 && (
         <p className="notice">
-          {account?.role === 'admin' ? (
-            <Trans i18nKey="conversations.aiOffAdmin" components={{ 1: <Link to="/admin?tab=general" /> }} />
-          ) : (
-            t('conversations.aiOff')
-          )}
+          {account?.role === 'admin' ? <Trans i18nKey="conversations.aiOffAdmin" components={{ 1: <Link to="/admin?tab=general" /> }} /> : t('conversations.aiOff')}
         </p>
       )}
       {error && <p className="error">{error}</p>}
       {createError && <p className="error">{createError}</p>}
       {!recordings && !error && <p className="muted">{t('common.loading')}</p>}
-      {recordings && recordings.length === 0 && view !== 'tasks' && (
+      {!showTrash && recordings && recordings.length === 0 && view !== 'tasks' && (
         <div className="empty">
           <p className="muted">{t('conversations.empty')}</p>
           <p className="muted">
@@ -310,17 +352,28 @@ export function NotesList({ activeId }: { activeId?: string }) {
           </div>
         </div>
       )}
-      {view === 'tasks' && recordings && <TasksView notes={matches} activeId={activeId} aiReady={aiReady} onSetDone={(r, d) => void setDone(r, d)} />}
+      {!showTrash && view === 'tasks' && recordings && (
+        <TasksView notes={matches} activeId={activeId} aiReady={aiReady} onSetDone={(r, d) => void setDone(r, d)} onNewSub={creating ? undefined : (r) => void createSub(r)} />
+      )}
 
-      {recordings && recordings.length > 0 && matches.length === 0 && view !== 'tasks' && (
+      {!showTrash && recordings && recordings.length > 0 && matches.length === 0 && view !== 'tasks' && (
         <p className="muted empty">{query.trim() ? t('conversations.noMatch', { query }) : t('filters.noMatch', { name: activeFilter?.name ?? '' })}</p>
       )}
 
-      {view === 'folders' && recordings && (recordings.length > 0 || !!folders?.length || !!trash?.length || newFolder > 0) && (
-        <FolderTree notes={matches} search={search} activeId={activeId} aiReady={aiReady} onSetDone={(r, d) => void setDone(r, d)} onNewSub={creating ? undefined : (r) => void createSub(r)} newFolder={newFolder} />
+      {!showTrash && view === 'folders' && recordings && (recordings.length > 0 || !!folders?.length || newFolder > 0) && (
+        <FolderTree
+          notes={matches}
+          search={search}
+          activeId={activeId}
+          aiReady={aiReady}
+          onSetDone={(r, d) => void setDone(r, d)}
+          onNewSub={creating ? undefined : (r) => void createSub(r)}
+          newFolder={newFolder}
+        />
       )}
 
-      {view === 'timeline' &&
+      {!showTrash &&
+        view === 'timeline' &&
         groups.map((g) => {
           const { label, date } = dayLabel(g.day);
           return (
@@ -329,9 +382,16 @@ export function NotesList({ activeId }: { activeId?: string }) {
                 {label} <span>{date}</span>
               </h2>
               <ul className="conversation-list">
-                {g.items.map((r) => (
-                  <NoteRow key={r.id} rec={r} active={r.id === activeId} aiReady={aiReady} meta={formatTime(when(r))} onSetDone={(r, d) => void setDone(r, d)} onNewSub={creating ? undefined : (r) => void createSub(r)} />
-                ))}
+                <NoteTreeRows
+                  list={g.items}
+                  tree={tree}
+                  searching={search !== null}
+                  activeId={activeId}
+                  aiReady={aiReady}
+                  meta={(r, depth) => (depth === 0 ? formatTime(when(r)) : formatDate(when(r)))}
+                  onSetDone={(r, d) => void setDone(r, d)}
+                  onNewSub={creating ? undefined : (r) => void createSub(r)}
+                />
               </ul>
             </div>
           );
