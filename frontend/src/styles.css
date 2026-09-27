@@ -282,6 +282,23 @@ button[type='submit']:disabled,
   cursor: default;
 }
 
+/* The app version under Settings → General. */
+.about-versions {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.3rem 1rem;
+  margin: 0;
+}
+
+.about-versions dt {
+  color: var(--color-muted);
+}
+
+.about-versions dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
 /* A compact, icon-only submit button next to a single row of inputs. */
 button.icon-submit {
   display: inline-flex;

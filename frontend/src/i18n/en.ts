@@ -617,6 +617,11 @@ export const en = {
       label: 'Color scheme',
       names: { system: 'System', light: 'Light', dark: 'Dark' },
     },
+    about: {
+      title: 'About knowpod',
+      version: 'Version',
+      desktopVersion: 'Desktop app',
+    },
     themes: {
       title: 'Summary themes',
       intro: 'A theme defines how a summary is structured. Pick one per note under “Summary details”. You can adjust the built-in themes to your liking (only for you) and add your own.',

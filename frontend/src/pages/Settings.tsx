@@ -11,6 +11,7 @@ import { Account } from './Account';
 import { Devices } from './Devices';
 import { APPEARANCES, applyAppearance, currentAppearance } from '../lib/appearance';
 import { errorText } from '../lib/errors';
+import { APP_VERSION, desktopVersion } from '../lib/version';
 
 const TABS = ['general', 'account', 'devices', 'themes', 'labels', 'filters'] as const;
 
@@ -90,6 +91,28 @@ function AppearanceSettings() {
   );
 }
 
+// About shows the app version (and the desktop app's, when running in it).
+function About() {
+  const { t } = useTranslation();
+  const desktop = desktopVersion();
+
+  return (
+    <>
+      <h2 className="card-title">{t('settings.about.title')}</h2>
+      <dl className="about-versions">
+        <dt>{t('settings.about.version')}</dt>
+        <dd>{APP_VERSION}</dd>
+        {desktop && (
+          <>
+            <dt>{t('settings.about.desktopVersion')}</dt>
+            <dd>{desktop}</dd>
+          </>
+        )}
+      </dl>
+    </>
+  );
+}
+
 // Settings groups the user's own settings in tabs: they apply only to the signed-in user.
 // Settings for all users are under Admin.
 export function Settings() {
@@ -105,6 +128,9 @@ export function Settings() {
           </section>
           <section className="card">
             <AppearanceSettings />
+          </section>
+          <section className="card">
+            <About />
           </section>
         </>
       )}

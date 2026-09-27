@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -8,7 +9,13 @@ import { VitePWA } from 'vite-plugin-pwa';
 // It also shows task reminders sent through Web Push (public/push-sw.js).
 // In dev the /api path is proxied to the Go backend so URLs match production, where
 // the backend serves both the embedded SPA and the API from one origin.
+// The app version comes from the VERSION file at the repository root (see README.md).
+const version = readFileSync(new URL('../VERSION', import.meta.url), 'utf8').trim();
+
 export default defineConfig({
+  define: {
+    __APP_VERSION__: JSON.stringify(version),
+  },
   plugins: [
     react(),
     VitePWA({

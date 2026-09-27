@@ -243,9 +243,26 @@ make desktop SERVER_URL=https://knowpod.example.com # preset the server, no ques
 
 Requires Node.js 22. Build each platform on its own OS; the **Desktop app** GitHub Actions
 workflow (`.github/workflows/desktop.yml`, run by hand or on a `desktop-v*` tag) builds all
-three and keeps the installers as artifacts. The builds are not code-signed, so macOS
+three and keeps the installers as artifacts; a `desktop-v<version>` tag also publishes them as
+a GitHub release (see [Version](#version)). The builds are not code-signed, so macOS
 Gatekeeper and Windows SmartScreen warn on first open. The desktop app can't receive push
 notifications (see [Operations](docs/operations.md#desktop-app)).
+
+## Version
+
+The app version lives in the [`VERSION`](VERSION) file at the repository root, a single line
+such as `0.1.0`. Edit it there, or run `make set-version V=1.2.0`, which also keeps
+`frontend/package.json` and `desktop/package.json` in step. It is used by:
+
+- the web app, which shows it under **Settings → General → About knowpod** (in the desktop
+  app, next to the desktop app's own version);
+- the server binary (`make build` and the Docker image), which logs it on start;
+- the desktop installers, whose file names and app metadata carry it
+  (`knowpod-<version>-<os>-<arch>.<ext>`).
+
+To release the desktop app, bump `VERSION`, commit, and push a tag `desktop-v<version>`
+(e.g. `git tag desktop-v1.2.0 && git push origin desktop-v1.2.0`). The workflow refuses a
+tag that doesn't match `VERSION`.
 
 ## Local development
 

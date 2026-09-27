@@ -619,6 +619,11 @@ export const de: Translation = {
       label: 'Farbschema',
       names: { system: 'System', light: 'Hell', dark: 'Dunkel' },
     },
+    about: {
+      title: 'Über knowpod',
+      version: 'Version',
+      desktopVersion: 'Desktop-App',
+    },
     themes: {
       title: 'Vorlagen für Zusammenfassungen',
       intro: 'Eine Vorlage legt fest, wie eine Zusammenfassung aufgebaut ist. Du wählst sie pro Notiz unter „Details der Zusammenfassung“. Die vordefinierten Vorlagen kannst du nach deinen Wünschen anpassen (nur für dich) und eigene hinzufügen.',

@@ -1,6 +1,7 @@
 # Builds the desktop app (desktop/) on each OS it ships for and keeps the installers as
 # workflow artifacts. Runs by hand (Actions → Desktop app → Run workflow) and for tags
-# desktop-v*. The builds are unsigned.
+# desktop-v*. The builds are unsigned. The version comes from the VERSION file; a tag
+# desktop-v<VERSION> also publishes the installers as a GitHub release.
 name: Desktop app
 
 on:
@@ -12,8 +13,28 @@ on:
   push:
     tags: ['desktop-v*']
 
+permissions:
+  contents: read
+
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        name: Read VERSION
+        run: |
+          version="$(tr -d '[:space:]' < VERSION)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_REF_TYPE" == tag && "$GITHUB_REF_NAME" != "desktop-v$version" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match VERSION ($version); tag desktop-v$version instead."
+            exit 1
+          fi
+
   build:
+    needs: version
     strategy:
       fail-fast: false
       matrix:
@@ -38,13 +59,14 @@ jobs:
         shell: bash
         env:
           SERVER_URL: ${{ inputs.server_url }}
+          VERSION: ${{ needs.version.outputs.version }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         run: |
           npm ci
-          npx electron-builder --${{ matrix.platform }} --publish never ${SERVER_URL:+-c.extraMetadata.defaultServerUrl="$SERVER_URL"}
+          npx electron-builder --${{ matrix.platform }} --publish never -c.extraMetadata.version="$VERSION" ${SERVER_URL:+-c.extraMetadata.defaultServerUrl="$SERVER_URL"}
       - uses: actions/upload-artifact@v4
         with:
-          name: knowpod-desktop-${{ matrix.platform }}
+          name: knowpod-desktop-${{ needs.version.outputs.version }}-${{ matrix.platform }}
           path: |
             desktop/dist/*.AppImage
             desktop/dist/*.deb
@@ -53,3 +75,19 @@ jobs:
             desktop/dist/*.zip
             desktop/dist/*.dmg
           if-no-files-found: error
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: knowpod ${{ needs.version.outputs.version }}
+          files: dist/*
