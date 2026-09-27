@@ -1,10 +1,37 @@
 # knowpod-service
 
-Backend for the knowpod AI audio recorder. Recorder gadgets push WAV recordings to this
-service, which verifies them, transcodes them losslessly to FLAC, archives them in S3, and
-then transcribes and summarizes them with AI models through OpenRouter.
-Metadata lives in MongoDB. A Go backend with an embedded React web UI (password sign-in),
-built and shipped as a single binary.
+knowpod is a universal note taking and todo management app that brings everything you
+capture into one place, and the service behind it. It integrates with your productivity
+tools and gadgets: conversations recorded on AI audio recorders arrive transcribed and
+summarized, handwritten reMarkable notebooks arrive as searchable text, and everything else
+you write or plan lives next to them as notes, tasks and boards. Use it in the browser, as
+an installed app on your phone, or as a desktop app on Windows, macOS and Linux.
+
+A Go backend with an embedded React web UI, built and shipped as a single binary. Metadata
+lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
+
+## What it does
+
+- **Notes of every kind.** Markdown text notes, transcribed and summarized recordings,
+  imported documents and kanban boards, organized in folders, sub-notes and labels, linked
+  to each other by number, searchable, and available offline.
+- **Todo management.** Any note can be a task with a due date, time, repeat rule, priority
+  and reminder, typed in plain English or German ("Call Anna tomorrow 3pm p1"). Action items
+  from your conversations become tasks in one click, and reminders arrive as push
+  notifications on your phone and computer.
+- **Integrations with your tools and gadgets.**
+
+  | Source | What arrives in knowpod |
+  |---|---|
+  | knowpod recorders and other gadgets | Recordings over a resumable [upload API](docs/device-protocol.md), transcribed and summarized, with highlights |
+  | [Pocket](https://heypocket.com) recorders | Recordings through a personal webhook |
+  | [reMarkable](https://remarkable.com) tablets | Notebooks, PDFs and EPUBs, with handwriting read into text |
+  | Audio files | WAV and MP3 uploads from the browser |
+  | AI models ([OpenRouter](https://openrouter.ai)) | Transcripts, titles, summaries and action items |
+  | Scripts and your own tools | The full [REST API](backend/api/openapi.yaml), downloads as Markdown and text |
+
+- **Everywhere you work.** A responsive web app, installable on phones and desktops (PWA),
+  and a native [desktop app](#desktop-app); English and German.
 
 ## Tech stack
 
@@ -12,21 +39,13 @@ built and shipped as a single binary.
 |---|---|
 | Backend | Go 1.24, chi router, official MongoDB driver, AWS SDK v2 |
 | Database | MongoDB 7 as a single-node replica set (for multi-document transactions) |
-| Audio storage | Amazon S3 (an existing bucket) |
+| File storage | Amazon S3 (an existing bucket) for audio and documents |
 | Transcoding | Pure-Go FLAC encoder ([mewkiz/flac](https://github.com/mewkiz/flac)), no external binaries |
 | Frontend | React 18 + TypeScript, Vite, react-router |
 | Deploy | One binary (frontend embedded in the backend), Docker / docker-compose |
 | Desktop app | Electron + electron-builder (Windows, macOS, Linux), optional |
 
-## How recordings flow
-
-```
-gadget ──POST /uploads──▶ upload created (status: uploading)
-       ──PATCH chunks──▶ streamed to the local spool (UPLOAD_DIR), resumable
-                         last byte: SHA-256 + WAV header verified (status: received)
-background worker ─────▶ WAV → FLAC, uploaded to S3 (status: stored), spool cleaned up
-AI worker ─────────────▶ transcript (status: transcribed) → title + summary (status: summarized)
-```
+## Features
 
 - **Users** sign in with email and password and each see only their own notes and
   devices. Admins manage users and the AI settings. The built-in admin is `ADMIN_EMAIL`,
@@ -110,7 +129,19 @@ AI worker ─────────────▶ transcript (status: transcr
   web UI in a native window, signed in to and talking to the server exactly like the web app
   (see [Desktop app](#desktop-app)).
 
-Supported input: integer PCM WAV, 8/16/24 bit, 1–8 channels, up to 4 GiB.
+## How recordings flow
+
+Recordings from gadgets go through a pipeline before they appear as notes:
+
+```
+gadget ──POST /uploads──▶ upload created (status: uploading)
+       ──PATCH chunks──▶ streamed to the local spool (UPLOAD_DIR), resumable
+                         last byte: SHA-256 + WAV header verified (status: received)
+background worker ─────▶ WAV → FLAC, uploaded to S3 (status: stored), spool cleaned up
+AI worker ─────────────▶ transcript (status: transcribed) → title + summary (status: summarized)
+```
+
+Supported gadget input: integer PCM WAV, 8/16/24 bit, 1–8 channels, up to 4 GiB.
 
 ## Documentation
 
