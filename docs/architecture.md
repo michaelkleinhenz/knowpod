@@ -310,6 +310,19 @@ never picks it up, and the summary machinery serves it as it is: it is edited wi
 "… - note.md") and deleted like any note. Retranscribe and resummarize answer 409 for it,
 and it has no audio or transcript. Future note types get their own `type` value.
 
+**Note numbers.** Every note has a `number`, counted per user like an issue number and
+never reused. `RecordingRepo.Create` takes the owner's next number from the `counters`
+collection (`{_id: "notes:<userId>", seq}`, incremented atomically); a unique partial index
+on `(ownerId, number)` guards it. At start-up `NumberNotes` numbers the notes from before
+numbers (oldest first, after ownerless notes got their owner) and first raises each counter
+to the highest number in use, so it is safe to run on every start. `GET /recordings?number=12`
+finds a note by number. In a note's text, "#12" links to note 12: the editor
+(`SummaryEditor.tsx`) offers the notes in a menu after "#" is typed (filtered by number
+prefix, or by title), inserts the chosen "#12" as plain text, so the Markdown stays plain, and
+marks the references as links with decorations (Ctrl/⌘+click opens them); the read-only
+Markdown renderer links them too. Links go to `/n/12`, which opens the note from the list or
+looks it up on the server.
+
 **Boards.** A board (`recording.type: "board"`, `service/boards.go`) is a kanban board of
 other notes. Like a text note it is stored `summarized` with its title in `summary` (renamed
 with `PUT /recordings/{id}/summary`), and is listed, labeled, moved and deleted like any

@@ -14,6 +14,7 @@ import { Sync, useAutosave } from '../hooks/useAutosave';
 import { locale } from '../i18n';
 import { errorText } from '../lib/errors';
 import { folderPath } from '../lib/folders';
+import { noteRefPath } from '../lib/noteRefs';
 import { formatBytes, formatClock, formatDate, formatDuration, noteType, processing, statusLabel, title as titleOf, when } from '../lib/recordings';
 
 // The rich text editor is downloaded on first use; the summary is shown read-only meanwhile.
@@ -292,6 +293,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
             <h1>{titleOf(rec)}</h1>
           )}
           <p className="conversation-meta muted">
+            {rec.number ? <span className="note-number">#{rec.number}</span> : null}
             {d.toLocaleDateString(locale(), { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })},{' '}
             {d.toLocaleTimeString(locale(), { hour: 'numeric', minute: '2-digit' })}
             {rec.format?.durationMs ? ` · ${formatDuration(rec.format.durationMs)}` : ''}
@@ -370,11 +372,14 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created }: BodyPr
               <Suspense
                 fallback={
                   <div className="prose editor-content">
-                    <Markdown text={summary.markdown ?? ''} />
+                    <Markdown text={summary.markdown ?? ''} noteLinks />
                   </div>
                 }
               >
                 <SummaryEditor
+                  notes={notes.recordings}
+                  noteId={rec.id}
+                  onOpenNote={(n) => navigate(noteRefPath(n))}
                   markdown={summary.markdown ?? ''}
                   onReady={autosave.editorReady}
                   onChange={autosave.changed}

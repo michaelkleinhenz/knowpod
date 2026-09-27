@@ -6,10 +6,10 @@ import { NotesProvider } from '../context/NotesContext';
 // NotesLayout shows the notes list as a sidebar next to the open note on desktop. On narrow
 // screens only one of them is visible: the list at "/", the note when one is open (CSS).
 export function NotesLayout() {
-  const { id } = useParams();
+  const { id, number } = useParams();
   return (
     <NotesProvider>
-      <div className={`notes-layout${id ? ' has-note' : ''}`}>
+      <div className={`notes-layout${id || number ? ' has-note' : ''}`}>
         <aside className="notes-sidebar">
           <NotesList activeId={id} />
         </aside>

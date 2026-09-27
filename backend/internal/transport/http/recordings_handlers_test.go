@@ -468,3 +468,41 @@ func TestBoards(t *testing.T) {
 		t.Fatalf("rename: %d", res.StatusCode)
 	}
 }
+
+func TestNoteNumbers(t *testing.T) {
+	f := newAPIFixture(t)
+	admin := f.signedIn(adminEmail, adminPassword)
+	admin.do("POST", "/api/v1/admin/users", map[string]string{"email": "bob@example.com", "password": "bob-password"}, nil, nil)
+	bob := f.signedIn("bob@example.com", "bob-password")
+
+	// Every user counts their own notes, whatever their type.
+	var a1, a2, b1, a3 recording.Recording
+	admin.do("POST", "/api/v1/recordings/text", map[string]string{"title": "One", "markdown": ""}, nil, &a1)
+	admin.do("POST", "/api/v1/recordings/board", map[string]string{"title": "Two"}, nil, &a2)
+	bob.do("POST", "/api/v1/recordings/text", map[string]string{"title": "Bob's", "markdown": ""}, nil, &b1)
+	if a1.Number != 1 || a2.Number != 2 || b1.Number != 1 {
+		t.Fatalf("numbers: %d %d %d", a1.Number, a2.Number, b1.Number)
+	}
+	// Numbers are never reused.
+	admin.do("DELETE", "/api/v1/recordings/"+a2.ID, nil, nil, nil)
+	admin.do("POST", "/api/v1/recordings/text", map[string]string{"title": "Three", "markdown": "see #1"}, nil, &a3)
+	if a3.Number != 3 {
+		t.Fatalf("after delete: %d", a3.Number)
+	}
+	// Kept when the note is edited.
+	var edited recording.Recording
+	admin.do("PUT", "/api/v1/recordings/"+a3.ID+"/summary", map[string]string{"title": "Three", "markdown": "see #1 and #3"}, nil, &edited)
+	if edited.Number != 3 {
+		t.Fatalf("after edit: %d", edited.Number)
+	}
+
+	// Looked up by number, among one's own notes only.
+	var list []recording.Recording
+	if res := admin.do("GET", "/api/v1/recordings?number=1", nil, nil, &list); res.StatusCode != 200 || len(list) != 1 || list[0].ID != a1.ID {
+		t.Fatalf("by number: %d %+v", res.StatusCode, list)
+	}
+	list = nil
+	if bob.do("GET", "/api/v1/recordings?number=3", nil, nil, &list); len(list) != 0 {
+		t.Fatalf("bob sees admin's #3: %+v", list)
+	}
+}

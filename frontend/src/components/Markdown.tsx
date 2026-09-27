@@ -1,32 +1,50 @@
 import { Fragment, ReactNode } from 'react';
+import { NOTE_REF } from '../lib/noteRefs';
+import { NoteRef } from './NoteRef';
 
 // safeHref allows only web and mail links, so Markdown can't smuggle in javascript: URLs.
 function safeHref(url: string): string | null {
   return /^(https?:\/\/|mailto:)/i.test(url.trim()) ? url.trim() : null;
 }
 
-// inline renders `code`, **bold**, *italic* / _italic_, ~~strike~~ and [links](https://…).
-export function inline(text: string): ReactNode[] {
+// inline renders `code`, **bold**, *italic* / _italic_, ~~strike~~ and [links](https://…);
+// with noteLinks, "#12" links to the user's note 12.
+export function inline(text: string, noteLinks = false): ReactNode[] {
   const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|~~[^~]+~~|\[[^\]]+\]\([^)\s]+\)|\*[^*\s][^*]*\*|_[^_\s][^_]*_)/);
+  const inl = (t: string) => inline(t, noteLinks);
   return parts.map((part, i) => {
     if (part.length > 1 && part.startsWith('`') && part.endsWith('`')) return <code key={i}>{part.slice(1, -1)}</code>;
-    if (part.length > 3 && part.startsWith('**') && part.endsWith('**')) return <strong key={i}>{inline(part.slice(2, -2))}</strong>;
-    if (part.length > 3 && part.startsWith('~~') && part.endsWith('~~')) return <s key={i}>{inline(part.slice(2, -2))}</s>;
+    if (part.length > 3 && part.startsWith('**') && part.endsWith('**')) return <strong key={i}>{inl(part.slice(2, -2))}</strong>;
+    if (part.length > 3 && part.startsWith('~~') && part.endsWith('~~')) return <s key={i}>{inl(part.slice(2, -2))}</s>;
     const link = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(part);
     if (link) {
       const href = safeHref(link[2]);
       return href ? (
         <a key={i} href={href} target="_blank" rel="noreferrer noopener">
-          {inline(link[1])}
+          {inl(link[1])}
         </a>
       ) : (
         <Fragment key={i}>{link[1]}</Fragment>
       );
     }
     if (part.length > 2 && ((part.startsWith('*') && part.endsWith('*')) || (part.startsWith('_') && part.endsWith('_'))))
-      return <em key={i}>{inline(part.slice(1, -1))}</em>;
-    return <Fragment key={i}>{part}</Fragment>;
+      return <em key={i}>{inl(part.slice(1, -1))}</em>;
+    return <Fragment key={i}>{noteLinks ? linkNotes(part) : part}</Fragment>;
   });
+}
+
+// linkNotes turns "#12" in plain text into links to the notes.
+function linkNotes(text: string): ReactNode {
+  const out: ReactNode[] = [];
+  let last = 0;
+  for (const m of text.matchAll(new RegExp(NOTE_REF))) {
+    out.push(text.slice(last, m.index));
+    out.push(<NoteRef key={m.index} number={Number(m[1])} />);
+    last = m.index! + m[0].length;
+  }
+  if (out.length === 0) return text;
+  out.push(text.slice(last));
+  return out;
 }
 
 interface ListItem {
@@ -126,13 +144,13 @@ function parse(lines: string[]): Block[] {
   return blocks;
 }
 
-function render(blocks: Block[]): ReactNode[] {
+function render(blocks: Block[], noteLinks: boolean): ReactNode[] {
   return blocks.map((b, i) => {
     switch (b.kind) {
       case 'h': {
         const level = Math.min(b.level + 1, 4); // the page title is the only h1
         const Tag = `h${level}` as 'h2' | 'h3' | 'h4';
-        return <Tag key={i}>{inline(b.text)}</Tag>;
+        return <Tag key={i}>{inline(b.text, noteLinks)}</Tag>;
       }
       case 'hr':
         return <hr key={i} />;
@@ -143,12 +161,12 @@ function render(blocks: Block[]): ReactNode[] {
           </pre>
         );
       case 'quote':
-        return <blockquote key={i}>{render(b.children)}</blockquote>;
+        return <blockquote key={i}>{render(b.children, noteLinks)}</blockquote>;
       case 'ul':
       case 'ol': {
         let tasks = b.kind === 'ul';
         const items = b.items.map((item, j) => {
-          const sub = item.children.some((c) => c.trim()) ? render(parse(item.children)) : null;
+          const sub = item.children.some((c) => c.trim()) ? render(parse(item.children), noteLinks) : null;
           const task = TASK.exec(item.text);
           if (!task) tasks = false;
           if (task && b.kind === 'ul') {
@@ -156,14 +174,14 @@ function render(blocks: Block[]): ReactNode[] {
             return (
               <li key={j} className={done ? 'done' : undefined}>
                 <input type="checkbox" checked={done} disabled aria-label={task[2]} />
-                {inline(task[2])}
+                {inline(task[2], noteLinks)}
                 {sub}
               </li>
             );
           }
           return (
             <li key={j}>
-              {inline(item.text)}
+              {inline(item.text, noteLinks)}
               {sub}
             </li>
           );
@@ -179,11 +197,12 @@ function render(blocks: Block[]): ReactNode[] {
         );
       }
       default:
-        return <p key={i}>{inline(b.text)}</p>;
+        return <p key={i}>{inline(b.text, noteLinks)}</p>;
     }
   });
 }
 
-export function Markdown({ text }: { text: string }) {
-  return <>{render(parse(text.replace(/\r/g, '').split('\n')))}</>;
+// Markdown renders Markdown text; with noteLinks, "#12" links to the user's note 12.
+export function Markdown({ text, noteLinks = false }: { text: string; noteLinks?: boolean }) {
+  return <>{render(parse(text.replace(/\r/g, '').split('\n')), noteLinks)}</>;
 }

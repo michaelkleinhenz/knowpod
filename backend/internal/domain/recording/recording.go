@@ -88,7 +88,11 @@ type Object struct {
 type Recording struct {
 	ID string `bson:"_id" json:"id"`
 	// OwnerID is the user the recording belongs to.
-	OwnerID  string `bson:"ownerId" json:"ownerId"`
+	OwnerID string `bson:"ownerId" json:"ownerId"`
+	// Number identifies the note among its owner's notes (1, 2, 3, …), like an issue number;
+	// "#12" in a note's text links to note 12. It is assigned when the note is created and
+	// never reused.
+	Number   int64  `bson:"number,omitempty" json:"number,omitempty"`
 	DeviceID string `bson:"deviceId" json:"deviceId"`
 	Type     Type   `bson:"type,omitempty" json:"type,omitempty"`
 	Source   Source `bson:"source,omitempty" json:"source,omitempty"`
@@ -151,10 +155,11 @@ func (r *Recording) IsDocument() bool { return r.Type == TypeDocument }
 // IsBoard reports whether the note is a board.
 func (r *Recording) IsBoard() bool { return r.Type == TypeBoard }
 
-// KeepUserFields copies the fields a person changes at any time (labels, done, folder) from
-// the stored version, so that a processing step saving its long-held copy doesn't undo them.
+// KeepUserFields copies the fields a person changes at any time (labels, done, folder) and
+// the note number from the stored version, so that a processing step saving its long-held
+// copy doesn't undo them.
 func (r *Recording) KeepUserFields(stored *Recording) {
-	r.Labels, r.Done, r.FolderID = stored.Labels, stored.Done, stored.FolderID
+	r.Labels, r.Done, r.FolderID, r.Number = stored.Labels, stored.Done, stored.FolderID, stored.Number
 }
 
 // TextDeviceID returns the DeviceID of a user's text notes. Their ClientID is the note ID.
@@ -237,8 +242,10 @@ type ListFilter struct {
 	OwnerID  string
 	DeviceID string
 	Status   Status
-	Limit    int
-	Offset   int
+	// Number selects the owner's note with this number.
+	Number int64
+	Limit  int
+	Offset int
 	// Brief leaves out the transcript and the summary text (the summary title is kept),
 	// for lists.
 	Brief bool

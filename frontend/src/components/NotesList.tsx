@@ -134,7 +134,9 @@ export function NotesList({ activeId }: { activeId?: string }) {
 
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return (recordings ?? []).filter((r) => !q || title(r).toLowerCase().includes(q));
+    // "#12" (or "12") also finds note 12 by its number.
+    const n = /^#?(\d+)$/.exec(q)?.[1];
+    return (recordings ?? []).filter((r) => !q || title(r).toLowerCase().includes(q) || (!!n && String(r.number) === n));
   }, [recordings, query]);
 
   const groups = useMemo(() => {

@@ -176,6 +176,8 @@ export interface Recording {
   source?: 'pocket' | 'upload' | 'remarkable';
   title?: string;
   recordingId: string;
+  // The note's number among the user's notes; "#12" in a note's text links to note 12.
+  number?: number;
   status: RecordingStatus;
   size: number;
   recordedAt?: string;
@@ -309,6 +311,7 @@ export const api = {
   pullRemarkable: () => request<RemarkableSettings>('POST', '/me/remarkable/pull'),
   aiStatus: () => request<{ transcription: boolean; summary: boolean }>('GET', '/ai/status'),
   recordings: () => request<Recording[]>('GET', `/recordings?limit=${RECORDINGS_LIMIT}`),
+  recordingByNumber: (n: number) => request<Recording[]>('GET', `/recordings?number=${n}`),
   recording: (id: string) => request<Recording>('GET', `/recordings/${encodeURIComponent(id)}`),
   deleteRecording: (id: string) => request<void>('DELETE', `/recordings/${encodeURIComponent(id)}`),
   retranscribe: (id: string) => request<Recording>('POST', `/recordings/${encodeURIComponent(id)}/retranscribe`),

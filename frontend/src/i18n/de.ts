@@ -106,6 +106,13 @@ export const de: Translation = {
     dropHint: 'WAV- oder MP3-Dateien hier ablegen zum Hochladen',
     selectHint: 'Wähle links eine Notiz aus, schreibe eine neue oder lade Audio hoch.',
   },
+  noteRefs: {
+    menu: 'Auf eine Notiz verweisen',
+    noMatches: 'Keine Notiz mit dieser Nummer',
+    openHint: '{{key}}+Klick zum Öffnen',
+    ctrl: 'Strg',
+    notFound: 'Es gibt keine Notiz #{{number}}.',
+  },
   board: {
     untitled: 'Board ohne Titel',
     defaultColumns: { todo: 'Zu erledigen', inProgress: 'In Arbeit', done: 'Erledigt' },

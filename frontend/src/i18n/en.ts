@@ -104,6 +104,13 @@ export const en = {
     dropHint: 'Drop WAV or MP3 files to upload',
     selectHint: 'Select a note on the left, write a new one, or upload audio.',
   },
+  noteRefs: {
+    menu: 'Link to a note',
+    noMatches: 'No note with this number',
+    openHint: '{{key}}+click to open',
+    ctrl: 'Ctrl',
+    notFound: 'There is no note #{{number}}.',
+  },
   board: {
     untitled: 'Untitled board',
     defaultColumns: { todo: 'Todo', inProgress: 'In Progress', done: 'Done' },

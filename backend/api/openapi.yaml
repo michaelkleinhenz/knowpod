@@ -762,6 +762,7 @@ paths:
       security: [{ sessionCookie: [] }, { adminToken: [] }]
       parameters:
         - { name: deviceId, in: query, schema: { type: string } }
+        - { name: number, in: query, description: The note with this number (see `number`), schema: { type: integer, format: int64 } }
         - { name: status, in: query, schema: { $ref: "#/components/schemas/Status" } }
         - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 200 } }
         - { name: offset, in: query, schema: { type: integer, default: 0 } }
@@ -1392,6 +1393,7 @@ components:
       properties:
         id: { type: string }
         ownerId: { type: string, description: The user the recording belongs to }
+        number: { type: integer, format: int64, description: 'The note''s number among its owner''s notes (1, 2, 3, …), never reused; "#12" in a note''s text links to note 12' }
         deviceId: { type: string, description: '"pocket:<userId>" for Pocket, "upload:<userId>" for browser uploads, "text:<userId>" for text notes, "board:<userId>" for boards, "remarkable:<userId>" for reMarkable documents' }
         type: { type: string, enum: [text, document, board], description: 'The kind of note: absent for audio recordings, "text" for Markdown notes (title and text in `summary`), "document" for reMarkable documents (the text read from the pages in `transcript`), "board" for kanban boards (title in `summary`, setup in `board`)' }
         source: { type: string, enum: [pocket, upload, remarkable], description: Absent for device uploads }

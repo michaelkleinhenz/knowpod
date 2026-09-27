@@ -179,3 +179,49 @@ func TestAssignOwnerless(t *testing.T) {
 		t.Fatalf("admin's devices: %d", len(list))
 	}
 }
+
+func TestNoteNumbers(t *testing.T) {
+	ctx := context.Background()
+	s := testStore(t)
+	recs := NewRecordingRepo(s)
+	t0 := time.Now().UTC()
+	// Notes from before numbers: inserted directly, without one.
+	for i, owner := range []string{"ann", "ann", "bob"} {
+		rec := recording.Recording{ID: NewID(), OwnerID: owner, DeviceID: "d", ClientID: NewID(), CreatedAt: t0.Add(time.Duration(i) * time.Second)}
+		if _, err := recs.c.InsertOne(ctx, rec); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// One numbered note already exists: the backfill continues after it.
+	numbered := &recording.Recording{ID: NewID(), OwnerID: "ann", DeviceID: "d", ClientID: NewID(), Number: 7, CreatedAt: t0}
+	if _, err := recs.c.InsertOne(ctx, numbered); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := recs.NumberNotes(ctx); err != nil || n != 3 {
+		t.Fatalf("NumberNotes: %d %v", n, err)
+	}
+	if n, err := recs.NumberNotes(ctx); err != nil || n != 0 {
+		t.Fatalf("second NumberNotes: %d %v", n, err)
+	}
+	ann, _ := recs.List(ctx, recording.ListFilter{OwnerID: "ann"})
+	got := map[int64]bool{}
+	for _, r := range ann {
+		got[r.Number] = true
+	}
+	if len(ann) != 3 || !got[7] || !got[8] || !got[9] {
+		t.Fatalf("ann's numbers: %v", got)
+	}
+
+	// New notes count on.
+	rec := &recording.Recording{ID: NewID(), OwnerID: "ann", DeviceID: "d", ClientID: NewID()}
+	if err := recs.Create(ctx, rec); err != nil || rec.Number != 10 {
+		t.Fatalf("create: %d %v", rec.Number, err)
+	}
+	bob := &recording.Recording{ID: NewID(), OwnerID: "bob", DeviceID: "d", ClientID: NewID()}
+	if err := recs.Create(ctx, bob); err != nil || bob.Number != 2 {
+		t.Fatalf("create bob: %d %v", bob.Number, err)
+	}
+	if list, _ := recs.List(ctx, recording.ListFilter{OwnerID: "ann", Number: 10}); len(list) != 1 || list[0].ID != rec.ID {
+		t.Fatalf("by number: %+v", list)
+	}
+}

@@ -23,6 +23,8 @@ import (
 type Recordings struct {
 	mu   sync.Mutex
 	recs map[string]recording.Recording
+	// numbers is each owner's last note number.
+	numbers map[string]int64
 }
 
 // NewRecordings builds an empty repository.
@@ -35,6 +37,13 @@ func (m *Recordings) Create(_ context.Context, r *recording.Recording) error {
 		if x.ID == r.ID || (x.DeviceID == r.DeviceID && x.ClientID == r.ClientID) {
 			return domain.ErrDuplicate
 		}
+	}
+	if r.Number == 0 && r.OwnerID != "" {
+		if m.numbers == nil {
+			m.numbers = map[string]int64{}
+		}
+		m.numbers[r.OwnerID]++
+		r.Number = m.numbers[r.OwnerID]
 	}
 	m.recs[r.ID] = *r
 	return nil
@@ -121,7 +130,7 @@ func (m *Recordings) Delete(_ context.Context, id string) error {
 
 func (m *Recordings) List(_ context.Context, f recording.ListFilter) ([]*recording.Recording, error) {
 	out := m.filter(func(r *recording.Recording) bool {
-		return (f.OwnerID == "" || r.OwnerID == f.OwnerID) && (f.DeviceID == "" || r.DeviceID == f.DeviceID) && (f.Status == "" || r.Status == f.Status)
+		return (f.OwnerID == "" || r.OwnerID == f.OwnerID) && (f.DeviceID == "" || r.DeviceID == f.DeviceID) && (f.Status == "" || r.Status == f.Status) && (f.Number == 0 || r.Number == f.Number)
 	})
 	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
 	if f.Offset >= len(out) {

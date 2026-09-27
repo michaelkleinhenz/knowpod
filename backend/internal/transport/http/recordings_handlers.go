@@ -25,7 +25,9 @@ func (s *Server) handleListRecordings(w http.ResponseWriter, r *http.Request) {
 		limit = 50
 	}
 	offset, _ := strconv.Atoi(q.Get("offset"))
+	number, _ := strconv.ParseInt(q.Get("number"), 10, 64)
 	list, err := s.actions.List(r.Context(), accountFrom(r.Context()), recording.ListFilter{
+		Number:   max(number, 0),
 		DeviceID: q.Get("deviceId"), Status: recording.Status(q.Get("status")), Limit: limit, Offset: max(offset, 0),
 		Brief: q.Get("full") == "",
 	})
