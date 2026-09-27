@@ -334,7 +334,7 @@ with `PUT /recordings/{id}/summary`), and is listed, labeled, moved and deleted 
 note. Its `board` field holds a **scope** (`{kind: "folder"|"label", id}`; folder `""` is the
 top level, an empty kind shows nothing) and 1-20 **columns** (`{id, name, notes}`), where
 `notes` are the IDs of the notes put into that column, in order. The web UI works out the
-cards from the notes list: every note in the scope (never a board) is shown in its column,
+cards from the workspace list: every note in the scope (never a board) is shown in its column,
 and notes in no column go to the end of the first. `POST /recordings/board` creates a board
 (default columns "Todo", "In Progress", "Done"; the UI sends them translated) and
 `PUT /recordings/{id}/board` replaces scope, columns and placements at once. Deleting a
@@ -347,7 +347,7 @@ boards showing it (`ClearBoardScope`).
 /filters/{id}` keep each user's named queries (`name` unique per user ignoring case,
 `query` up to 500 characters, `pinned`). The server stores queries as text and doesn't
 evaluate them: the web app compiles them (`frontend/src/lib/filterQuery.ts`) against the
-user's labels, folders and notes, both for the notes list (the search box takes the same
+user's labels, folders and notes, both for the workspace list (the search box takes the same
 language; plain words search the titles) and for boards that show a filter. The language
 has words, `#12`, `label:`/`@`, `folder:` (and the folders in it), `due:` (`today`,
 `tomorrow`, `overdue`, `week`, `month`, `none`, `any`, a date) and `due<`/`<=`/`>`/`>=`,
@@ -652,7 +652,7 @@ server.
 
 ## Notes view
 
-`pages/NotesLayout.tsx` is a layout route for `/` and `/conversations/:id`: the notes list
+`pages/NotesLayout.tsx` is a layout route for `/` and `/conversations/:id`: the workspace list
 (`components/NotesList.tsx`) as a sidebar and the open note (`pages/Conversation.tsx`, or a
 placeholder) in the main area. `context/NotesContext.tsx` holds the list for both: it polls
 while any note is processing, and the open note pushes its changes into it (`upsert`, e.g.
