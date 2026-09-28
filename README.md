@@ -13,12 +13,16 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
 ## What it does
 
 - **Notes of every kind.** Markdown text notes, transcribed and summarized recordings,
-  imported documents and kanban boards, organized in folders, sub-notes and labels, linked
-  to each other by number, searchable, and available offline.
+  imported documents, photos and kanban boards, organized in folders, sub-notes and labels,
+  linked to each other by number, searchable, and available offline.
+- **Ask your notes.** Questions in your own words ("What did Anna say about the Q3
+  budget?") are answered by AI from your notes, transcripts and documents, citing the notes
+  and the moment in a recording.
 - **Todo management.** Any note can be a task with a due date, time, repeat rule, priority
   and reminder, typed in plain English or German ("Call Anna tomorrow 3pm p1"). Action items
   from your conversations become tasks in one click, and reminders arrive as push
-  notifications on your phone and computer.
+  notifications on your phone and computer. A daily briefing and a weekly review sum up
+  what is due and what came in.
 - **Integrations with your tools and gadgets.**
 
   | Source | What arrives in knowpod |
@@ -26,7 +30,9 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
   | knowpod recorders and other gadgets | Recordings over a resumable [upload API](docs/device-protocol.md), transcribed and summarized, with highlights |
   | [Pocket](https://heypocket.com) recorders | Recordings through a personal webhook |
   | [reMarkable](https://remarkable.com) tablets | Notebooks, PDFs and EPUBs, with handwriting read into text |
-  | Audio files | WAV and MP3 uploads from the browser |
+  | The app itself | Voice memos recorded in the browser, with highlights |
+  | Audio files, photos and PDFs | Uploads from the browser; photos of whiteboards and pages are read into text |
+  | Other apps on your phone | Links, text, photos, PDFs and audio shared with the installed app |
   | AI models ([OpenRouter](https://openrouter.ai)) | Transcripts, titles, summaries and action items |
   | Scripts and your own tools | The full [REST API](backend/api/openapi.yaml), downloads as Markdown and text |
   | AI assistants (Claude, ChatGPT) | Your notes and tasks through an MCP server |
@@ -61,7 +67,7 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
 - Each user can connect their own [Pocket](https://heypocket.com) recorder on the
   **Settings → Account** tab: recordings arrive through the user's personal webhook and their audio is
   downloaded with the user's Pocket API key.
-- WAV and MP3 files can be uploaded from the browser on **Workspace**.
+- WAV and MP3 files, photos and PDFs can be uploaded from the browser on **Workspace**.
 - Each user can pair their **reMarkable** cloud account under **Settings → Account** with a
   one-time code. All its documents (except the trash) are imported into the knowpod
   folder **reMarkable**, in the same folders as on the tablet (read only, never changed on the tablet): handwritten notebooks are rendered to PDF, PDFs and EPUBs are kept as they
@@ -114,6 +120,31 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
   own notes are reachable; **Settings → Account → AI assistants** lists the connected
   assistants to disconnect them, and makes a personal access token (bearer token) for tools
   without OAuth.
+- **Ask**: the **Ask** page (or the ✦ button next to the search box) answers questions from
+  your notes and those shared with you, with follow-up questions. There is no search index:
+  the summary model reads a catalog of your notes (title, date, the start of the text) and
+  picks the ones that fit the question, also by meaning and across English and German, and
+  names words to look for, which are then found in the full texts and transcripts. It
+  answers from those notes, citing each as [1], [2], … with a supporting quote; a quote from
+  a recording links to the moment it is said. AI assistants get the same search through the
+  MCP tool `find_notes`.
+- **Speakers**: transcripts label speakers "Speaker 1", "Speaker 2", …; **Transcript →
+  Speakers** gives them their names, in the transcript, the summary and the action items.
+  Names the AI recognized in the conversation ("Hi, I'm Anna") are offered with one click.
+- **Briefings**: **Settings → Account → Briefings** turns on a daily briefing and a weekly
+  review, made at the time you choose (in your time zone) as notes in the folder
+  **Briefings** and announced by a notification. The briefing lists the tasks due today and
+  overdue, the notes that came in since the day before with an AI digest, and open action
+  items; the weekly review sums up the week before: new notes, tasks done, time logged, and
+  what is overdue, coming up or waiting for over 30 days. Both can also be made right away.
+- **Voice memos**: **Record** (the microphone next to the search box) records in the
+  browser, also while you move around the app; mark moments as highlights while recording.
+  The memo is saved as a WAV file and transcribed and summarized like any recording.
+- **Photos and PDFs**: uploads (and the phone's camera, offered by the upload button) take
+  photos (JPEG, PNG, WebP, GIF) and PDFs. The document model writes down their text (a
+  photo without text is described), which is then summarized.
+- **Share to knowpod**: installed as an app on a phone, knowpod is a share target: links and
+  text shared with it become a note, photos, PDFs and audio files are uploaded.
 - **Reminders** arrive as push notifications in every browser or installed app they are
   turned on in (**Settings → Account → Notifications**), on phones too (on iPhone: from the Home Screen
   app).

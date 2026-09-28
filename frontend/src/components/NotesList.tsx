@@ -7,7 +7,8 @@ import { useAuth } from '../auth';
 import { FolderTree, NOTE_TYPE } from './FolderTree';
 import { FilterBar } from './SavedFilters';
 import { TimerBar } from './TimeControls';
-import { NewBoardIcon, NewFolderIcon, NewNoteIcon, RefreshIcon, SearchIcon, TrashIcon, UploadIcon } from './Icons';
+import { MicIcon, NewBoardIcon, NewFolderIcon, NewNoteIcon, RefreshIcon, SearchIcon, SparkleIcon, TrashIcon, UploadIcon } from './Icons';
+import { useRecorder } from '../context/Recorder';
 import { NoteTreeRows, useNoteTree } from './NoteTree';
 import { DueView } from './DueView';
 import { TasksView } from './TasksView';
@@ -17,7 +18,8 @@ import { parseFilter, searchMatcher } from '../lib/filterQuery';
 import { dayKey, dayLabel, formatDate, formatTime, when } from '../lib/recordings';
 import { lastFolder } from '../lib/lastFolder';
 
-const ACCEPT = '.wav,.mp3,audio/wav,audio/x-wav,audio/wave,audio/mpeg';
+// Audio files, and photos and PDFs, whose text is read (on phones, the picker offers the camera).
+const ACCEPT = '.wav,.mp3,audio/wav,audio/x-wav,audio/wave,audio/mpeg,image/jpeg,image/png,image/webp,image/gif,.pdf,application/pdf';
 
 // The list shows the notes by when they were created (grouped by day), the notes with a due
 // date by that date, the notes in their folders, like files, or the open tasks by when they
@@ -54,8 +56,8 @@ interface UploadState {
 }
 
 // NotesList lists the user's notes, either newest first grouped by day or in their folders,
-// with an icon for each note's type. It creates text notes and accepts WAV/MP3 uploads
-// (button or drag and drop). On desktop it is the sidebar next to the open note; on phones
+// with an icon for each note's type. It creates text notes, records voice memos and accepts
+// uploads of WAV/MP3 files, photos and PDFs (button or drag and drop). On desktop it is the sidebar next to the open note; on phones
 // it is the start page.
 export function NotesList({ activeId }: { activeId?: string }) {
   const { t } = useTranslation();
@@ -74,6 +76,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
   const [showTrash, setShowTrash] = useState(false);
   const [trashDrop, setTrashDrop] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const recorder = useRecorder();
 
   const setView = (v: View) => {
     setViewState(v);
@@ -269,7 +272,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
             >
               <NewBoardIcon /> <span>{t('conversations.newBoard')}</span>
             </button>
-            <button type="button" className="pill-button icon-only-mobile" onClick={() => fileInput.current?.click()} aria-label={t('conversations.uploadAudio')}>
+            <button type="button" className="pill-button icon-only-mobile" onClick={() => fileInput.current?.click()} title={t('conversations.uploadAudio')} aria-label={t('conversations.uploadAudio')}>
               <UploadIcon /> <span>{t('conversations.upload')}</span>
             </button>
             <button type="button" className="pill-button icon-only-mobile" onClick={load} disabled={refreshing} aria-label={t('common.refresh')}>
@@ -300,6 +303,25 @@ export function NotesList({ activeId }: { activeId?: string }) {
           <SearchIcon />
           <input type="search" placeholder={t('common.search')} value={query} onChange={(e) => setQuery(e.target.value)} aria-label={t('conversations.searchLabel')} />
         </label>
+        <button
+          type="button"
+          className="pill-button icon-only-mobile record-button"
+          onClick={recorder.start}
+          disabled={recorder.active}
+          title={t('recorder.record')}
+          aria-label={t('recorder.record')}
+        >
+          <MicIcon /> <span>{t('recorder.recordShort')}</span>
+        </button>
+        <button
+          type="button"
+          className="pill-button icon-only-mobile ask-button"
+          title={query.trim() ? t('ask.askAbout', { query: query.trim() }) : t('ask.open')}
+          aria-label={query.trim() ? t('ask.askAbout', { query: query.trim() }) : t('ask.open')}
+          onClick={() => navigate(query.trim() ? `/ask?q=${encodeURIComponent(query.trim())}` : '/ask')}
+        >
+          <SparkleIcon /> <span>{t('ask.button')}</span>
+        </button>
         <button
           type="button"
           className="pill-button icon-only-mobile"

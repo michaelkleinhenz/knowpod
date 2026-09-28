@@ -81,7 +81,7 @@ func TestDailyBriefing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rec.Summary.Title != "Briefing for Sunday, September 27" || rec.Source != recording.SourceBriefing || !rec.IsText() {
+	if rec.Summary.Title != "Briefing for Sun, Sep 27" || rec.Source != recording.SourceBriefing || !rec.IsText() {
 		t.Fatalf("briefing = %+v", rec)
 	}
 	md := rec.Summary.Markdown
@@ -140,7 +140,7 @@ func TestDailyBriefingInGermanWithoutAI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rec.Summary.Title != "Briefing für Sonntag, 27. September" || !strings.Contains(rec.Summary.Markdown, "## Heute fällig") ||
+	if rec.Summary.Title != "Briefing für So. 27. Sept." || !strings.Contains(rec.Summary.Markdown, "## Heute fällig") ||
 		!strings.Contains(rec.Summary.Markdown, "- Budget meeting #5 (Aufnahme)") {
 		t.Fatalf("briefing:\n%s\n%s", rec.Summary.Title, rec.Summary.Markdown)
 	}
@@ -160,7 +160,7 @@ func TestWeeklyReview(t *testing.T) {
 		t.Fatal(err)
 	}
 	md := rec.Summary.Markdown
-	if rec.Summary.Title != "Weekly review: Sep 21 – Sep 27" {
+	if rec.Summary.Title != "Weekly review, Sep 20 – 26" {
 		t.Errorf("title = %q", rec.Summary.Title)
 	}
 	for _, want := range []string{
@@ -235,7 +235,7 @@ func TestBriefingSettingsAreChecked(t *testing.T) {
 	if _, err := f.s.MakeNow(ctx, f.acc, "monthly"); !errors.Is(err, ErrInvalidInput) {
 		t.Errorf("unknown kind: %v", err)
 	}
-	if got, _ := f.s.Settings(ctx, f.acc); got.Time != "07:00" || got.Daily {
+	if got, _ := f.s.Settings(ctx, f.acc); got.Time != "07:00" || got.Daily || got.WeeklyDay != 1 {
 		t.Errorf("default settings = %+v", got)
 	}
 }

@@ -52,6 +52,7 @@ func newAskFixture(t *testing.T, answers ...string) *askFixture {
 	day := time.Date(2026, 9, 20, 9, 0, 0, 0, time.UTC)
 	for _, r := range []*recording.Recording{
 		{ID: "rec", Number: 1, OwnerID: "u1", Status: recording.StatusSummarized, CreatedAt: day,
+			Audio:      &recording.Object{Key: "a.flac", ContentType: "audio/flac"},
 			Transcript: &recording.Transcript{Text: "[0:05] Speaker 1: Hello.\n[12:30] Anna: The Haushalt for Q3 is 40k, not 50k."},
 			Summary:    &recording.Summary{Title: "Team meeting", Markdown: "We talked about hiring."}},
 		{ID: "text", Number: 2, OwnerID: "u1", Type: recording.TypeText, Status: recording.StatusSummarized, CreatedAt: day.Add(time.Hour),
@@ -76,7 +77,7 @@ func TestAskFindsNotesByTheModelsPicksAndKeywords(t *testing.T) {
 		// The model picks the holiday note from the catalog and names "haushalt", which is
 		// only in the recording's transcript.
 		`{"notes":["c0","c9","x"],"keywords":["Haushalt","budget"]}`,
-		"```json\n"+`{"answer":"The Q3 budget is 40k [1], after the holidays [2]. [7]","sources":[{"ref":1,"quote":"The Haushalt for Q3 is 40k","time":"12:30"},{"ref":"2","quote":"Italy","time":""},{"ref":5,"quote":"none","time":""}]}`+"\n```",
+		"```json\n"+`{"answer":"After the holidays [1], the Q3 budget is 40k [2]. [7]","sources":[{"ref":1,"quote":"Italy","time":"1:00"},{"ref":"2","quote":"The Haushalt for Q3 is 40k","time":"12:30"},{"ref":5,"quote":"none","time":""}]}`+"\n```",
 	)
 	out, err := f.ask.Ask(context.Background(), f.acc, AskInput{Question: "What is the budget for Q3?",
 		History: []AskTurn{{Question: "Earlier?", Answer: "Yes."}}})
@@ -105,17 +106,18 @@ func TestAskFindsNotesByTheModelsPicksAndKeywords(t *testing.T) {
 		t.Errorf("history not sent: %+v", msgs)
 	}
 
-	if out.Answer != "The Q3 budget is 40k [1], after the holidays [2]. [7]" {
+	if out.Answer != "After the holidays [1], the Q3 budget is 40k [2]. [7]" {
 		t.Errorf("answer = %q", out.Answer)
 	}
 	if len(out.Sources) != 2 {
 		t.Fatalf("sources = %+v", out.Sources)
 	}
 	holidays, meeting := out.Sources[0], out.Sources[1]
-	if holidays.Ref != 1 || holidays.ID != "text" || holidays.Type != "text" || holidays.Quote != "The Haushalt for Q3 is 40k" || holidays.OffsetMs == nil || *holidays.OffsetMs != 750_000 {
+	// Only recordings get a moment to play from.
+	if holidays.Ref != 1 || holidays.ID != "text" || holidays.Type != "text" || holidays.Quote != "Italy" || holidays.OffsetMs != nil {
 		t.Errorf("source 1 = %+v", holidays)
 	}
-	if meeting.Ref != 2 || meeting.ID != "rec" || meeting.Number != 1 || meeting.Type != "audio" || meeting.Quote != "Italy" || meeting.OffsetMs != nil {
+	if meeting.Ref != 2 || meeting.ID != "rec" || meeting.Number != 1 || meeting.Type != "audio" || meeting.Quote != "The Haushalt for Q3 is 40k" || meeting.OffsetMs == nil || *meeting.OffsetMs != 750_000 {
 		t.Errorf("source 2 = %+v", meeting)
 	}
 }

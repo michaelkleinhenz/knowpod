@@ -1,6 +1,6 @@
 import { lazy, ReactNode, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, Recording } from '../api/client';
 import { purgeDate } from '../lib/trash';
 import { Board, boardLanes } from '../components/Board';
@@ -23,7 +23,8 @@ import { locale } from '../i18n';
 import { errorText } from '../lib/errors';
 import { folderPath, notePath } from '../lib/folders';
 import { noteRefPath } from '../lib/noteRefs';
-import { formatBytes, formatClock, formatDate, formatDuration, noteType, processing, statusLabel, title as titleOf, when } from '../lib/recordings';
+import { formatBytes, formatClock, formatDate, formatDuration, isPhoto, noteType, processing, statusLabel, title as titleOf, when } from '../lib/recordings';
+import { Speakers } from '../components/Speakers';
 
 // The rich text editor is downloaded on first use; the summary is shown read-only meanwhile.
 const SummaryEditor = lazy(() => import('../components/SummaryEditor'));
@@ -156,12 +157,16 @@ interface BodyProps {
   created: boolean;
   // restart shows the note afresh, with the text as stored (e.g. after someone else changed it).
   restart: () => void;
+  // startAt plays the recording from this moment (ms) when the note opens, e.g. from a
+  // source of an answer; onStarted is called once it did.
+  startAt?: number;
+  onStarted?: () => void;
 }
 
 // NoteBody is a note's page below the back link. It is re-created when a new summary
 // arrives (see the key in Conversation), so the editor always starts from the stored text.
 // Text notes show only their text (kept as the summary): no transcript, source or AI actions.
-function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart }: BodyProps) {
+function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart, startAt, onStarted }: BodyProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const notes = useNotes();
@@ -193,6 +198,12 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart 
     setTab('source');
     setSeek(ms);
   };
+  useEffect(() => {
+    if (startAt === undefined) return;
+    if (rec.audio) seekTo(startAt);
+    onStarted?.();
+    // Once, when the note opens.
+  }, [startAt]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const el = audio.current;
     if (seek === null || tab !== 'source' || !el) return;
@@ -290,7 +301,15 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart 
   }
 
   async function handleDeleteForever() {
-    const confirmKey = isBoard ? 'conversation.deleteBoardConfirm' : isDocument ? 'conversation.deleteDocumentConfirm' : isText ? 'conversation.deleteTextConfirm' : 'conversation.deleteConfirm';
+    const confirmKey = isBoard
+      ? 'conversation.deleteBoardConfirm'
+      : isDocument
+        ? rec.source === 'remarkable'
+          ? 'conversation.deleteDocumentConfirm'
+          : 'conversation.deleteUploadConfirm'
+        : isText
+          ? 'conversation.deleteTextConfirm'
+          : 'conversation.deleteConfirm';
     if (!window.confirm(t(confirmKey, { title: autosave.title || titleOf(rec) }))) return;
     setBusy(true);
     try {
@@ -363,10 +382,14 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart 
       : rec.source === 'pocket'
       ? t('conversation.sourcePocket')
       : rec.source === 'upload'
-        ? t('conversation.sourceUpload')
-        : rec.source === 'remarkable'
-          ? t('conversation.sourceRemarkable')
-          : '';
+        ? isDocument
+          ? t(isPhoto(rec) ? 'conversation.sourcePhoto' : 'conversation.sourcePdf')
+          : t('conversation.sourceUpload')
+        : rec.source === 'recorder'
+          ? t('conversation.sourceRecorder')
+          : rec.source === 'remarkable'
+            ? t('conversation.sourceRemarkable')
+            : '';
   // Documents name their tabs and actions after pages instead of audio.
   const tabLabel = (id: Tab) => (isDocument && id !== 'summary' ? t(`conversation.documentTabs.${id}`) : t(`conversation.tabs.${id}`));
   const canReread = isDocument ? !!rec.file : !!rec.audio;
@@ -620,7 +643,9 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart 
                     <Markdown text={rec.transcript.text} />
                   </div>
                 ) : (
-                  <p className="muted">{rec.transcript.model ? t('conversation.noText') : t('conversation.textNotRead')}</p>
+                  <p className="muted">
+                    {rec.transcript.model ? t('conversation.noText') : rec.source === 'remarkable' ? t('conversation.textNotRead') : t('conversation.tooLargeToRead')}
+                  </p>
                 )}
                 {rec.transcript.model && <p className="model-note">{t('conversation.readWith', { model: rec.transcript.model })}</p>}
               </>
@@ -632,6 +657,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart 
             !isDocument &&
             (rec.transcript ? (
               <>
+                {rec.transcript.text && !readOnly && <Speakers rec={rec} setRec={setRec} />}
                 {rec.transcript.text ? (
                   <Transcript text={rec.transcript.text} onSeek={seekTo} />
                 ) : (
@@ -649,6 +675,10 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart 
               <div className="source">
                 {rec.file.contentType === 'application/pdf' ? (
                   <iframe className="document-frame" src={api.fileURL(rec.id)} title={t('conversation.documentFrame', { title: titleOf(rec) })} />
+                ) : isPhoto(rec) ? (
+                  <a href={api.fileURL(rec.id)} target="_blank" rel="noreferrer" className="photo-link">
+                    <img className="document-photo" src={api.fileURL(rec.id)} alt={t('conversation.photoAlt', { title: titleOf(rec) })} />
+                  </a>
                 ) : (
                   <p>
                     <a className="pill-button" href={api.fileURL(rec.id, true)} download>
@@ -659,17 +689,17 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart 
                 <dl className="facts">
                   <dt>{t('conversation.file')}</dt>
                   <dd>
-                    {rec.file.contentType === 'application/pdf' ? 'PDF' : 'EPUB'} · {formatBytes(rec.file.size)}
-                    {rec.pages ? ` · ${t('conversation.pages', { count: rec.pages })}` : ''}
+                    {rec.file.contentType === 'application/pdf' ? 'PDF' : isPhoto(rec) ? rec.file.contentType.replace('image/', '').toUpperCase() : 'EPUB'} · {formatBytes(rec.file.size)}
+                    {rec.pages && !isPhoto(rec) ? ` · ${t('conversation.pages', { count: rec.pages })}` : ''}
                   </dd>
                   {rec.title && (
                     <>
-                      <dt>{t('conversation.remarkableName')}</dt>
+                      <dt>{t(rec.source === 'remarkable' ? 'conversation.remarkableName' : 'conversation.fileName')}</dt>
                       <dd>{rec.title}</dd>
                     </>
                   )}
                   <dt>{t('conversation.source')}</dt>
-                  <dd>{inline(`${t('conversation.remarkableDocument')} \`${rec.recordingId}\``)}</dd>
+                  <dd>{rec.source === 'remarkable' ? inline(`${t('conversation.remarkableDocument')} \`${rec.recordingId}\``) : t('conversation.browserUpload')}</dd>
                 </dl>
               </div>
             ) : (
@@ -718,7 +748,9 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart 
                       ? inline(`${t('conversation.pocketRecording')} \`${rec.recordingId}\``)
                       : rec.source === 'upload'
                         ? t('conversation.browserUpload')
-                        : inline(`${t('conversation.deviceUpload')} \`${rec.recordingId}\``)}
+                        : rec.source === 'recorder'
+                          ? t('conversation.recordedInApp')
+                          : inline(`${t('conversation.deviceUpload')} \`${rec.recordingId}\``)}
                   </dd>
                 </dl>
               </div>
@@ -842,6 +874,10 @@ export function Conversation() {
   const [tab, setTab] = useState<Tab>('summary');
   const [error, setError] = useState<string | null>(null);
   const created = !!(useLocation().state as { created?: boolean } | null)?.created;
+  // ?t=12500 plays the recording from there (links to a moment, e.g. from an answer's source).
+  const [params, setParams] = useSearchParams();
+  const startParam = params.get('t');
+  const startAt = startParam !== null && /^\d+$/.test(startParam) ? Number(startParam) : undefined;
 
 
   const load = useCallback(async () => {
@@ -920,6 +956,8 @@ export function Conversation() {
           reload={load}
           created={created}
           restart={restart}
+          startAt={startAt}
+          onStarted={() => setParams({}, { replace: true, state: null })}
         />
       ) : error ? (
         <p className="error">{error}</p>

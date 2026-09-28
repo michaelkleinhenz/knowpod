@@ -50,8 +50,8 @@ type Briefing struct {
 	Weekly bool `bson:"weekly,omitempty"`
 	// Time is when briefings are made, HH:MM in the user's time zone; empty is DefaultBriefingTime.
 	Time string `bson:"time,omitempty"`
-	// WeeklyDay is the day of the weekly review (0 is Sunday).
-	WeeklyDay int `bson:"weeklyDay"`
+	// WeeklyDay is the day of the weekly review (0 is Sunday); nil is DefaultReviewDay.
+	WeeklyDay *int `bson:"weeklyDay,omitempty"`
 	// FolderID is the folder the briefings go into, made on first use.
 	FolderID string `bson:"folderId,omitempty"`
 	// LastDaily and LastWeekly are the days (YYYY-MM-DD, in the user's time zone) the last
@@ -62,6 +62,18 @@ type Briefing struct {
 
 // DefaultBriefingTime is when briefings are made unless the user chose another time.
 const DefaultBriefingTime = "07:00"
+
+// DefaultReviewDay is the day of the weekly review unless the user chose another day: it
+// looks back on the week before.
+const DefaultReviewDay = time.Monday
+
+// ReviewDay returns the day of the weekly review.
+func (b Briefing) ReviewDay() time.Weekday {
+	if b.WeeklyDay == nil {
+		return DefaultReviewDay
+	}
+	return time.Weekday(*b.WeeklyDay)
+}
 
 // At returns the time of day briefings are made.
 func (b Briefing) At() string {

@@ -145,10 +145,12 @@ func (s *Server) Router() http.Handler {
 
 	// Things shared with the installed app are posted here. The app's service worker takes
 	// them; a post that reaches the server (the service worker wasn't running) goes to the
-	// share page, which says so.
+	// share page, which says so. The page itself is the app's, like every other page.
+	spa := web.Handler()
 	r.Post("/share", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/share?missed=1", http.StatusSeeOther)
 	})
+	r.Get("/share", spa.ServeHTTP)
 
 	// --- MCP server for AI assistants (the user's MCP access token, or OAuth) ---
 	r.Post(service.MCPPath, s.handleMCP)
@@ -305,7 +307,6 @@ func (s *Server) Router() http.Handler {
 
 	// The embedded single-page app serves everything else. Unknown paths fall back to
 	// index.html so client-side routing works. API 404s are kept as JSON.
-	spa := web.Handler()
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") {
 			writeCode(w, http.StatusNotFound, "not_found", "not found")

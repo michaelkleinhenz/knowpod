@@ -547,7 +547,8 @@ func parseAnswer(answer string, found []*candidate) (string, []AskSource) {
 		}
 		if a := add(ref); a != nil && a.Quote == "" {
 			a.Quote = truncateRunes(strings.Join(strings.Fields(src.Quote), " "), 300)
-			if m := timestampPattern.FindStringSubmatch("[" + strings.Trim(src.Time, "[] ") + "]"); m != nil {
+			// A moment to play from, in notes that have audio.
+			if m := timestampPattern.FindStringSubmatch("[" + strings.Trim(src.Time, "[] ") + "]"); m != nil && found[ref-1].rec.Audio != nil {
 				h, _ := strconv.Atoi(m[1])
 				min, _ := strconv.Atoi(m[2])
 				sec, _ := strconv.Atoi(m[3])

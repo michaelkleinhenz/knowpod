@@ -446,6 +446,16 @@ MP3 at 64 kbit/s); larger ones fail with a clear error.
 **How documents are sent.** Notebook pages with writing are rendered to PNG images
 (1053×1404 pixels) and sent eight at a time; PDFs are sent as files (up to 20 MB). At most
 50 pages of a document are read; the text says when pages were left out. EPUBs are not read.
+Photos and PDFs uploaded in the web app are read by the document model too: a photo is
+sent as it is (up to 20 MB), a PDF as a file.
+
+**Other uses of the summary model.** **Ask** sends each question to the summary model twice:
+once with a catalog of the user's notes (a line per note, up to 120,000 characters), once
+with the notes it found (up to 80,000 characters), so a question costs about as much as
+summarizing a long conversation; it is limited to 30 questions per minute. Daily briefings
+and weekly reviews use it for their digest of the new notes (a few thousand characters per
+note, at most 30 notes). Without a configured summary model Ask is off and briefings are
+made without a digest.
 
 **The API key** is stored in the MongoDB `settings` collection. It is never sent back to the
 browser (the UI shows only its last four characters), but anyone with database access can

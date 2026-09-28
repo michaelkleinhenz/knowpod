@@ -64,7 +64,10 @@
         "zip"
       ],
       "category": "public.app-category.productivity",
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "knowpod records voice memos with the microphone."
+      }
     },
     "publish": null
   }

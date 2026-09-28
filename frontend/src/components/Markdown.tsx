@@ -7,12 +7,17 @@ function safeHref(url: string): string | null {
   return /^(https?:\/\/|mailto:)/i.test(url.trim()) ? url.trim() : null;
 }
 
+// Cite renders a citation such as "[2]" (see Markdown's cite).
+export type Cite = (n: number) => ReactNode;
+
 // inline renders `code`, **bold**, *italic* / _italic_, ~~strike~~ and [links](https://…);
-// with noteLinks, "#12" links to the user's note 12.
-export function inline(text: string, noteLinks = false): ReactNode[] {
-  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|~~[^~]+~~|\[[^\]]+\]\([^)\s]+\)|\*[^*\s][^*]*\*|_[^_\s][^_]*_)/);
-  const inl = (t: string) => inline(t, noteLinks);
+// with noteLinks, "#12" links to the user's note 12; with cite, "[2]" is rendered by it.
+export function inline(text: string, noteLinks = false, cite?: Cite): ReactNode[] {
+  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|~~[^~]+~~|\[[^\]]+\]\([^)\s]+\)|\[\d{1,2}\](?!\()|\*[^*\s][^*]*\*|_[^_\s][^_]*_)/);
+  const inl = (t: string) => inline(t, noteLinks, cite);
   return parts.map((part, i) => {
+    const citation = /^\[(\d{1,2})\]$/.exec(part);
+    if (citation) return <Fragment key={i}>{cite ? cite(Number(citation[1])) : part}</Fragment>;
     if (part.length > 1 && part.startsWith('`') && part.endsWith('`')) return <code key={i}>{part.slice(1, -1)}</code>;
     if (part.length > 3 && part.startsWith('**') && part.endsWith('**')) return <strong key={i}>{inl(part.slice(2, -2))}</strong>;
     if (part.length > 3 && part.startsWith('~~') && part.endsWith('~~')) return <s key={i}>{inl(part.slice(2, -2))}</s>;
@@ -144,13 +149,13 @@ function parse(lines: string[]): Block[] {
   return blocks;
 }
 
-function render(blocks: Block[], noteLinks: boolean): ReactNode[] {
+function render(blocks: Block[], noteLinks: boolean, cite?: Cite): ReactNode[] {
   return blocks.map((b, i) => {
     switch (b.kind) {
       case 'h': {
         const level = Math.min(b.level + 1, 4); // the page title is the only h1
         const Tag = `h${level}` as 'h2' | 'h3' | 'h4';
-        return <Tag key={i}>{inline(b.text, noteLinks)}</Tag>;
+        return <Tag key={i}>{inline(b.text, noteLinks, cite)}</Tag>;
       }
       case 'hr':
         return <hr key={i} />;
@@ -161,12 +166,12 @@ function render(blocks: Block[], noteLinks: boolean): ReactNode[] {
           </pre>
         );
       case 'quote':
-        return <blockquote key={i}>{render(b.children, noteLinks)}</blockquote>;
+        return <blockquote key={i}>{render(b.children, noteLinks, cite)}</blockquote>;
       case 'ul':
       case 'ol': {
         let tasks = b.kind === 'ul';
         const items = b.items.map((item, j) => {
-          const sub = item.children.some((c) => c.trim()) ? render(parse(item.children), noteLinks) : null;
+          const sub = item.children.some((c) => c.trim()) ? render(parse(item.children), noteLinks, cite) : null;
           const task = TASK.exec(item.text);
           if (!task) tasks = false;
           if (task && b.kind === 'ul') {
@@ -174,14 +179,14 @@ function render(blocks: Block[], noteLinks: boolean): ReactNode[] {
             return (
               <li key={j} className={done ? 'done' : undefined}>
                 <input type="checkbox" checked={done} disabled aria-label={task[2]} />
-                {inline(task[2], noteLinks)}
+                {inline(task[2], noteLinks, cite)}
                 {sub}
               </li>
             );
           }
           return (
             <li key={j}>
-              {inline(item.text, noteLinks)}
+              {inline(item.text, noteLinks, cite)}
               {sub}
             </li>
           );
@@ -197,12 +202,13 @@ function render(blocks: Block[], noteLinks: boolean): ReactNode[] {
         );
       }
       default:
-        return <p key={i}>{inline(b.text, noteLinks)}</p>;
+        return <p key={i}>{inline(b.text, noteLinks, cite)}</p>;
     }
   });
 }
 
-// Markdown renders Markdown text; with noteLinks, "#12" links to the user's note 12.
-export function Markdown({ text, noteLinks = false }: { text: string; noteLinks?: boolean }) {
-  return <>{render(parse(text.replace(/\r/g, '').split('\n')), noteLinks)}</>;
+// Markdown renders Markdown text; with noteLinks, "#12" links to the user's note 12; with
+// cite, citations such as "[2]" are rendered by it.
+export function Markdown({ text, noteLinks = false, cite }: { text: string; noteLinks?: boolean; cite?: Cite }) {
+  return <>{render(parse(text.replace(/\r/g, '').split('\n')), noteLinks, cite)}</>;
 }

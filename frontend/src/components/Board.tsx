@@ -8,7 +8,7 @@ import { FilterContext, Matcher, parseFilter } from '../lib/filterQuery';
 import { flatTree, folderOf } from '../lib/folders';
 import { isTask, labelName, labelStyle, noteLabels } from '../lib/labels';
 import { TaskMeta } from './TaskControls';
-import { noteType, title, when } from '../lib/recordings';
+import { iconKind, title, when } from '../lib/recordings';
 import { GripIcon, NewNoteIcon, NoteIcon, PencilIcon, TrashIcon } from './Icons';
 
 // DRAG_TYPE marks a card being dragged, so the columns ignore other drags (files, notes
@@ -478,7 +478,7 @@ export function Board({ rec, setRec }: { rec: Recording; setRec: (r: Recording) 
                         aria-label={t('labels.doneLabel', { title: title(r) })}
                       />
                     ) : (
-                      <NoteIcon type={noteType(r)} label={t(`conversations.types.${noteType(r)}`)} />
+                      <NoteIcon type={iconKind(r)} label={t(`conversations.types.${iconKind(r)}`)} />
                     )}
                     <Link to={`/conversations/${r.id}`} className="board-card-title" draggable={false}>
                       {title(r)}

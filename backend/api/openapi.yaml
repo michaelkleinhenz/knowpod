@@ -1900,8 +1900,8 @@ paths:
         "Briefings", which is made when missing. The daily briefing lists the tasks due today
         and overdue, the notes that came in since the day before (with a digest by the summary
         model, when it is set up) and the open action items of the last week. The weekly review
-        covers the last seven days: new notes (with a digest), tasks checked off, time logged,
-        and the tasks overdue, coming up and waiting for over 30 days.
+        covers the seven days before (and today so far): new notes (with a digest), tasks
+        checked off, time logged, and the tasks overdue, coming up and waiting for over 30 days.
       security: [{ sessionCookie: [] }]
       requestBody:
         required: true
@@ -2655,7 +2655,7 @@ components:
         daily: { type: boolean, description: Make a briefing every day }
         weekly: { type: boolean, description: Make a weekly review }
         time: { type: string, example: "07:00", description: When they are made (HH:MM in your time zone) }
-        weeklyDay: { type: integer, minimum: 0, maximum: 6, description: The day of the weekly review (0 is Sunday) }
+        weeklyDay: { type: integer, minimum: 0, maximum: 6, description: 'The day of the weekly review (0 is Sunday); Monday (1) until one is chosen' }
 
     CalendarSettings:
       type: object

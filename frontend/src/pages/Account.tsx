@@ -2,6 +2,7 @@ import { FormEvent, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { api } from '../api/client';
 import { useAuth } from '../auth';
+import { BriefingSetup } from '../components/BriefingSetup';
 import { CalendarSetup } from '../components/CalendarSetup';
 import { McpSetup } from '../components/McpSetup';
 import { NotificationSettings } from '../components/NotificationSettings';
@@ -96,6 +97,10 @@ export function Account() {
       <section className="card" id="notifications">
         <h2 className="card-title">{t('notifications.title')}</h2>
         <NotificationSettings />
+      </section>
+      <section className="card" id="briefing">
+        <h2 className="card-title">{t('briefing.title')}</h2>
+        <BriefingSetup />
       </section>
       <section className="card" id="calendar">
         <h2 className="card-title">{t('calendar.title')}</h2>

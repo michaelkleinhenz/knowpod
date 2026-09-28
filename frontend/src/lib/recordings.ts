@@ -13,6 +13,21 @@ export function noteType(r: Recording): NoteType {
   return r.type === 'text' || r.type === 'document' || r.type === 'board' ? r.type : 'audio';
 }
 
+// IconKind is what a note's icon shows: its type, or for a document uploaded in the app
+// whether it is a photo or a PDF (reMarkable documents show the reMarkable logo).
+export type IconKind = NoteType | 'photo' | 'pdf';
+
+export function iconKind(r: Recording): IconKind {
+  const type = noteType(r);
+  if (type !== 'document' || r.source === 'remarkable') return type;
+  return (r.file?.contentType ?? r.sourceContentType ?? '').startsWith('image/') ? 'photo' : 'pdf';
+}
+
+// isPhoto reports whether the note is a photo uploaded in the app.
+export function isPhoto(r: Recording): boolean {
+  return iconKind(r) === 'photo';
+}
+
 // when is the moment a conversation happened.
 export function when(r: Recording): Date {
   return new Date(r.recordedAt || r.createdAt);

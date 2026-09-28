@@ -4,12 +4,14 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useAuth } from './auth';
 import { Layout } from './components/Layout';
 import { Admin } from './pages/Admin';
+import { Ask } from './pages/Ask';
 import { Conversation } from './pages/Conversation';
 import { Login } from './pages/Login';
 import { NoteByNumber } from './pages/NoteByNumber';
 import { NotesHome, NotesLayout } from './pages/NotesLayout';
 import { OAuthAuthorize } from './pages/OAuthAuthorize';
 import { Settings } from './pages/Settings';
+import { Share } from './pages/Share';
 import { TimeLog } from './pages/TimeLog';
 
 // RequireLogin sends signed-out visitors to the login page and back afterwards. With admin,
@@ -40,6 +42,8 @@ export default function App() {
           <Route path="/conversations/:id" element={<Conversation />} />
           <Route path="/n/:number" element={<NoteByNumber />} />
           <Route path="/time" element={<TimeLog />} />
+          <Route path="/ask" element={<Ask />} />
+          <Route path="/share" element={<Share />} />
         </Route>
         <Route
           path="/settings"

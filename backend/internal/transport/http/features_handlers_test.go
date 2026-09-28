@@ -81,7 +81,7 @@ func TestBriefingAPI(t *testing.T) {
 	}
 	var note recording.Recording
 	if res := admin.do("POST", "/api/v1/me/briefing/run", map[string]string{"kind": "weekly"}, nil, &note); res.StatusCode != 201 ||
-		note.Source != recording.SourceBriefing || !strings.HasPrefix(note.Summary.Title, "Weekly review") || note.FolderID == "" {
+		note.Source != recording.SourceBriefing || !strings.HasPrefix(note.Summary.Title, "Weekly review, ") || note.FolderID == "" {
 		t.Fatalf("run: %d %+v", res.StatusCode, note)
 	}
 }
@@ -107,5 +107,14 @@ func TestSharePostWithoutTheServiceWorker(t *testing.T) {
 	res.Body.Close()
 	if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/share?missed=1" {
 		t.Fatalf("share post: %d %s", res.StatusCode, res.Header.Get("Location"))
+	}
+	// The share page is the app's.
+	page, err := http.Get(f.srv.URL + "/share?missed=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	page.Body.Close()
+	if page.StatusCode != 200 || !strings.HasPrefix(page.Header.Get("Content-Type"), "text/html") {
+		t.Fatalf("share page: %d %s", page.StatusCode, page.Header.Get("Content-Type"))
 	}
 }

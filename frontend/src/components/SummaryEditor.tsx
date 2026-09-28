@@ -13,7 +13,7 @@ import { ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Recording } from '../api/client';
 import { matchNotes, NOTE_REF, noteByNumber } from '../lib/noteRefs';
-import { noteType, title } from '../lib/recordings';
+import { iconKind, title } from '../lib/recordings';
 import { NoteIcon } from './Icons';
 
 interface Props {
@@ -246,7 +246,7 @@ function NoteMenu({ state, onHover }: { state: MenuState<Recording>; onHover: (i
           onMouseDown={(e) => e.preventDefault()} // keep the editor's focus
           onClick={() => state.choose(r)}
         >
-          <NoteIcon type={noteType(r)} />
+          <NoteIcon type={iconKind(r)} />
           <span className="note-menu-number">#{r.number}</span>
           <span className="note-menu-title">{title(r)}</span>
         </button>

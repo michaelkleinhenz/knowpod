@@ -81,7 +81,7 @@ func (s *BriefingService) Settings(ctx context.Context, acc *Account) (*Briefing
 		return nil, err
 	}
 	b := u.Briefing
-	return &BriefingSettings{Daily: b.Daily, Weekly: b.Weekly, Time: b.At(), WeeklyDay: b.WeeklyDay}, nil
+	return &BriefingSettings{Daily: b.Daily, Weekly: b.Weekly, Time: b.At(), WeeklyDay: int(b.ReviewDay())}, nil
 }
 
 // UpdateSettings changes the account's briefing settings.
@@ -101,12 +101,13 @@ func (s *BriefingService) UpdateSettings(ctx context.Context, acc *Account, in B
 		return nil, err
 	}
 	b := &u.Briefing
-	b.Daily, b.Weekly, b.Time, b.WeeklyDay = in.Daily, in.Weekly, in.Time, in.WeeklyDay
+	day := in.WeeklyDay
+	b.Daily, b.Weekly, b.Time, b.WeeklyDay = in.Daily, in.Weekly, in.Time, &day
 	// Turned on (again) after today's time: the next one is made tomorrow, not right away.
-	day, due := s.dueToday(u)
+	today, due := s.dueToday(u)
 	if !due.After(s.clock()) {
-		b.LastDaily = max(b.LastDaily, day)
-		b.LastWeekly = max(b.LastWeekly, day)
+		b.LastDaily = max(b.LastDaily, today)
+		b.LastWeekly = max(b.LastWeekly, today)
 	}
 	if err := s.users.Update(ctx, u); err != nil {
 		return nil, err
@@ -181,7 +182,7 @@ func (s *BriefingService) MakeDue(ctx context.Context) (int, error) {
 			continue
 		}
 		var kinds []BriefingKind
-		if b.Weekly && b.LastWeekly != day && int(due.Weekday()) == b.WeeklyDay {
+		if b.Weekly && b.LastWeekly != day && due.Weekday() == b.ReviewDay() {
 			kinds = append(kinds, BriefingWeekly)
 		}
 		if b.Daily && b.LastDaily != day {
@@ -360,7 +361,7 @@ func (d *briefingData) taskLine(r *recording.Recording, withDate bool) string {
 	if r.Due != nil {
 		if withDate {
 			if day, err := recording.ParseDate(r.Due.Date); err == nil {
-				when = append(when, d.date(day, false))
+				when = append(when, d.date(day))
 			}
 		}
 		if r.Due.Time != "" {
@@ -376,25 +377,37 @@ func (d *briefingData) taskLine(r *recording.Recording, withDate bool) string {
 	return b.String()
 }
 
-var (
-	weekdaysEN     = []string{"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
-	weekdaysLongDE = []string{"Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"}
-	monthsDE       = []string{"Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"}
-)
+var monthsShortDE = []string{"Jan.", "Feb.", "März", "Apr.", "Mai", "Juni", "Juli", "Aug.", "Sept.", "Okt.", "Nov.", "Dez."}
 
-// date formats a day, with its weekday when long.
-func (d *briefingData) date(t time.Time, long bool) string {
+// date formats a day in a list: "Sep 25", "25. Sept.".
+func (d *briefingData) date(t time.Time) string {
 	if d.de {
-		s := fmt.Sprintf("%d. %s", t.Day(), monthsDE[t.Month()-1])
-		if long {
-			s = weekdaysLongDE[t.Weekday()] + ", " + s
-		}
-		return s
-	}
-	if long {
-		return weekdaysEN[t.Weekday()] + ", " + t.Format("January 2")
+		return fmt.Sprintf("%d. %s", t.Day(), monthsShortDE[t.Month()-1])
 	}
 	return t.Format("Jan 2")
+}
+
+// shortDate formats a day briefly for a title: "Mon, Sep 28", "Mo. 28. Sept.".
+func (d *briefingData) shortDate(t time.Time) string {
+	if d.de {
+		return fmt.Sprintf("%s %d. %s", weekdaysDE[t.Weekday()], t.Day(), monthsShortDE[t.Month()-1])
+	}
+	return t.Format("Mon, Jan 2")
+}
+
+// period formats the days from first to last briefly: "Sep 21 – 27", "21.–27. Sept.".
+func (d *briefingData) period(first, last time.Time) string {
+	same := first.Month() == last.Month()
+	if d.de {
+		if same {
+			return fmt.Sprintf("%d.–%d. %s", first.Day(), last.Day(), monthsShortDE[last.Month()-1])
+		}
+		return fmt.Sprintf("%d. %s – %d. %s", first.Day(), monthsShortDE[first.Month()-1], last.Day(), monthsShortDE[last.Month()-1])
+	}
+	if same {
+		return fmt.Sprintf("%s – %d", first.Format("Jan 2"), last.Day())
+	}
+	return first.Format("Jan 2") + " – " + last.Format("Jan 2")
 }
 
 // list writes a section with its lines; a section without lines is left out unless empty
@@ -447,7 +460,7 @@ func (d *briefingData) kindName(r *recording.Recording) string {
 // day before (with a digest), and the open action items of the last week. summary is the
 // notification's text.
 func (s *BriefingService) daily(ctx context.Context, d *briefingData) (title, markdown, summary string) {
-	title = d.tr("Briefing for ", "Briefing für ") + d.date(d.now, true)
+	title = d.tr("Briefing for ", "Briefing für ") + d.shortDate(d.now)
 	var b strings.Builder
 
 	overdue := d.openTasks(func(r *recording.Recording) bool { return r.Due != nil && r.Due.Date < d.today })
@@ -522,12 +535,13 @@ func (d *briefingData) actionItems(from time.Time) []string {
 	return lines
 }
 
-// weekly makes the weekly review of the last seven days: a digest of what came in, the tasks
-// checked off, the time logged, and what is overdue, coming up and waiting.
+// weekly makes the weekly review of the seven days before today (and today so far): a digest
+// of what came in, the tasks checked off, the time logged, and what is overdue, coming up and
+// waiting.
 func (s *BriefingService) weekly(ctx context.Context, d *briefingData) (title, markdown, summary string) {
-	start := d.now.AddDate(0, 0, -6)
+	start := d.now.AddDate(0, 0, -7)
 	first := time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, d.loc)
-	title = d.tr("Weekly review: ", "Wochenrückblick: ") + d.date(first, false) + " – " + d.date(d.now, false)
+	title = d.tr("Weekly review, ", "Wochenrückblick ") + d.period(first, d.now.AddDate(0, 0, -1))
 	var b strings.Builder
 
 	incoming := d.incoming(first)
