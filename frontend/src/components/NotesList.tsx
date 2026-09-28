@@ -13,13 +13,14 @@ import { NoteTreeRows, useNoteTree } from './NoteTree';
 import { DueView } from './DueView';
 import { TasksView } from './TasksView';
 import { TrashView } from './TrashView';
+import { createMarkdownNote, isMarkdown, MARKDOWN_ACCEPT } from '../lib/markdownFile';
 import { errorText } from '../lib/errors';
 import { parseFilter, searchMatcher } from '../lib/filterQuery';
 import { dayKey, dayLabel, formatTime, shortDate, when } from '../lib/recordings';
 import { lastFolder } from '../lib/lastFolder';
 
 // Audio files, and photos and PDFs, whose text is read (on phones, the picker offers the camera).
-const ACCEPT = '.wav,.mp3,audio/wav,audio/x-wav,audio/wave,audio/mpeg,image/jpeg,image/png,image/webp,image/gif,.pdf,application/pdf';
+const ACCEPT = `.wav,.mp3,audio/wav,audio/x-wav,audio/wave,audio/mpeg,image/jpeg,image/png,image/webp,image/gif,.pdf,application/pdf,${MARKDOWN_ACCEPT}`;
 
 // The list shows the notes by when they were created (grouped by day), the notes with a due
 // date by that date, the notes in their folders, like files, or the open tasks by when they
@@ -105,7 +106,12 @@ export function NotesList({ activeId }: { activeId?: string }) {
       const update = (u: Partial<UploadState>) => setUploads((list) => list.map((x) => (x.key === key ? { ...x, ...u } : x)));
       setUploads((list) => [...list, { key, name: file.name, progress: 0 }]);
       try {
-        await api.uploadRecording(file, (p) => update({ progress: p }));
+        if (isMarkdown(file)) {
+          // A Markdown file becomes a text note, where new notes go.
+          upsert(await createMarkdownNote(file, t('conversations.markdownTooLong', { name: file.name }), newNoteFolder()));
+        } else {
+          await api.uploadRecording(file, (p) => update({ progress: p }));
+        }
         update({ progress: 1, done: true });
         load();
         setTimeout(() => setUploads((list) => list.filter((x) => x.key !== key)), 4000);

@@ -101,7 +101,7 @@ export const de: Translation = {
     newNote: 'Neue Notiz',
     newBoard: 'Neues Board',
     types: { audio: 'Audionotiz', text: 'Textnotiz', document: 'reMarkable-Dokument', board: 'Board', photo: 'Foto', pdf: 'PDF-Dokument' },
-    uploadAudio: 'Audio, Fotos oder PDFs hochladen',
+    uploadAudio: 'Audio, Fotos, PDFs oder Markdown-Dateien hochladen',
     searchLabel: 'Workspace durchsuchen',
     untitled: 'Notiz ohne Titel',
     aiOff: 'Transkription und Zusammenfassungen sind aus, bis ein Admin OpenRouter einrichtet.',
@@ -111,7 +111,8 @@ export const de: Translation = {
     noMatch: 'Nichts passt zu „{{query}}“.',
     uploaded: 'Hochgeladen',
     dismiss: 'Ausblenden',
-    dropHint: 'Audiodateien, Fotos oder PDFs hier ablegen zum Hochladen',
+    dropHint: 'Audiodateien, Fotos, PDFs oder Markdown-Dateien hier ablegen zum Hochladen',
+    markdownTooLong: '{{name}} ist zu lang für eine Notiz (höchstens 100.000 Zeichen).',
     resizeSidebar: 'Breite der Liste ändern (ziehen oder Pfeiltasten; Doppelklick setzt zurück)',
   },
   tasks: {

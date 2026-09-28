@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api, Recording } from '../api/client';
 import { NoteIcon } from '../components/Icons';
 import { useNotes } from '../context/NotesContext';
+import { createMarkdownNote, isMarkdown } from '../lib/markdownFile';
 import { errorText } from '../lib/errors';
 import { formatBytes } from '../lib/recordings';
 
@@ -70,7 +71,8 @@ function sharedTitle(s: Shared, fallback: string): string {
   }
 }
 
-const fileKind = (f: SharedFile) => (f.type.startsWith('image/') ? 'photo' : f.type === 'application/pdf' ? 'pdf' : 'audio');
+const fileKind = (f: SharedFile) =>
+  f.type.startsWith('image/') ? 'photo' : f.type === 'application/pdf' ? 'pdf' : /\.(md|markdown)$/i.test(f.name) || f.type === 'text/markdown' ? 'text' : 'audio';
 
 // Share saves what another app shared with the installed app (Share → knowpod): a link or
 // text becomes a text note, photos, PDFs and audio files are uploaded like files picked here.
@@ -123,7 +125,9 @@ export function Share() {
       try {
         const file = await sharedFile(f);
         if (!file) throw new Error(t('share.fileGone', { name: f.name }));
-        done[f.key] = await api.uploadRecording(file, (p) => setProgress((m) => ({ ...m, [f.key]: p })));
+        done[f.key] = isMarkdown(file)
+          ? await createMarkdownNote(file, t('conversations.markdownTooLong', { name: file.name }))
+          : await api.uploadRecording(file, (p) => setProgress((m) => ({ ...m, [f.key]: p })));
       } catch (err) {
         failed.push(`${f.name}: ${errorText(err, t)}`);
       }

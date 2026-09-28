@@ -70,6 +70,8 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
   **Settings → Account** tab: recordings arrive through the user's personal webhook and their audio is
   downloaded with the user's Pocket API key.
 - WAV and MP3 files, photos and PDFs can be uploaded from the browser on **Workspace**.
+  Markdown files (`.md`) become text notes, titled by their first heading (or front matter
+  `title`, or file name).
 - Each user can pair their **reMarkable** cloud account under **Settings → Account** with a
   one-time code. All its documents (except the trash) are imported into the knowpod
   folder **reMarkable**, in the same folders as on the tablet (read only, never changed on the tablet): handwritten notebooks are rendered to PDF, PDFs and EPUBs are kept as they
@@ -146,7 +148,8 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
   photos (JPEG, PNG, WebP, GIF) and PDFs. The document model writes down their text (a
   photo without text is described), which is then summarized.
 - **Share to knowpod**: installed as an app on a phone, knowpod is a share target: links and
-  text shared with it become a note, photos, PDFs and audio files are uploaded.
+  text shared with it become a note, as do Markdown files; photos, PDFs and audio files are
+  uploaded.
 - **Reminders** arrive as push notifications in every browser or installed app they are
   turned on in (**Settings → Account → Notifications**), on phones too (on iPhone: from the Home Screen
   app).

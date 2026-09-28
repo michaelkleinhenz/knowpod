@@ -7,7 +7,6 @@ import type { Matcher } from '../lib/filterQuery';
 import { childFolders, folderOf, isInside, isUnderNote, notePath, sortInPlace } from '../lib/folders';
 import { lastFolder, setLastFolder } from '../lib/lastFolder';
 import { setOpen, useOpen } from '../lib/treeOpen';
-import { shortDate, when } from '../lib/recordings';
 import { ChevronIcon, FolderIcon, NewFolderIcon, NewNoteIcon, PencilIcon, ShareIcon, TrashIcon } from './Icons';
 import { ShareFolder } from './ShareNote';
 import { NoteTreeRows, useNoteTree } from './NoteTree';
@@ -386,7 +385,7 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
       searching={searching}
       activeId={activeId}
       aiReady={aiReady}
-      meta={(r) => shortDate(when(r))}
+      meta={() => ''}
       onSetDone={onSetDone}
       onNewSub={onNewSub}
       onTrash={onTrash}

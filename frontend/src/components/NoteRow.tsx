@@ -11,7 +11,7 @@ interface Props {
   rec: Recording;
   active: boolean;
   aiReady: boolean;
-  // meta is shown at the end of the row (the time, or the date in the folder view).
+  // meta is shown at the end of the row (the time or date; none in the folder view).
   meta: string;
   onSetDone: (r: Recording, done: boolean) => void;
   // taskDate shows a task's due date on the row (off where the list is grouped by it).
@@ -96,7 +96,7 @@ export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = t
               </span>
             )}
           </span>
-          <span className="conversation-time">{meta}</span>
+          {meta && <span className="conversation-time">{meta}</span>}
         </Link>
         {/* Over the note's icon; outside the link so checking doesn't open the note. */}
         {task && (

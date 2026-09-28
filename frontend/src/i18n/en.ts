@@ -99,7 +99,7 @@ export const en = {
     newNote: 'New note',
     newBoard: 'New board',
     types: { audio: 'Audio note', text: 'Text note', document: 'reMarkable document', board: 'Board', photo: 'Photo', pdf: 'PDF document' },
-    uploadAudio: 'Upload audio, photos or PDFs',
+    uploadAudio: 'Upload audio, photos, PDFs or Markdown files',
     searchLabel: 'Search the workspace',
     untitled: 'Untitled note',
     aiOff: 'Transcription and summaries are off until an administrator sets up OpenRouter.',
@@ -109,7 +109,8 @@ export const en = {
     noMatch: 'Nothing matches “{{query}}”.',
     uploaded: 'Uploaded',
     dismiss: 'Dismiss',
-    dropHint: 'Drop audio files, photos or PDFs to upload',
+    dropHint: 'Drop audio files, photos, PDFs or Markdown files to upload',
+    markdownTooLong: '{{name}} is too long for a note (at most 100,000 characters).',
     resizeSidebar: 'Resize the list (drag, or use the arrow keys; double-click to reset)',
   },
   tasks: {

@@ -48,7 +48,7 @@ export default defineConfig({
             title: 'title',
             text: 'text',
             url: 'url',
-            files: [{ name: 'files', accept: ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf', 'audio/wav', 'audio/x-wav', 'audio/mpeg', '.jpg', '.jpeg', '.png', '.webp', '.gif', '.pdf', '.wav', '.mp3'] }],
+            files: [{ name: 'files', accept: ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf', 'audio/wav', 'audio/x-wav', 'audio/mpeg', 'text/markdown', '.jpg', '.jpeg', '.png', '.webp', '.gif', '.pdf', '.wav', '.mp3', '.md', '.markdown'] }],
           },
         },
       },

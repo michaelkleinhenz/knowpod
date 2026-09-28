@@ -316,7 +316,10 @@ memo keeps recording while the user moves between pages.
 manifest, `vite.config.ts`): other apps post links, text and files to `/share`. The service
 worker (`public/share-sw.js`, imported into the generated one) keeps them in the cache
 `knowpod-share` and opens the page `/share` (`pages/Share.tsx`), which saves text as a text
-note and uploads the files as above. A post that reaches the server (no service worker yet)
+note and uploads the files as above. Markdown files, picked, dropped or shared, never reach
+the upload endpoint: the app reads them (`lib/markdownFile.ts`) and creates a text note of
+each, titled by its front matter `title`, its first `#` heading or its file name. A post that
+reaches the server (no service worker yet)
 is redirected to the page, which asks to share again.
 
 ### Archive
