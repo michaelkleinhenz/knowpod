@@ -27,6 +27,8 @@ interface Props {
   // line before or after it (where a dropped note goes).
   lineProps?: HTMLAttributes<HTMLDivElement>;
   drop?: boolean | 'before' | 'after';
+  // inSharedFolder leaves out the note's shared mark: its folder shows it.
+  inSharedFolder?: boolean;
   // children are shown below the row (the sub-notes).
   children?: ReactNode;
 }
@@ -35,7 +37,7 @@ interface Props {
 // buttons to move it to the trash and to add a sub-note (all in a gutter every row has, so the rows' icons and times
 // line up); then its type icon (a check box for tasks), title (shortened to fit, its number
 // always shown, to link it with "#12"), processing state and time.
-export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = true, onNewSub, onTrash, onDragStart, sub, lineProps, drop, children }: Props) {
+export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = true, onNewSub, onTrash, onDragStart, sub, lineProps, drop, inSharedFolder, children }: Props) {
   const { t } = useTranslation();
   const state = statusLabel(r, aiReady);
   const task = isTask(r);
@@ -78,7 +80,7 @@ export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = t
           <span className="conversation-title">
             <span className="note-title-line">
               <span className="note-title-text">{title(r)}</span>
-              {r.shared && (
+              {r.shared && !inSharedFolder && (
                 <span className="note-row-shared" title={t('sharing.badge')} aria-label={t('sharing.badge')}>
                   <ShareIcon size={12} />
                 </span>

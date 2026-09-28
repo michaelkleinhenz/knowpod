@@ -374,6 +374,12 @@ func (s *BriefingService) makeWeekly(ctx context.Context, u *user.User) (*record
 		Summary:   &recording.Summary{Title: title, Markdown: truncateRunes(markdown, maxSummaryMarkdown/2), CreatedAt: created},
 		NotBefore: created, CreatedAt: created, UpdatedAt: created,
 	}
+	// A shared Briefings folder shares the review, too.
+	members, err := folderMembers(ctx, s.folders, u.ID, folderID)
+	if err != nil {
+		return nil, err
+	}
+	rec.Members = recording.ComputeMembers(members, nil, nil)
 	if err := s.notes.recs.Create(ctx, rec); err != nil {
 		return nil, err
 	}

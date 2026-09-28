@@ -118,6 +118,11 @@ tags:
       (for a note shared by itself), labels, order and reminders. Only the owner shares,
       deletes the shared note itself, and sends it back into processing.
 
+      A folder is shared the same way, together with everything in it: its notes (with the
+      notes under them) and its folders. Its users see it in their folders (at their top
+      level) with what is in it; editors also add notes to it, which belong to its owner, and
+      move its notes between the folders shared with them.
+
       Every note carries a `version`, counted up by each change. Changes made at the same time
       never undo each other: a text edit made on an older `revision` is refused with 409
       `changed` when `baseRevision` is given. `GET /me/events` tells open apps about changes
@@ -563,7 +568,11 @@ paths:
     get:
       tags: ["Folders"]
       summary: List folders
-      description: Your folders, by name. Build the tree from `parentId`; within each folder show the folders with a `position` first, by it, then the others by name.
+      description: |
+        Your folders, by name, then the folders shared with you with the folders in them (a
+        shared folder has `parentId` only when the folder it is in is shared with you, too).
+        Build the tree from `parentId`; within each folder show the folders with a `position`
+        first, by it, then the others by name. `access` says what you may do in a folder.
       security: [{ sessionCookie: [] }, { adminToken: [] }]
       responses:
         "200":
@@ -632,6 +641,86 @@ paths:
       security: [{ sessionCookie: [] }, { adminToken: [] }]
       responses:
         "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /folders/{folderId}/shares:
+    parameters:
+      - { name: folderId, in: path, required: true, schema: { type: string } }
+    get:
+      tags: ["Sharing"]
+      summary: Who a folder is shared with
+      description: Members marked `inherited` have the folder through a folder it is in.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      responses:
+        "200":
+          description: The folder's owner and members
+          content: { application/json: { schema: { $ref: "#/components/schemas/Sharing" } } }
+        "404": { $ref: "#/components/responses/Error" }
+    post:
+      tags: ["Sharing"]
+      summary: Share a folder
+      description: |
+        Shares the folder and everything in it (its notes with the notes under them, and its
+        folders) with the user signing in with `email`, or changes their role. Only the owner
+        shares. Boards in the folder aren't shared.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, role]
+              properties:
+                email: { type: string }
+                role: { $ref: "#/components/schemas/ShareRole" }
+      responses:
+        "200":
+          description: Shared
+          content: { application/json: { schema: { $ref: "#/components/schemas/Sharing" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /folders/{folderId}/shares/{userId}:
+    parameters:
+      - { name: folderId, in: path, required: true, schema: { type: string } }
+      - { name: userId, in: path, required: true, schema: { type: string } }
+    put:
+      tags: ["Sharing"]
+      summary: Change a folder member's role
+      description: Only for users the folder is shared with directly (not through a folder it is in).
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: { $ref: "#/components/schemas/ShareRole" }
+      responses:
+        "200":
+          description: Changed
+          content: { application/json: { schema: { $ref: "#/components/schemas/Sharing" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: ["Sharing"]
+      summary: Stop sharing a folder with a user
+      description: |
+        The owner can take anyone off a folder shared with them directly; members can take
+        themselves off (leave the folder), which answers 204.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      responses:
+        "200":
+          description: No longer shared with the user
+          content: { application/json: { schema: { $ref: "#/components/schemas/Sharing" } } }
+        "204": { description: You left the folder }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
 
   /themes:
@@ -2736,6 +2825,8 @@ components:
         name: { type: string }
         parentId: { type: string, description: The folder this one is in; absent at the top level }
         position: { type: integer, description: Order among the folders in the same place, from 1 up; absent for unordered folders, which follow by name }
+        access: { type: string, enum: [owner, editor, viewer], description: What you may do in the folder }
+        shared: { type: boolean, description: The folder (or one it is in) is shared }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 

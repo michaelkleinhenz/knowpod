@@ -242,6 +242,10 @@ func (s *Server) Router() http.Handler {
 			u.Put("/folders/order", s.handleReorderFolders)
 			u.Put("/folders/{id}", s.handleUpdateFolder)
 			u.Delete("/folders/{id}", s.handleDeleteFolder)
+			u.Get("/folders/{id}/shares", s.handleGetFolderSharing)
+			u.Post("/folders/{id}/shares", s.handleShareFolder)
+			u.Put("/folders/{id}/shares/{userId}", s.handleSetFolderShareRole)
+			u.Delete("/folders/{id}/shares/{userId}", s.handleUnshareFolder)
 
 			u.Get("/filters", s.handleListFilters)
 			u.Post("/filters", s.handleCreateFilter)

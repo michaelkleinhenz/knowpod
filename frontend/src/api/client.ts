@@ -121,6 +121,10 @@ export interface Folder {
   parentId?: string;
   // Order among the folders in the same place, from 1 up; absent for unordered folders.
   position?: number;
+  // What the user may do in the folder: their own, or shared with them as editor or viewer.
+  access?: ShareAccess;
+  // The folder, or one it is in, is shared.
+  shared?: boolean;
 }
 
 export interface FolderInput {
@@ -606,6 +610,14 @@ export const api = {
   // answer is empty.
   unshare: (id: string, userId: string) =>
     request<Sharing | null>('DELETE', `/recordings/${encodeURIComponent(id)}/shares/${encodeURIComponent(userId)}`),
+  folderSharing: (id: string) => request<Sharing>('GET', `/folders/${encodeURIComponent(id)}/shares`),
+  shareFolder: (id: string, email: string, role: ShareRole) => request<Sharing>('POST', `/folders/${encodeURIComponent(id)}/shares`, { email, role }),
+  setFolderShareRole: (id: string, userId: string, role: ShareRole) =>
+    request<Sharing>('PUT', `/folders/${encodeURIComponent(id)}/shares/${encodeURIComponent(userId)}`, { role }),
+  // unshareFolder stops sharing the folder with a user; for the user themselves (leaving
+  // it) the answer is empty.
+  unshareFolder: (id: string, userId: string) =>
+    request<Sharing | null>('DELETE', `/folders/${encodeURIComponent(id)}/shares/${encodeURIComponent(userId)}`),
   eventsURL: '/api/v1/me/events',
   setNoteLabels: (id: string, labels: string[]) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/labels`, { labels }),
   setNoteDone: (id: string, done: boolean) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/done`, { done }),

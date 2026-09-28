@@ -15,7 +15,7 @@ import { TasksView } from './TasksView';
 import { TrashView } from './TrashView';
 import { errorText } from '../lib/errors';
 import { parseFilter, searchMatcher } from '../lib/filterQuery';
-import { dayKey, dayLabel, formatDate, formatTime, when } from '../lib/recordings';
+import { dayKey, dayLabel, formatTime, shortDate, when } from '../lib/recordings';
 import { lastFolder } from '../lib/lastFolder';
 
 // Audio files, and photos and PDFs, whose text is read (on phones, the picker offers the camera).
@@ -460,7 +460,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
                     searching={search !== null}
                     activeId={activeId}
                     aiReady={aiReady}
-                    meta={(r, depth) => (depth === 0 ? formatTime(when(r)) : formatDate(when(r)))}
+                    meta={(r, depth) => (depth === 0 ? formatTime(when(r)) : shortDate(when(r)))}
                     onSetDone={(r, d) => void setDone(r, d)}
                     onNewSub={creating ? undefined : (r) => void createSub(r)}
                     onTrash={(r) => void trashNote(r)}

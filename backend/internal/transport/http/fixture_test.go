@@ -71,6 +71,7 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	folderRepo := memory.NewFolders()
 	folders := service.NewFolderService(folderRepo, recs)
 	actions.Folders = folders
+	folders.Notes = actions
 	userSvc.Folders = folderRepo
 	filters := service.NewFilterService(memory.NewFilters(), recs)
 	actions.Filters = filters

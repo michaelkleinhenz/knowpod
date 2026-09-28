@@ -38,7 +38,7 @@ export function useNoteTree(all: Recording[], listed: Recording[]): NoteTree {
   }, [all, listed]);
 }
 
-type RowProps = Pick<ComponentProps<typeof NoteRow>, 'onDragStart' | 'lineProps' | 'drop'>;
+type RowProps = Pick<ComponentProps<typeof NoteRow>, 'onDragStart' | 'lineProps' | 'drop' | 'inSharedFolder'>;
 
 interface Props {
   list: Recording[];

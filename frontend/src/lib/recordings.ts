@@ -103,6 +103,15 @@ export function formatDate(d: Date | string | undefined, opts: Intl.DateTimeForm
   return new Date(d).toLocaleString(locale(), opts);
 }
 
+// shortDate formats a date briefly for the sidebar's rows: "Sep 28" this year, "Sep 28, 2025"
+// before.
+export function shortDate(d: Date | string | undefined): string {
+  if (!d) return '—';
+  const date = new Date(d);
+  if (date.getFullYear() === new Date().getFullYear()) return date.toLocaleDateString(locale(), { month: 'short', day: 'numeric' });
+  return formatDate(date);
+}
+
 // dayKey groups dates by local calendar day.
 export function dayKey(d: Date): string {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;

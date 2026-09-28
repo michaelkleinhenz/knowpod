@@ -887,8 +887,15 @@ func (m *Folders) Create(_ context.Context, f *folder.Folder) error {
 	if _, ok := m.folders[f.ID]; ok {
 		return domain.ErrDuplicate
 	}
-	m.folders[f.ID] = *f
+	m.folders[f.ID] = copyFolder(f)
 	return nil
+}
+
+// copyFolder copies a folder with its shares, so callers never share them with the store.
+func copyFolder(f *folder.Folder) folder.Folder {
+	c := *f
+	c.Shares = slices.Clone(f.Shares)
+	return c
 }
 
 func (m *Folders) Get(_ context.Context, id string) (*folder.Folder, error) {
@@ -898,7 +905,8 @@ func (m *Folders) Get(_ context.Context, id string) (*folder.Folder, error) {
 	if !ok {
 		return nil, domain.ErrNotFound
 	}
-	return &f, nil
+	c := copyFolder(&f)
+	return &c, nil
 }
 
 func (m *Folders) List(_ context.Context, ownerID string) ([]*folder.Folder, error) {
@@ -906,13 +914,37 @@ func (m *Folders) List(_ context.Context, ownerID string) ([]*folder.Folder, err
 	defer m.mu.Unlock()
 	out := []*folder.Folder{}
 	for _, f := range m.folders {
-		f := f
 		if f.OwnerID == ownerID {
-			out = append(out, &f)
+			c := copyFolder(&f)
+			out = append(out, &c)
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
+}
+
+func (m *Folders) ListSharedWith(_ context.Context, userID string) ([]*folder.Folder, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := []*folder.Folder{}
+	for _, f := range m.folders {
+		if f.Share(userID) != nil {
+			c := copyFolder(&f)
+			out = append(out, &c)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+func (m *Folders) RemoveShares(_ context.Context, userID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for id, f := range m.folders {
+		f.Shares = slices.DeleteFunc(slices.Clone(f.Shares), func(s recording.Share) bool { return s.UserID == userID })
+		m.folders[id] = f
+	}
+	return nil
 }
 
 func (m *Folders) Update(_ context.Context, f *folder.Folder) error {
@@ -921,7 +953,7 @@ func (m *Folders) Update(_ context.Context, f *folder.Folder) error {
 	if _, ok := m.folders[f.ID]; !ok {
 		return domain.ErrNotFound
 	}
-	m.folders[f.ID] = *f
+	m.folders[f.ID] = copyFolder(f)
 	return nil
 }
 

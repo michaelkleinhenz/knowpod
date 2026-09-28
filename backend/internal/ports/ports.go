@@ -210,6 +210,10 @@ type FolderRepository interface {
 	Update(ctx context.Context, f *folder.Folder) error
 	Delete(ctx context.Context, id string) error
 	DeleteByOwner(ctx context.Context, ownerID string) error
+	// ListSharedWith returns the folders shared with the user directly (not those in them).
+	ListSharedWith(ctx context.Context, userID string) ([]*folder.Folder, error)
+	// RemoveShares takes the user off the shares of all folders (when the user is deleted).
+	RemoveShares(ctx context.Context, userID string) error
 }
 
 // TabletLinkRepository persists users' links to the reMarkable cloud, one per user. Get of a

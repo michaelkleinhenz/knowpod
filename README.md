@@ -59,6 +59,8 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
 - **Sharing.** Any note (a todo list, say) can be shared with other users, together with
   everything under it, for viewing or editing. Changes show up for everyone right away;
   each person files a shared note in their own folder, with their own labels and reminders.
+  Whole folders can be shared the same way, with all their notes and folders, including
+  what is added later.
   Edits made at the same time never undo each other: a conflicting text edit asks which
   version stays. The built-in admin is `ADMIN_EMAIL`,
   whose password is `ADMIN_PASSWORD` until one is set in the UI.

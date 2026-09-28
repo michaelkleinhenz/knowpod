@@ -209,9 +209,14 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       if (known && ev.version && (known.version ?? 0) >= ev.version) return;
       void refetch(ev.id);
     });
-    source.addEventListener('reload', () => void reload());
+    // Many notes changed, e.g. a folder was shared with the user or no longer is: the notes
+    // and the folders are loaded again.
+    source.addEventListener('reload', () => {
+      void reload();
+      void reloadFolders();
+    });
     return () => source.close();
-  }, [refetch, reload]);
+  }, [refetch, reload, reloadFolders]);
 
   const moveToTrash = useCallback(
     async (rec: Recording) => {

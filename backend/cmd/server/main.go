@@ -159,6 +159,7 @@ func main() {
 	userSvc.Labels = labelRepo
 	folderSvc := service.NewFolderService(folderRepo, recs)
 	actions.Folders = folderSvc
+	folderSvc.Notes = actions
 	userSvc.Folders = folderRepo
 	userSvc.Remarkable = remarkableSvc
 	filterSvc := service.NewFilterService(filterRepo, recs)

@@ -898,10 +898,12 @@ a {
   align-items: baseline;
   gap: 0.45rem;
   min-width: 0;
+  overflow: hidden;
 }
 
 .note-title-text {
-  min-width: 0;
+  /* Some of the title always shows; in a very narrow row the number gives way. */
+  min-width: min(3.5rem, 100%);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3099,6 +3101,30 @@ html:has(.notes-layout) {
   }
 }
 
+/* With a pointer, a folder's buttons appear over the end of its row on hover, so they don't
+   take the name's room while hidden. */
+@media (hover: hover) {
+  .tree-row {
+    position: relative;
+  }
+
+  .tree-actions {
+    position: absolute;
+    top: 50%;
+    right: 0.2rem;
+    transform: translateY(-50%);
+    padding-left: 0.75rem;
+    border-radius: 8px;
+    background: linear-gradient(to right, transparent, var(--color-surface) 0.75rem);
+    pointer-events: none;
+  }
+
+  .tree-row:hover .tree-actions,
+  .tree-row:focus-within .tree-actions {
+    pointer-events: auto;
+  }
+}
+
 .tree-actions .icon-button {
   width: 1.9rem;
   height: 1.9rem;
@@ -3314,6 +3340,13 @@ html:has(.notes-layout) {
   right: 0;
   width: min(340px, calc(100vw - 32px));
   padding: 0.6rem;
+}
+
+/* A folder's sharing floats over the page (placed by ShareFolder), above the header. */
+.share-popover-floating {
+  z-index: 60;
+  text-align: left;
+  font-size: 0.95rem;
 }
 
 .share-heading {

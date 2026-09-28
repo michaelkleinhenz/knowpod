@@ -64,6 +64,23 @@ notes they can edit) and trash notes under the shared note (new ones belong to t
 `createdBy` set). Only the owner shares, trashes the shared note itself, deletes for good,
 restores and reprocesses. A member can leave a note shared with them directly.
 
+**Shared folders** (`service/folder_sharing.go`). A folder has `shares` like a note, and is
+shared with everything in it: its folders, at any depth, and their notes with the notes under
+them. `folderMembers` merges the shares of the folder and the folders it is in; a note under
+no other note gets them as inherited members from its folder in `syncMembers` (boards
+excepted), so a note in a shared folder is shared like a sub-note of a shared note (not
+`root`: the member sees it in that folder, as `present` keeps its `folderId`). Sharing,
+unsharing, moving or deleting a shared folder runs `folderChanged`: `syncFolderTree` brings
+the notes in the folder's tree up to date, and the users who had or have the folder get a
+`reload` event. New notes in a shared folder get its members when they are made
+(`CreateText`, reMarkable imports, weekly reviews). `FolderService.List` gives a member the
+folders shared with them (`ListSharedWith`) and the owner's folders in them, each with the
+member's `access`; a shared folder whose parent isn't shared with the member is at their top
+level. Editors add notes to a shared folder (they belong to its owner, with `createdBy`
+set) and move its notes between the owner's folders shared with them; the folders themselves
+stay the owner's to rename, move, order, delete and share. Deleting a user takes them off
+every folder too (`RemoveShares`).
+
 ### Concurrent changes
 
 Every note has a `version`, counted up by each change. `RecordingRepository.Update` replaces
@@ -801,7 +818,8 @@ index).
 (unique per user, ignoring case), `color` (`#rrggbb`), `createdAt`, `updatedAt`.
 
 **`folders`**: users' folders: `_id`, `ownerId` (indexed with `name`), `name`,
-`parentId` (absent at the top level), `createdAt`, `updatedAt`.
+`parentId` (absent at the top level), `position`, `shares` (`userId`, `role`, `createdAt`;
+`shares.userId` indexed; see **Shared folders**), `createdAt`, `updatedAt`.
 
 **`filters`**: users' saved filters: `_id`, `ownerId` (indexed with `name`), `name`,
 `query`, `pinned`, `createdAt`, `updatedAt`.

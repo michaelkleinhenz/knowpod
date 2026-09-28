@@ -628,6 +628,12 @@ func (s *RemarkableService) queue(ctx context.Context, l *tablet.Link, d tablet.
 		if rec.RecordedAt == nil {
 			rec.RecordedAt = d.ModifiedAt
 		}
+		// In a shared folder, it is shared like the folder.
+		members, err := folderMembers(ctx, s.folders, owner, rec.FolderID)
+		if err != nil {
+			return false, false, false, err
+		}
+		rec.Members = recording.ComputeMembers(members, nil, nil)
 		if err := s.recs.Create(ctx, rec); err != nil {
 			if errors.Is(err, errDuplicate) {
 				return false, false, true, nil
@@ -645,6 +651,13 @@ func (s *RemarkableService) queue(ctx context.Context, l *tablet.Link, d tablet.
 	}
 	if rec.Status != recording.StatusSummarized && rec.Status != recording.StatusFailed {
 		return false, false, rec.FolderID == folderID, nil
+	}
+	if rec.FolderID != folderID && rec.ParentID == "" {
+		members, err := folderMembers(ctx, s.folders, owner, folderID)
+		if err != nil {
+			return false, false, false, err
+		}
+		rec.Members = recording.ComputeMembers(members, rec.Shares, rec.Members)
 	}
 	rec.Title, rec.FolderID = d.Name, folderID
 	requeue := rec.SourceRevision != d.ContentHash
