@@ -40,6 +40,7 @@ func newShareFixture(t *testing.T) *shareFixture {
 	labels := NewLabelService(memory.NewLabels(), f.s.recs)
 	folders := NewFolderService(memory.NewFolders(), f.s.recs)
 	f.s.Labels, f.s.Folders = labels, folders
+	folders.Notes = f.s
 	return &shareFixture{taskFixture: f, bob: &Account{ID: "u2"}, events: events, labels: labels, folders: folders}
 }
 

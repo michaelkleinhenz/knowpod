@@ -65,6 +65,62 @@ func (s *Server) handleUnshareNote(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// handleGetFolderSharing says who a folder is shared with.
+func (s *Server) handleGetFolderSharing(w http.ResponseWriter, r *http.Request) {
+	out, err := s.actions.FolderSharing(r.Context(), accountFrom(r.Context()), chi.URLParam(r, "id"))
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// handleShareFolder shares a folder (and everything in it) with the user signing in with
+// the email in the body, or changes their role.
+func (s *Server) handleShareFolder(w http.ResponseWriter, r *http.Request) {
+	var in service.ShareInput
+	if !decode(w, r, &in) {
+		return
+	}
+	out, err := s.actions.ShareFolder(r.Context(), accountFrom(r.Context()), chi.URLParam(r, "id"), in)
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// handleSetFolderShareRole changes what a user a folder is shared with may do in it.
+func (s *Server) handleSetFolderShareRole(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Role recording.Role `json:"role"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	out, err := s.actions.SetFolderShareRole(r.Context(), accountFrom(r.Context()), chi.URLParam(r, "id"), chi.URLParam(r, "userId"), in.Role)
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// handleUnshareFolder stops sharing a folder with a user; users can remove themselves.
+func (s *Server) handleUnshareFolder(w http.ResponseWriter, r *http.Request) {
+	out, err := s.actions.UnshareFolder(r.Context(), accountFrom(r.Context()), chi.URLParam(r, "id"), chi.URLParam(r, "userId"))
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	if out == nil {
+		// The user left the folder.
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 // handleNoteEvents tells the web app about changes of the notes the user sees as they
 // happen, as server-sent events: "note" (data {id, version}: load the note again; it is
 // gone when that fails) and "reload" (load the list again).

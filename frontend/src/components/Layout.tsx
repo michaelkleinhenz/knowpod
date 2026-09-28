@@ -15,7 +15,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
-  const onConversations = pathname === '/' || pathname.startsWith('/conversations/');
+  const onConversations = pathname === '/' || pathname === '/briefing' || pathname.startsWith('/conversations/');
   // The time log, Ask and shared items are shown next to the notes list, like a note.
   const onTime = ['/time', '/ask', '/share'].includes(pathname);
   const admin = account?.role === 'admin';

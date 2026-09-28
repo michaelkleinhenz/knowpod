@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/folder"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/service"
 )
@@ -75,4 +76,60 @@ func TestSharingOverTheAPI(t *testing.T) {
 		t.Fatalf("after leaving: %d", res.StatusCode)
 	}
 	f.events.Shutdown()
+}
+
+func TestSharingAFolderOverTheAPI(t *testing.T) {
+	f := newAPIFixture(t)
+	admin := f.signedIn(adminEmail, adminPassword)
+	if res := admin.do("POST", "/api/v1/admin/users", map[string]string{"email": "bob@example.com", "password": "bob-password"}, nil, nil); res.StatusCode != 201 {
+		t.Fatalf("create bob: %d", res.StatusCode)
+	}
+	bob := f.signedIn("bob@example.com", "bob-password")
+
+	var work folder.Folder
+	if res := admin.do("POST", "/api/v1/folders", map[string]string{"name": "Work"}, nil, &work); res.StatusCode != 201 {
+		t.Fatalf("create folder: %d", res.StatusCode)
+	}
+	var note recording.Recording
+	if res := admin.do("POST", "/api/v1/recordings/text", map[string]string{"title": "Plan", "folderId": work.ID}, nil, &note); res.StatusCode != 201 {
+		t.Fatalf("create note: %d", res.StatusCode)
+	}
+	if res := bob.do("GET", "/api/v1/folders/"+work.ID+"/shares", nil, nil, nil); res.StatusCode != 404 {
+		t.Fatalf("bob before sharing: %d", res.StatusCode)
+	}
+	var sharing service.Sharing
+	if res := admin.do("POST", "/api/v1/folders/"+work.ID+"/shares", map[string]string{"email": "bob@example.com", "role": "viewer"}, nil, &sharing); res.StatusCode != 200 ||
+		len(sharing.Members) != 1 || sharing.Members[0].Role != recording.RoleViewer {
+		t.Fatalf("share: %d %+v", res.StatusCode, sharing)
+	}
+	bobID := sharing.Members[0].UserID
+
+	var folders []folder.Folder
+	bob.do("GET", "/api/v1/folders", nil, nil, &folders)
+	if len(folders) != 1 || folders[0].ID != work.ID || folders[0].Access != recording.RoleViewer || !folders[0].Shared {
+		t.Fatalf("bob's folders: %+v", folders)
+	}
+	var list []recording.Recording
+	bob.do("GET", "/api/v1/recordings", nil, nil, &list)
+	if len(list) != 1 || list[0].ID != note.ID || list[0].FolderID != work.ID {
+		t.Fatalf("bob's notes: %+v", list)
+	}
+	// A viewer adds nothing; made an editor, bob does.
+	if res := bob.do("POST", "/api/v1/recordings/text", map[string]string{"title": "Mine", "folderId": work.ID}, nil, nil); res.StatusCode != 403 {
+		t.Fatalf("viewer adds: %d", res.StatusCode)
+	}
+	if res := admin.do("PUT", "/api/v1/folders/"+work.ID+"/shares/"+bobID, map[string]string{"role": "editor"}, nil, &sharing); res.StatusCode != 200 || sharing.Members[0].Role != recording.RoleEditor {
+		t.Fatalf("role: %d %+v", res.StatusCode, sharing)
+	}
+	if res := bob.do("POST", "/api/v1/recordings/text", map[string]string{"title": "Mine", "folderId": work.ID}, nil, nil); res.StatusCode != 201 {
+		t.Fatalf("editor adds: %d", res.StatusCode)
+	}
+	// Bob leaves.
+	if res := bob.do("DELETE", "/api/v1/folders/"+work.ID+"/shares/"+bobID, nil, nil, nil); res.StatusCode != 204 {
+		t.Fatalf("leave: %d", res.StatusCode)
+	}
+	bob.do("GET", "/api/v1/recordings", nil, nil, &list)
+	if len(list) != 0 {
+		t.Fatalf("bob's notes after leaving: %+v", list)
+	}
 }

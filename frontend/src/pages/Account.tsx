@@ -1,5 +1,6 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
+import { useLocation } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../auth';
 import { BriefingSetup } from '../components/BriefingSetup';
@@ -83,6 +84,11 @@ function ChangePassword() {
 export function Account() {
   const { t } = useTranslation();
   const { account } = useAuth();
+  // A link to a section ("#briefing") scrolls to it.
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (hash) document.getElementById(decodeURIComponent(hash.slice(1)))?.scrollIntoView();
+  }, [hash]);
   return (
     <>
       <section className="card">

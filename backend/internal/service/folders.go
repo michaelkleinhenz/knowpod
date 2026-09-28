@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/folder"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/ports"
 )
 
@@ -26,6 +27,9 @@ type FolderService struct {
 	repo  ports.FolderRepository
 	recs  ports.RecordingRepository
 	clock func() time.Time
+	// Notes shares the notes in shared folders like the folders when they move or go.
+	// Optional; without it folders aren't shared.
+	Notes *RecordingService
 }
 
 // NewFolderService builds the service. recs is used to move notes out of deleted folders.
@@ -33,12 +37,94 @@ func NewFolderService(repo ports.FolderRepository, recs ports.RecordingRepositor
 	return &FolderService{repo: repo, recs: recs, clock: time.Now}
 }
 
-// List returns the account's folders, by name.
+// List returns the account's folders, by name, and the folders shared with the account
+// with the folders in them. A shared folder is at the account's top level unless the
+// folder it is in is shared with the account, too; each says what the account may do in it
+// (Access) and whether it is shared (Shared).
 func (s *FolderService) List(ctx context.Context, acc *Account) ([]*folder.Folder, error) {
 	if acc.ID == "" {
 		return []*folder.Folder{}, nil
 	}
-	return s.repo.List(ctx, acc.ID)
+	own, err := s.repo.List(ctx, acc.ID)
+	if err != nil {
+		return nil, err
+	}
+	markShared(own)
+	for _, f := range own {
+		f.Access = recording.RoleOwner
+	}
+	shared, err := s.repo.ListSharedWith(ctx, acc.ID)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	for _, f := range own {
+		seen[f.ID] = true
+	}
+	out := own
+	owners := map[string]bool{}
+	for _, sf := range shared {
+		if sf.OwnerID == acc.ID || owners[sf.OwnerID] {
+			continue
+		}
+		owners[sf.OwnerID] = true
+		all, err := s.repo.List(ctx, sf.OwnerID)
+		if err != nil {
+			return nil, err
+		}
+		byID := make(map[string]*folder.Folder, len(all))
+		for _, f := range all {
+			byID[f.ID] = f
+		}
+		// Each folder of the owner gets the highest role of the shares with the account on
+		// it and the folders it is in.
+		for _, f := range all {
+			var role recording.Role
+			for p, depth := f, 0; p != nil && depth <= maxFolderDepth; p, depth = byID[p.ParentID], depth+1 {
+				if sh := p.Share(acc.ID); sh != nil && !role.AtLeast(sh.Role) {
+					role = sh.Role
+				}
+			}
+			if role == "" || seen[f.ID] {
+				continue
+			}
+			seen[f.ID] = true
+			c := *f
+			c.Access, c.Shared, c.Shares = role, true, nil
+			if parent := byID[f.ParentID]; parent == nil || !inShared(byID, parent, acc.ID) {
+				// Shown at the account's top level, after the account's own ordered folders.
+				c.ParentID, c.Position = "", 0
+			}
+			out = append(out, &c)
+		}
+	}
+	return out, nil
+}
+
+// markShared marks the folders that are shared or in a shared folder.
+func markShared(list []*folder.Folder) {
+	byID := make(map[string]*folder.Folder, len(list))
+	for _, f := range list {
+		byID[f.ID] = f
+	}
+	for _, f := range list {
+		for p, depth := f, 0; p != nil && depth <= maxFolderDepth; p, depth = byID[p.ParentID], depth+1 {
+			if len(p.Shares) > 0 {
+				f.Shared = true
+				break
+			}
+		}
+	}
+}
+
+// inShared reports whether folder f, or a folder it is in, is shared with the user.
+func inShared(byID map[string]*folder.Folder, f *folder.Folder, userID string) bool {
+	for p, depth := f, 0; p != nil && depth <= maxFolderDepth; p, depth = byID[p.ParentID], depth+1 {
+		if p.Share(userID) != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // Create adds a folder for the account's user.
@@ -66,15 +152,37 @@ func (s *FolderService) Update(ctx context.Context, acc *Account, id string, in 
 	if err := s.validate(ctx, f.OwnerID, id, &in); err != nil {
 		return nil, err
 	}
-	if f.ParentID != in.ParentID {
+	moved := f.ParentID != in.ParentID
+	if moved {
 		// A folder moved elsewhere goes after the ordered folders there.
 		f.Position = 0
+	}
+	before, err := s.members(ctx, f.OwnerID, id)
+	if err != nil {
+		return nil, err
 	}
 	f.Name, f.ParentID, f.UpdatedAt = in.Name, in.ParentID, s.clock().UTC()
 	if err := s.repo.Update(ctx, f); err != nil {
 		return nil, err
 	}
+	if moved {
+		// Moved into or out of a shared folder, the notes in it are shared differently.
+		if after, err := s.members(ctx, f.OwnerID, id); err != nil {
+			return nil, err
+		} else if s.Notes != nil && (len(before) > 0 || len(after) > 0) {
+			if err := s.Notes.folderChanged(ctx, f.OwnerID, id, before); err != nil {
+				return nil, err
+			}
+		}
+	}
+	markShared([]*folder.Folder{f})
+	f.Access = recording.RoleOwner
 	return f, nil
+}
+
+// members returns everyone the folder is shared with (see folderMembers).
+func (s *FolderService) members(ctx context.Context, ownerID, id string) ([]recording.Member, error) {
+	return folderMembers(ctx, s.repo, ownerID, id)
 }
 
 // maxReorder bounds how many folders or notes one reorder can place.
@@ -125,6 +233,10 @@ func (s *FolderService) Delete(ctx context.Context, acc *Account, id string) err
 	if err != nil {
 		return err
 	}
+	before, err := s.members(ctx, f.OwnerID, id)
+	if err != nil {
+		return err
+	}
 	all, err := s.repo.List(ctx, f.OwnerID)
 	if err != nil {
 		return err
@@ -141,7 +253,14 @@ func (s *FolderService) Delete(ctx context.Context, acc *Account, id string) err
 	if err := s.recs.MoveFolder(ctx, f.OwnerID, id, f.ParentID); err != nil {
 		return err
 	}
-	return s.repo.Delete(ctx, id)
+	if err := s.repo.Delete(ctx, id); err != nil {
+		return err
+	}
+	if s.Notes != nil && len(before) > 0 {
+		// The notes and folders moved up are shared like the folder they moved to.
+		return s.Notes.folderChanged(ctx, f.OwnerID, f.ParentID, before)
+	}
+	return nil
 }
 
 // Usable reports whether a note of ownerID may be put into the folder ("" is the top level).

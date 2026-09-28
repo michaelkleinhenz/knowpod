@@ -898,10 +898,12 @@ a {
   align-items: baseline;
   gap: 0.45rem;
   min-width: 0;
+  overflow: hidden;
 }
 
 .note-title-text {
-  min-width: 0;
+  /* Some of the title always shows; in a very narrow row the number gives way. */
+  min-width: min(3.5rem, 100%);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2437,12 +2439,14 @@ button.sync-state:focus-visible {
   flex-direction: column;
   overflow: hidden;
   padding: 1rem 0 0 1rem;
-  /* A soft wash of the accent color, strongest at the top. */
+  /* A vertical wash of the accent color: deepest at the top, fading down the list, and a
+     faint glow of it again at the bottom, so the gradient runs the sidebar's full height. */
   background: linear-gradient(
-    175deg,
-    color-mix(in srgb, var(--color-primary) 13%, var(--color-bg)) 0%,
-    color-mix(in srgb, var(--color-primary) 4%, var(--color-bg)) 45%,
-    var(--color-bg) 100%
+    180deg,
+    color-mix(in srgb, var(--color-primary) 38%, var(--color-bg)) 0%,
+    color-mix(in srgb, var(--color-primary) 22%, var(--color-bg)) 30%,
+    color-mix(in srgb, var(--color-primary) 9%, var(--color-bg)) 65%,
+    color-mix(in srgb, var(--color-primary) 18%, var(--color-bg)) 100%
   );
   border-right: 1px solid var(--color-border-soft);
 }
@@ -2496,6 +2500,20 @@ html:has(.notes-layout) {
   font-size: 1.2rem;
 }
 
+/* In a sidebar too narrow for both, the title (also in the header's navigation) gives way
+   to the buttons, which then start at the left, the home button first. */
+@media (min-width: 901px) {
+  .notes-sidebar .notes-list-top {
+    container: sidebar-top / inline-size;
+  }
+
+  @container sidebar-top (max-width: 24rem) {
+    .notes-sidebar .conversations-head h1 {
+      display: none;
+    }
+  }
+}
+
 /* Compact buttons in the narrow sidebar. */
 .notes-sidebar .search-row .pill-button span,
 .notes-sidebar .head-actions .pill-button span {
@@ -2541,14 +2559,6 @@ html:has(.notes-layout) {
 
 .notes-main .back-link {
   display: none;
-}
-
-.notes-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 50vh;
-  text-align: center;
 }
 
 @media (max-width: 900px) {
@@ -2978,7 +2988,7 @@ html:has(.notes-layout) {
 /* Folder rows are laid out like note rows (see .note-line): the same gutter in front, then
    the icon in a box as wide as a note's icon, so that folder and note icons line up. */
 .folder-tree {
-  --note-gutter: 2.6rem;
+  --note-gutter: 3.9rem;
   --icon-w: 30px;
   --item-gap: 1rem;
   min-height: 4rem;
@@ -3091,6 +3101,30 @@ html:has(.notes-layout) {
   }
 }
 
+/* With a pointer, a folder's buttons appear over the end of its row on hover, so they don't
+   take the name's room while hidden. */
+@media (hover: hover) {
+  .tree-row {
+    position: relative;
+  }
+
+  .tree-actions {
+    position: absolute;
+    top: 50%;
+    right: 0.2rem;
+    transform: translateY(-50%);
+    padding-left: 0.75rem;
+    border-radius: 8px;
+    background: linear-gradient(to right, transparent, var(--color-surface) 0.75rem);
+    pointer-events: none;
+  }
+
+  .tree-row:hover .tree-actions,
+  .tree-row:focus-within .tree-actions {
+    pointer-events: auto;
+  }
+}
+
 .tree-actions .icon-button {
   width: 1.9rem;
   height: 1.9rem;
@@ -3127,7 +3161,7 @@ html:has(.notes-layout) {
 
 /* A note's row; the check box of a task sits on it. */
 .note-line {
-  --note-gutter: 2.6rem;
+  --note-gutter: 3.9rem;
   position: relative;
   display: flex;
   align-items: center;
@@ -3156,16 +3190,18 @@ html:has(.notes-layout) {
 }
 
 /* In front of every note, so that all icons and times line up: the toggle of its sub-notes
-   (if it has any) and the button to add one, each in its own place. */
+   (if it has any) and the buttons to move it to the trash and to add a sub-note, each in its
+   own place. */
 .note-gutter {
   flex: none;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   align-items: center;
   width: var(--note-gutter);
 }
 
 .note-sub-toggle,
+.note-trash,
 .note-add-sub {
   display: inline-flex;
   align-items: center;
@@ -3190,15 +3226,29 @@ html:has(.notes-layout) {
   background: var(--color-surface);
 }
 
-/* Adds a sub-note; faint, and on devices with a pointer only shown on the row's hover. */
-.note-add-sub {
+/* Move the note to the trash and add a sub-note; faint, and on devices with a pointer only
+   shown on the row's hover. */
+.note-trash {
   grid-column: 2;
   opacity: 0.45;
 }
 
+.note-add-sub {
+  grid-column: 3;
+  opacity: 0.45;
+}
+
+.note-trash svg,
 .note-add-sub svg {
   width: 13px;
   height: 13px;
+}
+
+.note-trash:hover,
+.note-trash:focus-visible {
+  opacity: 1;
+  color: var(--color-error);
+  background: var(--color-danger-bg);
 }
 
 .note-add-sub:hover,
@@ -3209,15 +3259,18 @@ html:has(.notes-layout) {
 }
 
 @media (hover: hover) {
+  .note-trash,
   .note-add-sub {
     opacity: 0;
   }
 
+  .note-line:hover .note-trash,
   .note-line:hover .note-add-sub,
   .tree-row:hover .note-add-sub {
     opacity: 0.6;
   }
 
+  .note-line:hover .note-trash:hover,
   .note-line:hover .note-add-sub:hover,
   .tree-row:hover .note-add-sub:hover {
     opacity: 1;
@@ -3287,6 +3340,13 @@ html:has(.notes-layout) {
   right: 0;
   width: min(340px, calc(100vw - 32px));
   padding: 0.6rem;
+}
+
+/* A folder's sharing floats over the page (placed by ShareFolder), above the header. */
+.share-popover-floating {
+  z-index: 60;
+  text-align: left;
+  font-size: 0.95rem;
 }
 
 .share-heading {
@@ -5395,4 +5455,109 @@ a.note-ref:hover {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem 1.25rem;
+}
+
+/* The daily briefing's options, under its check box. */
+.briefing-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin: -0.2rem 0 0.2rem;
+  padding-left: 1.6rem;
+}
+
+.briefing-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.briefing-sections legend {
+  margin-bottom: 0.45rem;
+  padding: 0;
+  font-size: 0.9rem;
+  color: var(--color-muted);
+}
+
+.form label.briefing-days {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 400;
+}
+
+.form label.briefing-days input {
+  width: 4.5rem;
+}
+
+.button-row a.secondary-button {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+/* --- The home page: today's briefing --- */
+
+.briefing-page {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 0 2rem;
+}
+
+.briefing-head {
+  gap: 0.5rem;
+}
+
+.briefing-head h1 {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  margin-right: auto;
+}
+
+.briefing-head h1 svg {
+  flex: none;
+  color: var(--color-primary);
+}
+
+.briefing-head a.pill-button {
+  text-decoration: none;
+}
+
+.briefing-meta {
+  margin: 0 0 1.25rem;
+  font-size: 0.85rem;
+}
+
+/* The briefing's sections ("## Due today", shown as h3) are set apart by a line. */
+.briefing-body h3 {
+  margin: 1.75rem 0 0.6rem;
+  padding-top: 1.25rem;
+  font-size: 1.05rem;
+  border-top: 1px solid var(--color-border-soft);
+}
+
+.briefing-body > h3:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.briefing-off {
+  padding: 1.5rem;
+  border: 1px dashed var(--color-border);
+  border-radius: 10px;
+}
+
+.briefing-off p {
+  margin: 0 0 0.5rem;
+}
+
+.briefing-off p:last-child {
+  margin: 0;
 }

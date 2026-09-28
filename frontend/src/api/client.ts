@@ -121,6 +121,10 @@ export interface Folder {
   parentId?: string;
   // Order among the folders in the same place, from 1 up; absent for unordered folders.
   position?: number;
+  // What the user may do in the folder: their own, or shared with them as editor or viewer.
+  access?: ShareAccess;
+  // The folder, or one it is in, is shared.
+  shared?: boolean;
 }
 
 export interface FolderInput {
@@ -438,13 +442,32 @@ export interface AskAnswer {
   model: string;
 }
 
+// BriefingSection is a part of the daily briefing besides the tasks due today.
+export type BriefingSection = 'overdue' | 'upcoming' | 'new' | 'digest' | 'actionItems';
+export const BRIEFING_SECTIONS: BriefingSection[] = ['overdue', 'upcoming', 'new', 'digest', 'actionItems'];
+
 // BriefingSettings say when the daily briefing and the weekly review are made: at time
-// (HH:MM, in the user's time zone), the review on weeklyDay (0 is Sunday).
+// (HH:MM, in the user's time zone), the review on weeklyDay (0 is Sunday); whether the daily
+// briefing is announced, what it shows, and how many days back it looks for action items.
 export interface BriefingSettings {
   daily: boolean;
   weekly: boolean;
   time: string;
   weeklyDay: number;
+  notify: boolean;
+  sections: BriefingSection[];
+  actionItemDays: number;
+}
+
+// DailyBriefing is today's daily briefing, shown on the home page; only off is set when the
+// user turned it off.
+export interface DailyBriefing {
+  off?: boolean;
+  day?: string;
+  title?: string;
+  markdown?: string;
+  summary?: string;
+  madeAt?: string;
 }
 
 // ShareRole is what a user a note is shared with may do: read it, or also change it.
@@ -587,6 +610,14 @@ export const api = {
   // answer is empty.
   unshare: (id: string, userId: string) =>
     request<Sharing | null>('DELETE', `/recordings/${encodeURIComponent(id)}/shares/${encodeURIComponent(userId)}`),
+  folderSharing: (id: string) => request<Sharing>('GET', `/folders/${encodeURIComponent(id)}/shares`),
+  shareFolder: (id: string, email: string, role: ShareRole) => request<Sharing>('POST', `/folders/${encodeURIComponent(id)}/shares`, { email, role }),
+  setFolderShareRole: (id: string, userId: string, role: ShareRole) =>
+    request<Sharing>('PUT', `/folders/${encodeURIComponent(id)}/shares/${encodeURIComponent(userId)}`, { role }),
+  // unshareFolder stops sharing the folder with a user; for the user themselves (leaving
+  // it) the answer is empty.
+  unshareFolder: (id: string, userId: string) =>
+    request<Sharing | null>('DELETE', `/folders/${encodeURIComponent(id)}/shares/${encodeURIComponent(userId)}`),
   eventsURL: '/api/v1/me/events',
   setNoteLabels: (id: string, labels: string[]) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/labels`, { labels }),
   setNoteDone: (id: string, done: boolean) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/done`, { done }),
@@ -623,7 +654,9 @@ export const api = {
   ask: (question: string, history: AskTurn[] = []) => request<AskAnswer>('POST', '/ask', { question, history }),
   briefing: () => request<BriefingSettings>('GET', '/me/briefing'),
   saveBriefing: (b: BriefingSettings) => request<BriefingSettings>('PUT', '/me/briefing', b),
-  makeBriefing: (kind: 'daily' | 'weekly') => request<Recording>('POST', '/me/briefing/run', { kind }),
+  makeBriefing: (kind: 'weekly') => request<Recording>('POST', '/me/briefing/run', { kind }),
+  todayBriefing: () => request<DailyBriefing>('GET', '/me/briefing/today'),
+  remakeTodayBriefing: () => request<DailyBriefing>('POST', '/me/briefing/today'),
   dismissActionItem: (id: string, itemId: string, dismissed: boolean) =>
     request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/action-items/${encodeURIComponent(itemId)}/dismissed`, { dismissed }),
   notifications: () => request<NotificationStatus>('GET', '/me/notifications'),

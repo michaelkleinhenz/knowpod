@@ -73,6 +73,15 @@ export function NewNoteIcon() {
   );
 }
 
+// HomeIcon is a house, for the home page with today's briefing.
+export function HomeIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path d="M4 11l8-7 8 7M6 9.5V20h4.5v-5.5h3V20H18V9.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 // BackIcon is a circle with a left arrow in it, used by the link back to the notes list.
 export function BackIcon() {
   return (

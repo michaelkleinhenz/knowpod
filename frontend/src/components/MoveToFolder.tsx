@@ -51,7 +51,15 @@ export function MoveToFolder({ rec, setRec }: { rec: Recording; setRec: (r: Reco
   const moveOut = () =>
     move(() => (grandparent ? api.setNoteParent(rec.id, grandparent.id) : api.setNoteFolder(rec.id, parent?.folderId ?? '')));
   const current = parent ? null : (rec.folderId ?? '');
-  const options = [{ id: '', name: t('folders.topLevel'), depth: 0 }, ...flatTree(folders ?? []).map(({ folder, depth }) => ({ id: folder.id, name: folder.name, depth: depth + 1 }))];
+  // A note in a folder shared with the user moves only between the folders they can edit
+  // there; other notes go into the user's own folders.
+  const all = folders ?? [];
+  const inShared = all.some((f) => f.id === rec.folderId && (f.access ?? 'owner') !== 'owner');
+  const usable = all.filter((f) => (inShared ? f.access === 'editor' : (f.access ?? 'owner') === 'owner'));
+  const options = [
+    ...(inShared ? [] : [{ id: '', name: t('folders.topLevel'), depth: 0 }]),
+    ...flatTree(usable).map(({ folder, depth }) => ({ id: folder.id, name: folder.name, depth: depth + 1 })),
+  ];
 
   return (
     <div className="move-folder">

@@ -6,7 +6,7 @@ import { errorText } from '../lib/errors';
 import { useTaskParse } from '../lib/useTaskParse';
 import { formatClockTime, formatDue, formatRepeat, groupTasks } from '../lib/tasks';
 import { isTask } from '../lib/labels';
-import { formatDate, when } from '../lib/recordings';
+import { formatDate, shortDate, when } from '../lib/recordings';
 import { CalendarIcon, NewNoteIcon } from './Icons';
 import { NoteTreeRows, useNoteTree } from './NoteTree';
 import { PriorityFlag } from './TaskControls';
@@ -81,12 +81,14 @@ export function TasksView({
   aiReady,
   onSetDone,
   onNewSub,
+  onTrash,
 }: {
   notes: Recording[];
   activeId?: string;
   aiReady: boolean;
   onSetDone: (r: Recording, done: boolean) => void;
   onNewSub?: (parent: Recording) => void;
+  onTrash?: (r: Recording) => void;
 }) {
   const { t } = useTranslation();
   const { recordings } = useNotes();
@@ -122,7 +124,7 @@ export function TasksView({
               aiReady={aiReady}
               meta={(r, depth) =>
                 depth > 0
-                  ? formatDate(when(r))
+                  ? shortDate(when(r))
                   : !r.due
                     ? ''
                     : g.key === 'overdue' || g.key === 'later'
@@ -134,6 +136,7 @@ export function TasksView({
               taskDate={false}
               onSetDone={onSetDone}
               onNewSub={onNewSub}
+              onTrash={onTrash}
             />
           </ul>
         </div>

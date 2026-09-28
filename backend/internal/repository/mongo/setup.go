@@ -107,6 +107,9 @@ var indexes = map[string][]mongo.IndexModel{
 	},
 	CollFolders: {
 		{Keys: bson.D{{Key: "ownerId", Value: 1}, {Key: "name", Value: 1}}},
+		// Folders shared with a user.
+		{Keys: bson.D{{Key: "shares.userId", Value: 1}},
+			Options: options.Index().SetPartialFilterExpression(bson.M{"shares": bson.M{"$exists": true}})},
 	},
 	CollPushSubscriptions: {
 		{Keys: bson.D{{Key: "userId", Value: 1}}},

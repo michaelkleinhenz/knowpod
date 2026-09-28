@@ -7,8 +7,8 @@ import type { Matcher } from '../lib/filterQuery';
 import { childFolders, folderOf, isInside, isUnderNote, notePath, sortInPlace } from '../lib/folders';
 import { lastFolder, setLastFolder } from '../lib/lastFolder';
 import { setOpen, useOpen } from '../lib/treeOpen';
-import { formatDate, when } from '../lib/recordings';
-import { ChevronIcon, FolderIcon, NewFolderIcon, NewNoteIcon, PencilIcon, TrashIcon } from './Icons';
+import { ChevronIcon, FolderIcon, NewFolderIcon, NewNoteIcon, PencilIcon, ShareIcon, TrashIcon } from './Icons';
+import { ShareFolder } from './ShareNote';
 import { NoteTreeRows, useNoteTree } from './NoteTree';
 
 // Drag data types; the browser only reveals the types (not the data) while dragging over.
@@ -62,6 +62,7 @@ interface Props {
   aiReady: boolean;
   onSetDone: (r: Recording, done: boolean) => void;
   onNewSub?: (parent: Recording) => void;
+  onTrash?: (r: Recording) => void;
   // onNewInFolder, when set, shows a button on each folder that adds a note to it.
   onNewInFolder?: (folderId: string) => void;
   // newFolder is bumped by the list's "New folder" button to start a folder at the top level.
@@ -75,7 +76,7 @@ interface Props {
 // order the user puts them in: dropped onto the top or bottom edge of a row, an item goes
 // before or after it, and Alt+Up/Down moves the focused item up or down. The folder the
 // user last opened is remembered, for new notes to go into.
-export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewSub, onNewInFolder, newFolder }: Props) {
+export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewSub, onTrash, onNewInFolder, newFolder }: Props) {
   const { t } = useTranslation();
   const { folders, recordings, reloadFolders, reload, upsert } = useNotes();
   const open = useOpen();
@@ -117,6 +118,8 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
   }, [all, tree]);
 
   const toggle = (id: string, on = !open.has(id)) => setOpen([id], on);
+  // The shared folders mark their notes as shared.
+  const sharedFolders = useMemo(() => new Map(all.filter((f) => f.shared).map((f) => [f.id, true])), [all]);
 
   // openFolder opens or closes a folder the user clicked. New notes go into the folder last
   // opened; closing it (or a folder it is in) makes that the folder it was in.
@@ -382,9 +385,10 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
       searching={searching}
       activeId={activeId}
       aiReady={aiReady}
-      meta={(r) => formatDate(when(r))}
+      meta={() => ''}
       onSetDone={onSetDone}
       onNewSub={onNewSub}
+      onTrash={onTrash}
       rowProps={(r) => ({
         onDragStart: (e) => {
           e.dataTransfer.setData(NOTE_TYPE, r.id);
@@ -392,6 +396,7 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
         },
         lineProps: noteDropProps(r),
         drop: dropTarget === `note:${r.id}` || (dropTarget === `before:note:${r.id}` ? 'before' : dropTarget === `after:note:${r.id}` ? 'after' : false),
+        inSharedFolder: !!sharedFolders.get((notePath(r, allNotes)[0] ?? r).folderId ?? ''),
       })}
     />
   );
@@ -402,6 +407,9 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
       if (searching && !counts.get(f.id)) return null;
       const isOpen = searching || open.has(f.id);
       const renaming = editing?.id === f.id;
+      // A folder shared with the user is its owner's to change; editors add notes to it.
+      const own = (f.access ?? 'owner') === 'owner';
+      const canAdd = own || f.access === 'editor';
       return (
         <li key={f.id} className="tree-folder">
           {renaming ? (
@@ -410,7 +418,7 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
             <div
               className={`tree-row${dropClass(dropTarget, f.id)}`}
               data-folder={f.id}
-              draggable
+              draggable={own}
               onDragStart={(e) => {
                 e.dataTransfer.setData(FOLDER_TYPE, f.id);
                 e.dataTransfer.effectAllowed = 'move';
@@ -423,7 +431,7 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
                 <button type="button" className="note-sub-toggle" tabIndex={-1} aria-hidden="true" onClick={() => openFolder(f)}>
                   <ChevronIcon open={isOpen} />
                 </button>
-                {onNewInFolder && (
+                {onNewInFolder && canAdd && (
                   <button
                     type="button"
                     className="note-add-sub"
@@ -443,50 +451,64 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
                 className="tree-toggle"
                 aria-expanded={isOpen}
                 onClick={() => openFolder(f)}
-                onKeyDown={shiftKeys(
-                  f,
-                  () => children.get(f.parentId ?? '') ?? [],
-                  (target, where) => placeFolder(f.id, target, where),
-                  `[data-folder="${CSS.escape(f.id)}"] .tree-toggle`,
-                )}
+                onKeyDown={
+                  own
+                    ? shiftKeys(
+                        f,
+                        () => children.get(f.parentId ?? '') ?? [],
+                        (target, where) => placeFolder(f.id, target, where),
+                        `[data-folder="${CSS.escape(f.id)}"] .tree-toggle`,
+                      )
+                    : undefined
+                }
               >
                 <span className="tree-icon">
                   <FolderIcon open={isOpen} />
                 </span>
                 <span className="tree-name">{f.name}</span>
+                {f.shared && (
+                  <span className="note-row-shared" title={t(own ? 'sharing.badge' : 'sharing.folder.sharedWithYou')} aria-label={t(own ? 'sharing.badge' : 'sharing.folder.sharedWithYou')}>
+                    <ShareIcon size={12} />
+                  </span>
+                )}
                 <span className="tree-count">{counts.get(f.id) || ''}</span>
               </button>
               <span className="tree-actions">
-                <button
-                  type="button"
-                  className="icon-button"
-                  title={t('folders.newInside')}
-                  aria-label={t('folders.newInsideLabel', { name: f.name })}
-                  onClick={() => {
-                    openFolder(f, true);
-                    setEditing({ parentId: f.id, name: '' });
-                  }}
-                >
-                  <NewFolderIcon />
-                </button>
-                <button
-                  type="button"
-                  className="icon-button"
-                  title={t('folders.rename')}
-                  aria-label={t('folders.renameLabel', { name: f.name })}
-                  onClick={() => setEditing({ id: f.id, parentId: f.parentId ?? '', name: f.name })}
-                >
-                  <PencilIcon />
-                </button>
-                <button
-                  type="button"
-                  className="icon-button danger"
-                  title={t('common.delete')}
-                  aria-label={t('folders.deleteLabel', { name: f.name })}
-                  onClick={() => void remove(f)}
-                >
-                  <TrashIcon />
-                </button>
+                <ShareFolder folder={f} />
+                {own && (
+                  <>
+                    <button
+                      type="button"
+                      className="icon-button"
+                      title={t('folders.newInside')}
+                      aria-label={t('folders.newInsideLabel', { name: f.name })}
+                      onClick={() => {
+                        openFolder(f, true);
+                        setEditing({ parentId: f.id, name: '' });
+                      }}
+                    >
+                      <NewFolderIcon />
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-button"
+                      title={t('folders.rename')}
+                      aria-label={t('folders.renameLabel', { name: f.name })}
+                      onClick={() => setEditing({ id: f.id, parentId: f.parentId ?? '', name: f.name })}
+                    >
+                      <PencilIcon />
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-button danger"
+                      title={t('common.delete')}
+                      aria-label={t('folders.deleteLabel', { name: f.name })}
+                      onClick={() => void remove(f)}
+                    >
+                      <TrashIcon />
+                    </button>
+                  </>
+                )}
               </span>
             </div>
           )}

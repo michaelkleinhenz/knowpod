@@ -64,6 +64,23 @@ notes they can edit) and trash notes under the shared note (new ones belong to t
 `createdBy` set). Only the owner shares, trashes the shared note itself, deletes for good,
 restores and reprocesses. A member can leave a note shared with them directly.
 
+**Shared folders** (`service/folder_sharing.go`). A folder has `shares` like a note, and is
+shared with everything in it: its folders, at any depth, and their notes with the notes under
+them. `folderMembers` merges the shares of the folder and the folders it is in; a note under
+no other note gets them as inherited members from its folder in `syncMembers` (boards
+excepted), so a note in a shared folder is shared like a sub-note of a shared note (not
+`root`: the member sees it in that folder, as `present` keeps its `folderId`). Sharing,
+unsharing, moving or deleting a shared folder runs `folderChanged`: `syncFolderTree` brings
+the notes in the folder's tree up to date, and the users who had or have the folder get a
+`reload` event. New notes in a shared folder get its members when they are made
+(`CreateText`, reMarkable imports, weekly reviews). `FolderService.List` gives a member the
+folders shared with them (`ListSharedWith`) and the owner's folders in them, each with the
+member's `access`; a shared folder whose parent isn't shared with the member is at their top
+level. Editors add notes to a shared folder (they belong to its owner, with `createdBy`
+set) and move its notes between the owner's folders shared with them; the folders themselves
+stay the owner's to rename, move, order, delete and share. Deleting a user takes them off
+every folder too (`RemoveShares`).
+
 ### Concurrent changes
 
 Every note has a `version`, counted up by each change. `RecordingRepository.Update` replaces
@@ -299,7 +316,10 @@ memo keeps recording while the user moves between pages.
 manifest, `vite.config.ts`): other apps post links, text and files to `/share`. The service
 worker (`public/share-sw.js`, imported into the generated one) keeps them in the cache
 `knowpod-share` and opens the page `/share` (`pages/Share.tsx`), which saves text as a text
-note and uploads the files as above. A post that reaches the server (no service worker yet)
+note and uploads the files as above. Markdown files, picked, dropped or shared, never reach
+the upload endpoint: the app reads them (`lib/markdownFile.ts`) and creates a text note of
+each, titled by its front matter `title`, its first `#` heading or its file name. A post that
+reaches the server (no service worker yet)
 is redirected to the page, which asks to share again.
 
 ### Archive
@@ -602,21 +622,35 @@ without an index, in two calls to the summary model:
 `AskService.Find` runs the search step alone for the MCP tool `find_notes`, returning the
 notes with a passage around the keywords.
 
-**Briefings** (`service/briefing.go`). `users.briefing` holds a user's settings (`daily`,
-`weekly`, `time`, `weeklyDay`) and the days the last briefing and review were made
+**Briefings** (`service/briefing.go`). `users.briefing` holds a user's settings (`dailyOff`
+— the daily briefing is on unless turned off —, `weekly`, `time`, `weeklyDay`, `noNotify`,
+`sections`, `actionItemDays`) and the days the last briefing and review were made
 (`lastDaily`, `lastWeekly`, in the user's time zone). `BriefingService.Run` (every minute,
 started in `main.go`) makes the ones due: past today's time, not made today, and for the
 review on its day. Each is marked made before it is made (on a fresh copy of the user, so
 settings changed meanwhile stay), so it is made once even when making it fails; turning
-briefings on after today's time marks today, so the first comes the next day. A briefing is
-a text note with `source: briefing` in the user's folder **Briefings** (found by name or
-made, remembered in `briefing.folderId`), announced through `NotificationService.Notify`.
-Its sections are put together from the user's notes: open tasks by date and priority,
-notes created since the last briefing (at most a week), action items neither made tasks
-nor dismissed, tasks checked off (`doneAt`, set by `SetDone`), time entries, and tasks
-without a date unchanged for 30 days. The summary model writes the digest of the new notes'
-summaries, citing `#12`; references to notes it wasn't given lose their `#`. Without a
-configured model the briefing has no digest. `POST /me/briefing/run` makes one right away.
+briefings on after today's time marks today, so the first comes the next day.
+
+The daily briefing is no note: it is kept in `briefing.today` (`day`, `title`, `markdown`,
+`summary`, `madeAt`) and shown on the web UI's home page (`/briefing`, also shown at `/`
+on desktop). `GET /me/briefing/today` returns it, making it right away when there is none
+for today yet (without announcing it; the scheduled one made later that day replaces it
+and is announced); `POST /me/briefing/today` makes it again. Unless `noNotify` is set, the
+scheduled one is announced through `NotificationService.Notify`, linking to `/briefing`.
+Besides the tasks due today, its `sections` (default: `overdue`, `new`, `digest`,
+`actionItems`; also `upcoming`, the tasks due in the next week) say what it lists; action
+items are looked for `actionItemDays` back (default 7, at most 30).
+
+The weekly review is a text note with `source: briefing` in the user's folder **Briefings**
+(found by name or made, remembered in `briefing.folderId`), announced through
+`NotificationService.Notify`; `POST /me/briefing/run` with `kind: weekly` makes one right away.
+
+The briefings' sections are put together from the user's notes: open tasks by date and
+priority, notes created since the last daily briefing (at most a week), action items
+neither made tasks nor dismissed, tasks checked off (`doneAt`, set by `SetDone`), time
+entries, and tasks without a date unchanged for 30 days. The summary model writes the
+digest of the new notes' summaries, citing `#12`; references to notes it wasn't given lose
+their `#`. Without a configured model the briefing has no digest.
 
 **Action items.** The summary's `actionItems` (`id`, `text`, `owner`, `due`) are offered below
 the summary. `POST /recordings/{id}/action-items/{itemId}/task` creates a text note under the
@@ -787,7 +821,8 @@ index).
 (unique per user, ignoring case), `color` (`#rrggbb`), `createdAt`, `updatedAt`.
 
 **`folders`**: users' folders: `_id`, `ownerId` (indexed with `name`), `name`,
-`parentId` (absent at the top level), `createdAt`, `updatedAt`.
+`parentId` (absent at the top level), `position`, `shares` (`userId`, `role`, `createdAt`;
+`shares.userId` indexed; see **Shared folders**), `createdAt`, `updatedAt`.
 
 **`filters`**: users' saved filters: `_id`, `ownerId` (indexed with `name`), `name`,
 `query`, `pinned`, `createdAt`, `updatedAt`.

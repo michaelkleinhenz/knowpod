@@ -21,8 +21,8 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
 - **Todo management.** Any note can be a task with a due date, time, repeat rule, priority
   and reminder, typed in plain English or German ("Call Anna tomorrow 3pm p1"). Action items
   from your conversations become tasks in one click, and reminders arrive as push
-  notifications on your phone and computer. A daily briefing and a weekly review sum up
-  what is due and what came in.
+  notifications on your phone and computer. A daily briefing on the home page and a weekly
+  review sum up what is due and what came in.
 - **Integrations with your tools and gadgets.**
 
   | Source | What arrives in knowpod |
@@ -59,6 +59,8 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
 - **Sharing.** Any note (a todo list, say) can be shared with other users, together with
   everything under it, for viewing or editing. Changes show up for everyone right away;
   each person files a shared note in their own folder, with their own labels and reminders.
+  Whole folders can be shared the same way, with all their notes and folders, including
+  what is added later.
   Edits made at the same time never undo each other: a conflicting text edit asks which
   version stays. The built-in admin is `ADMIN_EMAIL`,
   whose password is `ADMIN_PASSWORD` until one is set in the UI.
@@ -68,6 +70,8 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
   **Settings → Account** tab: recordings arrive through the user's personal webhook and their audio is
   downloaded with the user's Pocket API key.
 - WAV and MP3 files, photos and PDFs can be uploaded from the browser on **Workspace**.
+  Markdown files (`.md`) become text notes, titled by their first heading (or front matter
+  `title`, or file name).
 - Each user can pair their **reMarkable** cloud account under **Settings → Account** with a
   one-time code. All its documents (except the trash) are imported into the knowpod
   folder **reMarkable**, in the same folders as on the tablet (read only, never changed on the tablet): handwritten notebooks are rendered to PDF, PDFs and EPUBs are kept as they
@@ -144,7 +148,8 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
   photos (JPEG, PNG, WebP, GIF) and PDFs. The document model writes down their text (a
   photo without text is described), which is then summarized.
 - **Share to knowpod**: installed as an app on a phone, knowpod is a share target: links and
-  text shared with it become a note, photos, PDFs and audio files are uploaded.
+  text shared with it become a note, as do Markdown files; photos, PDFs and audio files are
+  uploaded.
 - **Reminders** arrive as push notifications in every browser or installed app they are
   turned on in (**Settings → Account → Notifications**), on phones too (on iPhone: from the Home Screen
   app).

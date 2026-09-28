@@ -7,19 +7,20 @@ import { useAuth } from '../auth';
 import { FolderTree, NOTE_TYPE } from './FolderTree';
 import { FilterBar } from './SavedFilters';
 import { TimerBar } from './TimeControls';
-import { MicIcon, NewBoardIcon, NewFolderIcon, NewNoteIcon, RefreshIcon, SearchIcon, SparkleIcon, TrashIcon, UploadIcon } from './Icons';
+import { HomeIcon, MicIcon, NewBoardIcon, NewFolderIcon, NewNoteIcon, RefreshIcon, SearchIcon, SparkleIcon, TrashIcon, UploadIcon } from './Icons';
 import { useRecorder } from '../context/Recorder';
 import { NoteTreeRows, useNoteTree } from './NoteTree';
 import { DueView } from './DueView';
 import { TasksView } from './TasksView';
 import { TrashView } from './TrashView';
+import { createMarkdownNote, isMarkdown, MARKDOWN_ACCEPT } from '../lib/markdownFile';
 import { errorText } from '../lib/errors';
 import { parseFilter, searchMatcher } from '../lib/filterQuery';
-import { dayKey, dayLabel, formatDate, formatTime, when } from '../lib/recordings';
+import { dayKey, dayLabel, formatTime, shortDate, when } from '../lib/recordings';
 import { lastFolder } from '../lib/lastFolder';
 
 // Audio files, and photos and PDFs, whose text is read (on phones, the picker offers the camera).
-const ACCEPT = '.wav,.mp3,audio/wav,audio/x-wav,audio/wave,audio/mpeg,image/jpeg,image/png,image/webp,image/gif,.pdf,application/pdf';
+const ACCEPT = `.wav,.mp3,audio/wav,audio/x-wav,audio/wave,audio/mpeg,image/jpeg,image/png,image/webp,image/gif,.pdf,application/pdf,${MARKDOWN_ACCEPT}`;
 
 // The list shows the notes by when they were created (grouped by day), the notes with a due
 // date by that date, the notes in their folders, like files, or the open tasks by when they
@@ -105,7 +106,12 @@ export function NotesList({ activeId }: { activeId?: string }) {
       const update = (u: Partial<UploadState>) => setUploads((list) => list.map((x) => (x.key === key ? { ...x, ...u } : x)));
       setUploads((list) => [...list, { key, name: file.name, progress: 0 }]);
       try {
-        await api.uploadRecording(file, (p) => update({ progress: p }));
+        if (isMarkdown(file)) {
+          // A Markdown file becomes a text note, where new notes go.
+          upsert(await createMarkdownNote(file, t('conversations.markdownTooLong', { name: file.name }), newNoteFolder()));
+        } else {
+          await api.uploadRecording(file, (p) => update({ progress: p }));
+        }
         update({ progress: 1, done: true });
         load();
         setTimeout(() => setUploads((list) => list.filter((x) => x.key !== key)), 4000);
@@ -147,6 +153,18 @@ export function NotesList({ activeId }: { activeId?: string }) {
       setCreateError(errorText(err, t));
     } finally {
       setCreating(false);
+    }
+  }
+
+  // trashNote moves a note to the trash from its row, where it can be restored for
+  // TRASH_DAYS. The open note is left first, so its pending edits are saved with it.
+  async function trashNote(r: Recording) {
+    setCreateError(null);
+    if (r.id === activeId) navigate('/', { replace: true });
+    try {
+      await moveToTrash(r);
+    } catch (err) {
+      setCreateError(errorText(err, t));
     }
   }
 
@@ -259,6 +277,15 @@ export function NotesList({ activeId }: { activeId?: string }) {
         <div className="conversations-head">
           <h1>{t('conversations.title')}</h1>
           <div className="head-actions">
+            <button
+              type="button"
+              className="pill-button icon-only-mobile"
+              onClick={() => navigate('/briefing')}
+              title={t('briefing.homeLabel')}
+              aria-label={t('briefing.homeLabel')}
+            >
+              <HomeIcon /> <span>{t('briefing.home')}</span>
+            </button>
             <button type="button" className="pill-button icon-only-mobile" onClick={() => void createText()} disabled={creating} aria-label={t('conversations.newNote')}>
               <NewNoteIcon /> <span>{t('conversations.newNote')}</span>
             </button>
@@ -399,10 +426,10 @@ export function NotesList({ activeId }: { activeId?: string }) {
           </div>
         )}
         {!showTrash && view === 'due' && recordings && (recordings.length === 0 || matches.length > 0) && (
-        <DueView notes={matches} activeId={activeId} aiReady={aiReady} onSetDone={(r, d) => void setDone(r, d)} onNewSub={creating ? undefined : (r) => void createSub(r)} />
+        <DueView notes={matches} activeId={activeId} aiReady={aiReady} onSetDone={(r, d) => void setDone(r, d)} onNewSub={creating ? undefined : (r) => void createSub(r)} onTrash={(r) => void trashNote(r)} />
       )}
       {!showTrash && view === 'tasks' && recordings && (
-          <TasksView notes={matches} activeId={activeId} aiReady={aiReady} onSetDone={(r, d) => void setDone(r, d)} onNewSub={creating ? undefined : (r) => void createSub(r)} />
+          <TasksView notes={matches} activeId={activeId} aiReady={aiReady} onSetDone={(r, d) => void setDone(r, d)} onNewSub={creating ? undefined : (r) => void createSub(r)} onTrash={(r) => void trashNote(r)} />
         )}
 
         {!showTrash && recordings && recordings.length > 0 && matches.length === 0 && view !== 'tasks' && (
@@ -417,6 +444,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
             aiReady={aiReady}
             onSetDone={(r, d) => void setDone(r, d)}
             onNewSub={creating ? undefined : (r) => void createSub(r)}
+            onTrash={(r) => void trashNote(r)}
             onNewInFolder={creating ? undefined : (id) => void createText(id)}
             newFolder={newFolder}
           />
@@ -438,9 +466,10 @@ export function NotesList({ activeId }: { activeId?: string }) {
                     searching={search !== null}
                     activeId={activeId}
                     aiReady={aiReady}
-                    meta={(r, depth) => (depth === 0 ? formatTime(when(r)) : formatDate(when(r)))}
+                    meta={(r, depth) => (depth === 0 ? formatTime(when(r)) : shortDate(when(r)))}
                     onSetDone={(r, d) => void setDone(r, d)}
                     onNewSub={creating ? undefined : (r) => void createSub(r)}
+                    onTrash={(r) => void trashNote(r)}
                   />
                 </ul>
               </div>

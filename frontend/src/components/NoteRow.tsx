@@ -4,20 +4,22 @@ import { Link } from 'react-router-dom';
 import { Recording } from '../api/client';
 import { isTask } from '../lib/labels';
 import { iconKind, statusLabel, title } from '../lib/recordings';
-import { ChevronIcon, NewNoteIcon, NoteIcon, ShareIcon } from './Icons';
+import { ChevronIcon, NewNoteIcon, NoteIcon, ShareIcon, TrashIcon } from './Icons';
 import { TaskMeta } from './TaskControls';
 
 interface Props {
   rec: Recording;
   active: boolean;
   aiReady: boolean;
-  // meta is shown at the end of the row (the time, or the date in the folder view).
+  // meta is shown at the end of the row (the time or date; none in the folder view).
   meta: string;
   onSetDone: (r: Recording, done: boolean) => void;
   // taskDate shows a task's due date on the row (off where the list is grouped by it).
   taskDate?: boolean;
   // onNewSub, when set, shows a button that adds a sub-note to the note.
   onNewSub?: (r: Recording) => void;
+  // onTrash, when set, shows a button that moves the note to the trash.
+  onTrash?: (r: Recording) => void;
   onDragStart?: (e: DragEvent) => void;
   // sub is set for a note with sub-notes: how many, and whether they are shown below it.
   sub?: { count: number; open: boolean; onToggle: (e: MouseEvent) => void };
@@ -25,15 +27,17 @@ interface Props {
   // line before or after it (where a dropped note goes).
   lineProps?: HTMLAttributes<HTMLDivElement>;
   drop?: boolean | 'before' | 'after';
+  // inSharedFolder leaves out the note's shared mark: its folder shows it.
+  inSharedFolder?: boolean;
   // children are shown below the row (the sub-notes).
   children?: ReactNode;
 }
 
 // NoteRow is one note in the sidebar: in front, a toggle for its sub-notes if it has any and
-// a button to add a sub-note (both in a gutter every row has, so the rows' icons and times
+// buttons to move it to the trash and to add a sub-note (all in a gutter every row has, so the rows' icons and times
 // line up); then its type icon (a check box for tasks), title (shortened to fit, its number
 // always shown, to link it with "#12"), processing state and time.
-export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = true, onNewSub, onDragStart, sub, lineProps, drop, children }: Props) {
+export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = true, onNewSub, onTrash, onDragStart, sub, lineProps, drop, inSharedFolder, children }: Props) {
   const { t } = useTranslation();
   const state = statusLabel(r, aiReady);
   const task = isTask(r);
@@ -51,6 +55,11 @@ export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = t
               onClick={sub.onToggle}
             >
               <ChevronIcon open={sub.open} />
+            </button>
+          )}
+          {onTrash && (
+            <button type="button" className="note-trash" title={t('conversation.moveToTrash')} aria-label={t('conversation.moveToTrashLabel', { title: title(r) })} onClick={() => onTrash(r)}>
+              <TrashIcon />
             </button>
           )}
           {onNewSub && (
@@ -71,7 +80,7 @@ export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = t
           <span className="conversation-title">
             <span className="note-title-line">
               <span className="note-title-text">{title(r)}</span>
-              {r.shared && (
+              {r.shared && !inSharedFolder && (
                 <span className="note-row-shared" title={t('sharing.badge')} aria-label={t('sharing.badge')}>
                   <ShareIcon size={12} />
                 </span>
@@ -87,7 +96,7 @@ export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = t
               </span>
             )}
           </span>
-          <span className="conversation-time">{meta}</span>
+          {meta && <span className="conversation-time">{meta}</span>}
         </Link>
         {/* Over the note's icon; outside the link so checking doesn't open the note. */}
         {task && (

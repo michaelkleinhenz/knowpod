@@ -304,8 +304,9 @@ type TextNoteInput struct {
 // ParentID it is created as a sub-note of that note, otherwise in folder FolderID (the top
 // level when empty).
 //
-// A sub-note of a note shared with the account (as an editor) belongs to that note's owner
-// and is shared like it.
+// A sub-note of a note shared with the account (as an editor), or a note in a folder shared
+// with the account (as an editor), belongs to that note's or folder's owner and is shared
+// like it.
 func (s *RecordingService) CreateText(ctx context.Context, acc *Account, in TextNoteInput) (*recording.Recording, error) {
 	if acc.ID == "" {
 		return nil, errors.Join(ErrForbidden, errors.New("notes belong to a user; sign in"))
@@ -325,6 +326,15 @@ func (s *RecordingService) CreateText(ctx context.Context, acc *Account, in Text
 			return nil, err
 		}
 		owner, parent = p.OwnerID, p
+	} else if folderID := strings.TrimSpace(in.FolderID); folderID != "" && !s.Folders.Usable(ctx, owner, folderID) {
+		f, _, err := s.loadFolder(ctx, acc, folderID, recording.RoleEditor)
+		switch {
+		case errors.Is(err, ErrNotFound):
+			return nil, invalid("unknown folder %q", folderID)
+		case err != nil:
+			return nil, err
+		}
+		owner = f.OwnerID
 	}
 	if err := s.validParent(ctx, owner, "", parentID); err != nil {
 		return nil, err
@@ -346,6 +356,12 @@ func (s *RecordingService) CreateText(ctx context.Context, acc *Account, in Text
 	}
 	if parent != nil {
 		rec.Members = recording.ComputeMembers(parent.Members, nil, nil)
+	} else {
+		inherited, err := s.inFolderMembers(ctx, rec)
+		if err != nil {
+			return nil, err
+		}
+		rec.Members = recording.ComputeMembers(inherited, nil, nil)
 	}
 	if err := in.TaskFields.apply(s, ctx, rec); err != nil {
 		return nil, err
@@ -471,13 +487,33 @@ func (s *RecordingService) SetDone(ctx context.Context, acc *Account, id string,
 // along.
 //
 // A note shared with the account by itself goes into one of the account's folders, for the
-// account alone. The notes under it stay there.
+// account alone. The notes under it stay there. Editors of a folder shared with them move
+// its notes to other folders of its owner they can edit; only the owner takes them out.
 func (s *RecordingService) SetFolder(ctx context.Context, acc *Account, id, folderID string) (*recording.Recording, error) {
 	folderID = strings.TrimSpace(folderID)
-	var detached bool
+	var moved bool
 	out, err := s.change(ctx, acc, id, recording.RoleViewer, func(rec *recording.Recording, role recording.Role) error {
 		if role != recording.RoleOwner {
 			m := rec.Member(acc.ID)
+			if !m.Root && rec.ParentID == "" && rec.FolderID != "" {
+				// In a folder shared with the account.
+				if !role.AtLeast(recording.RoleEditor) {
+					return errors.Join(ErrForbidden, errors.New("the note is shared with you for viewing only"))
+				}
+				f, _, err := s.loadFolder(ctx, acc, folderID, recording.RoleEditor)
+				if folderID == "" || errors.Is(err, ErrNotFound) || (err == nil && f.OwnerID != rec.OwnerID) {
+					return errors.Join(ErrForbidden, errors.New("a note in a shared folder stays in the folders shared with you; only its owner moves it out"))
+				}
+				if err != nil {
+					return err
+				}
+				if rec.FolderID != folderID {
+					rec.Position = 0
+				}
+				moved = rec.FolderID != folderID
+				rec.FolderID = folderID
+				return nil
+			}
 			if !m.Root {
 				return invalid("a note under a shared note stays under it")
 			}
@@ -497,14 +533,15 @@ func (s *RecordingService) SetFolder(ctx context.Context, acc *Account, id, fold
 			// A note moved elsewhere goes after the ordered notes there.
 			rec.Position = 0
 		}
-		detached = rec.ParentID != ""
+		moved = rec.FolderID != folderID || rec.ParentID != ""
 		rec.FolderID, rec.ParentID = folderID, ""
 		return nil
 	})
-	if err != nil || !detached {
+	if err != nil || !moved {
 		return out, err
 	}
-	// A note taken from under its parent is no longer shared like the parent.
+	// A note taken from under its parent, or moved to another folder, is shared like the
+	// place it moved to.
 	if err := s.syncMembers(ctx, id); err != nil {
 		return nil, err
 	}
@@ -584,8 +621,6 @@ func (s *RecordingService) Reorder(ctx context.Context, acc *Account, ids []stri
 				p = place{m.FolderID, ""}
 			} else if !role.AtLeast(recording.RoleEditor) {
 				return errors.Join(ErrForbidden, errors.New("the note is shared with you for viewing only"))
-			} else {
-				p = place{"", rec.ParentID}
 			}
 		}
 		if first == nil {

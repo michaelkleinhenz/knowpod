@@ -77,8 +77,9 @@ func (s *RecordingService) change(ctx context.Context, acc *Account, id string, 
 }
 
 // present returns the note as the account sees it. The owner sees it as stored. A member
-// sees their own folder, labels, order and reminder instead of the owner's, and a note
-// shared with them by itself at the top of their notes rather than under its parent.
+// sees their own labels and reminder instead of the owner's, a note shared with them by
+// itself in their own folder and order rather than under its parent, and a note in a
+// folder shared with them in that folder.
 func present(acc *Account, rec *recording.Recording) *recording.Recording {
 	out := *rec
 	out.Shared = len(rec.Members) > 0
@@ -95,7 +96,6 @@ func present(acc *Account, rec *recording.Recording) *recording.Recording {
 	}
 	out.Labels = append(out.Labels, m.Labels...)
 	out.RemindAt = m.RemindAt
-	out.FolderID = ""
 	if m.Root {
 		out.ParentID, out.FolderID, out.Position = "", m.FolderID, m.Position
 	}
@@ -254,8 +254,9 @@ func (s *RecordingService) afterSharing(ctx context.Context, acc *Account, id st
 	return s.Sharing(ctx, acc, id)
 }
 
-// syncMembers recomputes the members of the note from its shares and the note it is under,
-// and so on down its sub-notes. It is called whenever shares change or a note moves.
+// syncMembers recomputes the members of the note from its shares and the note it is under
+// (or, for a note in a folder, the folder), and so on down its sub-notes. It is called
+// whenever shares change or a note moves.
 func (s *RecordingService) syncMembers(ctx context.Context, id string) error {
 	return s.syncMembersAt(ctx, id, 1)
 }
@@ -278,6 +279,8 @@ func (s *RecordingService) syncMembersAt(ctx context.Context, id string, depth i
 			if err == nil && parent.OwnerID == rec.OwnerID {
 				inherited = parent.Members
 			}
+		} else if inherited, err = s.inFolderMembers(ctx, rec); err != nil {
+			return err
 		}
 		next := recording.ComputeMembers(inherited, rec.Shares, rec.Members)
 		if recording.SameMembers(rec.Members, next) {
@@ -317,6 +320,15 @@ func (s *RecordingService) syncMembersAt(ctx context.Context, id string, depth i
 		}
 	}
 	return nil
+}
+
+// inFolderMembers returns the members a note that is under no other note gets from the
+// folder it is in. Boards aren't shared (they show notes the users may not have).
+func (s *RecordingService) inFolderMembers(ctx context.Context, rec *recording.Recording) ([]recording.Member, error) {
+	if rec.FolderID == "" || rec.IsBoard() || s.Folders == nil {
+		return nil, nil
+	}
+	return folderMembers(ctx, s.Folders.repo, rec.OwnerID, rec.FolderID)
 }
 
 // childIDs lists the sub-notes of a note (also those in the trash).

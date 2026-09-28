@@ -64,3 +64,17 @@ func (r *FolderRepo) DeleteByOwner(ctx context.Context, ownerID string) error {
 	_, err := r.c.DeleteMany(ctx, bson.M{"ownerId": ownerID})
 	return err
 }
+
+func (r *FolderRepo) ListSharedWith(ctx context.Context, userID string) ([]*folder.Folder, error) {
+	cur, err := r.c.Find(ctx, bson.M{"shares.userId": userID}, options.Find().SetSort(bson.D{{Key: "name", Value: 1}}))
+	if err != nil {
+		return nil, err
+	}
+	out := []*folder.Folder{}
+	return out, cur.All(ctx, &out)
+}
+
+func (r *FolderRepo) RemoveShares(ctx context.Context, userID string) error {
+	_, err := r.c.UpdateMany(ctx, bson.M{"shares.userId": userID}, bson.M{"$pull": bson.M{"shares": bson.M{"userId": userID}}})
+	return err
+}
