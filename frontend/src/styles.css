@@ -1596,6 +1596,12 @@ a {
   background: var(--color-border);
 }
 
+/* A divider separates two groups; with nothing on one side of it, it has nothing to separate. */
+.tool-divider:first-child,
+.tool-divider:last-child {
+  display: none;
+}
+
 .chevron {
   display: inline-block;
   transform: rotate(90deg);
