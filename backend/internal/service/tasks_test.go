@@ -115,6 +115,26 @@ func TestPriorityAndTakingTheTaskLabelOff(t *testing.T) {
 	}
 }
 
+func TestFinishingARecurringTaskEndsIt(t *testing.T) {
+	f := newTaskFixture(t)
+	ctx := context.Background()
+	rec := f.note(t, TextNoteInput{TaskFields: TaskFields{Due: &recording.Due{
+		Date: "2026-09-21", Time: "08:00", Remind: ptr(0), Repeat: &recording.Repeat{Every: 1, Unit: recording.RepeatWeek},
+	}}})
+	got, err := f.s.FinishTask(ctx, f.acc, rec.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Done || got.DoneAt == nil || got.Due.Repeat != nil || got.Due.Date != "2026-09-21" || got.RemindAt != nil {
+		t.Errorf("after finishing: done %v, due %+v, remind %v", got.Done, got.Due, got.RemindAt)
+	}
+
+	plain := f.note(t, TextNoteInput{})
+	if _, err := f.s.FinishTask(ctx, f.acc, plain.ID); err == nil {
+		t.Error("finished a note that isn't a task")
+	}
+}
+
 func TestCheckingOffARecurringTaskMovesIt(t *testing.T) {
 	f := newTaskFixture(t)
 	ctx := context.Background()

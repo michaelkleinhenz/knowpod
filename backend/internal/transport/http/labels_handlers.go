@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/service"
 )
 
@@ -67,15 +68,24 @@ func (s *Server) handleSetNoteLabels(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, rec)
 }
 
-// handleSetNoteDone checks or unchecks a task note with {"done": true|false}.
+// handleSetNoteDone checks or unchecks a task note with {"done": true|false}. With
+// "final": true, a recurring task is checked off for good instead of moving to its next date.
 func (s *Server) handleSetNoteDone(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Done bool `json:"done"`
+		Done  bool `json:"done"`
+		Final bool `json:"final"`
 	}
 	if !decode(w, r, &in) {
 		return
 	}
-	rec, err := s.actions.SetDone(r.Context(), accountFrom(r.Context()), chi.URLParam(r, "id"), in.Done)
+	acc, id := accountFrom(r.Context()), chi.URLParam(r, "id")
+	var rec *recording.Recording
+	var err error
+	if in.Done && in.Final {
+		rec, err = s.actions.FinishTask(r.Context(), acc, id)
+	} else {
+		rec, err = s.actions.SetDone(r.Context(), acc, id, in.Done)
+	}
 	if err != nil {
 		s.writeErr(w, err)
 		return

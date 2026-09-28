@@ -6,7 +6,7 @@ import { useNotes } from '../context/NotesContext';
 import { errorText } from '../lib/errors';
 import { isTask, LABEL_COLORS, labelName, labelStyle, noteLabels } from '../lib/labels';
 import { formatDue } from '../lib/tasks';
-import { CheckIcon, TagIcon } from './Icons';
+import { CheckIcon, FinishIcon, TagIcon } from './Icons';
 import { TaskControls } from './TaskControls';
 import { TimeControls } from './TimeControls';
 
@@ -125,19 +125,20 @@ function LabelPicker({ rec, onToggle, onClose }: { rec: Recording; onToggle: (id
 }
 
 // NoteDone is the check box of a note that is a task. Checking off a repeating task moves it
-// to its next date instead, which is then said.
-export function NoteDone({ rec, setRec }: { rec: Recording; setRec: (r: Recording) => void }) {
+// to its next date instead, which is then said. With finish, a repeating task also gets a
+// button that checks it off for good.
+export function NoteDone({ rec, setRec, finish = false }: { rec: Recording; setRec: (r: Recording) => void; finish?: boolean }) {
   const { t } = useTranslation();
   const [error, setError] = useState<string | null>(null);
   const [next, setNext] = useState<string | null>(null);
   useEffect(() => setNext(null), [rec.id]);
   if (!isTask(rec)) return null;
   const repeating = !rec.done && !!rec.due?.repeat;
-  const toggle = async (done: boolean) => {
+  const toggle = async (done: boolean, final = false) => {
     setError(null);
     setNext(null);
     try {
-      const saved = await api.setNoteDone(rec.id, done);
+      const saved = await api.setNoteDone(rec.id, done, final);
       setRec(saved);
       if (done && repeating && saved.due && !saved.done) setNext(t('labels.nextDate', { date: formatDue(saved.due) }));
     } catch (err) {
@@ -150,6 +151,11 @@ export function NoteDone({ rec, setRec }: { rec: Recording; setRec: (r: Recordin
         <input type="checkbox" checked={!!rec.done} disabled={rec.access === 'viewer'} onChange={(e) => void toggle(e.target.checked)} />
         {rec.done ? t('labels.done') : t('labels.open')}
       </label>
+      {finish && repeating && rec.access !== 'viewer' && (
+        <button type="button" className="icon-button" title={t('labels.finish')} aria-label={t('labels.finish')} onClick={() => void toggle(true, true)}>
+          <FinishIcon />
+        </button>
+      )}
       {next && (
         <p className="muted" role="status">
           {next}

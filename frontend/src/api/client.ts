@@ -624,7 +624,9 @@ export const api = {
     request<Sharing | null>('DELETE', `/folders/${encodeURIComponent(id)}/shares/${encodeURIComponent(userId)}`),
   eventsURL: '/api/v1/me/events',
   setNoteLabels: (id: string, labels: string[]) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/labels`, { labels }),
-  setNoteDone: (id: string, done: boolean) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/done`, { done }),
+  // final checks off a repeating task for good instead of moving it to its next date.
+  setNoteDone: (id: string, done: boolean, final = false) =>
+    request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/done`, final ? { done, final } : { done }),
   setNoteDue: (id: string, due: Due | null) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/due`, { due }),
   setNotePriority: (id: string, priority: Priority) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/priority`, { priority }),
   setNoteEstimate: (id: string, minutes: number) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/estimate`, { minutes }),

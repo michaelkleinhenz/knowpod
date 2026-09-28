@@ -482,6 +482,21 @@ func (s *RecordingService) SetDone(ctx context.Context, acc *Account, id string,
 	})
 }
 
+// FinishTask checks off a task for good: a recurring task stops repeating instead of moving
+// to its next date.
+func (s *RecordingService) FinishTask(ctx context.Context, acc *Account, id string) (*recording.Recording, error) {
+	return s.change(ctx, acc, id, recording.RoleEditor, func(rec *recording.Recording, _ recording.Role) error {
+		if !slices.Contains(rec.Labels, label.Task) {
+			return invalid("only notes labeled as a task can be checked off")
+		}
+		if rec.Due != nil {
+			rec.Due.Repeat = nil
+		}
+		s.completeTask(ctx, rec, true)
+		return nil
+	})
+}
+
 // SetFolder moves the note into one of its owner's folders, or to the top level (""). A
 // sub-note moved into a folder is no longer under its parent note; its own sub-notes come
 // along.
