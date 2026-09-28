@@ -150,6 +150,18 @@ export function NotesList({ activeId }: { activeId?: string }) {
     }
   }
 
+  // trashNote moves a note to the trash from its row, where it can be restored for
+  // TRASH_DAYS. The open note is left first, so its pending edits are saved with it.
+  async function trashNote(r: Recording) {
+    setCreateError(null);
+    if (r.id === activeId) navigate('/', { replace: true });
+    try {
+      await moveToTrash(r);
+    } catch (err) {
+      setCreateError(errorText(err, t));
+    }
+  }
+
   // createSub makes an empty text note under parent and opens it, ready to type its title.
   async function createSub(parent: Recording) {
     setCreating(true);
@@ -399,10 +411,10 @@ export function NotesList({ activeId }: { activeId?: string }) {
           </div>
         )}
         {!showTrash && view === 'due' && recordings && (recordings.length === 0 || matches.length > 0) && (
-        <DueView notes={matches} activeId={activeId} aiReady={aiReady} onSetDone={(r, d) => void setDone(r, d)} onNewSub={creating ? undefined : (r) => void createSub(r)} />
+        <DueView notes={matches} activeId={activeId} aiReady={aiReady} onSetDone={(r, d) => void setDone(r, d)} onNewSub={creating ? undefined : (r) => void createSub(r)} onTrash={(r) => void trashNote(r)} />
       )}
       {!showTrash && view === 'tasks' && recordings && (
-          <TasksView notes={matches} activeId={activeId} aiReady={aiReady} onSetDone={(r, d) => void setDone(r, d)} onNewSub={creating ? undefined : (r) => void createSub(r)} />
+          <TasksView notes={matches} activeId={activeId} aiReady={aiReady} onSetDone={(r, d) => void setDone(r, d)} onNewSub={creating ? undefined : (r) => void createSub(r)} onTrash={(r) => void trashNote(r)} />
         )}
 
         {!showTrash && recordings && recordings.length > 0 && matches.length === 0 && view !== 'tasks' && (
@@ -417,6 +429,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
             aiReady={aiReady}
             onSetDone={(r, d) => void setDone(r, d)}
             onNewSub={creating ? undefined : (r) => void createSub(r)}
+            onTrash={(r) => void trashNote(r)}
             onNewInFolder={creating ? undefined : (id) => void createText(id)}
             newFolder={newFolder}
           />
@@ -441,6 +454,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
                     meta={(r, depth) => (depth === 0 ? formatTime(when(r)) : formatDate(when(r)))}
                     onSetDone={(r, d) => void setDone(r, d)}
                     onNewSub={creating ? undefined : (r) => void createSub(r)}
+                    onTrash={(r) => void trashNote(r)}
                   />
                 </ul>
               </div>

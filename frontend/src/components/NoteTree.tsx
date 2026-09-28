@@ -53,6 +53,7 @@ interface Props {
   taskDate?: boolean;
   onSetDone: (r: Recording, done: boolean) => void;
   onNewSub?: (parent: Recording) => void;
+  onTrash?: (r: Recording) => void;
   // rowProps adds to each row, e.g. to drag it or drop notes onto it.
   rowProps?: (r: Recording) => RowProps;
   depth?: number;
@@ -60,7 +61,7 @@ interface Props {
 
 // NoteTreeRows lists notes with their sub-notes, which open and close like folders (in all
 // of the sidebar's views together).
-export function NoteTreeRows({ list, tree, searching, activeId, aiReady, meta, taskDate, onSetDone, onNewSub, rowProps, depth = 0 }: Props): ReactNode {
+export function NoteTreeRows({ list, tree, searching, activeId, aiReady, meta, taskDate, onSetDone, onNewSub, onTrash, rowProps, depth = 0 }: Props): ReactNode {
   const open = useOpen();
   return list.map((r) => {
     if (!tree.shown.get(r.id)) return null;
@@ -76,6 +77,7 @@ export function NoteTreeRows({ list, tree, searching, activeId, aiReady, meta, t
         taskDate={depth === 0 ? taskDate : true}
         onSetDone={onSetDone}
         onNewSub={onNewSub}
+        onTrash={onTrash}
         sub={
           kids.length > 0
             ? {
@@ -100,6 +102,7 @@ export function NoteTreeRows({ list, tree, searching, activeId, aiReady, meta, t
               taskDate={taskDate}
               onSetDone={onSetDone}
               onNewSub={onNewSub}
+              onTrash={onTrash}
               rowProps={rowProps}
               depth={depth + 1}
             />

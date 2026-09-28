@@ -293,6 +293,7 @@ export const en = {
     notArchived: "The audio hasn't been stored yet",
     laneTitle: 'On the board “{{board}}” in “{{lane}}”',
     moveToTrash: 'Move to trash',
+    moveToTrashLabel: 'Move “{{title}}” to the trash',
     inTrash: 'This item is in the trash. It will be deleted for good on {{date}}.',
     restore: 'Restore',
     deleteForever: 'Delete for good',

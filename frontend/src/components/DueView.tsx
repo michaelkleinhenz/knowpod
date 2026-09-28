@@ -22,12 +22,14 @@ export function DueView({
   aiReady,
   onSetDone,
   onNewSub,
+  onTrash,
 }: {
   notes: Recording[];
   activeId?: string;
   aiReady: boolean;
   onSetDone: (r: Recording, done: boolean) => void;
   onNewSub?: (parent: Recording) => void;
+  onTrash?: (r: Recording) => void;
 }) {
   const { t } = useTranslation();
   const { tree, groups } = useMemo(() => {
@@ -69,6 +71,7 @@ export function DueView({
               taskDate={false}
               onSetDone={onSetDone}
               onNewSub={onNewSub}
+              onTrash={onTrash}
             />
           </ul>
         </div>

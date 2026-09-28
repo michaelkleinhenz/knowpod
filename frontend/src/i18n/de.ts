@@ -295,6 +295,7 @@ export const de: Translation = {
     notArchived: 'Die Audiodatei ist noch nicht gespeichert',
     laneTitle: 'Auf dem Board „{{board}}“ in „{{lane}}“',
     moveToTrash: 'In den Papierkorb',
+    moveToTrashLabel: '„{{title}}“ in den Papierkorb',
     inTrash: 'Dieser Eintrag liegt im Papierkorb. Er wird am {{date}} endgültig gelöscht.',
     restore: 'Wiederherstellen',
     deleteForever: 'Endgültig löschen',

@@ -2978,7 +2978,7 @@ html:has(.notes-layout) {
 /* Folder rows are laid out like note rows (see .note-line): the same gutter in front, then
    the icon in a box as wide as a note's icon, so that folder and note icons line up. */
 .folder-tree {
-  --note-gutter: 2.6rem;
+  --note-gutter: 3.9rem;
   --icon-w: 30px;
   --item-gap: 1rem;
   min-height: 4rem;
@@ -3127,7 +3127,7 @@ html:has(.notes-layout) {
 
 /* A note's row; the check box of a task sits on it. */
 .note-line {
-  --note-gutter: 2.6rem;
+  --note-gutter: 3.9rem;
   position: relative;
   display: flex;
   align-items: center;
@@ -3156,16 +3156,18 @@ html:has(.notes-layout) {
 }
 
 /* In front of every note, so that all icons and times line up: the toggle of its sub-notes
-   (if it has any) and the button to add one, each in its own place. */
+   (if it has any) and the buttons to move it to the trash and to add a sub-note, each in its
+   own place. */
 .note-gutter {
   flex: none;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   align-items: center;
   width: var(--note-gutter);
 }
 
 .note-sub-toggle,
+.note-trash,
 .note-add-sub {
   display: inline-flex;
   align-items: center;
@@ -3190,15 +3192,29 @@ html:has(.notes-layout) {
   background: var(--color-surface);
 }
 
-/* Adds a sub-note; faint, and on devices with a pointer only shown on the row's hover. */
-.note-add-sub {
+/* Move the note to the trash and add a sub-note; faint, and on devices with a pointer only
+   shown on the row's hover. */
+.note-trash {
   grid-column: 2;
   opacity: 0.45;
 }
 
+.note-add-sub {
+  grid-column: 3;
+  opacity: 0.45;
+}
+
+.note-trash svg,
 .note-add-sub svg {
   width: 13px;
   height: 13px;
+}
+
+.note-trash:hover,
+.note-trash:focus-visible {
+  opacity: 1;
+  color: var(--color-error);
+  background: var(--color-danger-bg);
 }
 
 .note-add-sub:hover,
@@ -3209,15 +3225,18 @@ html:has(.notes-layout) {
 }
 
 @media (hover: hover) {
+  .note-trash,
   .note-add-sub {
     opacity: 0;
   }
 
+  .note-line:hover .note-trash,
   .note-line:hover .note-add-sub,
   .tree-row:hover .note-add-sub {
     opacity: 0.6;
   }
 
+  .note-line:hover .note-trash:hover,
   .note-line:hover .note-add-sub:hover,
   .tree-row:hover .note-add-sub:hover {
     opacity: 1;

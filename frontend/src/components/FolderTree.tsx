@@ -62,6 +62,7 @@ interface Props {
   aiReady: boolean;
   onSetDone: (r: Recording, done: boolean) => void;
   onNewSub?: (parent: Recording) => void;
+  onTrash?: (r: Recording) => void;
   // onNewInFolder, when set, shows a button on each folder that adds a note to it.
   onNewInFolder?: (folderId: string) => void;
   // newFolder is bumped by the list's "New folder" button to start a folder at the top level.
@@ -75,7 +76,7 @@ interface Props {
 // order the user puts them in: dropped onto the top or bottom edge of a row, an item goes
 // before or after it, and Alt+Up/Down moves the focused item up or down. The folder the
 // user last opened is remembered, for new notes to go into.
-export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewSub, onNewInFolder, newFolder }: Props) {
+export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewSub, onTrash, onNewInFolder, newFolder }: Props) {
   const { t } = useTranslation();
   const { folders, recordings, reloadFolders, reload, upsert } = useNotes();
   const open = useOpen();
@@ -385,6 +386,7 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
       meta={(r) => formatDate(when(r))}
       onSetDone={onSetDone}
       onNewSub={onNewSub}
+      onTrash={onTrash}
       rowProps={(r) => ({
         onDragStart: (e) => {
           e.dataTransfer.setData(NOTE_TYPE, r.id);
