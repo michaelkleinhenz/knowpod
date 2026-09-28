@@ -164,6 +164,15 @@ export function CheckIcon() {
   );
 }
 
+// FinishIcon: a double check mark, for checking off a repeating task for good.
+export function FinishIcon() {
+  return (
+    <ToolIcon>
+      <path d="m2.5 12.5 4.5 4.5L16.5 7.5M12 16.5l.5.5L22 7.5" />
+    </ToolIcon>
+  );
+}
+
 // RetranscribeIcon: a sound wave with a circular arrow.
 export function RetranscribeIcon() {
   return (

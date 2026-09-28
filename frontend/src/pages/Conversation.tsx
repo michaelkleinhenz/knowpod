@@ -758,7 +758,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart,
           <section>
             <h2>{t('noteInfo.task')}</h2>
             <fieldset className="note-aside-task view-only-fieldset" disabled={readOnly}>
-              <NoteDone rec={rec} setRec={setRec} />
+              <NoteDone rec={rec} setRec={setRec} finish />
               <TaskControls rec={rec} setRec={setRec} />
             </fieldset>
           </section>

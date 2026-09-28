@@ -1555,7 +1555,9 @@ paths:
     put:
       tags: ["Recordings", "Labels"]
       summary: Check off a task
-      description: Sets the check mark of a note labeled `task`.
+      description: |
+        Sets the check mark of a note labeled `task`. Checking off a recurring task moves it to
+        its next date, unless `final` is set: then its repeat rule is removed and it is done.
       security: [{ sessionCookie: [] }, { adminToken: [] }]
       parameters:
         - { name: recordingId, in: path, required: true, schema: { type: string } }
@@ -1568,6 +1570,7 @@ paths:
               required: [done]
               properties:
                 done: { type: boolean }
+                final: { type: boolean, description: "With done, checks off a recurring task for good." }
       responses:
         "200":
           description: Saved

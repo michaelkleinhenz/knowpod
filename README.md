@@ -102,7 +102,8 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
   page. Dates can be typed in English or German ("tomorrow 3pm", "jeden Montag", "am
   5.10."), also in a note's title. The **Tasks** view lists the open tasks by due date and
   adds new ones from one line ("Call Anna tomorrow 3pm p1"); checking off a recurring task
-  moves it to its next date.
+  moves it to its next date, and the double check mark in the note's sidebar completes it
+  for good.
 - Summaries list the **action items** found in the conversation; each becomes a task under
   the note with one click, due on the date that was named.
 - **Saved filters**: the search box understands a filter language like Todoist's, e.g.

@@ -550,6 +550,7 @@ export const en = {
     viewOnly: 'Shared with you for viewing only',
     repeatHint: 'Repeats: checking it off moves it to its next date',
     nextDate: 'Repeats – next on {{date}}',
+    finish: 'Complete for good (stop repeating)',
   },
   doneTasks: {
     title: 'Done tasks',

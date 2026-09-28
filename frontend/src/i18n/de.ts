@@ -552,6 +552,7 @@ export const de: Translation = {
     viewOnly: 'Nur zum Ansehen mit dir geteilt',
     repeatHint: 'Wiederholt sich: Abhaken verschiebt die Aufgabe auf den nächsten Termin',
     nextDate: 'Wiederholt sich – nächster Termin {{date}}',
+    finish: 'Endgültig erledigen (nicht mehr wiederholen)',
   },
   doneTasks: {
     title: 'Erledigte Aufgaben',
