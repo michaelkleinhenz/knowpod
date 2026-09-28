@@ -18,12 +18,16 @@ import (
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/ports"
 )
 
-// ErrUnsupportedMedia is returned for uploaded files that are not WAV or MP3.
-var ErrUnsupportedMedia = errors.New("only WAV and MP3 files can be uploaded")
+// ErrUnsupportedMedia is returned for uploaded files that are not WAV, MP3, a photo or a PDF.
+var ErrUnsupportedMedia = errors.New("only audio (WAV, MP3), photos (JPEG, PNG, WebP, GIF) and PDF files can be uploaded")
 
-// ManualUploadService stores audio files that users upload in the web UI. The file is
-// streamed into the spool and then processed like other recordings: WAV is archived as
-// FLAC, MP3 as it is, and both are transcribed and summarized.
+// maxUploadImage limits uploaded photos: they are sent to the model in one piece.
+const maxUploadImage = 20 << 20
+
+// ManualUploadService stores files that users upload in the web UI, and voice memos recorded
+// there. The file is streamed into the spool and then processed like other recordings: WAV
+// is archived as FLAC, MP3 as it is, and both are transcribed and summarized. Photos and PDFs
+// become documents: stored as they are, read by the document model and summarized.
 type ManualUploadService struct {
 	recs    ports.RecordingRepository
 	spool   *Spool
@@ -43,6 +47,50 @@ type ManualUpload struct {
 	Filename   string
 	RecordedAt *time.Time // e.g. the file's modification time, if the browser sends it
 	Body       io.Reader
+	// Recorded says the file is a voice memo recorded in the web app.
+	Recorded bool
+	// Highlights are the moments marked while recording (offsets in milliseconds).
+	Highlights []int64
+}
+
+// sniffDocument identifies the photos and PDFs that can be uploaded, from their first bytes.
+// heic reports an HEIC/HEIF photo, which the models can't read.
+func sniffDocument(head []byte) (contentType string, heic bool) {
+	switch {
+	case len(head) >= 3 && head[0] == 0xFF && head[1] == 0xD8 && head[2] == 0xFF:
+		return "image/jpeg", false
+	case strings.HasPrefix(string(head), "\x89PNG\r\n\x1a\n"):
+		return "image/png", false
+	case len(head) >= 12 && string(head[0:4]) == "RIFF" && string(head[8:12]) == "WEBP":
+		return "image/webp", false
+	case strings.HasPrefix(string(head), "GIF87a"), strings.HasPrefix(string(head), "GIF89a"):
+		return "image/gif", false
+	case strings.HasPrefix(string(head), "%PDF-"):
+		return "application/pdf", false
+	case len(head) >= 12 && string(head[4:8]) == "ftyp":
+		switch string(head[8:12]) {
+		case "heic", "heix", "heim", "heis", "hevc", "hevx", "mif1", "msf1", "avif":
+			return "", true
+		}
+	}
+	return "", false
+}
+
+// documentExtension returns the file extension of an uploaded document's media type.
+func documentExtension(contentType string) string {
+	switch contentType {
+	case "image/jpeg":
+		return "jpg"
+	case "image/png":
+		return "png"
+	case "image/webp":
+		return "webp"
+	case "image/gif":
+		return "gif"
+	case "application/pdf":
+		return "pdf"
+	}
+	return "bin"
 }
 
 // Upload stores the file for the account's user and queues it for processing.
@@ -80,6 +128,31 @@ func (s *ManualUploadService) Upload(ctx context.Context, acc *Account, in Manua
 		return nil, invalid("the file is empty")
 	}
 
+	now := s.clock().UTC()
+	if doc, heic := sniffDocument(head); doc != "" || heic {
+		switch {
+		case heic:
+			return nil, errors.Join(ErrUnsupportedMedia, errors.New("HEIC photos can't be read; share or save the photo as JPEG"))
+		case in.Recorded:
+			return nil, ErrUnsupportedMedia
+		case doc != "application/pdf" && n > maxUploadImage:
+			return nil, fmt.Errorf("%w: photos can be at most %d MB", ErrTooLarge, maxUploadImage>>20)
+		}
+		rec = &recording.Recording{
+			ID: id, OwnerID: acc.ID, DeviceID: "upload:" + acc.ID, ClientID: id, Type: recording.TypeDocument,
+			Source: recording.SourceUpload, Title: titleFromFilename(in.Filename), Status: recording.StatusReceived,
+			Size: n, SHA256: hex.EncodeToString(h.Sum(nil)), SourceContentType: doc,
+			RecordedAt: in.RecordedAt, ReceivedAt: &now, NotBefore: now, CreatedAt: now, UpdatedAt: now,
+		}
+		if err := s.recs.Create(ctx, rec); err != nil {
+			return nil, err
+		}
+		if s.OnReceived != nil {
+			s.OnReceived()
+		}
+		return rec, nil
+	}
+
 	ctype, _ := audio.Sniff(head)
 	var format *recording.Format
 	switch ctype {
@@ -94,11 +167,25 @@ func (s *ManualUploadService) Upload(ctx context.Context, acc *Account, in Manua
 		return nil, ErrUnsupportedMedia
 	}
 
-	now := s.clock().UTC()
+	source := recording.SourceUpload
+	if in.Recorded {
+		source = recording.SourceRecorder
+	}
+	var highlights []recording.Highlight
+	if len(in.Highlights) > 0 {
+		marks := make([]HighlightInput, len(in.Highlights))
+		for i := range in.Highlights {
+			marks[i].OffsetMs = &in.Highlights[i]
+		}
+		if highlights, err = normalizeHighlights(marks, nil); err != nil {
+			return nil, err
+		}
+	}
 	rec = &recording.Recording{
 		ID: id, OwnerID: acc.ID, DeviceID: "upload:" + acc.ID, ClientID: id,
-		Source: recording.SourceUpload, Title: titleFromFilename(in.Filename), Status: recording.StatusReceived,
+		Source: source, Title: titleFromFilename(in.Filename), Status: recording.StatusReceived,
 		Size: n, SHA256: hex.EncodeToString(h.Sum(nil)), SourceContentType: ctype, Format: format,
+		Highlights: highlights,
 		RecordedAt: in.RecordedAt, ReceivedAt: &now, NotBefore: now, CreatedAt: now, UpdatedAt: now,
 	}
 	if err := s.recs.Create(ctx, rec); err != nil {

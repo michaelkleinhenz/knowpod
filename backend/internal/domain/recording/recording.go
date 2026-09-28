@@ -37,8 +37,8 @@ const (
 	// its title and text are kept in Summary, so it is edited like a summary.
 	TypeText Type = "text"
 	// TypeDocument: a document read from the reMarkable cloud (a handwritten notebook, PDF
-	// or EPUB). File is its PDF or EPUB; the text read from its pages is kept as the
-	// Transcript and summarized like one.
+	// or EPUB), or a photo or PDF uploaded in the web app. File is its PDF, EPUB or image;
+	// the text read from its pages is kept as the Transcript and summarized like one.
 	TypeDocument Type = "document"
 	// TypeBoard: a kanban board of the user's notes. Its title is kept in Summary like a
 	// text note's; Board holds which notes it shows and its columns.
@@ -57,6 +57,10 @@ const (
 	SourceUpload Source = "upload"
 	// SourceRemarkable: a document pulled from the user's reMarkable cloud.
 	SourceRemarkable Source = "remarkable"
+	// SourceRecorder: a voice memo recorded in the web app.
+	SourceRecorder Source = "recorder"
+	// SourceBriefing: a text note made as the user's daily briefing or weekly review.
+	SourceBriefing Source = "briefing"
 )
 
 // PocketDeviceID returns the DeviceID of a user's Pocket recordings. Together with ClientID
@@ -120,8 +124,10 @@ type Recording struct {
 
 	// Labels are the IDs of the labels the user put on the note, in the order they were added.
 	Labels []string `bson:"labels,omitempty" json:"labels,omitempty"`
-	// Done is the check mark of a note labeled as a task.
-	Done bool `bson:"done,omitempty" json:"done,omitempty"`
+	// Done is the check mark of a note labeled as a task; DoneAt is when it was checked off
+	// (for a repeating task: when it was last checked off).
+	Done   bool       `bson:"done,omitempty" json:"done,omitempty"`
+	DoneAt *time.Time `bson:"doneAt,omitempty" json:"doneAt,omitempty"`
 	// Due is when a task is due; Priority ranks it. Both belong to notes labeled as a task.
 	Due      *Due     `bson:"due,omitempty" json:"due,omitempty"`
 	Priority Priority `bson:"priority,omitempty" json:"priority,omitempty"`
@@ -195,6 +201,11 @@ func (r *Recording) IsText() bool { return r.Type == TypeText }
 // IsDocument reports whether the note is a document from the reMarkable cloud.
 func (r *Recording) IsDocument() bool { return r.Type == TypeDocument }
 
+// IsImage reports whether the note is a photo (a document whose file is an image).
+func (r *Recording) IsImage() bool {
+	return r.IsDocument() && r.File != nil && len(r.File.ContentType) > 6 && r.File.ContentType[:6] == "image/"
+}
+
 // IsBoard reports whether the note is a board.
 func (r *Recording) IsBoard() bool { return r.Type == TypeBoard }
 
@@ -203,7 +214,7 @@ func (r *Recording) IsBoard() bool { return r.Type == TypeBoard }
 // version from the stored copy, so that a processing step saving its long-held copy doesn't
 // undo them.
 func (r *Recording) KeepUserFields(stored *Recording) {
-	r.Labels, r.Done, r.FolderID, r.ParentID, r.Number = stored.Labels, stored.Done, stored.FolderID, stored.ParentID, stored.Number
+	r.Labels, r.Done, r.DoneAt, r.FolderID, r.ParentID, r.Number = stored.Labels, stored.Done, stored.DoneAt, stored.FolderID, stored.ParentID, stored.Number
 	r.Due, r.Priority, r.RemindAt = stored.Due, stored.Priority, stored.RemindAt
 	r.Estimate, r.TrackedSeconds = stored.Estimate, stored.TrackedSeconds
 	r.Position, r.DeletedAt = stored.Position, stored.DeletedAt
@@ -279,7 +290,16 @@ type Summary struct {
 	EditedAt *time.Time `bson:"editedAt,omitempty" json:"editedAt,omitempty"`
 	// ActionItems are the follow-ups found in the conversation, offered as tasks.
 	ActionItems []ActionItem `bson:"actionItems,omitempty" json:"actionItems,omitempty"`
-	CreatedAt   time.Time    `bson:"createdAt" json:"createdAt"`
+	// Speakers are the names the model recognized for the transcript's speaker labels
+	// (e.g. "Speaker 1" is Anna), offered for renaming the speakers.
+	Speakers  []SpeakerName `bson:"speakers,omitempty" json:"speakers,omitempty"`
+	CreatedAt time.Time     `bson:"createdAt" json:"createdAt"`
+}
+
+// SpeakerName names the speaker with a label in the transcript.
+type SpeakerName struct {
+	Label string `bson:"label" json:"label"`
+	Name  string `bson:"name" json:"name"`
 }
 
 // SummaryOptions choose how a recording is summarized. Empty fields use the defaults: the

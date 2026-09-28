@@ -57,9 +57,13 @@ type Server struct {
 	// oauth lets AI assistants connect to the MCP server through OAuth.
 	oauth *service.OAuthService
 	// events tells the web app about note changes as they happen.
-	events  *service.NoteEvents
-	version string
-	now     func() time.Time
+	events *service.NoteEvents
+	// ask answers questions about the user's notes.
+	ask *service.AskService
+	// briefings makes the users' daily and weekly briefings.
+	briefings *service.BriefingService
+	version   string
+	now       func() time.Time
 }
 
 // Deps are the server's constructor dependencies. Handlers of missing services are still
@@ -94,6 +98,9 @@ type Deps struct {
 	OAuth *service.OAuthService
 	// Events is optional in tests that don't use it; without it live updates are off.
 	Events *service.NoteEvents
+	// Ask and Briefings are optional in tests that don't use them.
+	Ask       *service.AskService
+	Briefings *service.BriefingService
 	// Version is the app version, reported by the MCP server.
 	Version string
 }
@@ -108,7 +115,8 @@ func NewServer(d Deps) *Server {
 		cfg: d.Cfg, log: log, db: d.DB, auth: d.Auth, users: d.Users, devices: d.Devices, uploads: d.Uploads,
 		manual: d.Manual, actions: d.Actions, objects: d.Objects, pocket: d.Pocket, ai: d.AI, themes: d.Themes,
 		labels: d.Labels, folders: d.Folders, remarkable: d.Remarkable, notifications: d.Notifications,
-		filters: d.Filters, times: d.Times, calendar: d.Calendar, mcp: d.MCP, oauth: d.OAuth, events: d.Events, version: cmp.Or(d.Version, "dev"),
+		filters: d.Filters, times: d.Times, calendar: d.Calendar, mcp: d.MCP, oauth: d.OAuth, events: d.Events,
+		ask: d.Ask, briefings: d.Briefings, version: cmp.Or(d.Version, "dev"),
 		now: time.Now,
 	}
 }
@@ -134,6 +142,13 @@ func (s *Server) Router() http.Handler {
 	}))
 
 	r.Get("/healthz", s.handleHealth)
+
+	// Things shared with the installed app are posted here. The app's service worker takes
+	// them; a post that reaches the server (the service worker wasn't running) goes to the
+	// share page, which says so.
+	r.Post("/share", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/share?missed=1", http.StatusSeeOther)
+	})
 
 	// --- MCP server for AI assistants (the user's MCP access token, or OAuth) ---
 	r.Post(service.MCPPath, s.handleMCP)
@@ -193,6 +208,9 @@ func (s *Server) Router() http.Handler {
 			u.Get("/me/calendar", s.handleGetCalendar)
 			u.Post("/me/calendar", s.handleEnableCalendar)
 			u.Delete("/me/calendar", s.handleDisableCalendar)
+			u.Get("/me/briefing", s.handleGetBriefing)
+			u.Put("/me/briefing", s.handleUpdateBriefing)
+			u.With(httprate.LimitByIP(10, time.Minute)).Post("/me/briefing/run", s.handleMakeBriefing)
 			u.Get("/me/mcp", s.handleGetMCP)
 			u.Post("/me/mcp", s.handleEnableMCP)
 			u.Delete("/me/mcp", s.handleDisableMCP)
@@ -203,6 +221,7 @@ func (s *Server) Router() http.Handler {
 			u.Get("/ai/status", s.handleAIStatus)
 			u.Get("/ai/models", s.handleOpenRouterModels)
 			u.Get("/ai/languages", s.handleSummaryLanguages)
+			u.With(httprate.LimitByIP(30, time.Minute)).Post("/ask", s.handleAsk)
 
 			u.Get("/themes", s.handleListThemes)
 			u.Post("/themes", s.handleCreateTheme)
@@ -268,6 +287,7 @@ func (s *Server) Router() http.Handler {
 			u.Delete("/recordings/{id}/shares/{userId}", s.handleUnshareNote)
 			u.Get("/recordings/{id}/summary", s.handleDownloadSummary)
 			u.Get("/recordings/{id}/transcript", s.handleDownloadTranscript)
+			u.Post("/recordings/{id}/speakers/rename", s.handleRenameSpeaker)
 		})
 
 		// --- administration (admins, or ADMIN_TOKEN) ---

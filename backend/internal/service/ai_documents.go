@@ -32,6 +32,10 @@ const notebookPrompt = `These are pages of handwritten notes. Write down what th
 Keep the structure the writing shows: headings, lists (checkboxes as "- [ ]" and "- [x]"), tables and emphasis. Describe a drawing or diagram in one short line in italics, e.g. "_Sketch: …_". Leave out crossed-out words and page numbers, and don't add headings of your own.
 Output only the Markdown. If the pages hold no writing, output nothing.`
 
+const photoPrompt = `This is a photo, e.g. of handwritten notes, a whiteboard, a printed page, a slide or a sign. Write down the text it shows in Markdown, in its original language. Do not translate, summarize or comment.
+Keep the structure the writing shows: headings, lists (checkboxes as "- [ ]" and "- [x]"), tables and emphasis. Describe a drawing or diagram in one short line in italics, e.g. "_Sketch: …_". Leave out crossed-out words.
+Output only the Markdown. If the photo shows no text, describe what it shows in one or two sentences in italics instead.`
+
 const pdfPrompt = `Write down the text of this PDF document in Markdown, in its original language. Do not translate, summarize or comment.
 Keep headings, lists and tables. Leave out page headers, footers and page numbers.
 Output only the Markdown. If the document holds no text, output nothing.`
@@ -41,6 +45,9 @@ Output only the Markdown. If the document holds no text, output nothing.`
 // EPUBs are not read. A non-empty language (e.g. "German") is the language the text is
 // written down in.
 func (s *AIService) readDocument(ctx context.Context, st *settings.OpenRouter, rec *recording.Recording, language string) error {
+	if rec.Source != recording.SourceRemarkable {
+		return s.readUpload(ctx, st, rec, language)
+	}
 	if rec.Original == nil {
 		return errors.New("the document's files have not been stored")
 	}
@@ -85,6 +92,47 @@ func (s *AIService) readDocument(ctx context.Context, st *settings.OpenRouter, r
 	rec.Transcript = &recording.Transcript{Text: text, Model: model, CreatedAt: s.clock().UTC()}
 	s.log.Info("document read", "id", rec.ID, "kind", string(a.Kind()), "model", model, "chars", len(text),
 		"took", s.clock().Sub(start).Round(time.Second).String())
+	return nil
+}
+
+// readUpload is readDocument for a photo or PDF uploaded in the web app.
+func (s *AIService) readUpload(ctx context.Context, st *settings.OpenRouter, rec *recording.Recording, language string) error {
+	if rec.File == nil {
+		return errors.New("the document's file has not been stored")
+	}
+	model := st.DocumentReader()
+	var text string
+	if rec.File.Size <= maxDocumentPDF {
+		body, err := s.objects.Get(ctx, rec.File.Key, 0, -1)
+		if err != nil {
+			return fmt.Errorf("read stored document: %w", err)
+		}
+		data, err := io.ReadAll(io.LimitReader(body, maxDocumentPDF))
+		body.Close()
+		if err != nil {
+			return fmt.Errorf("read stored document: %w", err)
+		}
+		data64 := base64.StdEncoding.EncodeToString(data)
+		var content []any
+		if rec.IsImage() {
+			content = []any{openrouter.Text(inLanguage(photoPrompt, language)), openrouter.Image(data64, rec.File.ContentType)}
+		} else {
+			content = []any{openrouter.Text(inLanguage(pdfPrompt, language) + fmt.Sprintf("\nOnly read the first %d pages.", maxDocumentPages)),
+				openrouter.PDF(data64, "document.pdf")}
+		}
+		start := s.clock()
+		answer, err := s.ai.Complete(ctx, st.APIKey, openrouter.Request{Model: model, Messages: []openrouter.Message{{Role: "user", Content: content}}})
+		if err != nil {
+			return fmt.Errorf("read document: %w", err)
+		}
+		text = strings.TrimSpace(stripFence(answer))
+		s.log.Info("document read", "id", rec.ID, "contentType", rec.File.ContentType, "model", model, "chars", len(text),
+			"took", s.clock().Sub(start).Round(time.Second).String())
+	} else {
+		s.log.Info("document too large to read", "id", rec.ID, "bytes", rec.File.Size, "limit", maxDocumentPDF)
+		model = ""
+	}
+	rec.Transcript = &recording.Transcript{Text: text, Model: model, CreatedAt: s.clock().UTC()}
 	return nil
 }
 

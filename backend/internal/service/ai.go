@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -97,6 +98,7 @@ const summaryPrompt = summaryIntro + `Reply with a JSON object with exactly thes
   - "text": the task as a short imperative sentence (at most 15 words), e.g. "Send the revised offer to Anna".
   - "owner": the name of the person who should do it, or "" if unclear.
   - "due": the date it is due as YYYY-MM-DD if a date or deadline was stated (resolve relative dates such as "next Friday" from the recording date), otherwise "".
+- "speakers": when the transcript's lines carry speaker labels such as "Speaker 1:", the speakers whose names are clear from the conversation (they introduce themselves, are addressed by name or are named by others), as objects with "label" (the label exactly as in the transcript, e.g. "Speaker 1") and "name" (the person's name as used in the conversation, e.g. "Anna"). Leave out speakers whose names aren't clear; an empty array if there are none.
 %s Write the action items' text in the same language as the summary. Reply with the JSON object only.`
 
 // maxActionItems bounds the action items kept from one summary.
@@ -455,7 +457,8 @@ func (s *AIService) Summarize(ctx context.Context, rec *recording.Recording) err
 	}
 	title, markdown, items := parseSummary(answer)
 	rec.Summary = &recording.Summary{Title: title, Markdown: markdown, Model: model, Language: language,
-		ThemeID: th.ID, ThemeName: th.Name, ActionItems: items, CreatedAt: s.clock().UTC()}
+		ThemeID: th.ID, ThemeName: th.Name, ActionItems: items, Speakers: parseSpeakers(answer, rec.Transcript.Text),
+		CreatedAt: s.clock().UTC()}
 	s.log.Info("recording summarized", "id", rec.ID, "model", model, "theme", th.ID, "language", language, "title", title)
 	return nil
 }
@@ -508,6 +511,42 @@ func parseActionItems(raw []json.RawMessage) []recording.ActionItem {
 		}
 	}
 	return out
+}
+
+// maxSpeakerNames bounds the speaker names kept from one summary.
+const maxSpeakerNames = 20
+
+// parseSpeakers reads the speaker names of the model's JSON answer. Only labels that name
+// speakers in the transcript are kept, each once.
+func parseSpeakers(answer, transcript string) []recording.SpeakerName {
+	s := strings.TrimSpace(answer)
+	i, j := strings.Index(s, "{"), strings.LastIndex(s, "}")
+	if i < 0 || j <= i {
+		return nil
+	}
+	var out struct {
+		Speakers []struct {
+			Label string `json:"label"`
+			Name  string `json:"name"`
+		} `json:"speakers"`
+	}
+	if json.Unmarshal([]byte(s[i:j+1]), &out) != nil {
+		return nil
+	}
+	labels := SpeakerLabels(transcript)
+	var names []recording.SpeakerName
+	for _, sp := range out.Speakers {
+		label, name := strings.TrimSpace(sp.Label), strings.Join(strings.Fields(sp.Name), " ")
+		if !slices.Contains(labels, label) || validSpeakerName(name) != nil || strings.EqualFold(label, name) ||
+			slices.ContainsFunc(names, func(n recording.SpeakerName) bool { return n.Label == label }) {
+			continue
+		}
+		names = append(names, recording.SpeakerName{Label: label, Name: name})
+		if len(names) == maxSpeakerNames {
+			break
+		}
+	}
+	return names
 }
 
 func cleanTitle(t string) string {

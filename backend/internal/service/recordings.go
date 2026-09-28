@@ -229,7 +229,7 @@ func (s *RecordingService) Retranscribe(ctx context.Context, acc *Account, id st
 		switch {
 		case rec.IsText():
 			return "", errors.Join(ErrNotReady, errors.New("text notes have no audio"))
-		case rec.IsDocument() && rec.Original == nil:
+		case rec.IsDocument() && rec.Original == nil && rec.File == nil:
 			return "", errors.Join(ErrNotReady, errors.New("the document has not been stored yet"))
 		case !rec.IsDocument() && rec.Audio == nil:
 			return "", errors.Join(ErrNotReady, errors.New("the audio has not been archived yet"))
