@@ -420,7 +420,6 @@ export const de: Translation = {
     },
     undo: 'Rückgängig',
     redo: 'Wiederholen',
-    edited: 'Bearbeitet am {{date}}',
     regenerateEditedConfirm: 'Diese Zusammenfassung wurde bearbeitet. Beim Neuerstellen gehen deine Änderungen verloren. Fortfahren?',
     titleRequired: 'Der Titel darf nicht leer sein.',
     sync: {

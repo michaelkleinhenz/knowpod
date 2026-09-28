@@ -619,15 +619,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart,
                   />
                 </Suspense>
                 {!isText && <ActionItems rec={rec} setRec={setRec} />}
-                <p className="model-note">
-                  {summary.model && t('conversation.summarizedWith', { model: summary.model })}
-                  {summary.editedAt && (
-                    <>
-                      {summary.model && ' · '}
-                      {t('editor.edited', { date: formatDate(summary.editedAt, { dateStyle: 'medium', timeStyle: 'short' }) })}
-                    </>
-                  )}
-                </p>
+                {summary.model && <p className="model-note">{t('conversation.summarizedWith', { model: summary.model })}</p>}
               </>
             ) : (
               pending(t('conversation.noSummary'))
