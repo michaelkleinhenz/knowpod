@@ -28,6 +28,7 @@ export const de: Translation = {
     conversations: 'Workspace',
     ask: 'Fragen',
     time: 'Zeit',
+    done: 'Erledigt',
     settings: 'Einstellungen',
     admin: 'Admin',
     signOut: 'Abmelden',
@@ -548,6 +549,15 @@ export const de: Translation = {
     done: 'Erledigt',
     open: 'Offen',
     doneLabel: 'Erledigt: {{title}}',
+    viewOnly: 'Nur zum Ansehen mit dir geteilt',
+    repeatHint: 'Wiederholt sich: Abhaken verschiebt die Aufgabe auf den nächsten Termin',
+    nextDate: 'Wiederholt sich – nächster Termin {{date}}',
+  },
+  doneTasks: {
+    title: 'Erledigte Aufgaben',
+    intro: 'Abgehakte Aufgaben stehen hier statt im Workspace. Nimm den Haken weg, um eine zurückzuholen.',
+    empty: 'Noch keine erledigten Aufgaben.',
+    unknownDay: 'Früher',
   },
   filters: {
     title: 'Gespeicherte Filter',

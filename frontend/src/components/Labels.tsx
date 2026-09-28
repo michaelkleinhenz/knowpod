@@ -5,6 +5,7 @@ import { api, Label, Recording } from '../api/client';
 import { useNotes } from '../context/NotesContext';
 import { errorText } from '../lib/errors';
 import { isTask, LABEL_COLORS, labelName, labelStyle, noteLabels } from '../lib/labels';
+import { formatDue } from '../lib/tasks';
 import { CheckIcon, TagIcon } from './Icons';
 import { TaskControls } from './TaskControls';
 import { TimeControls } from './TimeControls';
@@ -123,25 +124,37 @@ function LabelPicker({ rec, onToggle, onClose }: { rec: Recording; onToggle: (id
   );
 }
 
-// NoteDone is the check box of a note that is a task.
+// NoteDone is the check box of a note that is a task. Checking off a repeating task moves it
+// to its next date instead, which is then said.
 export function NoteDone({ rec, setRec }: { rec: Recording; setRec: (r: Recording) => void }) {
   const { t } = useTranslation();
   const [error, setError] = useState<string | null>(null);
+  const [next, setNext] = useState<string | null>(null);
+  useEffect(() => setNext(null), [rec.id]);
   if (!isTask(rec)) return null;
+  const repeating = !rec.done && !!rec.due?.repeat;
   const toggle = async (done: boolean) => {
     setError(null);
+    setNext(null);
     try {
-      setRec(await api.setNoteDone(rec.id, done));
+      const saved = await api.setNoteDone(rec.id, done);
+      setRec(saved);
+      if (done && repeating && saved.due && !saved.done) setNext(t('labels.nextDate', { date: formatDue(saved.due) }));
     } catch (err) {
       setError(errorText(err, t));
     }
   };
   return (
     <>
-      <label className={`task-toggle${rec.done ? ' done' : ''}`}>
-        <input type="checkbox" checked={!!rec.done} onChange={(e) => void toggle(e.target.checked)} />
+      <label className={`task-toggle${rec.done ? ' done' : ''}`} title={repeating ? t('labels.repeatHint') : undefined}>
+        <input type="checkbox" checked={!!rec.done} disabled={rec.access === 'viewer'} onChange={(e) => void toggle(e.target.checked)} />
         {rec.done ? t('labels.done') : t('labels.open')}
       </label>
+      {next && (
+        <p className="muted" role="status">
+          {next}
+        </p>
+      )}
       {error && <p className="error">{error}</p>}
     </>
   );

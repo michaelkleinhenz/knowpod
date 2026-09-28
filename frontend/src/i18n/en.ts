@@ -26,6 +26,7 @@ export const en = {
     conversations: 'Workspace',
     ask: 'Ask',
     time: 'Time',
+    done: 'Done',
     settings: 'Settings',
     admin: 'Admin',
     signOut: 'Sign out',
@@ -546,6 +547,15 @@ export const en = {
     done: 'Done',
     open: 'To do',
     doneLabel: 'Done: {{title}}',
+    viewOnly: 'Shared with you for viewing only',
+    repeatHint: 'Repeats: checking it off moves it to its next date',
+    nextDate: 'Repeats – next on {{date}}',
+  },
+  doneTasks: {
+    title: 'Done tasks',
+    intro: 'Checked-off tasks are kept here, out of the workspace. Uncheck one to put it back.',
+    empty: 'No done tasks yet.',
+    unknownDay: 'Earlier',
   },
   filters: {
     title: 'Saved filters',

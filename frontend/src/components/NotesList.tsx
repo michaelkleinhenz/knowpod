@@ -1,4 +1,4 @@
-import { ChangeEvent, DragEvent, useMemo, useRef, useState } from 'react';
+import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, Recording } from '../api/client';
@@ -18,6 +18,8 @@ import { errorText } from '../lib/errors';
 import { parseFilter, searchMatcher } from '../lib/filterQuery';
 import { dayKey, dayLabel, formatTime, shortDate, when } from '../lib/recordings';
 import { lastFolder } from '../lib/lastFolder';
+import { isTask } from '../lib/labels';
+import { formatDue } from '../lib/tasks';
 
 // Audio files, and photos and PDFs, whose text is read (on phones, the picker offers the camera).
 const ACCEPT = `.wav,.mp3,audio/wav,audio/x-wav,audio/wave,audio/mpeg,image/jpeg,image/png,image/webp,image/gif,.pdf,application/pdf,${MARKDOWN_ACCEPT}`;
@@ -30,6 +32,10 @@ const VIEWS: View[] = ['timeline', 'due', 'folders', 'tasks'];
 const VIEW_KEY = 'knowpod.notesView';
 // FILTER_KEY remembers the saved filter the list is narrowed by.
 const FILTER_KEY = 'knowpod.notesFilter';
+// NOTICE_MS is how long a notice (a repeating task's next date) is shown.
+const NOTICE_MS = 6000;
+// DONE_WORD finds searches and filters that ask for done tasks, which are otherwise left out.
+const DONE_WORD = /(^|[^\p{L}\p{N}_:])done($|[^\p{L}\p{N}_])/iu;
 
 function loadView(): View {
   try {
@@ -67,6 +73,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
   const { recordings, folders, filters, filterContext, trash, moveToTrash, aiReady, error, refreshing, reload: load, upsert } = useNotes();
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [uploads, setUploads] = useState<UploadState[]>([]);
   const [dragging, setDragging] = useState(false);
@@ -121,17 +128,29 @@ export function NotesList({ activeId }: { activeId?: string }) {
     }
   }
 
-  // setDone checks a task off right away and stores it; a failure undoes the check mark.
+  // setDone checks a task off right away and stores it; a failure undoes the check mark. A
+  // repeating task isn't checked off but moves to its next date, which is then shown.
   async function setDone(r: Recording, done: boolean) {
     setCreateError(null);
-    upsert({ ...r, done });
+    setNotice(null);
+    const repeating = done && !!r.due?.repeat;
+    if (!repeating) upsert({ ...r, done });
     try {
-      upsert(await api.setNoteDone(r.id, done));
+      const saved = await api.setNoteDone(r.id, done);
+      upsert(saved);
+      if (repeating && saved.due && !saved.done) setNotice(t('labels.nextDate', { date: formatDue(saved.due) }));
     } catch (err) {
       upsert(r);
       setCreateError(errorText(err, t));
     }
   }
+
+  // The notice about a repeating task's next date goes away after a while.
+  useEffect(() => {
+    if (!notice) return;
+    const timer = setTimeout(() => setNotice(null), NOTICE_MS);
+    return () => clearTimeout(timer);
+  }, [notice]);
 
   // newNoteFolder is the folder new notes and boards go into: in the folder view the one last
   // opened (if it still exists), otherwise the top level.
@@ -221,7 +240,12 @@ export function NotesList({ activeId }: { activeId?: string }) {
     if (!byQuery && !byFilter) return null;
     return (r: Recording) => (!byQuery || byQuery(r)) && (!byFilter || byFilter(r));
   }, [query, activeFilter, filterContext]);
-  const matches = useMemo(() => (search ? (recordings ?? []).filter(search) : (recordings ?? [])), [recordings, search]);
+  // Done tasks are kept in their own view (/done), unless the search or filter asks for them.
+  const withDone = DONE_WORD.test(query) || DONE_WORD.test(activeFilter?.query ?? '');
+  const matches = useMemo(() => {
+    const list = withDone ? (recordings ?? []) : (recordings ?? []).filter((r) => !(isTask(r) && r.done));
+    return search ? list.filter(search) : list;
+  }, [recordings, search, withDone]);
 
   // The timeline lists the notes by day, each sub-note under its parent note, whose time
   // orders them.
@@ -408,6 +432,11 @@ export function NotesList({ activeId }: { activeId?: string }) {
         )}
         {error && <p className="error">{error}</p>}
         {createError && <p className="error">{createError}</p>}
+        {notice && (
+          <p className="notice" role="status">
+            {notice}
+          </p>
+        )}
         {!recordings && !error && <p className="muted">{t('common.loading')}</p>}
         {!showTrash && recordings && recordings.length === 0 && (view === 'timeline' || view === 'folders') && (
           <div className="empty">
@@ -432,7 +461,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
           <TasksView notes={matches} activeId={activeId} aiReady={aiReady} onSetDone={(r, d) => void setDone(r, d)} onNewSub={creating ? undefined : (r) => void createSub(r)} onTrash={(r) => void trashNote(r)} />
         )}
 
-        {!showTrash && recordings && recordings.length > 0 && matches.length === 0 && view !== 'tasks' && (
+        {!showTrash && search && recordings && recordings.length > 0 && matches.length === 0 && view !== 'tasks' && (
           <p className="muted empty">{query.trim() ? t('conversations.noMatch', { query }) : t('filters.noMatch', { name: activeFilter?.name ?? '' })}</p>
         )}
 
