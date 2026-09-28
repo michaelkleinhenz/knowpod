@@ -171,9 +171,25 @@ func (s *BriefingService) dueToday(u *user.User) (day string, due time.Time) {
 	return now.Format(recording.DateLayout), time.Date(now.Year(), now.Month(), now.Day(), at.Hour(), at.Minute(), 0, 0, loc)
 }
 
+// briefingLanguage is the language the user's briefings are written in: the one chosen in
+// the settings; without one, lang (the language the web app shows, e.g. the browser's), else
+// the one the last daily briefing was written in, else English.
+func briefingLanguage(u *user.User, lang string) string {
+	switch {
+	case u.Language != "":
+		return u.Language
+	case lang != "" && user.ValidLanguage(lang):
+		return lang
+	case u.Briefing.Today != nil && u.Briefing.Today.Language != "":
+		return u.Briefing.Today.Language
+	}
+	return "en"
+}
+
 // MakeNow makes a weekly review of the account's right away (e.g. to try it) and returns its
-// note. The daily briefing is made again with Today.
-func (s *BriefingService) MakeNow(ctx context.Context, acc *Account, kind BriefingKind) (*recording.Recording, error) {
+// note. The daily briefing is made again with Today. lang is the language the web app shows,
+// used when the user chose none in the settings.
+func (s *BriefingService) MakeNow(ctx context.Context, acc *Account, kind BriefingKind, lang string) (*recording.Recording, error) {
 	if kind == BriefingDaily {
 		return nil, invalid("the daily briefing is no note; it is made again with POST /me/briefing/today")
 	}
@@ -184,7 +200,7 @@ func (s *BriefingService) MakeNow(ctx context.Context, acc *Account, kind Briefi
 	if err != nil {
 		return nil, err
 	}
-	rec, err := s.makeWeekly(ctx, u)
+	rec, err := s.makeWeekly(ctx, u, briefingLanguage(u, lang))
 	if err != nil {
 		return nil, err
 	}
@@ -200,8 +216,10 @@ type TodayBriefing struct {
 
 // Today returns the account's daily briefing for today, making it when there is none yet
 // (or with again, anew), so it is there before its time, too. One made here is not
-// announced; one made before the briefings' time is made again (and announced) then.
-func (s *BriefingService) Today(ctx context.Context, acc *Account, again bool) (*TodayBriefing, error) {
+// announced; one made before the briefings' time is made again (and announced) then. lang is
+// the language the web app shows, used when the user chose none in the settings; one kept in
+// another language is made again in this one.
+func (s *BriefingService) Today(ctx context.Context, acc *Account, again bool, lang string) (*TodayBriefing, error) {
 	u, err := s.user(ctx, acc)
 	if err != nil {
 		return nil, err
@@ -210,10 +228,11 @@ func (s *BriefingService) Today(ctx context.Context, acc *Account, again bool) (
 		return &TodayBriefing{Off: true}, nil
 	}
 	day, _ := s.dueToday(u)
-	if t := u.Briefing.Today; t != nil && t.Day == day && !again {
+	language := briefingLanguage(u, lang)
+	if t := u.Briefing.Today; t != nil && t.Day == day && t.Language == language && !again {
 		return &TodayBriefing{DailyBriefing: t}, nil
 	}
-	t, err := s.makeDaily(ctx, u, day)
+	t, err := s.makeDaily(ctx, u, day, language)
 	if err != nil {
 		return nil, err
 	}
@@ -283,9 +302,9 @@ func (s *BriefingService) MakeDue(ctx context.Context) (int, error) {
 		for _, k := range kinds {
 			var err error
 			if k == BriefingWeekly {
-				_, err = s.makeWeekly(ctx, fresh)
+				_, err = s.makeWeekly(ctx, fresh, briefingLanguage(fresh, ""))
 			} else {
-				err = s.announceDaily(ctx, fresh, day)
+				err = s.announceDaily(ctx, fresh, day, briefingLanguage(fresh, ""))
 			}
 			if err != nil {
 				s.log.Warn("making a briefing failed", "user", u.ID, "kind", string(k), "err", err)
@@ -308,8 +327,8 @@ type briefingData struct {
 	notes []*recording.Recording
 }
 
-// data gathers what the user's briefings are made of.
-func (s *BriefingService) data(ctx context.Context, u *user.User) (*briefingData, error) {
+// data gathers what the user's briefings, written in lang, are made of.
+func (s *BriefingService) data(ctx context.Context, u *user.User, lang string) (*briefingData, error) {
 	acc := account(u)
 	notes, err := s.notes.List(ctx, acc, recording.ListFilter{})
 	if err != nil {
@@ -317,17 +336,17 @@ func (s *BriefingService) data(ctx context.Context, u *user.User) (*briefingData
 	}
 	loc := u.Location()
 	now := s.clock().In(loc)
-	return &briefingData{u: u, acc: acc, loc: loc, now: now, today: now.Format(recording.DateLayout), de: u.Language == "de", notes: notes}, nil
+	return &briefingData{u: u, acc: acc, loc: loc, now: now, today: now.Format(recording.DateLayout), de: lang == "de", notes: notes}, nil
 }
 
-// makeDaily makes the user's daily briefing for day and keeps it with the user.
-func (s *BriefingService) makeDaily(ctx context.Context, u *user.User, day string) (*user.DailyBriefing, error) {
-	d, err := s.data(ctx, u)
+// makeDaily makes the user's daily briefing for day in lang and keeps it with the user.
+func (s *BriefingService) makeDaily(ctx context.Context, u *user.User, day, lang string) (*user.DailyBriefing, error) {
+	d, err := s.data(ctx, u, lang)
 	if err != nil {
 		return nil, err
 	}
 	title, markdown, summary := s.daily(ctx, d)
-	t := &user.DailyBriefing{Day: day, Title: title, Markdown: truncateRunes(markdown, maxSummaryMarkdown/2), Summary: summary, MadeAt: s.clock().UTC()}
+	t := &user.DailyBriefing{Day: day, Title: title, Markdown: truncateRunes(markdown, maxSummaryMarkdown/2), Summary: summary, Language: lang, MadeAt: s.clock().UTC()}
 	// Kept on a fresh copy, so settings changed meanwhile stay.
 	fresh, err := s.users.Get(ctx, u.ID)
 	if err != nil {
@@ -341,10 +360,10 @@ func (s *BriefingService) makeDaily(ctx context.Context, u *user.User, day strin
 	return t, nil
 }
 
-// announceDaily makes the user's daily briefing for day and announces it, unless the user
-// doesn't want that.
-func (s *BriefingService) announceDaily(ctx context.Context, u *user.User, day string) error {
-	t, err := s.makeDaily(ctx, u, day)
+// announceDaily makes the user's daily briefing for day in lang and announces it, unless the
+// user doesn't want that.
+func (s *BriefingService) announceDaily(ctx context.Context, u *user.User, day, lang string) error {
+	t, err := s.makeDaily(ctx, u, day, lang)
 	if err != nil || s.Notifications == nil || u.Briefing.NoNotify {
 		return err
 	}
@@ -355,9 +374,10 @@ func (s *BriefingService) announceDaily(ctx context.Context, u *user.User, day s
 	return nil
 }
 
-// makeWeekly makes a weekly review of the user: the note, and the notification announcing it.
-func (s *BriefingService) makeWeekly(ctx context.Context, u *user.User) (*recording.Recording, error) {
-	d, err := s.data(ctx, u)
+// makeWeekly makes a weekly review of the user in lang: the note, and the notification
+// announcing it.
+func (s *BriefingService) makeWeekly(ctx context.Context, u *user.User, lang string) (*recording.Recording, error) {
+	d, err := s.data(ctx, u, lang)
 	if err != nil {
 		return nil, err
 	}

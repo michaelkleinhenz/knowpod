@@ -2,6 +2,7 @@
 // with an HttpOnly session cookie, which the browser sends automatically (same origin).
 
 import { forgetNote, keepNote, kept, notePath, readOffline, setOffline, writeOffline } from './offline';
+import i18n from '../i18n';
 
 // ApiError is an error answer from the API. code is a stable identifier that the UI
 // translates (see errorText in lib/errors.ts); message is the server's English text.
@@ -469,6 +470,7 @@ export interface DailyBriefing {
   title?: string;
   markdown?: string;
   summary?: string;
+  language?: string;
   madeAt?: string;
 }
 
@@ -656,9 +658,10 @@ export const api = {
   ask: (question: string, history: AskTurn[] = []) => request<AskAnswer>('POST', '/ask', { question, history }),
   briefing: () => request<BriefingSettings>('GET', '/me/briefing'),
   saveBriefing: (b: BriefingSettings) => request<BriefingSettings>('PUT', '/me/briefing', b),
-  makeBriefing: (kind: 'weekly') => request<Recording>('POST', '/me/briefing/run', { kind }),
-  todayBriefing: () => request<DailyBriefing>('GET', '/me/briefing/today'),
-  remakeTodayBriefing: () => request<DailyBriefing>('POST', '/me/briefing/today'),
+  // Briefings are written in the language chosen in the settings, else in the one shown.
+  makeBriefing: (kind: 'weekly') => request<Recording>('POST', `/me/briefing/run?lang=${i18n.language}`, { kind }),
+  todayBriefing: () => request<DailyBriefing>('GET', `/me/briefing/today?lang=${i18n.language}`),
+  remakeTodayBriefing: () => request<DailyBriefing>('POST', `/me/briefing/today?lang=${i18n.language}`),
   dismissActionItem: (id: string, itemId: string, dismissed: boolean) =>
     request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/action-items/${encodeURIComponent(itemId)}/dismissed`, { dismissed }),
   notifications: () => request<NotificationStatus>('GET', '/me/notifications'),

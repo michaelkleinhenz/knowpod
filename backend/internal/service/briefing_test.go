@@ -77,7 +77,7 @@ func TestDailyBriefing(t *testing.T) {
 	}
 	defer stop()
 
-	got, err := f.s.Today(ctx, f.acc, false)
+	got, err := f.s.Today(ctx, f.acc, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,14 +117,14 @@ func TestDailyBriefing(t *testing.T) {
 	}
 
 	// It is kept for the day: asked again, it is the same without asking the model again.
-	again, err := f.s.Today(ctx, f.acc, false)
+	again, err := f.s.Today(ctx, f.acc, false, "")
 	if err != nil || again.MadeAt != got.MadeAt || len(f.ai.requests) != 1 {
 		t.Fatalf("again: %+v, %v, %d requests", again, err, len(f.ai.requests))
 	}
 	// Made anew, it is new.
 	f.ai.answers = []string{"- digest"}
 	f.now = f.now.Add(time.Hour)
-	fresh, err := f.s.Today(ctx, f.acc, true)
+	fresh, err := f.s.Today(ctx, f.acc, true, "")
 	if err != nil || !fresh.MadeAt.After(got.MadeAt) || !strings.Contains(fresh.Markdown, "- digest") {
 		t.Fatalf("made again: %+v, %v", fresh, err)
 	}
@@ -138,7 +138,7 @@ func TestDailyBriefingSections(t *testing.T) {
 	if _, err := f.s.UpdateSettings(ctx, f.acc, in); err != nil {
 		t.Fatal(err)
 	}
-	got, err := f.s.Today(ctx, f.acc, false)
+	got, err := f.s.Today(ctx, f.acc, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,12 +152,12 @@ func TestDailyBriefingSections(t *testing.T) {
 	if _, err := f.s.UpdateSettings(ctx, f.acc, in); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := f.s.Today(ctx, f.acc, false); !strings.Contains(got.Markdown, "## Overdue") {
+	if got, _ := f.s.Today(ctx, f.acc, false, ""); !strings.Contains(got.Markdown, "## Overdue") {
 		t.Errorf("not made again after the sections changed:\n%s", got.Markdown)
 	}
 	// With a look back of one day, the meeting's action items drop out 24 hours after it.
 	f.now = f.now.Add(10 * time.Hour)
-	again, _ := f.s.Today(ctx, f.acc, true)
+	again, _ := f.s.Today(ctx, f.acc, true, "")
 	if strings.Contains(again.Markdown, "Open action items") {
 		t.Errorf("action items older than a day:\n%s", again.Markdown)
 	}
@@ -167,7 +167,7 @@ func TestDailyBriefingSections(t *testing.T) {
 	if _, err := f.s.UpdateSettings(ctx, f.acc, in); err != nil {
 		t.Fatal(err)
 	}
-	if off, err := f.s.Today(ctx, f.acc, false); err != nil || !off.Off || off.DailyBriefing != nil {
+	if off, err := f.s.Today(ctx, f.acc, false, ""); err != nil || !off.Off || off.DailyBriefing != nil {
 		t.Errorf("off: %+v, %v", off, err)
 	}
 }
@@ -180,13 +180,48 @@ func TestDailyBriefingInGermanWithoutAI(t *testing.T) {
 	_ = f.users.Update(ctx, u)
 	f.s.ai = nil
 
-	got, err := f.s.Today(ctx, f.acc, false)
+	got, err := f.s.Today(ctx, f.acc, false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got.Title != "Briefing für So. 27. Sept." || !strings.Contains(got.Markdown, "## Heute fällig") ||
 		!strings.Contains(got.Markdown, "## Neu seit gestern\n\n- Budget meeting #5 (Aufnahme)") || strings.Contains(got.Markdown, "Alle neuen") {
 		t.Fatalf("briefing:\n%s\n%s", got.Title, got.Markdown)
+	}
+}
+
+func TestDailyBriefingFollowsLanguage(t *testing.T) {
+	f := newBriefingFixture(t)
+	ctx := context.Background()
+	f.s.ai = nil
+
+	// Without a language in the settings, it is written in the one the app shows.
+	got, err := f.s.Today(ctx, f.acc, false, "de")
+	if err != nil || got.Language != "de" || !strings.HasPrefix(got.Title, "Briefing für") {
+		t.Fatalf("browser language: %+v, %v", got, err)
+	}
+	// One made at the briefings' time without a hint keeps that language.
+	u, _ := f.users.Get(ctx, "u1")
+	if lang := briefingLanguage(u, ""); lang != "de" {
+		t.Errorf("language without hint = %q", lang)
+	}
+	if lang := briefingLanguage(u, "fr"); lang != "de" {
+		t.Errorf("language with unknown hint = %q", lang)
+	}
+
+	// The language chosen in the settings wins, and today's briefing is made again in it.
+	u.Language = "en"
+	_ = f.users.Update(ctx, u)
+	got, err = f.s.Today(ctx, f.acc, false, "de")
+	if err != nil || got.Language != "en" || !strings.HasPrefix(got.Title, "Briefing for") || !strings.Contains(got.Markdown, "## Due today") {
+		t.Fatalf("after choosing English: %+v, %v", got, err)
+	}
+	u, _ = f.users.Get(ctx, "u1")
+	u.Language = "de"
+	_ = f.users.Update(ctx, u)
+	got, err = f.s.Today(ctx, f.acc, false, "")
+	if err != nil || got.Language != "de" || !strings.Contains(got.Markdown, "## Heute fällig") {
+		t.Fatalf("after choosing German: %+v, %v", got, err)
 	}
 }
 
@@ -199,7 +234,7 @@ func TestWeeklyReview(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rec, err := f.s.MakeNow(ctx, f.acc, BriefingWeekly)
+	rec, err := f.s.MakeNow(ctx, f.acc, BriefingWeekly, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,7 +294,7 @@ func TestBriefingsAreMadeOnceADayWhenDue(t *testing.T) {
 		t.Fatalf("before the time: %d, %v", n, err)
 	}
 	// Looked at before its time, the briefing is made, but made again at its time.
-	early, _ := f.s.Today(ctx, f.acc, false)
+	early, _ := f.s.Today(ctx, f.acc, false, "")
 	f.now = f.now.Add(time.Hour) // 13:00 in Berlin, a Sunday: the daily briefing and the weekly review
 	if n, err := f.s.MakeDue(ctx); err != nil || n != 2 || reviews() != 1 {
 		t.Fatalf("at the time: %d, %v, %d reviews", n, err, reviews())
@@ -267,7 +302,7 @@ func TestBriefingsAreMadeOnceADayWhenDue(t *testing.T) {
 	if urls := announced(); len(urls) != 2 || urls[1] != "/briefing" {
 		t.Errorf("announced %v", urls)
 	}
-	if now, _ := f.s.Today(ctx, f.acc, false); !now.MadeAt.After(early.MadeAt) {
+	if now, _ := f.s.Today(ctx, f.acc, false, ""); !now.MadeAt.After(early.MadeAt) {
 		t.Errorf("briefing not made again at its time")
 	}
 	f.now = f.now.Add(time.Minute)
@@ -278,7 +313,7 @@ func TestBriefingsAreMadeOnceADayWhenDue(t *testing.T) {
 	if n, _ := f.s.MakeDue(ctx); n != 1 || reviews() != 1 {
 		t.Fatalf("next day: %d, %d reviews", n, reviews())
 	}
-	if got, _ := f.s.Today(ctx, f.acc, false); got.Day != "2026-09-28" {
+	if got, _ := f.s.Today(ctx, f.acc, false, ""); got.Day != "2026-09-28" {
 		t.Errorf("today = %+v", got)
 	}
 	got, _ := f.s.Settings(ctx, f.acc)
@@ -319,7 +354,7 @@ func TestBriefingSettingsAreChecked(t *testing.T) {
 		}
 	}
 	for _, kind := range []BriefingKind{"monthly", BriefingDaily} {
-		if _, err := f.s.MakeNow(ctx, f.acc, kind); !errors.Is(err, ErrInvalidInput) {
+		if _, err := f.s.MakeNow(ctx, f.acc, kind, ""); !errors.Is(err, ErrInvalidInput) {
 			t.Errorf("kind %q: %v", kind, err)
 		}
 	}
