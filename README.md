@@ -73,9 +73,9 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
   Markdown files (`.md`) become text notes, titled by their first heading (or front matter
   `title`, or file name).
 - Each user can pair their **reMarkable** cloud account under **Settings → Account** with a
-  one-time code. All its documents (except the trash) are imported into the knowpod
+  one-time code. All its documents (except the trash and names you choose to ignore) are imported into the knowpod
   folder **reMarkable**, in the same folders as on the tablet (read only, never changed on the tablet): handwritten notebooks are rendered to PDF, PDFs and EPUBs are kept as they
-  are, and a vision model reads the pages into text that is summarized like a transcript.
+  are, and a vision model reads the pages (and any typed text) into text that is summarized like a transcript.
 - Notes come in types: **audio** notes (recordings, transcribed and summarized),
   **text** notes, plain Markdown documents written in the browser (**+** on **Workspace**), and
   **documents** from the reMarkable. The

@@ -12,13 +12,16 @@ export function RemarkableSetup() {
   const [settings, setSettings] = useState<RemarkableSettings | null>(null);
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<'pair' | 'pull' | 'unpair' | null>(null);
+  const [busy, setBusy] = useState<'pair' | 'pull' | 'unpair' | 'ignore' | null>(null);
+  // The ignored names as edited, one per line; null while unchanged.
+  const [ignored, setIgnored] = useState<string | null>(null);
+  const [ignoredSaved, setIgnoredSaved] = useState(false);
 
   useEffect(() => {
     api.remarkable().then(setSettings, (e) => setError(errorText(e, t)));
   }, [t]);
 
-  async function run(kind: 'pair' | 'pull' | 'unpair', action: () => Promise<void>) {
+  async function run(kind: 'pair' | 'pull' | 'unpair' | 'ignore', action: () => Promise<void>) {
     setBusy(kind);
     setError(null);
     try {
@@ -40,6 +43,16 @@ export function RemarkableSetup() {
       setCode('');
       setBusy('pull');
       setSettings(await api.pullRemarkable());
+    });
+  }
+
+  // The ignored names are saved as a list; empty lines are dropped.
+  function handleIgnored(e: FormEvent) {
+    e.preventDefault();
+    run('ignore', async () => {
+      setSettings(await api.setRemarkableIgnoredNames((ignored ?? '').split('\n')));
+      setIgnored(null);
+      setIgnoredSaved(true);
     });
   }
 
@@ -105,7 +118,10 @@ export function RemarkableSetup() {
           {result && !settings.lastError && (
             <>
               <dt>{t('remarkable.found')}</dt>
-              <dd>{t('remarkable.result', { count: result.documents, imported: result.imported, updated: result.updated })}</dd>
+              <dd>
+                {t('remarkable.result', { count: result.documents, imported: result.imported, updated: result.updated })}
+                {!!result.ignored && ` · ${t('remarkable.ignoredCount', { count: result.ignored })}`}
+              </dd>
             </>
           )}
         </dl>
@@ -135,6 +151,28 @@ export function RemarkableSetup() {
           </button>
         </div>
       </div>
+      <form onSubmit={handleIgnored} className="form">
+        <label>
+          {t('remarkable.ignored')}
+          <span className="muted field-note">{t('remarkable.ignoredHint')}</span>
+          <textarea
+            rows={4}
+            spellCheck={false}
+            placeholder={t('remarkable.ignoredPlaceholder')}
+            value={ignored ?? settings.ignoredNames.join('\n')}
+            onChange={(e) => {
+              setIgnored(e.target.value);
+              setIgnoredSaved(false);
+            }}
+          />
+        </label>
+        <div className="button-row">
+          <button type="submit" className="secondary-button" disabled={!!busy || ignored === null}>
+            {busy === 'ignore' ? t('common.saving') : t('common.save')}
+          </button>
+          {ignoredSaved && <span className="muted">{t('common.saved')}</span>}
+        </div>
+      </form>
       <p className="muted settings-footnote">{t('remarkable.footnote')}</p>
     </>
   );

@@ -55,12 +55,12 @@ const headerLen = 43
 // ParseLines reads the strokes of a page file (.rm), in format version 6 (firmware 3.0 and
 // later) or the older versions 3 and 5.
 func ParseLines(data []byte) ([]Stroke, error) {
-	if len(data) < headerLen || !strings.HasPrefix(string(data), headerPrefix) {
-		return nil, errors.New("not a reMarkable page file")
+	v, err := fileVersion(data)
+	if err != nil {
+		return nil, err
 	}
 	var strokes []Stroke
-	var err error
-	switch v := strings.TrimSpace(string(data[len(headerPrefix):headerLen])); v {
+	switch v {
 	case "6":
 		strokes, err = parseV6(data[headerLen:])
 	case "5", "3":
@@ -78,6 +78,14 @@ func ParseLines(data []byte) ([]Stroke, error) {
 		}
 	}
 	return out, nil
+}
+
+// fileVersion returns the format version in the header of a page file.
+func fileVersion(data []byte) (string, error) {
+	if len(data) < headerLen || !strings.HasPrefix(string(data), headerPrefix) {
+		return "", errors.New("not a reMarkable page file")
+	}
+	return strings.TrimSpace(string(data[len(headerPrefix):headerLen])), nil
 }
 
 // --- version 3 and 5 ---
@@ -137,6 +145,24 @@ const (
 // (the scene tree, layers, typed text) are skipped.
 func parseV6(data []byte) ([]Stroke, error) {
 	var out []Stroke
+	err := eachBlock(data, func(typ, version uint8, b []byte) error {
+		if typ != blockLineItem {
+			return nil
+		}
+		s, err := parseLineItem(b, version)
+		if err != nil {
+			return err
+		}
+		if s != nil {
+			out = append(out, *s)
+		}
+		return nil
+	})
+	return out, err
+}
+
+// eachBlock calls fn with the type, version and body of each block of a version 6 file.
+func eachBlock(data []byte, fn func(typ, version uint8, body []byte) error) error {
 	pos := 0
 	for pos+8 <= len(data) {
 		length := int(binary.LittleEndian.Uint32(data[pos:]))
@@ -145,20 +171,14 @@ func parseV6(data []byte) ([]Stroke, error) {
 		start := pos + 8
 		end := start + length
 		if length < 0 || end > len(data) {
-			return nil, errors.New("page file: truncated block")
+			return errors.New("page file: truncated block")
 		}
-		if typ == blockLineItem {
-			s, err := parseLineItem(data[start:end], version)
-			if err != nil {
-				return nil, fmt.Errorf("page file: %w", err)
-			}
-			if s != nil {
-				out = append(out, *s)
-			}
+		if err := fn(typ, version, data[start:end]); err != nil {
+			return fmt.Errorf("page file: %w", err)
 		}
 		pos = end
 	}
-	return out, nil
+	return nil
 }
 
 // parseLineItem reads a scene item block holding a line: the item's IDs, then (unless the
@@ -167,7 +187,7 @@ func parseLineItem(b []byte, version uint8) (*Stroke, error) {
 	r := &reader{data: b}
 	for idx := uint32(1); idx <= 4; idx++ { // parent, item, left and right IDs
 		r.expect(idx, tagID)
-		r.crdtID()
+		r.id()
 	}
 	r.expect(5, tagByte4)
 	deleted := r.u32()
@@ -308,10 +328,31 @@ func (r *reader) varuint() uint64 {
 	return 0
 }
 
-// crdtID reads an item ID: an author byte and a counter.
-func (r *reader) crdtID() {
-	r.u8()
-	r.varuint()
+// crdtID identifies an item (or a character of text) in a version 6 file.
+type crdtID struct {
+	author  uint8
+	counter uint64
+}
+
+func (a crdtID) less(b crdtID) bool {
+	return a.author < b.author || a.author == b.author && a.counter < b.counter
+}
+
+// id reads an item ID: an author byte and a counter.
+func (r *reader) id() crdtID {
+	a := r.u8()
+	return crdtID{a, r.varuint()}
+}
+
+// sub reads a field holding a nested block and returns a reader of the block.
+func (r *reader) sub(index uint32) *reader {
+	r.expect(index, tagLength4)
+	n := int(r.u32())
+	b := r.take(n)
+	if r.err != nil {
+		return &reader{err: r.err}
+	}
+	return &reader{data: b}
 }
 
 func (r *reader) tag() (index uint32, typ uint8) {
@@ -351,7 +392,7 @@ func (r *reader) skip(typ uint8) {
 	case tagLength4:
 		r.take(int(r.u32()))
 	case tagID:
-		r.crdtID()
+		r.id()
 	default:
 		r.err = fmt.Errorf("unknown field type %#x", typ)
 	}

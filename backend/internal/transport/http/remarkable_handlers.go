@@ -34,6 +34,21 @@ func (s *Server) handlePairRemarkable(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, v)
 }
 
+func (s *Server) handleUpdateRemarkable(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		IgnoredNames []string `json:"ignoredNames"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	v, err := s.remarkable.SetIgnoredNames(r.Context(), accountFrom(r.Context()), in.IgnoredNames)
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
+}
+
 func (s *Server) handleUnpairRemarkable(w http.ResponseWriter, r *http.Request) {
 	if err := s.remarkable.Unpair(r.Context(), accountFrom(r.Context())); err != nil {
 		s.writeErr(w, err)

@@ -215,7 +215,12 @@ the device stays listed under "Connected devices" at my.remarkable.com until rem
   `deviceId` `remarkable:<userId>`, the document's ID as `recordingId`, its name as
   `title`). The pipeline then downloads the document's files, stores the PDF (notebooks are
   rendered to a vector PDF from their strokes; PDFs and EPUBs are kept as they are), and a
-  vision model reads the pages into Markdown, which is summarized like a transcript.
+  vision model reads the pages into Markdown, which is summarized like a transcript. Text
+  typed on the tablet or in the reMarkable apps is read from the page files (it is not in
+  the PDF); pages with only typed text don't need the model.
+- **Ignored documents** (one name per line, upper and lower case don't matter) are left out
+  of imports, e.g. documents the cloud still holds but the tablet doesn't show. Notes
+  imported from them before stay but are no longer updated.
 - When a document's content changes, the note is queued again (a rename only changes its
   `title`). A summary the user edited is kept; **Read again** on the note replaces it.
 - Folders created, renamed or moved on the reMarkable are created, renamed or moved inside

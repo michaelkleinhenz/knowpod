@@ -995,6 +995,7 @@ func (m *TabletLinks) Get(_ context.Context, userID string) (*tablet.Link, error
 		return nil, domain.ErrNotFound
 	}
 	l.Items = slices.Clone(l.Items)
+	l.IgnoredNames = slices.Clone(l.IgnoredNames)
 	return &l, nil
 }
 
@@ -1003,6 +1004,7 @@ func (m *TabletLinks) Save(_ context.Context, l *tablet.Link) error {
 	defer m.mu.Unlock()
 	c := *l
 	c.Items = slices.Clone(l.Items)
+	c.IgnoredNames = slices.Clone(l.IgnoredNames)
 	m.links[l.UserID] = c
 	return nil
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"slices"
 	"strings"
 	"testing"
 
@@ -486,6 +487,104 @@ func TestReadDocument(t *testing.T) {
 	last := ai.requests[len(ai.requests)-1].Messages[0].Content.([]any)
 	if fp, ok := last[1].(openrouter.FilePart); !ok || !strings.HasPrefix(fp.File.FileData, "data:application/pdf;base64,") || doc.Transcript.Text != "Text" {
 		t.Errorf("PDF request %+v, transcript %+v", last, doc.Transcript)
+	}
+}
+
+func TestRemarkableIgnoresNames(t *testing.T) {
+	f := newRemarkableFixture(t)
+	ctx := context.Background()
+	if _, err := f.svc.SetIgnoredNames(ctx, f.acc, []string{"x"}); !errors.Is(err, ErrNotPaired) {
+		t.Errorf("unpaired: %v", err)
+	}
+	f.pair(t)
+	f.cloud.Set(notebook("n1", "Quick  sheets", "", scribble))
+	f.cloud.Set(notebook("n2", "Ideas", "", scribble))
+	v, err := f.svc.SetIgnoredNames(ctx, f.acc, []string{" quick SHEETS ", "", "Quick sheets", "Old"})
+	if err != nil || !slices.Equal(v.IgnoredNames, []string{"quick SHEETS", "Old"}) {
+		t.Fatalf("set: %+v, %v", v, err)
+	}
+	if _, err := f.svc.SetIgnoredNames(ctx, f.acc, []string{strings.Repeat("x", 201)}); !errors.Is(err, ErrInvalidInput) {
+		t.Errorf("long name: %v", err)
+	}
+	if r := f.pull(t).LastResult; r.Documents != 1 || r.Imported != 1 || r.Ignored != 1 {
+		t.Errorf("result %+v", r)
+	}
+	if _, err := f.recs.GetByClientID(ctx, recording.RemarkableDeviceID("u1"), "n1"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("ignored document imported: %v", err)
+	}
+	f.note(t, "n2")
+
+	// A note imported before its name was ignored stays, and isn't updated.
+	if _, err := f.svc.SetIgnoredNames(ctx, f.acc, []string{"ideas"}); err != nil {
+		t.Fatal(err)
+	}
+	f.cloud.Set(notebook("n2", "Ideas", "", scribble, scribble))
+	if r := f.pull(t).LastResult; r.Imported != 1 || r.Updated != 0 || r.Ignored != 1 {
+		t.Errorf("result %+v", r)
+	}
+	f.note(t, "n2")
+
+	// Pairing again keeps the names.
+	f.cloud.AddCode("bbbbbbbb", "device-u1b")
+	if v, err := f.svc.Pair(ctx, f.acc, "bbbbbbbb"); err != nil || !slices.Equal(v.IgnoredNames, []string{"ideas"}) {
+		t.Errorf("paired again: %+v, %v", v, err)
+	}
+}
+
+func TestReadTypedText(t *testing.T) {
+	f := newRemarkableFixture(t)
+	ctx := context.Background()
+	f.pair(t)
+	shopping := &rt.Text{Items: []rt.TextItem{{ID: 1, Text: "Shopping\nmilk"}}, Styles: map[uint64]int{0: 2, 9: 4}}
+	// Typed in the web app: text only.
+	typed := notebook("n1", "Typed", "")
+	typed.Files = map[string][]byte{"p1.rm": rt.TextPage(shopping)}
+	f.cloud.Set(typed)
+	// Typed text next to handwriting on the first page, and alone on the second.
+	mixed := notebook("n2", "Mixed", "")
+	mixed.Files = map[string][]byte{
+		"p1.rm": rt.TextPage(&rt.Text{Items: []rt.TextItem{{ID: 1, Text: "Agenda"}}}, scribble),
+		"p2.rm": rt.TextPage(shopping),
+	}
+	f.cloud.Set(mixed)
+	f.pull(t)
+
+	ai := &fakeAI{answer: "Agenda\n\nCall Bob"}
+	s, _ := newAI(t, ai)
+	s.objects = f.objects
+	read := func(id string) *recording.Recording {
+		rec := f.note(t, id)
+		_ = f.svc.Fetch(ctx, rec)
+		_ = f.svc.Store(ctx, rec)
+		if err := s.Transcribe(ctx, rec); err != nil {
+			t.Fatal(err)
+		}
+		return rec
+	}
+
+	// Only typed text: taken as it is, without asking the model.
+	rec := read("n1")
+	if rec.Transcript == nil || rec.Transcript.Text != "# Shopping\n\n- milk" || rec.Transcript.Model != "" || len(ai.requests) != 0 {
+		t.Fatalf("typed transcript %+v, %d requests", rec.Transcript, len(ai.requests))
+	}
+
+	// The typed text of a page with handwriting goes to the model with the page's image.
+	rec = read("n2")
+	if rec.Transcript.Text != "Agenda\n\nCall Bob\n\n# Shopping\n\n- milk" || rec.Transcript.Model == "" || len(ai.requests) != 1 {
+		t.Fatalf("mixed transcript %+v, %d requests", rec.Transcript, len(ai.requests))
+	}
+	parts := ai.requests[0].Messages[0].Content.([]any)
+	if len(parts) != 3 {
+		t.Fatalf("request parts %+v", parts)
+	}
+	if p, ok := parts[0].(openrouter.TextPart); !ok || !strings.Contains(p.Text, "typed text") {
+		t.Errorf("prompt %+v", parts[0])
+	}
+	if p, ok := parts[1].(openrouter.TextPart); !ok || p.Text != "Typed text of page 1:\n\nAgenda" {
+		t.Errorf("typed text part %+v", parts[1])
+	}
+	if _, ok := parts[2].(openrouter.ImagePart); !ok {
+		t.Errorf("image part %+v", parts[2])
 	}
 }
 

@@ -121,6 +121,41 @@ func (a *Archive) Original() (io.ReadCloser, int64, error) {
 // Pages returns the strokes of the document's pages in order. Pages without a drawing (no
 // .rm file) are empty.
 func (a *Archive) Pages() ([][]Stroke, error) {
+	pages := make([][]Stroke, 0)
+	err := a.eachPage(func(data []byte) error {
+		var strokes []Stroke
+		if data != nil {
+			var err error
+			if strokes, err = ParseLines(data); err != nil {
+				return err
+			}
+		}
+		pages = append(pages, strokes)
+		return nil
+	})
+	return pages, err
+}
+
+// Texts returns the typed text of the document's pages in order, as Markdown; it is empty
+// for pages without typed text.
+func (a *Archive) Texts() ([]string, error) {
+	texts := make([]string, 0)
+	err := a.eachPage(func(data []byte) error {
+		var text string
+		if data != nil {
+			var err error
+			if text, err = ParseText(data); err != nil {
+				return err
+			}
+		}
+		texts = append(texts, text)
+		return nil
+	})
+	return texts, err
+}
+
+// eachPage calls fn with the page file of each page in order, or nil for a page without one.
+func (a *Archive) eachPage(fn func(data []byte) error) error {
 	ids := a.Content.PageIDs()
 	if len(ids) == 0 {
 		// Very old documents name their page files by number.
@@ -131,24 +166,19 @@ func (a *Archive) Pages() ([][]Stroke, error) {
 			ids = append(ids, strconv.Itoa(i))
 		}
 	}
-	pages := make([][]Stroke, 0, len(ids))
-	for _, id := range ids {
-		f, ok := a.files[a.ID+"/"+id+".rm"]
-		if !ok {
-			pages = append(pages, nil)
-			continue
+	for i, id := range ids {
+		var data []byte
+		if f, ok := a.files[a.ID+"/"+id+".rm"]; ok {
+			var err error
+			if data, err = readAll(f, 64<<20); err != nil {
+				return err
+			}
 		}
-		data, err := readAll(f, 64<<20)
-		if err != nil {
-			return nil, err
+		if err := fn(data); err != nil {
+			return fmt.Errorf("page %d: %w", i+1, err)
 		}
-		strokes, err := ParseLines(data)
-		if err != nil {
-			return nil, fmt.Errorf("page %d: %w", len(pages)+1, err)
-		}
-		pages = append(pages, strokes)
 	}
-	return pages, nil
+	return nil
 }
 
 func (a *Archive) readJSON(name string, v any) error {
