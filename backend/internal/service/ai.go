@@ -456,6 +456,10 @@ func (s *AIService) Summarize(ctx context.Context, rec *recording.Recording) err
 		return fmt.Errorf("summarize: %w", err)
 	}
 	title, markdown, items := parseSummary(answer)
+	if rec.Source == recording.SourceRemarkable && rec.Title != "" {
+		// A reMarkable note keeps the name it has on the tablet, so it can be found by it.
+		title = rec.Title
+	}
 	rec.Summary = &recording.Summary{Title: title, Markdown: markdown, Model: model, Language: language,
 		ThemeID: th.ID, ThemeName: th.Name, ActionItems: items, Speakers: parseSpeakers(answer, rec.Transcript.Text),
 		CreatedAt: s.clock().UTC()}

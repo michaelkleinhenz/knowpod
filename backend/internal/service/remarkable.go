@@ -659,6 +659,10 @@ func (s *RemarkableService) queue(ctx context.Context, l *tablet.Link, d tablet.
 		}
 		rec.Members = recording.ComputeMembers(members, rec.Shares, rec.Members)
 	}
+	if rec.Summary != nil && (rec.Summary.EditedAt == nil || rec.Summary.Title == rec.Title) {
+		// The note is named like the document, unless the user gave it another title.
+		rec.Summary.Title = d.Name
+	}
 	rec.Title, rec.FolderID = d.Name, folderID
 	requeue := rec.SourceRevision != d.ContentHash
 	if requeue {

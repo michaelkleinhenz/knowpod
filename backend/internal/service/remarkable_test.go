@@ -190,6 +190,16 @@ func TestRemarkablePullsAllDocumentsIntoTheFolder(t *testing.T) {
 	if len(again) != 2 || again["reMarkable"] == nil || again["reMarkable/Work"] == nil || f.note(t, "n7").FolderID != again["reMarkable"].ID {
 		t.Errorf("folder not made again: %v", again)
 	}
+
+	// A finished note is renamed with its document, summary title included.
+	done := f.note(t, "n7")
+	done.Status, done.Summary = recording.StatusSummarized, &recording.Summary{Title: "Even more"}
+	_ = f.recs.Update(ctx, done)
+	f.cloud.Set(notebook("n7", "Renamed", ""))
+	f.pull(t)
+	if got := f.note(t, "n7"); got.Title != "Renamed" || got.Summary.Title != "Renamed" {
+		t.Errorf("note not renamed: %q %+v", got.Title, got.Summary)
+	}
 }
 
 // tree returns u1's folders by path.
@@ -447,9 +457,10 @@ func TestReadDocument(t *testing.T) {
 	}
 
 	// The summary is made from the text; an edited one survives reading the document again.
-	ai.answer = `{"title":"Ideas","summary":"- Call Bob"}`
-	if err := s.Summarize(ctx, rec); err != nil {
-		t.Fatal(err)
+	// The note keeps the document's name on the tablet, not the title the model made up.
+	ai.answer = `{"title":"Calling Bob","summary":"- Call Bob"}`
+	if err := s.Summarize(ctx, rec); err != nil || rec.Summary.Title != "Ideas" {
+		t.Fatalf("summary title: %v %+v", err, rec.Summary)
 	}
 	if sys := ai.requests[1].Messages[0].Content.(string); !strings.HasPrefix(sys, "You summarize handwritten notes") {
 		t.Errorf("system prompt %q", sys)
