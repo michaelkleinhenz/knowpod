@@ -3091,7 +3091,8 @@ html:has(.notes-layout) {
   color: var(--color-primary);
 }
 
-.tree-toggle .tree-count {
+.tree-toggle .tree-count,
+.tree-toggle .note-row-shared {
   margin-left: 0.45rem;
 }
 
