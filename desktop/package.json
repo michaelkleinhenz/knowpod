@@ -2,7 +2,7 @@
   "name": "knowpod-desktop",
   "productName": "knowpod",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Your recorded conversations, transcribed and summarized.",
   "author": "knowpod",
   "homepage": "https://github.com/michaelkleinhenz/knowpod-service",
