@@ -425,26 +425,12 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
               }}
               {...dropProps(f.id)}
             >
-              {/* Laid out like a note's gutter, so folder and note icons line up: the
-                  chevron where a note's sub-item toggle is, the "+" where its add button is. */}
+              {/* Laid out like a note's gutter, so folder and note icons line up: the chevron
+                  where a note's sub-note toggle is. */}
               <span className="note-gutter">
                 <button type="button" className="note-sub-toggle" tabIndex={-1} aria-hidden="true" onClick={() => openFolder(f)}>
                   <ChevronIcon open={isOpen} />
                 </button>
-                {onNewInFolder && canAdd && (
-                  <button
-                    type="button"
-                    className="note-add-sub"
-                    title={t('folders.newItem')}
-                    aria-label={t('folders.newItemLabel', { name: f.name })}
-                    onClick={() => {
-                      openFolder(f, true);
-                      onNewInFolder(f.id);
-                    }}
-                  >
-                    <NewNoteIcon />
-                  </button>
-                )}
               </span>
               <button
                 type="button"
@@ -474,6 +460,20 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
                 <span className="tree-count">{counts.get(f.id) || ''}</span>
               </button>
               <span className="tree-actions">
+                {onNewInFolder && canAdd && (
+                  <button
+                    type="button"
+                    className="icon-button"
+                    title={t('folders.newItem')}
+                    aria-label={t('folders.newItemLabel', { name: f.name })}
+                    onClick={() => {
+                      openFolder(f, true);
+                      onNewInFolder(f.id);
+                    }}
+                  >
+                    <NewNoteIcon />
+                  </button>
+                )}
                 <ShareFolder folder={f} />
                 {own && (
                   <>
