@@ -85,11 +85,42 @@
 }
 
 html {
+  /* Every size in the app is in rem, so the user's text size setting (lib/fontSize.ts)
+     scales all of it through the root font size. */
+  font-size: 100%;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
   /* Always reserve the scrollbar's space, so the layout doesn't shift when a page (or a
      note switching tabs) becomes long enough to scroll. */
   scrollbar-gutter: stable;
+}
+
+html[data-font-size='xsmall'] {
+  font-size: 87.5%;
+}
+
+html[data-font-size='small'] {
+  font-size: 93.75%;
+}
+
+html[data-font-size='large'] {
+  font-size: 112.5%;
+}
+
+html[data-font-size='xlarge'] {
+  font-size: 125%;
+}
+
+:root {
+  /* Text in form fields. On touch screens it stays at least 16px, as iOS zooms into
+     fields with smaller text on focus. */
+  --input-font-size: 1rem;
+}
+
+@media (pointer: coarse) {
+  :root {
+    --input-font-size: max(16px, 1rem);
+  }
 }
 
 body {
@@ -1292,19 +1323,19 @@ a {
   }
 }
 
-/* Form fields at 16px so iOS doesn't zoom in on focus. */
+/* Form fields at the user's text size, and at least 16px on touch screens (--input-font-size). */
 .form input,
 .form select,
 .search input,
 .inline-form input,
 .model-picker input,
 .model-picker select {
-  font-size: 16px;
+  font-size: var(--input-font-size);
 }
 
 .form select {
   font: inherit;
-  font-size: 16px;
+  font-size: var(--input-font-size);
   padding: 0.55rem 0.65rem;
   border: 1px solid var(--color-border);
   border-radius: 6px;
@@ -1740,7 +1771,7 @@ a {
 .details-search {
   width: 100%;
   font: inherit;
-  font-size: 16px;
+  font-size: var(--input-font-size);
   padding: 0.5rem 0.6rem;
   border: 1px solid var(--color-border);
   border-radius: 8px;
@@ -1888,7 +1919,7 @@ a {
 
 .form textarea {
   font: inherit;
-  font-size: 16px;
+  font-size: var(--input-font-size);
   padding: 0.55rem 0.65rem;
   border: 1px solid var(--color-border);
   border-radius: 6px;
@@ -2857,7 +2888,7 @@ html:has(.notes-layout) {
 .label-new input:not([type='color']) {
   flex: 1 1 100%;
   font: inherit;
-  font-size: 16px;
+  font-size: var(--input-font-size);
   border: 1px solid var(--color-border);
   border-radius: 6px;
   padding: 0.35rem 0.5rem;
@@ -3150,7 +3181,7 @@ html:has(.notes-layout) {
   flex: 1;
   min-width: 0;
   font: inherit;
-  font-size: 16px;
+  font-size: var(--input-font-size);
   color: var(--color-text);
   background: var(--color-surface);
   border: 1px solid var(--color-primary);
@@ -3389,7 +3420,7 @@ select.share-role {
 .share-form input[type='email'] {
   flex: 1 1 100%;
   font: inherit;
-  font-size: 16px;
+  font-size: var(--input-font-size);
   border: 1px solid var(--color-border);
   border-radius: 6px;
   padding: 0.35rem 0.5rem;
@@ -3879,7 +3910,7 @@ a.note-ref:hover {
 .task-typed input {
   width: 100%;
   font: inherit;
-  font-size: 16px;
+  font-size: var(--input-font-size);
   border: 1px solid var(--color-border);
   border-radius: 6px;
   padding: 0.3rem 0.5rem;
@@ -4003,7 +4034,7 @@ a.note-ref:hover {
 @media (pointer: coarse) {
   .task-fields input,
   .task-fields select {
-    font-size: 16px;
+    font-size: var(--input-font-size);
   }
 }
 
@@ -4102,7 +4133,7 @@ a.note-ref:hover {
 /* 16px on touch screens, so iOS doesn't zoom in on focus. */
 @media (pointer: coarse) {
   .quick-add input {
-    font-size: 16px;
+    font-size: var(--input-font-size);
   }
 }
 
@@ -5195,7 +5226,7 @@ a.note-ref:hover {
   flex: 1;
   min-width: 0;
   font: inherit;
-  font-size: 16px;
+  font-size: var(--input-font-size);
   padding: 0.6rem 0.75rem;
   border: 1px solid var(--color-border);
   border-radius: 10px;
@@ -5253,7 +5284,7 @@ a.note-ref:hover {
   min-width: 0;
   max-width: 14rem;
   font: inherit;
-  font-size: 16px;
+  font-size: var(--input-font-size);
   padding: 0.35rem 0.6rem;
   border: 1px solid var(--color-border);
   border-radius: 6px;

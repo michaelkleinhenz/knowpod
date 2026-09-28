@@ -3,6 +3,7 @@ import { Account, api, ApiError } from './api/client';
 import { clearOffline, readOffline, writeOffline } from './api/offline';
 import { applyLanguage } from './i18n';
 import { applyAppearance } from './lib/appearance';
+import { applyFontSize } from './lib/fontSize';
 
 interface AuthState {
   account: Account | null;
@@ -29,6 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then((a) => {
         applyLanguage(a.language);
         applyAppearance(a.appearance);
+        applyFontSize(a.fontSize);
         setAccount(a);
       })
       .catch((e) => {
@@ -46,6 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void writeOffline('/auth/me', a);
     applyLanguage(a.language);
     applyAppearance(a.appearance);
+    applyFontSize(a.fontSize);
     setAccount(a);
   }, []);
 
@@ -59,6 +62,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void writeOffline('/auth/me', a);
     applyLanguage(a.language);
     applyAppearance(a.appearance);
+    applyFontSize(a.fontSize);
     setAccount(a);
   }, []);
 
