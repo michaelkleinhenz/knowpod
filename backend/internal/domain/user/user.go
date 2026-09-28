@@ -84,8 +84,11 @@ type DailyBriefing struct {
 	Title    string `bson:"title" json:"title"`
 	Markdown string `bson:"markdown" json:"markdown"`
 	// Summary is its gist in one line, e.g. "2 due today · 3 new notes".
-	Summary string    `bson:"summary" json:"summary"`
-	MadeAt  time.Time `bson:"madeAt" json:"madeAt"`
+	Summary string `bson:"summary" json:"summary"`
+	// Language is the language it is written in ("en", "de"); empty for ones made before
+	// it was kept.
+	Language string    `bson:"language,omitempty" json:"language,omitempty"`
+	MadeAt   time.Time `bson:"madeAt" json:"madeAt"`
 }
 
 // The parts of a daily briefing a user can leave out or add.

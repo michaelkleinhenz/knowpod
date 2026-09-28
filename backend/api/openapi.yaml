@@ -1991,8 +1991,14 @@ paths:
         the tasks due today and, as set in `sections`, the tasks overdue and coming up this
         week, the notes that came in since the day before (with a digest by the summary model,
         when it is set up) and the open action items of the last `actionItemDays` days. With
-        the daily briefing turned off, only `off` is set.
+        the daily briefing turned off, only `off` is set. It is written in the language chosen
+        in the settings (else in `lang`); one kept in another language is made again.
       security: [{ sessionCookie: [] }]
+      parameters:
+        - name: lang
+          in: query
+          description: The language the app shows ("en", "de"); the briefing is written in it when no language is chosen in the settings.
+          schema: { type: string, enum: [en, de] }
       responses:
         "200":
           description: The briefing
@@ -2002,6 +2008,11 @@ paths:
       summary: Make today's daily briefing again
       description: Makes your daily briefing for today again, with what is new since.
       security: [{ sessionCookie: [] }]
+      parameters:
+        - name: lang
+          in: query
+          description: The language the app shows ("en", "de"); the briefing is written in it when no language is chosen in the settings.
+          schema: { type: string, enum: [en, de] }
       responses:
         "200":
           description: The briefing
@@ -2019,6 +2030,11 @@ paths:
         (with a digest), tasks checked off, time logged, and the tasks overdue, coming up and
         waiting for over 30 days. The daily briefing is no note; see `/me/briefing/today`.
       security: [{ sessionCookie: [] }]
+      parameters:
+        - name: lang
+          in: query
+          description: The language the app shows ("en", "de"); the briefing is written in it when no language is chosen in the settings.
+          schema: { type: string, enum: [en, de] }
       requestBody:
         required: true
         content:
@@ -2787,6 +2803,7 @@ components:
         title: { type: string, example: "Briefing for Mon, Sep 28" }
         markdown: { type: string, description: 'Its text; "#12" names note 12' }
         summary: { type: string, example: "2 due today · 3 new notes" }
+        language: { type: string, enum: [en, de], description: The language it is written in }
         madeAt: { type: string, format: date-time }
 
     CalendarSettings:
