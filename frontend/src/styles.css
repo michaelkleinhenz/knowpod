@@ -270,6 +270,12 @@ h2 {
   gap: 0.9rem;
 }
 
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
 .form label {
   display: flex;
   flex-direction: column;

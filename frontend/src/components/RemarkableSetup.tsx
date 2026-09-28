@@ -98,40 +98,42 @@ export function RemarkableSetup() {
         <span className="status-pill ok">{t('remarkable.paired')}</span>{' '}
         {settings.pairedAt && <span className="muted">{t('remarkable.pairedSince', { date: formatDate(settings.pairedAt) })}</span>}
       </p>
-      <dl className="facts">
-        <dt>{t('remarkable.lastPull')}</dt>
-        <dd>{settings.lastPullAt ? formatDate(settings.lastPullAt, { dateStyle: 'medium', timeStyle: 'short' }) : t('remarkable.never')}</dd>
-        {result && !settings.lastError && (
-          <>
-            <dt>{t('remarkable.found')}</dt>
-            <dd>{t('remarkable.result', { count: result.documents, imported: result.imported, updated: result.updated })}</dd>
-          </>
+      <div className="stack">
+        <dl className="facts">
+          <dt>{t('remarkable.lastPull')}</dt>
+          <dd>{settings.lastPullAt ? formatDate(settings.lastPullAt, { dateStyle: 'medium', timeStyle: 'short' }) : t('remarkable.never')}</dd>
+          {result && !settings.lastError && (
+            <>
+              <dt>{t('remarkable.found')}</dt>
+              <dd>{t('remarkable.result', { count: result.documents, imported: result.imported, updated: result.updated })}</dd>
+            </>
+          )}
+        </dl>
+        {settings.lastError && !error && (
+          <div className="notice bad">
+            <p>{t('remarkable.lastError', { error: settings.lastError })}</p>
+          </div>
         )}
-      </dl>
-      {settings.lastError && !error && (
-        <div className="notice bad">
-          <p>{t('remarkable.lastError', { error: settings.lastError })}</p>
+        {error && <p className="error">{error}</p>}
+        <div className="button-row">
+          <button type="button" className="primary-button" disabled={!!busy} onClick={() => run('pull', async () => setSettings(await api.pullRemarkable()))}>
+            {busy === 'pull' ? t('remarkable.pulling') : t('remarkable.pull')}
+          </button>
+          <button
+            type="button"
+            className="secondary-button danger"
+            disabled={!!busy}
+            onClick={() =>
+              window.confirm(t('remarkable.unpairConfirm')) &&
+              run('unpair', async () => {
+                await api.unpairRemarkable();
+                setSettings(await api.remarkable());
+              })
+            }
+          >
+            {t('remarkable.unpair')}
+          </button>
         </div>
-      )}
-      {error && <p className="error">{error}</p>}
-      <div className="button-row">
-        <button type="button" className="primary-button" disabled={!!busy} onClick={() => run('pull', async () => setSettings(await api.pullRemarkable()))}>
-          {busy === 'pull' ? t('remarkable.pulling') : t('remarkable.pull')}
-        </button>
-        <button
-          type="button"
-          className="secondary-button danger"
-          disabled={!!busy}
-          onClick={() =>
-            window.confirm(t('remarkable.unpairConfirm')) &&
-            run('unpair', async () => {
-              await api.unpairRemarkable();
-              setSettings(await api.remarkable());
-            })
-          }
-        >
-          {t('remarkable.unpair')}
-        </button>
       </div>
       <p className="muted settings-footnote">{t('remarkable.footnote')}</p>
     </>
