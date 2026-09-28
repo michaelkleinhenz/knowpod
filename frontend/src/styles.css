@@ -2441,10 +2441,10 @@ button.sync-state:focus-visible {
      faint glow of it again at the bottom, so the gradient runs the sidebar's full height. */
   background: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--color-primary) 24%, var(--color-bg)) 0%,
-    color-mix(in srgb, var(--color-primary) 12%, var(--color-bg)) 30%,
-    color-mix(in srgb, var(--color-primary) 4%, var(--color-bg)) 65%,
-    color-mix(in srgb, var(--color-primary) 9%, var(--color-bg)) 100%
+    color-mix(in srgb, var(--color-primary) 38%, var(--color-bg)) 0%,
+    color-mix(in srgb, var(--color-primary) 22%, var(--color-bg)) 30%,
+    color-mix(in srgb, var(--color-primary) 9%, var(--color-bg)) 65%,
+    color-mix(in srgb, var(--color-primary) 18%, var(--color-bg)) 100%
   );
   border-right: 1px solid var(--color-border-soft);
 }
