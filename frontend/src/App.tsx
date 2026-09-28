@@ -7,6 +7,7 @@ import { Admin } from './pages/Admin';
 import { Ask } from './pages/Ask';
 import { Briefing } from './pages/Briefing';
 import { Conversation } from './pages/Conversation';
+import { DoneTasks } from './pages/DoneTasks';
 import { Login } from './pages/Login';
 import { NoteByNumber } from './pages/NoteByNumber';
 import { NotesHome, NotesLayout } from './pages/NotesLayout';
@@ -44,6 +45,7 @@ export default function App() {
           <Route path="/conversations/:id" element={<Conversation />} />
           <Route path="/n/:number" element={<NoteByNumber />} />
           <Route path="/time" element={<TimeLog />} />
+          <Route path="/done" element={<DoneTasks />} />
           <Route path="/ask" element={<Ask />} />
           <Route path="/share" element={<Share />} />
         </Route>

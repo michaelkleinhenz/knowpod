@@ -16,8 +16,8 @@ export function Layout({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
   const onConversations = pathname === '/' || pathname === '/briefing' || pathname.startsWith('/conversations/');
-  // The time log, Ask and shared items are shown next to the notes list, like a note.
-  const onTime = ['/time', '/ask', '/share'].includes(pathname);
+  // The time log, the done tasks, Ask and shared items are shown next to the notes list, like a note.
+  const onTime = ['/time', '/done', '/ask', '/share'].includes(pathname);
   const admin = account?.role === 'admin';
   const offline = useOffline();
 
@@ -77,6 +77,7 @@ export function Layout({ children }: { children: ReactNode }) {
               </NavLink>
               <NavLink to="/ask">{t('nav.ask')}</NavLink>
               <NavLink to="/time">{t('nav.time')}</NavLink>
+              <NavLink to="/done">{t('nav.done')}</NavLink>
               <NavLink to="/settings">{t('nav.settings')}</NavLink>
               {admin && <NavLink to="/admin">{t('nav.admin')}</NavLink>}
               <span className="nav-divider" aria-hidden="true" />

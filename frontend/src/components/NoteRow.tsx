@@ -109,6 +109,8 @@ export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = t
             type="checkbox"
             className="task-check"
             checked={!!r.done}
+            disabled={r.access === 'viewer'}
+            title={r.access === 'viewer' ? t('labels.viewOnly') : r.due?.repeat && !r.done ? t('labels.repeatHint') : undefined}
             onChange={(e) => onSetDone(r, e.target.checked)}
             aria-label={t('labels.doneLabel', { title: title(r) })}
           />

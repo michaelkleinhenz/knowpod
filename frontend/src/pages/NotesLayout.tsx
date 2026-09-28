@@ -15,7 +15,7 @@ export function NotesLayout() {
   const { t } = useTranslation();
   const { id, number } = useParams();
   const { pathname } = useLocation();
-  const hasMain = !!(id || number) || ['/time', '/ask', '/share', '/briefing'].includes(pathname);
+  const hasMain = !!(id || number) || ['/time', '/done', '/ask', '/share', '/briefing'].includes(pathname);
   const [width, setWidth] = useSidebarWidth();
   const [resizing, setResizing] = useState(false);
   const drag = useRef<{ x: number; width: number } | null>(null);
