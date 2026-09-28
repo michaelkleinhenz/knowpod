@@ -344,6 +344,8 @@ export const en = {
     readWith: 'Read with {{model}}',
     documentUnavailable: "The document isn't available yet.",
     documentFrame: 'Document “{{title}}”',
+    documentLoadFailed: "The document couldn't be shown.",
+    openDocument: 'Open the PDF',
     remarkableName: 'Name on the reMarkable',
     remarkableDocument: 'reMarkable document',
     copySummary: 'Copy the summary',

@@ -151,7 +151,7 @@ export function RemarkableSetup() {
           </button>
         </div>
       </div>
-      <form onSubmit={handleIgnored} className="form">
+      <form onSubmit={handleIgnored} className="form settings-subform">
         <label>
           {t('remarkable.ignored')}
           <span className="muted field-note">{t('remarkable.ignoredHint')}</span>

@@ -1147,15 +1147,30 @@ a {
   text-decoration: none;
 }
 
-/* A document's PDF, shown with the browser's own viewer. */
-.document-frame {
-  display: block;
-  width: 100%;
-  height: min(80vh, 1100px);
+/* A document's PDF, its pages drawn by pdf.js (src/components/PdfViewer.tsx). */
+.pdf-viewer {
   margin-bottom: 1rem;
+}
+
+.pdf-pages {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.pdf-page {
+  width: 100%;
   border: 1px solid var(--color-border);
   border-radius: 8px;
-  background: var(--color-surface);
+  overflow: hidden;
+  background: #fff;
+}
+
+.pdf-page canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 /* --- Settings --- */
@@ -1204,6 +1219,10 @@ a {
 .danger-link {
   color: var(--color-error);
   font-size: 0.85rem;
+}
+
+.settings-subform {
+  margin-top: 1.5rem;
 }
 
 .settings-footnote {
