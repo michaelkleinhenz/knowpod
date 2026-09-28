@@ -2,7 +2,10 @@
 // pull saw. Documents are only read from the cloud, never written.
 package tablet
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // Link is a user's paired reMarkable account.
 type Link struct {
@@ -23,6 +26,9 @@ type Link struct {
 	// FolderID. MirroredHash is the root the folders and notes were last all placed for.
 	Folders      map[string]string `bson:"folders,omitempty"`
 	MirroredHash string            `bson:"mirroredHash,omitempty"`
+
+	// IgnoredNames are the names of documents that aren't imported (compared without case).
+	IgnoredNames []string `bson:"ignoredNames,omitempty"`
 
 	LastPullAt *time.Time  `bson:"lastPullAt,omitempty"`
 	LastError  string      `bson:"lastError,omitempty"`
@@ -47,4 +53,19 @@ type PullResult struct {
 	Documents int `bson:"documents" json:"documents"` // documents in the account (not in the trash)
 	Imported  int `bson:"imported" json:"imported"`   // new notes
 	Updated   int `bson:"updated" json:"updated"`     // notes queued again because the document changed
+	Ignored   int `bson:"ignored" json:"ignored"`     // documents left out by name
 }
+
+// Ignores reports whether documents of the name are left out.
+func (l *Link) Ignores(name string) bool {
+	name = NormalizeName(name)
+	for _, n := range l.IgnoredNames {
+		if strings.EqualFold(NormalizeName(n), name) {
+			return true
+		}
+	}
+	return false
+}
+
+// NormalizeName trims a document name and collapses its runs of white space.
+func NormalizeName(name string) string { return strings.Join(strings.Fields(name), " ") }

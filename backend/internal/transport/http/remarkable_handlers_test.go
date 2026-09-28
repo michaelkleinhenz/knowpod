@@ -39,11 +39,16 @@ func TestRemarkablePairPullAndFile(t *testing.T) {
 		t.Fatal("device token returned to the browser")
 	}
 
+	if res := bob.do("PATCH", "/api/v1/me/remarkable", map[string]any{"ignoredNames": []string{" Quick sheets "}}, nil, &v); res.StatusCode != 200 ||
+		len(v.IgnoredNames) != 1 || v.IgnoredNames[0] != "Quick sheets" {
+		t.Fatalf("ignore names: %d %+v", res.StatusCode, v)
+	}
+	f.cloud.Set(rt.Item{ID: "qs", Name: "Quick sheets", Content: `{"fileType":"notebook"}`})
 	f.cloud.Set(rt.Item{ID: "rm", Name: "reMarkable", Folder: true})
 	f.cloud.Set(rt.Item{ID: "n1", Name: "Ideas", Parent: "rm",
 		Content: `{"fileType":"notebook","pages":["p1"]}`,
 		Files:   map[string][]byte{"p1.rm": rt.Page(rt.Line{Tool: 15, Points: [][3]float32{{0, 10, 2}, {9, 30, 2}}})}})
-	if res := bob.do("POST", "/api/v1/me/remarkable/pull", nil, nil, &v); res.StatusCode != 200 || v.LastResult == nil || v.LastResult.Imported != 1 {
+	if res := bob.do("POST", "/api/v1/me/remarkable/pull", nil, nil, &v); res.StatusCode != 200 || v.LastResult == nil || v.LastResult.Imported != 1 || v.LastResult.Ignored != 1 {
 		t.Fatalf("pull: %d %+v", res.StatusCode, v)
 	}
 	// Admin sees nothing of bob's link.

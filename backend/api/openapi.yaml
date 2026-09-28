@@ -23,11 +23,12 @@ info:
     uploads. WAV and MP3 files can also be uploaded from the browser (`POST /recordings`).
 
     **reMarkable documents** — users pair their reMarkable cloud account with a one-time code
-    (`POST /me/remarkable/pair`). All its documents (except those in the trash) are then
+    (`POST /me/remarkable/pair`). All its documents (except those in the trash and those whose
+    name is in `ignoredNames`, set with `PATCH /me/remarkable`) are then
     imported as notes into the user's folder "reMarkable" (created when missing) (`type: document`) every few minutes or on `POST /me/remarkable/pull`,
     and imported again when they change. Handwritten notebooks are rendered to PDF; PDFs and
     EPUBs are kept as they are (`GET /recordings/{id}/file`). The text read from the pages
-    becomes the note's `transcript` and is summarized. Nothing is written to the cloud.
+    (handwriting and typed text) becomes the note's `transcript` and is summarized. Nothing is written to the cloud.
 
     **Text notes** — besides audio recordings, notes can be plain Markdown text written in the
     web UI (`POST /recordings/text`, `type: text`). They skip transcription and summaries.
@@ -383,6 +384,32 @@ paths:
           description: Link
           content: { application/json: { schema: { $ref: "#/components/schemas/RemarkableSettings" } } }
         "401": { $ref: "#/components/responses/Error" }
+    patch:
+      tags: ["Your account"]
+      summary: Change your reMarkable settings
+      description: |
+        Sets the names of documents that aren't imported (compared without case, with white
+        space collapsed; at most 200 names of up to 200 characters). Notes already imported
+        from such documents stay but are no longer updated.
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ignoredNames: { type: array, items: { type: string }, example: ["Quick sheets"] }
+      responses:
+        "200":
+          description: Saved
+          content: { application/json: { schema: { $ref: "#/components/schemas/RemarkableSettings" } } }
+        "400":
+          description: Too many or too long names (`invalid_input`)
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "409":
+          description: No account paired (`not_paired`)
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
     delete:
       tags: ["Your account"]
       summary: Unpair your reMarkable account
@@ -424,7 +451,7 @@ paths:
       tags: ["Your account"]
       summary: Import new and changed documents now
       description: |
-        Reads all documents of the account (except the trash) and queues new documents
+        Reads all documents of the account (except the trash and ignored names) and queues new documents
         and documents whose content changed. New notes go into the folder "reMarkable". Pulls also run automatically
         (`REMARKABLE_PULL_INTERVAL`, default 15 minutes).
       security: [{ sessionCookie: [] }]
@@ -2686,12 +2713,14 @@ components:
         connectUrl: { type: string, example: https://my.remarkable.com/device/browser/connect, description: Where to get a one-time code }
         lastPullAt: { type: string, format: date-time }
         lastError: { type: string, description: Why the last pull failed }
+        ignoredNames: { type: array, items: { type: string }, description: Names of documents that aren't imported }
         lastResult:
           type: object
           properties:
-            documents: { type: integer, description: Documents in the account (not in the trash) }
+            documents: { type: integer, description: Documents in the account (not in the trash, not ignored) }
             imported: { type: integer, description: New notes }
             updated: { type: integer, description: Notes queued again because their document changed }
+            ignored: { type: integer, description: Documents left out because of their name }
 
     SummaryOptions:
       type: object

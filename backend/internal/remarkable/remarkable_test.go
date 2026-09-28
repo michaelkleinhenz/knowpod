@@ -316,3 +316,39 @@ func contains(l []string, s string) bool {
 }
 
 func jsonUnmarshal(s string, v any) error { return json.Unmarshal([]byte(s), v) }
+
+func TestParseText(t *testing.T) {
+	// Text typed in pieces: an insertion in the middle, two insertions at the start (ordered
+	// by ID), a deleted character and an inline formatting item that isn't text.
+	data := rt.TextPage(&rt.Text{Items: []rt.TextItem{
+		{ID: 10, Text: "Hello\nworld"},
+		{ID: 30, Left: 14, Right: 15, Text: " there"},
+		{ID: 61, Right: 10, Text: "B"},
+		{ID: 60, Right: 10, Text: "A"},
+		{ID: 40, Left: 20, Deleted: 1},
+		{ID: 50, Left: 15, Right: 16, Format: true},
+	}}, rt.Line{Tool: 15, Points: [][3]float32{{0, 0, 2}}})
+	text, err := ParseText(data)
+	if err != nil || text != "ABHello there\n\nworld" {
+		t.Errorf("text %q, %v", text, err)
+	}
+	if strokes, err := ParseLines(data); err != nil || len(strokes) != 1 {
+		t.Errorf("strokes next to text: %+v, %v", strokes, err)
+	}
+
+	// Paragraph styles become Markdown; empty paragraphs are left out.
+	data = rt.TextPage(&rt.Text{
+		Items:  []rt.TextItem{{ID: 1, Text: "Plan\nmilk\neggs\n\n Done "}},
+		Styles: map[uint64]int{0: styleHeading, 5: styleBullet, 10: styleCheckbox},
+	})
+	if text, err := ParseText(data); err != nil || text != "# Plan\n\n- milk\n- [ ] eggs\n\nDone" {
+		t.Errorf("styled text %q, %v", text, err)
+	}
+
+	if text, err := ParseText(v6Page(testLine{tool: 15, pts: [][3]float32{{0, 0, 2}}})); err != nil || text != "" {
+		t.Errorf("page without text: %q, %v", text, err)
+	}
+	if _, err := ParseText([]byte("nope")); err == nil {
+		t.Error("garbage accepted")
+	}
+}

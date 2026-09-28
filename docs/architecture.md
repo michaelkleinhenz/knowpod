@@ -257,7 +257,9 @@ A pull (`RemarkableService.Pull`, and `PullAll` on a ticker in `main.go`) keeps 
 user's link in `tablets`: the root hash and a cache of all items (name, parent, folder,
 hash and a content hash that ignores the metadata). An unchanged root ends the pull; a
 changed one re-reads only items whose hash changed, eight at a time. All documents that are
-not deleted and not in the trash (directly or through a folder) are matched to notes by
+not deleted, not in the trash (directly or through a folder) and not named in the link's
+`ignoredNames` (compared without case and with white space collapsed; `PATCH /me/remarkable`)
+are matched to notes by
 (`remarkable:<userId>`, document ID): new ones are created in `remote` in the user's knowpod
 folder for reMarkable (`folderId` on the link; else a top-level folder named `reMarkable`,
 any case; else a new one), inside the knowpod folder mirroring their cloud folder; finished
@@ -281,7 +283,11 @@ Stages, dispatched by `source`/`type` in `main.go`:
 - `stored → transcribed` (`AIService.Transcribe` → `readDocument`): notebook pages with
   strokes are rasterized (`remarkable.RenderPNG`, anti-aliased with `x/image/vector`) and
   sent to the document model in groups of eight; PDFs are sent as file parts. The Markdown
-  answer becomes the transcript.
+  answer becomes the transcript. Typed text (v6 root text blocks, `remarkable.ParseText`:
+  the text's CRDT sequence put in order, paragraph styles as Markdown headings, bullets and
+  checkboxes) is sent as a text part before its page's image; pages with only typed text
+  are taken as they are without the model (the transcript then has no `model`), unless the
+  owner's language asks for a translation. The PDF shows strokes only.
 - `transcribed → summarized`: the normal summary, with a prompt for notes instead of
   conversations. A summary edited by the user survives a re-import.
 
@@ -851,8 +857,8 @@ reason MongoDB runs as a replica set). Nothing uses it yet.
 | `audio/*_test.go` | WAV parsing edge cases; FLAC output decodes to the exact input samples |
 | `service/themes_test.go`, `auth_test.go` | Themes (built-ins, own themes, isolation, fallback to Auto), summary prompts with theme/language/model, validation of summary options, language preference |
 | `service/*_test.go` | Users (built-in admin, create/update/delete with cascade, last-admin and self protection), per-user Pocket settings, browser uploads (formats, limits), ownership checks; upload protocol: chunks, idempotency, offsets, dropped connections, checksum reset, invalid audio, isolation between devices, purge; device tokens; sign-in with the default login, password change overriding it, session expiry and logout; transcription (FLAC chunks, passthrough, size limit), summaries and their parsing, OpenRouter settings and model filtering, delete/re-transcribe/re-summarize |
-| `remarkable/*_test.go` | Page files (v6 blocks, deleted items, erasers, highlighter colors; v5), index schemas, page order, PDF structure (cross-references, page size, title), PNG rendering, and the client against a fake cloud (`remarkabletest`): pairing, revoked tokens, file names, download limits |
-| `service/remarkable_test.go` | Pairing, all documents except trashed and deleted ones, the knowpod folder (created, reused, renamed, made again), mirrored cloud folders (created, renamed, moved, same names, cycles, depth, earlier imports) and notes moving with their documents, unchanged accounts costing two requests, rename vs. content change, notes in processing left alone, fetch and store of notebooks and PDFs, reading pages with a vision model, edited summaries kept |
+| `remarkable/*_test.go` | Page files (v6 blocks, deleted items, erasers, highlighter colors; v5), typed text (insertions, concurrent inserts, deletions, formatting items, paragraph styles), index schemas, page order, PDF structure (cross-references, page size, title), PNG rendering, and the client against a fake cloud (`remarkabletest`): pairing, revoked tokens, file names, download limits |
+| `service/remarkable_test.go` | Pairing, all documents except trashed and deleted ones, the knowpod folder (created, reused, renamed, made again), mirrored cloud folders (created, renamed, moved, same names, cycles, depth, earlier imports) and notes moving with their documents, unchanged accounts costing two requests, rename vs. content change, notes in processing left alone, fetch and store of notebooks and PDFs, reading pages with a vision model, typed text (alone and next to handwriting), ignored document names, edited summaries kept |
 | `worker/worker_test.go` | Archive stage end to end, retry/backoff, permanent failure, recovery, disabled stages waiting |
 | `openrouter/*_test.go` | Request shape for audio, error handling, model list |
 | `audio/speech_test.go` | Speech chunks: count, duration, mono 16 kHz output |

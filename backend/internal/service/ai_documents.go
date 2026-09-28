@@ -32,6 +32,9 @@ const notebookPrompt = `These are pages of handwritten notes. Write down what th
 Keep the structure the writing shows: headings, lists (checkboxes as "- [ ]" and "- [x]"), tables and emphasis. Describe a drawing or diagram in one short line in italics, e.g. "_Sketch: …_". Leave out crossed-out words and page numbers, and don't add headings of your own.
 Output only the Markdown. If the pages hold no writing, output nothing.`
 
+// typedTextNote is added to notebookPrompt when pages have typed text.
+const typedTextNote = `Some pages also have typed text, given before the page's image (or instead of it, for pages without handwriting). Write it down in its place, together with the handwriting.`
+
 const photoPrompt = `This is a photo, e.g. of handwritten notes, a whiteboard, a printed page, a slide or a sign. Write down the text it shows in Markdown, in its original language. Do not translate, summarize or comment.
 Keep the structure the writing shows: headings, lists (checkboxes as "- [ ]" and "- [x]"), tables and emphasis. Describe a drawing or diagram in one short line in italics, e.g. "_Sketch: …_". Leave out crossed-out words.
 Output only the Markdown. If the photo shows no text, describe what it shows in one or two sentences in italics instead.`
@@ -80,7 +83,10 @@ func (s *AIService) readDocument(ctx context.Context, st *settings.OpenRouter, r
 	var text string
 	switch a.Kind() {
 	case remarkable.KindNotebook:
-		text, err = s.readNotebook(ctx, st.APIKey, model, language, a)
+		var read bool
+		if text, read, err = s.readNotebook(ctx, st.APIKey, model, language, a); !read {
+			model = "" // only typed text
+		}
 	case remarkable.KindPDF:
 		text, err = s.readPDF(ctx, st.APIKey, model, language, a, rec.Pages)
 	default:
@@ -136,16 +142,30 @@ func (s *AIService) readUpload(ctx context.Context, st *settings.OpenRouter, rec
 	return nil
 }
 
-// readNotebook renders the pages with writing on them and has the model read them, a few
-// pages per request.
-func (s *AIService) readNotebook(ctx context.Context, apiKey, model, language string, a *remarkable.Archive) (string, error) {
+// readNotebook reads the pages with writing on them. Handwriting is read by the model from
+// the rendered pages, a few pages per request; typed text is sent along with its page. The
+// typed text of pages without handwriting is taken as it is, unless it is to be written down
+// in another language. read is false when the model wasn't asked.
+func (s *AIService) readNotebook(ctx context.Context, apiKey, model, language string, a *remarkable.Archive) (text string, read bool, err error) {
 	pages, err := a.Pages()
 	if err != nil {
-		return "", err
+		return "", false, err
+	}
+	typed, err := a.Texts()
+	if err != nil {
+		// Handwriting is still read.
+		s.log.Warn("typed text of notebook not read", "document", a.ID, "err", err)
+		typed = nil
+	}
+	typedOn := func(i int) string {
+		if i < len(typed) {
+			return typed[i]
+		}
+		return ""
 	}
 	var written []int
 	for i, p := range pages {
-		if len(p) > 0 {
+		if len(p) > 0 || typedOn(i) != "" {
 			written = append(written, i)
 		}
 	}
@@ -155,18 +175,36 @@ func (s *AIService) readNotebook(ctx context.Context, apiKey, model, language st
 		written = written[:maxDocumentPages]
 	}
 	prompt := inLanguage(notebookPrompt, language)
-	var parts []string
-	for from := 0; from < len(written); from += pagesPerRequest {
-		chunk := written[from:min(from+pagesPerRequest, len(written))]
-		content := []any{openrouter.Text(prompt)}
-		if len(written) > len(chunk) {
-			content[0] = openrouter.Text(prompt + fmt.Sprintf("\nThese are pages %d to %d of a longer notebook; continue where the previous pages left off.",
-				chunk[0]+1, chunk[len(chunk)-1]+1))
+	var chunk []int
+	var out []string
+	// readChunk has the model read the pages in chunk.
+	readChunk := func() error {
+		if len(chunk) == 0 {
+			return nil
 		}
+		defer func() { chunk = chunk[:0] }()
+		p := prompt
 		for _, i := range chunk {
+			if typedOn(i) != "" {
+				p += "\n" + typedTextNote
+				break
+			}
+		}
+		if len(written) > len(chunk) {
+			p += fmt.Sprintf("\nThese are pages %d to %d of a longer notebook; continue where the previous pages left off.",
+				chunk[0]+1, chunk[len(chunk)-1]+1)
+		}
+		content := []any{openrouter.Text(p)}
+		for _, i := range chunk {
+			if t := typedOn(i); t != "" {
+				content = append(content, openrouter.Text(fmt.Sprintf("Typed text of page %d:\n\n%s", i+1, t)))
+			}
+			if len(pages[i]) == 0 {
+				continue
+			}
 			img, err := remarkable.RenderPNG(pages[i], pageImageScale)
 			if err != nil {
-				return "", fmt.Errorf("render page %d: %w", i+1, err)
+				return fmt.Errorf("render page %d: %w", i+1, err)
 			}
 			content = append(content, openrouter.Image(base64.StdEncoding.EncodeToString(img), "image/png"))
 		}
@@ -174,17 +212,37 @@ func (s *AIService) readNotebook(ctx context.Context, apiKey, model, language st
 			Model: model, Messages: []openrouter.Message{{Role: "user", Content: content}},
 		})
 		if err != nil {
-			return "", fmt.Errorf("read pages %d-%d: %w", chunk[0]+1, chunk[len(chunk)-1]+1, err)
+			return fmt.Errorf("read pages %d-%d: %w", chunk[0]+1, chunk[len(chunk)-1]+1, err)
 		}
+		read = true
 		if t := strings.TrimSpace(stripFence(answer)); t != "" {
-			parts = append(parts, t)
+			out = append(out, t)
+		}
+		return nil
+	}
+	for _, i := range written {
+		if len(pages[i]) == 0 && language == "" {
+			if err := readChunk(); err != nil {
+				return "", false, err
+			}
+			out = append(out, typedOn(i))
+			continue
+		}
+		chunk = append(chunk, i)
+		if len(chunk) == pagesPerRequest {
+			if err := readChunk(); err != nil {
+				return "", false, err
+			}
 		}
 	}
-	text := strings.Join(parts, "\n\n")
+	if err := readChunk(); err != nil {
+		return "", false, err
+	}
+	text = strings.Join(out, "\n\n")
 	if skipped > 0 && text != "" {
 		text += fmt.Sprintf("\n\n_Only the first %d pages with writing were read; %d more were left out._", maxDocumentPages, skipped)
 	}
-	return text, nil
+	return text, read, nil
 }
 
 // readPDF sends the PDF to the model as it is.

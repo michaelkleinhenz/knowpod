@@ -38,8 +38,9 @@ const itemReaders = 8
 
 // RemarkableService reads documents from users' reMarkable clouds. Users pair their account
 // with a one-time code; pulls then import all documents of the account (except those in
-// the trash) as notes in the knowpod folder "reMarkable", inside folders mirroring the
-// cloud's folders, and import a document again when it changed. Nothing is ever written to the cloud, and notes stay when documents are
+// the trash, and those whose name the user chose to ignore) as notes in the knowpod folder
+// "reMarkable", inside folders mirroring the cloud's folders, and import a document again
+// when it changed. Nothing is ever written to the cloud, and notes stay when documents are
 // deleted there.
 type RemarkableService struct {
 	links   ports.TabletLinkRepository
@@ -88,13 +89,18 @@ type RemarkableView struct {
 	LastPullAt *time.Time         `json:"lastPullAt,omitempty"`
 	LastError  string             `json:"lastError,omitempty"`
 	LastResult *tablet.PullResult `json:"lastResult,omitempty"`
+	// IgnoredNames are the names of documents that aren't imported.
+	IgnoredNames []string `json:"ignoredNames"`
 }
 
 func remarkableView(l *tablet.Link) *RemarkableView {
-	v := &RemarkableView{Folder: RemarkableFolder, ConnectURL: remarkable.ConnectURL}
+	v := &RemarkableView{Folder: RemarkableFolder, ConnectURL: remarkable.ConnectURL, IgnoredNames: []string{}}
 	if l != nil {
 		at := l.PairedAt
 		v.Paired, v.PairedAt, v.LastPullAt, v.LastError, v.LastResult = true, &at, l.LastPullAt, l.LastError, l.LastResult
+		if l.IgnoredNames != nil {
+			v.IgnoredNames = l.IgnoredNames
+		}
 	}
 	return v
 }
@@ -137,6 +143,12 @@ func (s *RemarkableService) Pair(ctx context.Context, acc *Account, code string)
 		return nil, cloudErr(err)
 	}
 	l := &tablet.Link{UserID: acc.ID, DeviceToken: token, PairedAt: s.clock().UTC()}
+	// Pairing again keeps the ignored names.
+	if old, err := s.links.Get(ctx, acc.ID); err == nil {
+		l.IgnoredNames = old.IgnoredNames
+	} else if !errors.Is(err, ErrNotFound) {
+		return nil, err
+	}
 	if err := s.links.Save(ctx, l); err != nil {
 		return nil, err
 	}
@@ -155,6 +167,50 @@ func (s *RemarkableService) Unpair(ctx context.Context, acc *Account) error {
 		return err
 	}
 	return nil
+}
+
+// Limits of the ignored document names.
+const (
+	maxIgnoredNames     = 200
+	maxIgnoredNameRunes = 200
+)
+
+// SetIgnoredNames sets the names of the documents that aren't imported (compared without
+// case). Notes already imported from such documents stay, but aren't updated any more.
+func (s *RemarkableService) SetIgnoredNames(ctx context.Context, acc *Account, names []string) (*RemarkableView, error) {
+	if err := userOnly(acc); err != nil {
+		return nil, err
+	}
+	clean := []string{}
+	seen := map[string]bool{}
+	for _, n := range names {
+		n = tablet.NormalizeName(n)
+		key := strings.ToLower(n)
+		if n == "" || seen[key] {
+			continue
+		}
+		if len([]rune(n)) > maxIgnoredNameRunes {
+			return nil, invalid("a document name has at most %d characters", maxIgnoredNameRunes)
+		}
+		seen[key] = true
+		clean = append(clean, n)
+	}
+	if len(clean) > maxIgnoredNames {
+		return nil, invalid("at most %d document names can be ignored", maxIgnoredNames)
+	}
+	defer s.lock(acc.ID)()
+	l, err := s.links.Get(ctx, acc.ID)
+	if errors.Is(err, ErrNotFound) {
+		return nil, ErrNotPaired
+	}
+	if err != nil {
+		return nil, err
+	}
+	l.IgnoredNames = clean
+	if err := s.links.Save(ctx, l); err != nil {
+		return nil, err
+	}
+	return remarkableView(l), nil
 }
 
 // DeleteByOwner removes a user's link (when the user is deleted).
@@ -266,7 +322,17 @@ func (s *RemarkableService) sync(ctx context.Context, l *tablet.Link) (*tablet.P
 	}
 
 	docs, dirs := live(l.Items)
-	res := &tablet.PullResult{Documents: len(docs)}
+	res := &tablet.PullResult{}
+	kept := docs[:0]
+	for _, d := range docs {
+		if l.Ignores(d.Name) {
+			res.Ignored++
+		} else {
+			kept = append(kept, d)
+		}
+	}
+	docs = kept
+	res.Documents = len(docs)
 	notes := make([]*recording.Recording, len(docs))
 	fresh := false
 	for i, d := range docs {

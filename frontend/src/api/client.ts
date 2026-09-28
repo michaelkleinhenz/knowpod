@@ -520,7 +520,9 @@ export interface RemarkableSettings {
   connectUrl: string;
   lastPullAt?: string;
   lastError?: string;
-  lastResult?: { documents: number; imported: number; updated: number };
+  lastResult?: { documents: number; imported: number; updated: number; ignored?: number };
+  // Names of documents that aren't imported (compared without case).
+  ignoredNames: string[];
 }
 
 export interface ModelOption {
@@ -577,6 +579,7 @@ export const api = {
   remarkable: () => request<RemarkableSettings>('GET', '/me/remarkable'),
   pairRemarkable: (code: string) => request<RemarkableSettings>('POST', '/me/remarkable/pair', { code }),
   unpairRemarkable: () => request<void>('DELETE', '/me/remarkable'),
+  setRemarkableIgnoredNames: (ignoredNames: string[]) => request<RemarkableSettings>('PATCH', '/me/remarkable', { ignoredNames }),
   pullRemarkable: () => request<RemarkableSettings>('POST', '/me/remarkable/pull'),
   aiStatus: () => request<{ transcription: boolean; summary: boolean }>('GET', '/ai/status'),
   recordings: () => request<Recording[]>('GET', `/recordings?limit=${RECORDINGS_LIMIT}`),

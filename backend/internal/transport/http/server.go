@@ -197,6 +197,7 @@ func (s *Server) Router() http.Handler {
 			u.Get("/me/pocket", s.handleGetPocketSettings)
 			u.Put("/me/pocket", s.handleUpdatePocketSettings)
 			u.Get("/me/remarkable", s.handleGetRemarkable)
+			u.Patch("/me/remarkable", s.handleUpdateRemarkable)
 			u.Delete("/me/remarkable", s.handleUnpairRemarkable)
 			u.Post("/me/remarkable/pair", s.handlePairRemarkable)
 			u.Post("/me/remarkable/pull", s.handlePullRemarkable)

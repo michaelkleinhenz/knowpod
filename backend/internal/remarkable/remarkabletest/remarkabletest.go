@@ -200,8 +200,30 @@ type Line struct {
 	ARGB        uint32
 }
 
+// TextItem is an item of the typed text of a page: Text inserted by author 1 with the ID
+// (of its first character) between the characters Left and Right, also of author 1 (0 for
+// the start or the end). Deleted characters have Deleted set instead of Text; Format makes
+// the item an inline formatting item.
+type TextItem struct {
+	ID, Left, Right uint64
+	Text            string
+	Deleted         uint32
+	Format          bool
+}
+
+// Text is the typed text of a page for TextPage.
+type Text struct {
+	Items []TextItem
+	// Styles are paragraph styles by the ID of the newline starting the paragraph (0 for the
+	// first paragraph).
+	Styles map[uint64]int
+}
+
 // Page encodes a version 6 page file (.rm) with the given lines.
-func Page(lines ...Line) []byte {
+func Page(lines ...Line) []byte { return TextPage(nil, lines...) }
+
+// TextPage encodes a version 6 page file (.rm) with typed text (unless nil) and lines.
+func TextPage(text *Text, lines ...Line) []byte {
 	var out bytes.Buffer
 	fmt.Fprintf(&out, "%-43s", "reMarkable .lines file, version=6")
 	block := func(typ, version uint8, body []byte) {
@@ -210,6 +232,9 @@ func Page(lines ...Line) []byte {
 		out.Write(body)
 	}
 	block(0x09, 1, []byte{1, 2, 3}) // an unrelated block (author IDs)
+	if text != nil {
+		block(0x07, 1, rootText(text))
+	}
 	for i, l := range lines {
 		var b enc
 		b.id(1, 0, 11)
@@ -258,7 +283,69 @@ func Page(lines ...Line) []byte {
 	return out.Bytes()
 }
 
+// rootText encodes the root text block of a page.
+func rootText(t *Text) []byte {
+	author := func(id uint64) uint8 {
+		if id == 0 {
+			return 0
+		}
+		return 1
+	}
+	var seq enc
+	seq.varuint(uint64(len(t.Items)))
+	for _, it := range t.Items {
+		var b enc
+		b.id(2, 1, it.ID)
+		b.id(3, author(it.Left), it.Left)
+		b.id(4, author(it.Right), it.Right)
+		b.tag(5, 0x4)
+		b.u32(it.Deleted)
+		if it.Text != "" || it.Format {
+			var str enc
+			str.varuint(uint64(len(it.Text)))
+			str.u8(1)
+			str.WriteString(it.Text)
+			if it.Format {
+				str.tag(2, 0x4)
+				str.u32(1)
+			}
+			b.sub(6, &str)
+		}
+		seq.sub(0, &b)
+	}
+	var styles enc
+	styles.varuint(uint64(len(t.Styles)))
+	for id, style := range t.Styles {
+		styles.u8(author(id))
+		styles.varuint(id)
+		styles.id(1, 1, 900)
+		var v enc
+		v.u8(17)
+		v.u8(uint8(style))
+		styles.sub(2, &v)
+	}
+	var items, formats, body, pos, b enc
+	items.sub(1, &seq)
+	formats.sub(1, &styles)
+	body.sub(1, &items)
+	body.sub(2, &formats)
+	b.id(1, 0, 0)
+	b.sub(2, &body)
+	pos.u64(math.Float64bits(-468))
+	pos.u64(math.Float64bits(234))
+	b.sub(3, &pos)
+	b.tag(4, 0x4)
+	b.u32(math.Float32bits(936))
+	return b.Bytes()
+}
+
 type enc struct{ bytes.Buffer }
+
+func (e *enc) sub(index uint32, b *enc) {
+	e.tag(index, 0xC)
+	e.u32(uint32(b.Len()))
+	e.Write(b.Bytes())
+}
 
 func (e *enc) u8(v uint8)   { e.WriteByte(v) }
 func (e *enc) u16(v uint16) { _ = binary.Write(e, binary.LittleEndian, v) }
