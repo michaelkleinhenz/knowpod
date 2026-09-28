@@ -12,6 +12,7 @@ import { Account } from './Account';
 import { Devices } from './Devices';
 import { APPEARANCES, applyAppearance, currentAppearance } from '../lib/appearance';
 import { errorText } from '../lib/errors';
+import { FONT_SIZES, applyFontSize, currentFontSize } from '../lib/fontSize';
 import { APP_VERSION, desktopVersion } from '../lib/version';
 
 const TABS = ['general', 'account', 'devices', 'themes', 'labels', 'filters'] as const;
@@ -92,6 +93,44 @@ function AppearanceSettings() {
   );
 }
 
+// FontSizeSettings makes all text in the app smaller or larger; it is saved with the user.
+function FontSizeSettings() {
+  const { t } = useTranslation();
+  const { account, update } = useAuth();
+  const [error, setError] = useState<string | null>(null);
+  const value = account?.fontSize ?? currentFontSize();
+
+  async function change(f: string) {
+    setError(null);
+    applyFontSize(f); // switch right away; saving follows
+    try {
+      update(await api.savePreferences({ fontSize: f }));
+    } catch (err) {
+      setError(errorText(err, t));
+    }
+  }
+
+  return (
+    <>
+      <h2 className="card-title">{t('settings.fontSize.title')}</h2>
+      <p className="muted">{t('settings.fontSize.hint')}</p>
+      <div className="form">
+        <label>
+          {t('settings.fontSize.label')}
+          <select value={value} onChange={(e) => change(e.target.value)}>
+            {FONT_SIZES.map((f) => (
+              <option key={f} value={f}>
+                {t(`settings.fontSize.names.${f || 'default'}`)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {error && <p className="error">{error}</p>}
+    </>
+  );
+}
+
 // About shows the app version (and the desktop app's, when running in it).
 function About() {
   const { t } = useTranslation();
@@ -129,6 +168,9 @@ export function Settings() {
           </section>
           <section className="card">
             <AppearanceSettings />
+          </section>
+          <section className="card">
+            <FontSizeSettings />
           </section>
           <section className="card">
             <DesktopAppSetup />

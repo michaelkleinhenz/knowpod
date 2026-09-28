@@ -48,7 +48,9 @@ type Account struct {
 	TimeZone string    `json:"timeZone,omitempty"` // IANA time zone of task dates; empty is UTC
 	// Appearance is the web UI color scheme ("light", "dark"); empty follows the system.
 	Appearance string `json:"appearance,omitempty"`
-	All        bool   `json:"-"`
+	// FontSize is the web UI text size (user.FontSizes); empty is the default size.
+	FontSize string `json:"fontSize,omitempty"`
+	All      bool   `json:"-"`
 }
 
 // IsAdmin reports whether the account may manage users and global settings.
@@ -246,7 +248,7 @@ func account(u *user.User) *Account {
 	if !role.Valid() {
 		role = user.RoleUser
 	}
-	return &Account{ID: u.ID, Email: u.Email, Role: role, Language: u.Language, TimeZone: u.TimeZone, Appearance: u.Appearance}
+	return &Account{ID: u.ID, Email: u.Email, Role: role, Language: u.Language, TimeZone: u.TimeZone, Appearance: u.Appearance, FontSize: u.FontSize}
 }
 
 // Preferences are a user's own settings.
@@ -256,6 +258,8 @@ type Preferences struct {
 	TimeZone *string `json:"timeZone,omitempty"`
 	// Appearance is the web UI color scheme: "light", "dark" or empty for the system's.
 	Appearance *string `json:"appearance,omitempty"`
+	// FontSize is the web UI text size: one of user.FontSizes, or empty for the default.
+	FontSize *string `json:"fontSize,omitempty"`
 }
 
 // UpdatePreferences changes the signed-in user's settings.
@@ -278,6 +282,12 @@ func (s *AuthService) UpdatePreferences(ctx context.Context, acc *Account, p Pre
 			return nil, invalid("appearance must be empty or one of %v", user.Appearances)
 		}
 		u.Appearance = *p.Appearance
+	}
+	if p.FontSize != nil {
+		if !user.ValidFontSize(*p.FontSize) {
+			return nil, invalid("font size must be empty or one of %v", user.FontSizes)
+		}
+		u.FontSize = *p.FontSize
 	}
 	zoneChanged := false
 	if p.TimeZone != nil {

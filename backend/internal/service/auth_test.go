@@ -79,6 +79,21 @@ func TestPreferences(t *testing.T) {
 	if got, _ = s.UpdatePreferences(ctx, acc, Preferences{Appearance: &system}); got.Appearance != "" {
 		t.Fatalf("back to system: %+v", got)
 	}
+
+	small, huge, normal := "small", "huge", ""
+	if _, err := s.UpdatePreferences(ctx, acc, Preferences{FontSize: &huge}); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("unsupported font size: %v", err)
+	}
+	got, err = s.UpdatePreferences(ctx, acc, Preferences{FontSize: &small})
+	if err != nil || got.FontSize != "small" || got.Language != "de" {
+		t.Fatalf("font size: %+v, %v", got, err)
+	}
+	if a, _ := s.Authenticate(ctx, token); a.FontSize != "small" {
+		t.Fatalf("font size not on account: %+v", a)
+	}
+	if got, _ = s.UpdatePreferences(ctx, acc, Preferences{FontSize: &normal}); got.FontSize != "" {
+		t.Fatalf("back to default size: %+v", got)
+	}
 }
 
 func TestNoBuiltInAdminWithoutEnv(t *testing.T) {

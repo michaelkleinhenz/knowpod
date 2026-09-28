@@ -830,6 +830,12 @@ export const de: Translation = {
       label: 'Farbschema',
       names: { system: 'System', light: 'Hell', dark: 'Dunkel' },
     },
+    fontSize: {
+      title: 'Schriftgröße',
+      hint: 'Macht alle Texte in der App kleiner oder größer. Sie wird mit deinem Konto gespeichert.',
+      label: 'Schriftgröße',
+      names: { xsmall: 'Sehr klein', small: 'Klein', default: 'Standard', large: 'Groß', xlarge: 'Sehr groß' },
+    },
     about: {
       title: 'Über knowpod',
       version: 'Version',

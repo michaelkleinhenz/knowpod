@@ -83,6 +83,8 @@ export interface Account {
   timeZone?: string;
   // The color scheme ("light", "dark"); absent follows the system.
   appearance?: string;
+  // The text size ("xsmall", "small", "large", "xlarge"); absent is the default size.
+  fontSize?: string;
 }
 
 export interface Theme {
@@ -693,7 +695,7 @@ export const api = {
   createTheme: (t: ThemeInput) => request<Theme>('POST', '/themes', t),
   updateTheme: (id: string, t: ThemeInput) => request<Theme>('PUT', `/themes/${encodeURIComponent(id)}`, t),
   deleteTheme: (id: string) => request<void>('DELETE', `/themes/${encodeURIComponent(id)}`),
-  savePreferences: (p: { language?: string; timeZone?: string; appearance?: string }) => request<Account>('PUT', '/me/preferences', p),
+  savePreferences: (p: { language?: string; timeZone?: string; appearance?: string; fontSize?: string }) => request<Account>('PUT', '/me/preferences', p),
   createDevice: (name: string) => request<DeviceWithToken>('POST', '/devices', { name }),
   rotateDeviceToken: (id: string) => request<DeviceWithToken>('POST', `/devices/${encodeURIComponent(id)}/token`),
   removeDevice: (id: string) => request<void>('DELETE', `/devices/${encodeURIComponent(id)}`),

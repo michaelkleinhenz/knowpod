@@ -38,6 +38,8 @@ type User struct {
 	TimeZone string `bson:"timeZone,omitempty"`
 	// Appearance is the web UI color scheme ("light", "dark"); empty follows the system.
 	Appearance string `bson:"appearance,omitempty"`
+	// FontSize is the web UI text size (see FontSizes); empty is the default size.
+	FontSize string `bson:"fontSize,omitempty"`
 	// Calendar is the user's calendar feed of their tasks.
 	Calendar Calendar `bson:"calendar"`
 	// MCP is the user's access for AI assistants through the MCP server.
@@ -196,6 +198,22 @@ func ValidAppearance(a string) bool {
 	}
 	for _, v := range Appearances {
 		if v == a {
+			return true
+		}
+	}
+	return false
+}
+
+// FontSizes lists the web UI text sizes, smallest first; empty is the default size.
+var FontSizes = []string{"xsmall", "small", "large", "xlarge"}
+
+// ValidFontSize reports whether f is a supported text size (or empty).
+func ValidFontSize(f string) bool {
+	if f == "" {
+		return true
+	}
+	for _, v := range FontSizes {
+		if v == f {
 			return true
 		}
 	}

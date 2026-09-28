@@ -828,6 +828,12 @@ export const en = {
       label: 'Color scheme',
       names: { system: 'System', light: 'Light', dark: 'Dark' },
     },
+    fontSize: {
+      title: 'Text size',
+      hint: 'Makes all text in the app smaller or larger. It is saved with your account.',
+      label: 'Text size',
+      names: { xsmall: 'Extra small', small: 'Small', default: 'Default', large: 'Large', xlarge: 'Extra large' },
+    },
     about: {
       title: 'About knowpod',
       version: 'Version',
