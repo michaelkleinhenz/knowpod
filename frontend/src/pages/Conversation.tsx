@@ -25,6 +25,7 @@ import { folderPath, notePath } from '../lib/folders';
 import { noteRefPath } from '../lib/noteRefs';
 import { formatBytes, formatClock, formatDate, formatDuration, isPhoto, noteType, processing, statusLabel, title as titleOf, when } from '../lib/recordings';
 import { Speakers } from '../components/Speakers';
+import { PdfViewer } from '../components/PdfViewer';
 
 // The rich text editor is downloaded on first use; the summary is shown read-only meanwhile.
 const SummaryEditor = lazy(() => import('../components/SummaryEditor'));
@@ -666,7 +667,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart,
             (rec.file ? (
               <div className="source">
                 {rec.file.contentType === 'application/pdf' ? (
-                  <iframe className="document-frame" src={api.fileURL(rec.id)} title={t('conversation.documentFrame', { title: titleOf(rec) })} />
+                  <PdfViewer url={api.fileURL(rec.id)} title={t('conversation.documentFrame', { title: titleOf(rec) })} />
                 ) : isPhoto(rec) ? (
                   <a href={api.fileURL(rec.id)} target="_blank" rel="noreferrer" className="photo-link">
                     <img className="document-photo" src={api.fileURL(rec.id)} alt={t('conversation.photoAlt', { title: titleOf(rec) })} />

@@ -346,6 +346,8 @@ export const de: Translation = {
     readWith: 'Gelesen mit {{model}}',
     documentUnavailable: 'Das Dokument ist noch nicht verfügbar.',
     documentFrame: 'Dokument „{{title}}“',
+    documentLoadFailed: 'Das Dokument konnte nicht angezeigt werden.',
+    openDocument: 'PDF öffnen',
     remarkableName: 'Name auf dem reMarkable',
     remarkableDocument: 'reMarkable-Dokument',
     copySummary: 'Zusammenfassung kopieren',
