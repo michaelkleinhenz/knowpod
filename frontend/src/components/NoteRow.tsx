@@ -33,10 +33,10 @@ interface Props {
   children?: ReactNode;
 }
 
-// NoteRow is one note in the sidebar: in front, a toggle for its sub-notes if it has any and
-// buttons to move it to the trash and to add a sub-note (all in a gutter every row has, so the rows' icons and times
-// line up); then its type icon (a check box for tasks), title (shortened to fit, its number
-// always shown, to link it with "#12"), processing state and time.
+// NoteRow is one note in the sidebar: in front, a toggle for its sub-notes if it has any (in a
+// gutter every row has, so the rows' icons line up); then its type icon (a check box for
+// tasks), title (shortened to fit, its number always shown, to link it with "#12"),
+// processing state and time; and buttons to add a sub-note and move it to the trash.
 export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = true, onNewSub, onTrash, onDragStart, sub, lineProps, drop, inSharedFolder, children }: Props) {
   const { t } = useTranslation();
   const state = statusLabel(r, aiReady);
@@ -55,16 +55,6 @@ export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = t
               onClick={sub.onToggle}
             >
               <ChevronIcon open={sub.open} />
-            </button>
-          )}
-          {onTrash && (
-            <button type="button" className="note-trash" title={t('conversation.moveToTrash')} aria-label={t('conversation.moveToTrashLabel', { title: title(r) })} onClick={() => onTrash(r)}>
-              <TrashIcon />
-            </button>
-          )}
-          {onNewSub && (
-            <button type="button" className="note-add-sub" title={t('subNotes.new')} aria-label={t('subNotes.newLabel', { title: title(r) })} onClick={() => onNewSub(r)}>
-              <NewNoteIcon />
             </button>
           )}
         </span>
@@ -98,6 +88,21 @@ export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = t
           </span>
           {meta && <span className="conversation-time">{meta}</span>}
         </Link>
+        {/* Shown over the end of the row on hover (always on touch screens), like a folder's. */}
+        {(onTrash || onNewSub) && (
+          <span className="tree-actions note-actions">
+            {onNewSub && (
+              <button type="button" className="icon-button" title={t('subNotes.new')} aria-label={t('subNotes.newLabel', { title: title(r) })} onClick={() => onNewSub(r)}>
+                <NewNoteIcon />
+              </button>
+            )}
+            {onTrash && (
+              <button type="button" className="icon-button danger" title={t('conversation.moveToTrash')} aria-label={t('conversation.moveToTrashLabel', { title: title(r) })} onClick={() => onTrash(r)}>
+                <TrashIcon />
+              </button>
+            )}
+          </span>
+        )}
         {/* Over the note's icon; outside the link so checking doesn't open the note. */}
         {task && (
           <input
