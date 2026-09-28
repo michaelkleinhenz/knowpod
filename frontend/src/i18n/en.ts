@@ -418,7 +418,6 @@ export const en = {
     },
     undo: 'Undo',
     redo: 'Redo',
-    edited: 'Edited {{date}}',
     regenerateEditedConfirm: 'This summary was edited. Regenerating replaces your edits. Continue?',
     titleRequired: 'The title must not be empty.',
     sync: {
