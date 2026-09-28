@@ -69,7 +69,7 @@ func TestBriefingAPI(t *testing.T) {
 	f := newAPIFixture(t)
 	admin := f.signedIn(adminEmail, adminPassword)
 	var settings service.BriefingSettings
-	if res := admin.do("GET", "/api/v1/me/briefing", nil, nil, &settings); res.StatusCode != 200 || settings.Time != "07:00" || settings.Daily {
+	if res := admin.do("GET", "/api/v1/me/briefing", nil, nil, &settings); res.StatusCode != 200 || settings.Time != "07:00" || !settings.Daily {
 		t.Fatalf("settings: %d %+v", res.StatusCode, settings)
 	}
 	if res := admin.do("PUT", "/api/v1/me/briefing", service.BriefingSettings{Daily: true, Time: "06:30", WeeklyDay: 5}, nil, &settings); res.StatusCode != 200 ||
@@ -78,6 +78,14 @@ func TestBriefingAPI(t *testing.T) {
 	}
 	if res := admin.do("PUT", "/api/v1/me/briefing", map[string]any{"time": "later"}, nil, nil); res.StatusCode != 400 {
 		t.Fatalf("bad time: %d", res.StatusCode)
+	}
+	var today service.TodayBriefing
+	if res := admin.do("GET", "/api/v1/me/briefing/today", nil, nil, &today); res.StatusCode != 200 || today.Off || today.DailyBriefing == nil ||
+		!strings.HasPrefix(today.Title, "Briefing for ") {
+		t.Fatalf("today: %d %+v", res.StatusCode, today)
+	}
+	if res := admin.do("POST", "/api/v1/me/briefing/today", nil, nil, &today); res.StatusCode != 200 || today.DailyBriefing == nil {
+		t.Fatalf("today again: %d %+v", res.StatusCode, today)
 	}
 	var note recording.Recording
 	if res := admin.do("POST", "/api/v1/me/briefing/run", map[string]string{"kind": "weekly"}, nil, &note); res.StatusCode != 201 ||

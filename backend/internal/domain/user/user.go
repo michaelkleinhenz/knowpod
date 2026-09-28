@@ -1,7 +1,10 @@
 // Package user models people who sign in to the web UI, and their sessions.
 package user
 
-import "time"
+import (
+	"slices"
+	"time"
+)
 
 // Role controls what a user may do.
 type Role string
@@ -43,21 +46,85 @@ type User struct {
 	Briefing Briefing `bson:"briefing"`
 }
 
-// Briefing sets up a user's briefings: a note made every morning with the day's tasks and
-// what came in since the day before, and a weekly review, each announced by a notification.
+// Briefing sets up a user's briefings: a daily briefing with the day's tasks and what came
+// in since the day before, shown on the home page, and a weekly review, a note; each is
+// announced by a notification.
 type Briefing struct {
-	Daily  bool `bson:"daily,omitempty"`
-	Weekly bool `bson:"weekly,omitempty"`
+	// DailyOff turns the daily briefing off; it is on unless the user turned it off.
+	DailyOff bool `bson:"dailyOff,omitempty"`
+	Weekly   bool `bson:"weekly,omitempty"`
 	// Time is when briefings are made, HH:MM in the user's time zone; empty is DefaultBriefingTime.
 	Time string `bson:"time,omitempty"`
 	// WeeklyDay is the day of the weekly review (0 is Sunday); nil is DefaultReviewDay.
 	WeeklyDay *int `bson:"weeklyDay,omitempty"`
-	// FolderID is the folder the briefings go into, made on first use.
+	// NoNotify makes the daily briefing without a notification announcing it.
+	NoNotify bool `bson:"noNotify,omitempty"`
+	// Sections are the parts of the daily briefing besides the tasks due today (see
+	// BriefingSections); nil is DefaultBriefingSections.
+	Sections []string `bson:"sections,omitempty"`
+	// ActionItemDays is how many days back the daily briefing looks for open action items;
+	// 0 is DefaultActionItemDays.
+	ActionItemDays int `bson:"actionItemDays,omitempty"`
+	// FolderID is the folder the weekly reviews go into, made on first use.
 	FolderID string `bson:"folderId,omitempty"`
 	// LastDaily and LastWeekly are the days (YYYY-MM-DD, in the user's time zone) the last
 	// briefing and review were made, so each is made once.
 	LastDaily  string `bson:"lastDaily,omitempty"`
 	LastWeekly string `bson:"lastWeekly,omitempty"`
+	// Today is the latest daily briefing.
+	Today *DailyBriefing `bson:"today,omitempty"`
+}
+
+// DailyBriefing is a daily briefing as it is shown on the home page.
+type DailyBriefing struct {
+	// Day is the day it is for, YYYY-MM-DD in the user's time zone.
+	Day      string `bson:"day" json:"day"`
+	Title    string `bson:"title" json:"title"`
+	Markdown string `bson:"markdown" json:"markdown"`
+	// Summary is its gist in one line, e.g. "2 due today · 3 new notes".
+	Summary string    `bson:"summary" json:"summary"`
+	MadeAt  time.Time `bson:"madeAt" json:"madeAt"`
+}
+
+// The parts of a daily briefing a user can leave out or add.
+const (
+	SectionOverdue     = "overdue"     // open tasks whose date has passed
+	SectionUpcoming    = "upcoming"    // open tasks due in the next week
+	SectionNew         = "new"         // the notes that came in since the day before
+	SectionDigest      = "digest"      // the summary model's digest of the new notes
+	SectionActionItems = "actionItems" // action items of recent notes not yet made tasks
+)
+
+// BriefingSections are the sections a daily briefing can have, in their order.
+var BriefingSections = []string{SectionOverdue, SectionUpcoming, SectionNew, SectionDigest, SectionActionItems}
+
+// DefaultBriefingSections are the daily briefing's sections unless the user chose others.
+var DefaultBriefingSections = []string{SectionOverdue, SectionNew, SectionDigest, SectionActionItems}
+
+// DefaultActionItemDays is how many days back open action items are looked for, unless
+// the user chose another number; MaxActionItemDays is the most they can choose.
+const (
+	DefaultActionItemDays = 7
+	MaxActionItemDays     = 30
+)
+
+// Daily tells whether the user gets a daily briefing.
+func (b Briefing) Daily() bool { return !b.DailyOff }
+
+// Shows tells whether the daily briefing has section.
+func (b Briefing) Shows(section string) bool {
+	if b.Sections == nil {
+		return slices.Contains(DefaultBriefingSections, section)
+	}
+	return slices.Contains(b.Sections, section)
+}
+
+// ActionDays returns how many days back open action items are looked for.
+func (b Briefing) ActionDays() int {
+	if b.ActionItemDays <= 0 {
+		return DefaultActionItemDays
+	}
+	return b.ActionItemDays
 }
 
 // DefaultBriefingTime is when briefings are made unless the user chose another time.

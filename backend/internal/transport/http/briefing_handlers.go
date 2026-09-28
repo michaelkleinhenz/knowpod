@@ -28,7 +28,27 @@ func (s *Server) handleUpdateBriefing(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-// handleMakeBriefing makes a daily briefing or weekly review right away.
+// handleTodayBriefing returns today's daily briefing, making it when there is none yet.
+func (s *Server) handleTodayBriefing(w http.ResponseWriter, r *http.Request) {
+	out, err := s.briefings.Today(r.Context(), accountFrom(r.Context()), false)
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// handleRemakeTodayBriefing makes today's daily briefing again, with what is new since.
+func (s *Server) handleRemakeTodayBriefing(w http.ResponseWriter, r *http.Request) {
+	out, err := s.briefings.Today(r.Context(), accountFrom(r.Context()), true)
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// handleMakeBriefing makes a weekly review right away.
 func (s *Server) handleMakeBriefing(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Kind service.BriefingKind `json:"kind"`

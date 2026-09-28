@@ -2498,6 +2498,20 @@ html:has(.notes-layout) {
   font-size: 1.2rem;
 }
 
+/* In a sidebar too narrow for both, the title (also in the header's navigation) gives way
+   to the buttons, which then start at the left, the home button first. */
+@media (min-width: 901px) {
+  .notes-sidebar .notes-list-top {
+    container: sidebar-top / inline-size;
+  }
+
+  @container sidebar-top (max-width: 24rem) {
+    .notes-sidebar .conversations-head h1 {
+      display: none;
+    }
+  }
+}
+
 /* Compact buttons in the narrow sidebar. */
 .notes-sidebar .search-row .pill-button span,
 .notes-sidebar .head-actions .pill-button span {
@@ -2543,14 +2557,6 @@ html:has(.notes-layout) {
 
 .notes-main .back-link {
   display: none;
-}
-
-.notes-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 50vh;
-  text-align: center;
 }
 
 @media (max-width: 900px) {
@@ -5416,4 +5422,109 @@ a.note-ref:hover {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem 1.25rem;
+}
+
+/* The daily briefing's options, under its check box. */
+.briefing-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin: -0.2rem 0 0.2rem;
+  padding-left: 1.6rem;
+}
+
+.briefing-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.briefing-sections legend {
+  margin-bottom: 0.45rem;
+  padding: 0;
+  font-size: 0.9rem;
+  color: var(--color-muted);
+}
+
+.form label.briefing-days {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 400;
+}
+
+.form label.briefing-days input {
+  width: 4.5rem;
+}
+
+.button-row a.secondary-button {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+/* --- The home page: today's briefing --- */
+
+.briefing-page {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 0 2rem;
+}
+
+.briefing-head {
+  gap: 0.5rem;
+}
+
+.briefing-head h1 {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  margin-right: auto;
+}
+
+.briefing-head h1 svg {
+  flex: none;
+  color: var(--color-primary);
+}
+
+.briefing-head a.pill-button {
+  text-decoration: none;
+}
+
+.briefing-meta {
+  margin: 0 0 1.25rem;
+  font-size: 0.85rem;
+}
+
+/* The briefing's sections ("## Due today", shown as h3) are set apart by a line. */
+.briefing-body h3 {
+  margin: 1.75rem 0 0.6rem;
+  padding-top: 1.25rem;
+  font-size: 1.05rem;
+  border-top: 1px solid var(--color-border-soft);
+}
+
+.briefing-body > h3:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.briefing-off {
+  padding: 1.5rem;
+  border: 1px dashed var(--color-border);
+  border-radius: 10px;
+}
+
+.briefing-off p {
+  margin: 0 0 0.5rem;
+}
+
+.briefing-off p:last-child {
+  margin: 0;
 }

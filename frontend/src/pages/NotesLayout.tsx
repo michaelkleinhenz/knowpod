@@ -3,18 +3,19 @@ import { useRef, useState } from 'react';
 import type { CSSProperties, KeyboardEvent, PointerEvent } from 'react';
 import { Outlet, useLocation, useParams } from 'react-router-dom';
 import { NotesList } from '../components/NotesList';
+import { Briefing } from './Briefing';
 import { NotesProvider } from '../context/NotesContext';
 import { DEFAULT_SIDEBAR_WIDTH, clampSidebarWidth, useSidebarWidth } from '../lib/sidebarWidth';
 
 // NotesLayout shows the notes list as a sidebar next to the open note (or the time log) on
 // desktop. On narrow screens only one of them is visible: the list at "/", the note when one
-// is open (CSS).
+// is open, the briefing at "/briefing" (CSS).
 // On desktop the sidebar's right edge can be dragged to make it wider or narrower.
 export function NotesLayout() {
   const { t } = useTranslation();
   const { id, number } = useParams();
   const { pathname } = useLocation();
-  const hasMain = !!(id || number) || ['/time', '/ask', '/share'].includes(pathname);
+  const hasMain = !!(id || number) || ['/time', '/ask', '/share', '/briefing'].includes(pathname);
   const [width, setWidth] = useSidebarWidth();
   const [resizing, setResizing] = useState(false);
   const drag = useRef<{ x: number; width: number } | null>(null);
@@ -76,12 +77,8 @@ export function NotesLayout() {
   );
 }
 
-// NotesHome fills the main area on desktop while no note is open.
+// NotesHome fills the main area on desktop while no note is open: today's briefing, the
+// start page. (On phones "/" shows the list; the briefing is at "/briefing".)
 export function NotesHome() {
-  const { t } = useTranslation();
-  return (
-    <div className="notes-empty">
-      <p className="muted">{t('conversations.selectHint')}</p>
-    </div>
-  );
+  return <Briefing />;
 }

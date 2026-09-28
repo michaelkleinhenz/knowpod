@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
-import { api, BriefingSettings } from '../api/client';
+import { Link, useNavigate } from 'react-router-dom';
+import { api, BRIEFING_SECTIONS, BriefingSection, BriefingSettings } from '../api/client';
 import { locale } from '../i18n';
 import { errorText } from '../lib/errors';
 
@@ -9,7 +9,8 @@ import { errorText } from '../lib/errors';
 const WEEKDAYS = [1, 2, 3, 4, 5, 6, 0];
 
 // BriefingSetup turns the daily briefing and the weekly review on and off, sets when they are
-// made, and makes one right away to try it.
+// made, whether the daily briefing is announced and what it shows, and makes a weekly review
+// right away to try it.
 export function BriefingSetup() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -37,11 +38,11 @@ export function BriefingSetup() {
     }
   }
 
-  async function makeNow(kind: 'daily' | 'weekly') {
+  async function makeWeekly() {
     setBusy(true);
     setError(null);
     try {
-      const rec = await api.makeBriefing(kind);
+      const rec = await api.makeBriefing('weekly');
       navigate(`/conversations/${rec.id}`);
     } catch (err) {
       setError(errorText(err, t));
@@ -50,6 +51,8 @@ export function BriefingSetup() {
   }
 
   if (!settings) return error ? <p className="error">{error}</p> : <p className="muted">{t('common.loading')}</p>;
+  const toggleSection = (sec: BriefingSection, on: boolean) =>
+    void save({ ...settings, sections: BRIEFING_SECTIONS.filter((x) => (x === sec ? on : settings.sections.includes(x))) });
   const dayName = (d: number) => new Intl.DateTimeFormat(locale(), { weekday: 'long' }).format(new Date(2026, 0, 4 + d)); // 2026-01-04 is a Sunday
   return (
     <>
@@ -59,6 +62,41 @@ export function BriefingSetup() {
           <input type="checkbox" checked={settings.daily} disabled={busy} onChange={(e) => void save({ ...settings, daily: e.target.checked })} />
           {t('briefing.daily')}
         </label>
+        {settings.daily && (
+          <div className="briefing-options">
+            <label className="checkbox">
+              <input type="checkbox" checked={settings.notify} disabled={busy} onChange={(e) => void save({ ...settings, notify: e.target.checked })} />
+              {t('briefing.notify')}
+            </label>
+            <fieldset className="briefing-sections">
+              <legend>{t('briefing.sections')}</legend>
+              {BRIEFING_SECTIONS.map((sec) => (
+                <label key={sec} className="checkbox">
+                  <input type="checkbox" checked={settings.sections.includes(sec)} disabled={busy} onChange={(e) => toggleSection(sec, e.target.checked)} />
+                  {t(`briefing.section.${sec}`)}
+                </label>
+              ))}
+            </fieldset>
+            {settings.sections.includes('actionItems') && (
+              <label className="briefing-days">
+                {t('briefing.actionItemDays')}
+                <input
+                  type="number"
+                  min={1}
+                  max={30}
+                  value={settings.actionItemDays}
+                  disabled={busy}
+                  onChange={(e) => setSettings({ ...settings, actionItemDays: Number(e.target.value) })}
+                  onBlur={(e) => {
+                    const n = Math.round(Number(e.target.value));
+                    if (n >= 1 && n <= 30) void save({ ...settings, actionItemDays: n });
+                  }}
+                />
+                {t('briefing.days')}
+              </label>
+            )}
+          </div>
+        )}
         <label className="checkbox">
           <input type="checkbox" checked={settings.weekly} disabled={busy} onChange={(e) => void save({ ...settings, weekly: e.target.checked })} />
           {t('briefing.weekly')}
@@ -90,10 +128,12 @@ export function BriefingSetup() {
       {error && <p className="error">{error}</p>}
       {saved && !error && <p className="success">{t('common.saved')}</p>}
       <div className="button-row">
-        <button type="button" className="secondary-button" disabled={busy} onClick={() => void makeNow('daily')}>
-          {t('briefing.makeDaily')}
-        </button>
-        <button type="button" className="secondary-button" disabled={busy} onClick={() => void makeNow('weekly')}>
+        {settings.daily && (
+          <Link to="/briefing" className="secondary-button">
+            {t('briefing.openToday')}
+          </Link>
+        )}
+        <button type="button" className="secondary-button" disabled={busy} onClick={() => void makeWeekly()}>
           {t('briefing.makeWeekly')}
         </button>
       </div>

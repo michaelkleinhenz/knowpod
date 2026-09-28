@@ -27,7 +27,7 @@ export default defineConfig({
         short_name: 'knowpod',
         description: 'Your recorded conversations, transcribed and summarized.',
         id: '/',
-        start_url: '/',
+        start_url: '/briefing',
         scope: '/',
         display: 'standalone',
         orientation: 'any',

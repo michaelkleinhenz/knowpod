@@ -5,6 +5,7 @@ import { useAuth } from './auth';
 import { Layout } from './components/Layout';
 import { Admin } from './pages/Admin';
 import { Ask } from './pages/Ask';
+import { Briefing } from './pages/Briefing';
 import { Conversation } from './pages/Conversation';
 import { Login } from './pages/Login';
 import { NoteByNumber } from './pages/NoteByNumber';
@@ -39,6 +40,7 @@ export default function App() {
           }
         >
           <Route path="/" element={<NotesHome />} />
+          <Route path="/briefing" element={<Briefing />} />
           <Route path="/conversations/:id" element={<Conversation />} />
           <Route path="/n/:number" element={<NoteByNumber />} />
           <Route path="/time" element={<TimeLog />} />

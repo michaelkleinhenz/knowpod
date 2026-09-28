@@ -77,54 +77,98 @@ func TestDailyBriefing(t *testing.T) {
 	}
 	defer stop()
 
-	rec, err := f.s.MakeNow(ctx, f.acc, BriefingDaily)
+	got, err := f.s.Today(ctx, f.acc, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rec.Summary.Title != "Briefing for Sun, Sep 27" || rec.Source != recording.SourceBriefing || !rec.IsText() {
-		t.Fatalf("briefing = %+v", rec)
+	if got.Off || got.Title != "Briefing for Sun, Sep 27" || got.Day != "2026-09-27" || got.Summary != "1 due today · 1 overdue · 1 new notes" {
+		t.Fatalf("briefing = %+v", got)
 	}
-	md := rec.Summary.Markdown
+	md := got.Markdown
 	for _, want := range []string{
 		"## Due today\n\n- [ ] Call Anna #2 — 15:00, P1",
 		"## Overdue\n\n- [ ] Pay the invoice #1 — Sep 25",
 		"## New since yesterday\n\n- The budget was set at 40k (#5, 99)",
-		"- Budget meeting #5 (recording)",
+		"## All new notes\n\n- Budget meeting #5 (recording)",
 		"## Open action items\n\n- Send the offer (Ben) — from Budget meeting #5",
 	} {
 		if !strings.Contains(md, want) {
 			t.Errorf("briefing lacks %q:\n%s", want, md)
 		}
 	}
-	if strings.Contains(md, "Done already") || strings.Contains(md, "garage") {
+	if strings.Contains(md, "Done already") || strings.Contains(md, "garage") || strings.Contains(md, "Coming up") {
 		t.Errorf("briefing lists what it shouldn't:\n%s", md)
 	}
 	// The digest is made from the new notes' summaries.
 	if len(f.ai.requests) != 1 || !strings.Contains(f.ai.requests[0].Messages[1].Content.(string), "#5 Budget meeting") {
 		t.Errorf("digest requests = %+v", f.ai.requests)
 	}
-	// It goes into the Briefings folder, made on first use.
-	list, _ := f.folders.List(ctx, "u1")
-	if len(list) != 1 || list[0].Name != "Briefings" || rec.FolderID != list[0].ID {
-		t.Errorf("folders = %+v, note in %q", list, rec.FolderID)
+	// It is no note, and one made on demand isn't announced.
+	list, _ := f.recs.List(ctx, recording.ListFilter{OwnerID: "u1"})
+	for _, r := range list {
+		if r.Source == recording.SourceBriefing {
+			t.Errorf("briefing note %+v", r)
+		}
 	}
 	select {
 	case m := <-msgs:
-		if m.Title != rec.Summary.Title || m.Body != "1 due today · 1 overdue · 1 new notes" || m.URL != "/conversations/"+rec.ID {
-			t.Errorf("notification = %+v", m)
-		}
+		t.Errorf("notification = %+v", m)
 	default:
-		t.Error("no notification")
 	}
 
-	// The next briefing goes into the same folder and doesn't list the first one as new.
+	// It is kept for the day: asked again, it is the same without asking the model again.
+	again, err := f.s.Today(ctx, f.acc, false)
+	if err != nil || again.MadeAt != got.MadeAt || len(f.ai.requests) != 1 {
+		t.Fatalf("again: %+v, %v, %d requests", again, err, len(f.ai.requests))
+	}
+	// Made anew, it is new.
 	f.ai.answers = []string{"- digest"}
-	next, err := f.s.MakeNow(ctx, f.acc, BriefingDaily)
+	f.now = f.now.Add(time.Hour)
+	fresh, err := f.s.Today(ctx, f.acc, true)
+	if err != nil || !fresh.MadeAt.After(got.MadeAt) || !strings.Contains(fresh.Markdown, "- digest") {
+		t.Fatalf("made again: %+v, %v", fresh, err)
+	}
+}
+
+func TestDailyBriefingSections(t *testing.T) {
+	f := newBriefingFixture(t)
+	ctx := context.Background()
+	f.s.ai = nil
+	in := BriefingSettings{Daily: true, Time: "07:00", Notify: true, Sections: []string{"upcoming", "actionItems"}, ActionItemDays: 1}
+	if _, err := f.s.UpdateSettings(ctx, f.acc, in); err != nil {
+		t.Fatal(err)
+	}
+	got, err := f.s.Today(ctx, f.acc, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if next.FolderID != rec.FolderID || strings.Contains(next.Summary.Markdown, "Briefing for") {
-		t.Errorf("second briefing:\n%s", next.Summary.Markdown)
+	md := got.Markdown
+	if !strings.Contains(md, "## Due today") || !strings.Contains(md, "## Open action items\n\n- Send the offer") ||
+		strings.Contains(md, "Overdue") || strings.Contains(md, "New since yesterday") {
+		t.Errorf("briefing:\n%s", md)
+	}
+	// Changed settings make it again.
+	in.Sections = append(in.Sections, "overdue")
+	if _, err := f.s.UpdateSettings(ctx, f.acc, in); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := f.s.Today(ctx, f.acc, false); !strings.Contains(got.Markdown, "## Overdue") {
+		t.Errorf("not made again after the sections changed:\n%s", got.Markdown)
+	}
+	// With a look back of one day, the meeting's action items drop out 24 hours after it.
+	f.now = f.now.Add(10 * time.Hour)
+	again, _ := f.s.Today(ctx, f.acc, true)
+	if strings.Contains(again.Markdown, "Open action items") {
+		t.Errorf("action items older than a day:\n%s", again.Markdown)
+	}
+
+	// Turned off, there is none.
+	in.Daily = false
+	if _, err := f.s.UpdateSettings(ctx, f.acc, in); err != nil {
+		t.Fatal(err)
+	}
+	if off, err := f.s.Today(ctx, f.acc, false); err != nil || !off.Off || off.DailyBriefing != nil {
+		t.Errorf("off: %+v, %v", off, err)
 	}
 }
 
@@ -136,13 +180,13 @@ func TestDailyBriefingInGermanWithoutAI(t *testing.T) {
 	_ = f.users.Update(ctx, u)
 	f.s.ai = nil
 
-	rec, err := f.s.MakeNow(ctx, f.acc, BriefingDaily)
+	got, err := f.s.Today(ctx, f.acc, false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rec.Summary.Title != "Briefing für So. 27. Sept." || !strings.Contains(rec.Summary.Markdown, "## Heute fällig") ||
-		!strings.Contains(rec.Summary.Markdown, "- Budget meeting #5 (Aufnahme)") {
-		t.Fatalf("briefing:\n%s\n%s", rec.Summary.Title, rec.Summary.Markdown)
+	if got.Title != "Briefing für So. 27. Sept." || !strings.Contains(got.Markdown, "## Heute fällig") ||
+		!strings.Contains(got.Markdown, "## Neu seit gestern\n\n- Budget meeting #5 (Aufnahme)") || strings.Contains(got.Markdown, "Alle neuen") {
+		t.Fatalf("briefing:\n%s\n%s", got.Title, got.Markdown)
 	}
 }
 
@@ -181,11 +225,16 @@ func TestBriefingsAreMadeOnceADayWhenDue(t *testing.T) {
 	f := newBriefingFixture(t)
 	ctx := context.Background()
 	f.s.ai = nil
-	// Settings saved at 12:00 for 13:00: none today yet.
-	if _, err := f.s.UpdateSettings(ctx, f.acc, BriefingSettings{Daily: true, Weekly: true, Time: "13:00", WeeklyDay: 0}); err != nil {
+	msgs, stop, err := f.notify.Listen(f.acc)
+	if err != nil {
 		t.Fatal(err)
 	}
-	count := func() int {
+	defer stop()
+	// Settings saved at 12:00 for 13:00: none today yet.
+	if _, err := f.s.UpdateSettings(ctx, f.acc, BriefingSettings{Daily: true, Weekly: true, Time: "13:00", WeeklyDay: 0, Notify: true}); err != nil {
+		t.Fatal(err)
+	}
+	reviews := func() int {
 		n := 0
 		list, _ := f.recs.List(ctx, recording.ListFilter{OwnerID: "u1"})
 		for _, r := range list {
@@ -195,30 +244,66 @@ func TestBriefingsAreMadeOnceADayWhenDue(t *testing.T) {
 		}
 		return n
 	}
+	announced := func() []string {
+		var urls []string
+		for {
+			select {
+			case m := <-msgs:
+				urls = append(urls, m.URL)
+			default:
+				return urls
+			}
+		}
+	}
 	if n, err := f.s.MakeDue(ctx); err != nil || n != 0 {
 		t.Fatalf("before the time: %d, %v", n, err)
 	}
+	// Looked at before its time, the briefing is made, but made again at its time.
+	early, _ := f.s.Today(ctx, f.acc, false)
 	f.now = f.now.Add(time.Hour) // 13:00 in Berlin, a Sunday: the daily briefing and the weekly review
-	if n, err := f.s.MakeDue(ctx); err != nil || n != 2 || count() != 2 {
-		t.Fatalf("at the time: %d, %v, %d notes", n, err, count())
+	if n, err := f.s.MakeDue(ctx); err != nil || n != 2 || reviews() != 1 {
+		t.Fatalf("at the time: %d, %v, %d reviews", n, err, reviews())
+	}
+	if urls := announced(); len(urls) != 2 || urls[1] != "/briefing" {
+		t.Errorf("announced %v", urls)
+	}
+	if now, _ := f.s.Today(ctx, f.acc, false); !now.MadeAt.After(early.MadeAt) {
+		t.Errorf("briefing not made again at its time")
 	}
 	f.now = f.now.Add(time.Minute)
 	if n, _ := f.s.MakeDue(ctx); n != 0 {
 		t.Fatalf("made again: %d", n)
 	}
 	f.now = f.now.Add(24 * time.Hour) // Monday: only the daily one
-	if n, _ := f.s.MakeDue(ctx); n != 1 || count() != 3 {
-		t.Fatalf("next day: %d, %d notes", n, count())
+	if n, _ := f.s.MakeDue(ctx); n != 1 || reviews() != 1 {
+		t.Fatalf("next day: %d, %d reviews", n, reviews())
+	}
+	if got, _ := f.s.Today(ctx, f.acc, false); got.Day != "2026-09-28" {
+		t.Errorf("today = %+v", got)
 	}
 	got, _ := f.s.Settings(ctx, f.acc)
-	if !got.Daily || !got.Weekly || got.Time != "13:00" || got.WeeklyDay != 0 {
+	if !got.Daily || !got.Weekly || got.Time != "13:00" || got.WeeklyDay != 0 || !got.Notify {
 		t.Errorf("settings = %+v", got)
+	}
+
+	// Without notifications, the briefing is made but not announced.
+	_ = announced()
+	if _, err := f.s.UpdateSettings(ctx, f.acc, BriefingSettings{Daily: true, Time: "13:00"}); err != nil {
+		t.Fatal(err)
+	}
+	f.now = f.now.Add(24 * time.Hour)
+	if n, _ := f.s.MakeDue(ctx); n != 1 {
+		t.Fatalf("without notifications: %d", n)
+	}
+	if urls := announced(); len(urls) != 0 {
+		t.Errorf("announced %v", urls)
 	}
 
 	// Turned on after today's time: nothing until tomorrow.
 	if _, err := f.s.UpdateSettings(ctx, f.acc, BriefingSettings{Daily: true, Time: "07:00"}); err != nil {
 		t.Fatal(err)
 	}
+	f.now = f.now.Add(time.Hour)
 	if n, _ := f.s.MakeDue(ctx); n != 0 {
 		t.Fatalf("made right after turning on: %d", n)
 	}
@@ -227,15 +312,20 @@ func TestBriefingsAreMadeOnceADayWhenDue(t *testing.T) {
 func TestBriefingSettingsAreChecked(t *testing.T) {
 	f := newBriefingFixture(t)
 	ctx := context.Background()
-	for _, in := range []BriefingSettings{{Time: "7"}, {Time: "25:00"}, {Time: "07:00", WeeklyDay: 7}} {
+	for _, in := range []BriefingSettings{{Time: "7"}, {Time: "25:00"}, {Time: "07:00", WeeklyDay: 7},
+		{Time: "07:00", ActionItemDays: 31}, {Time: "07:00", Sections: []string{"weather"}}} {
 		if _, err := f.s.UpdateSettings(ctx, f.acc, in); !errors.Is(err, ErrInvalidInput) {
 			t.Errorf("%+v: %v", in, err)
 		}
 	}
-	if _, err := f.s.MakeNow(ctx, f.acc, "monthly"); !errors.Is(err, ErrInvalidInput) {
-		t.Errorf("unknown kind: %v", err)
+	for _, kind := range []BriefingKind{"monthly", BriefingDaily} {
+		if _, err := f.s.MakeNow(ctx, f.acc, kind); !errors.Is(err, ErrInvalidInput) {
+			t.Errorf("kind %q: %v", kind, err)
+		}
 	}
-	if got, _ := f.s.Settings(ctx, f.acc); got.Time != "07:00" || got.Daily || got.WeeklyDay != 1 {
+	// The daily briefing is on by default, announced, with the default sections.
+	if got, _ := f.s.Settings(ctx, f.acc); got.Time != "07:00" || !got.Daily || got.Weekly || got.WeeklyDay != 1 || !got.Notify ||
+		strings.Join(got.Sections, ",") != "overdue,new,digest,actionItems" || got.ActionItemDays != 7 {
 		t.Errorf("default settings = %+v", got)
 	}
 }

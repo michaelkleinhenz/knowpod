@@ -63,9 +63,11 @@ info:
     model picks the fitting notes from a catalog of them and names words to look up in the
     full texts and transcripts, then answers from the notes found.
 
-    **Briefings** — users turn on a daily briefing and a weekly review (`/me/briefing`): notes
-    in their folder "Briefings" with the tasks due and overdue, what came in (with a digest by
-    the summary model) and open action items, announced by a notification.
+    **Briefings** — users get a daily briefing (on unless turned off) and can turn on a weekly
+    review (`/me/briefing`), with the tasks due and overdue, what came in (with a digest by
+    the summary model) and open action items, announced by a notification. The daily
+    briefing is shown on the web app's home page (`/me/briefing/today`); the weekly review is
+    a note in the folder "Briefings".
 
     **Browser uploads** — besides audio, photos (e.g. of a whiteboard) and PDFs are uploaded
     with `POST /recordings`; they become documents whose text is read by the document model.
@@ -1890,18 +1892,43 @@ paths:
           content: { application/json: { schema: { $ref: "#/components/schemas/BriefingSettings" } } }
         "400": { $ref: "#/components/responses/Error" }
 
+  /me/briefing/today:
+    get:
+      tags: ["Briefings"]
+      summary: Get today's daily briefing
+      description: |
+        Returns your daily briefing for today, making it right away when there is none yet
+        (without a notification; the one made at the briefings' time replaces it). It lists
+        the tasks due today and, as set in `sections`, the tasks overdue and coming up this
+        week, the notes that came in since the day before (with a digest by the summary model,
+        when it is set up) and the open action items of the last `actionItemDays` days. With
+        the daily briefing turned off, only `off` is set.
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: The briefing
+          content: { application/json: { schema: { $ref: "#/components/schemas/DailyBriefing" } } }
+    post:
+      tags: ["Briefings"]
+      summary: Make today's daily briefing again
+      description: Makes your daily briefing for today again, with what is new since.
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: The briefing
+          content: { application/json: { schema: { $ref: "#/components/schemas/DailyBriefing" } } }
+        "429": { description: Too many requests }
+
   /me/briefing/run:
     post:
       tags: ["Briefings"]
-      summary: Make a briefing now
+      summary: Make a weekly review now
       description: |
-        Makes a daily briefing or weekly review right away, whether or not they are turned on,
-        and sends its notification. It is a text note (`source: briefing`) in your folder
-        "Briefings", which is made when missing. The daily briefing lists the tasks due today
-        and overdue, the notes that came in since the day before (with a digest by the summary
-        model, when it is set up) and the open action items of the last week. The weekly review
-        covers the seven days before (and today so far): new notes (with a digest), tasks
-        checked off, time logged, and the tasks overdue, coming up and waiting for over 30 days.
+        Makes a weekly review right away, whether or not it is turned on, and sends its
+        notification. It is a text note (`source: briefing`) in your folder "Briefings", which
+        is made when missing. It covers the seven days before (and today so far): new notes
+        (with a digest), tasks checked off, time logged, and the tasks overdue, coming up and
+        waiting for over 30 days. The daily briefing is no note; see `/me/briefing/today`.
       security: [{ sessionCookie: [] }]
       requestBody:
         required: true
@@ -1911,7 +1938,7 @@ paths:
               type: object
               required: [kind]
               properties:
-                kind: { type: string, enum: [daily, weekly] }
+                kind: { type: string, enum: [weekly] }
       responses:
         "201":
           description: The briefing's note
@@ -2652,10 +2679,26 @@ components:
     BriefingSettings:
       type: object
       properties:
-        daily: { type: boolean, description: Make a briefing every day }
+        daily: { type: boolean, description: Make a briefing every day (on until turned off) }
         weekly: { type: boolean, description: Make a weekly review }
         time: { type: string, example: "07:00", description: When they are made (HH:MM in your time zone) }
         weeklyDay: { type: integer, minimum: 0, maximum: 6, description: 'The day of the weekly review (0 is Sunday); Monday (1) until one is chosen' }
+        notify: { type: boolean, description: Announce the daily briefing with a notification }
+        sections:
+          type: array
+          items: { type: string, enum: [overdue, upcoming, new, digest, actionItems] }
+          description: 'The daily briefing''s parts besides the tasks due today: tasks overdue, tasks due in the next week, the new notes, the digest of them, open action items. Default: all but upcoming. Left out, they stay as they are.'
+        actionItemDays: { type: integer, minimum: 1, maximum: 30, description: 'How many days back the daily briefing looks for open action items (default 7); 0 or left out keeps it as it is' }
+
+    DailyBriefing:
+      type: object
+      properties:
+        off: { type: boolean, description: The daily briefing is turned off; nothing else is set }
+        day: { type: string, format: date, description: The day it is for, in your time zone }
+        title: { type: string, example: "Briefing for Mon, Sep 28" }
+        markdown: { type: string, description: 'Its text; "#12" names note 12' }
+        summary: { type: string, example: "2 due today · 3 new notes" }
+        madeAt: { type: string, format: date-time }
 
     CalendarSettings:
       type: object

@@ -454,7 +454,8 @@ once with a catalog of the user's notes (a line per note, up to 120,000 characte
 with the notes it found (up to 80,000 characters), so a question costs about as much as
 summarizing a long conversation; it is limited to 30 questions per minute. Daily briefings
 and weekly reviews use it for their digest of the new notes (a few thousand characters per
-note, at most 30 notes). Without a configured summary model Ask is off and briefings are
+note, at most 30 notes). The daily briefing is on for every user unless they turn it off (or
+the digest in it), so expect a digest a day for each user with new notes. Without a configured summary model Ask is off and briefings are
 made without a digest.
 
 **The API key** is stored in the MongoDB `settings` collection. It is never sent back to the

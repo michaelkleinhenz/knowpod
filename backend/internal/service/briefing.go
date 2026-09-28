@@ -43,9 +43,10 @@ const (
 	briefingTTL = 12 * time.Hour
 )
 
-// BriefingService makes the users' daily briefings and weekly reviews: text notes in their
-// Briefings folder with their tasks, what came in and (through the summary model, when it is
-// set up) a digest of it, announced by a notification.
+// BriefingService makes the users' daily briefings and weekly reviews with their tasks, what
+// came in and (through the summary model, when it is set up) a digest of it, announced by a
+// notification. The daily briefing is kept with the user and shown on the home page; the
+// weekly review is a text note in their Briefings folder.
 type BriefingService struct {
 	users   ports.UserRepository
 	notes   *RecordingService
@@ -72,6 +73,14 @@ type BriefingSettings struct {
 	Time string `json:"time"`
 	// WeeklyDay is the day of the weekly review, 0 (Sunday) to 6.
 	WeeklyDay int `json:"weeklyDay"`
+	// Notify announces the daily briefing with a notification.
+	Notify bool `json:"notify"`
+	// Sections are the daily briefing's parts besides the tasks due today (see
+	// user.BriefingSections); left out, they stay as they are.
+	Sections []string `json:"sections"`
+	// ActionItemDays is how many days back the daily briefing looks for open action items,
+	// 1 to user.MaxActionItemDays; 0 keeps it as it is.
+	ActionItemDays int `json:"actionItemDays"`
 }
 
 // Settings returns the account's briefing settings.
@@ -81,7 +90,14 @@ func (s *BriefingService) Settings(ctx context.Context, acc *Account) (*Briefing
 		return nil, err
 	}
 	b := u.Briefing
-	return &BriefingSettings{Daily: b.Daily, Weekly: b.Weekly, Time: b.At(), WeeklyDay: int(b.ReviewDay())}, nil
+	sections := []string{}
+	for _, sec := range user.BriefingSections {
+		if b.Shows(sec) {
+			sections = append(sections, sec)
+		}
+	}
+	return &BriefingSettings{Daily: b.Daily(), Weekly: b.Weekly, Time: b.At(), WeeklyDay: int(b.ReviewDay()),
+		Notify: !b.NoNotify, Sections: sections, ActionItemDays: b.ActionDays()}, nil
 }
 
 // UpdateSettings changes the account's briefing settings.
@@ -96,13 +112,38 @@ func (s *BriefingService) UpdateSettings(ctx context.Context, acc *Account, in B
 	if in.WeeklyDay < 0 || in.WeeklyDay > 6 {
 		return nil, invalid("weeklyDay is 0 (Sunday) to 6 (Saturday)")
 	}
+	if in.ActionItemDays < 0 || in.ActionItemDays > user.MaxActionItemDays {
+		return nil, invalid("actionItemDays is 1 to %d", user.MaxActionItemDays)
+	}
+	for _, sec := range in.Sections {
+		if !slices.Contains(user.BriefingSections, sec) {
+			return nil, invalid("unknown section %q; sections are %s", sec, strings.Join(user.BriefingSections, ", "))
+		}
+	}
 	u, err := s.user(ctx, acc)
 	if err != nil {
 		return nil, err
 	}
 	b := &u.Briefing
+	shown, days := slices.Clone(b.Sections), b.ActionItemDays
 	day := in.WeeklyDay
-	b.Daily, b.Weekly, b.Time, b.WeeklyDay = in.Daily, in.Weekly, in.Time, &day
+	b.DailyOff, b.Weekly, b.Time, b.WeeklyDay, b.NoNotify = !in.Daily, in.Weekly, in.Time, &day, !in.Notify
+	if in.Sections != nil {
+		// Kept in their order, each once; an empty list is kept, too (not the default).
+		b.Sections = []string{}
+		for _, sec := range user.BriefingSections {
+			if slices.Contains(in.Sections, sec) {
+				b.Sections = append(b.Sections, sec)
+			}
+		}
+	}
+	if in.ActionItemDays > 0 {
+		b.ActionItemDays = in.ActionItemDays
+	}
+	// Today's briefing shows what it shows no more: it is made again when it is next looked at.
+	if !slices.Equal(shown, b.Sections) || (shown == nil) != (b.Sections == nil) || days != b.ActionItemDays {
+		b.Today = nil
+	}
 	// Turned on (again) after today's time: the next one is made tomorrow, not right away.
 	today, due := s.dueToday(u)
 	if !due.After(s.clock()) {
@@ -130,20 +171,53 @@ func (s *BriefingService) dueToday(u *user.User) (day string, due time.Time) {
 	return now.Format(recording.DateLayout), time.Date(now.Year(), now.Month(), now.Day(), at.Hour(), at.Minute(), 0, 0, loc)
 }
 
-// MakeNow makes a briefing of the account's right away (e.g. to try it) and returns its note.
+// MakeNow makes a weekly review of the account's right away (e.g. to try it) and returns its
+// note. The daily briefing is made again with Today.
 func (s *BriefingService) MakeNow(ctx context.Context, acc *Account, kind BriefingKind) (*recording.Recording, error) {
-	if kind != BriefingDaily && kind != BriefingWeekly {
-		return nil, invalid("kind is %q or %q", BriefingDaily, BriefingWeekly)
+	if kind == BriefingDaily {
+		return nil, invalid("the daily briefing is no note; it is made again with POST /me/briefing/today")
+	}
+	if kind != BriefingWeekly {
+		return nil, invalid("kind is %q", BriefingWeekly)
 	}
 	u, err := s.user(ctx, acc)
 	if err != nil {
 		return nil, err
 	}
-	rec, err := s.make(ctx, u, kind)
+	rec, err := s.makeWeekly(ctx, u)
 	if err != nil {
 		return nil, err
 	}
 	return present(acc, rec), nil
+}
+
+// TodayBriefing is the daily briefing the home page shows; Off (and nothing else) when the
+// user turned the daily briefing off.
+type TodayBriefing struct {
+	Off bool `json:"off,omitempty"`
+	*user.DailyBriefing
+}
+
+// Today returns the account's daily briefing for today, making it when there is none yet
+// (or with again, anew), so it is there before its time, too. One made here is not
+// announced; one made before the briefings' time is made again (and announced) then.
+func (s *BriefingService) Today(ctx context.Context, acc *Account, again bool) (*TodayBriefing, error) {
+	u, err := s.user(ctx, acc)
+	if err != nil {
+		return nil, err
+	}
+	if !u.Briefing.Daily() {
+		return &TodayBriefing{Off: true}, nil
+	}
+	day, _ := s.dueToday(u)
+	if t := u.Briefing.Today; t != nil && t.Day == day && !again {
+		return &TodayBriefing{DailyBriefing: t}, nil
+	}
+	t, err := s.makeDaily(ctx, u, day)
+	if err != nil {
+		return nil, err
+	}
+	return &TodayBriefing{DailyBriefing: t}, nil
 }
 
 // Run makes the briefings that are due, every interval until ctx ends.
@@ -174,7 +248,7 @@ func (s *BriefingService) MakeDue(ctx context.Context) (int, error) {
 	n := 0
 	for _, u := range users {
 		b := u.Briefing
-		if !b.Daily && !b.Weekly {
+		if !b.Daily() && !b.Weekly {
 			continue
 		}
 		day, due := s.dueToday(u)
@@ -185,7 +259,7 @@ func (s *BriefingService) MakeDue(ctx context.Context) (int, error) {
 		if b.Weekly && b.LastWeekly != day && due.Weekday() == b.ReviewDay() {
 			kinds = append(kinds, BriefingWeekly)
 		}
-		if b.Daily && b.LastDaily != day {
+		if b.Daily() && b.LastDaily != day {
 			kinds = append(kinds, BriefingDaily)
 		}
 		if len(kinds) == 0 {
@@ -207,7 +281,13 @@ func (s *BriefingService) MakeDue(ctx context.Context) (int, error) {
 			return n, err
 		}
 		for _, k := range kinds {
-			if _, err := s.make(ctx, fresh, k); err != nil {
+			var err error
+			if k == BriefingWeekly {
+				_, err = s.makeWeekly(ctx, fresh)
+			} else {
+				err = s.announceDaily(ctx, fresh, day)
+			}
+			if err != nil {
 				s.log.Warn("making a briefing failed", "user", u.ID, "kind", string(k), "err", err)
 				continue
 			}
@@ -228,8 +308,8 @@ type briefingData struct {
 	notes []*recording.Recording
 }
 
-// make makes a briefing of the user: the note, and the notification announcing it.
-func (s *BriefingService) make(ctx context.Context, u *user.User, kind BriefingKind) (*recording.Recording, error) {
+// data gathers what the user's briefings are made of.
+func (s *BriefingService) data(ctx context.Context, u *user.User) (*briefingData, error) {
 	acc := account(u)
 	notes, err := s.notes.List(ctx, acc, recording.ListFilter{})
 	if err != nil {
@@ -237,13 +317,51 @@ func (s *BriefingService) make(ctx context.Context, u *user.User, kind BriefingK
 	}
 	loc := u.Location()
 	now := s.clock().In(loc)
-	d := &briefingData{u: u, acc: acc, loc: loc, now: now, today: now.Format(recording.DateLayout), de: u.Language == "de", notes: notes}
-	var title, markdown, summary string
-	if kind == BriefingWeekly {
-		title, markdown, summary = s.weekly(ctx, d)
-	} else {
-		title, markdown, summary = s.daily(ctx, d)
+	return &briefingData{u: u, acc: acc, loc: loc, now: now, today: now.Format(recording.DateLayout), de: u.Language == "de", notes: notes}, nil
+}
+
+// makeDaily makes the user's daily briefing for day and keeps it with the user.
+func (s *BriefingService) makeDaily(ctx context.Context, u *user.User, day string) (*user.DailyBriefing, error) {
+	d, err := s.data(ctx, u)
+	if err != nil {
+		return nil, err
 	}
+	title, markdown, summary := s.daily(ctx, d)
+	t := &user.DailyBriefing{Day: day, Title: title, Markdown: truncateRunes(markdown, maxSummaryMarkdown/2), Summary: summary, MadeAt: s.clock().UTC()}
+	// Kept on a fresh copy, so settings changed meanwhile stay.
+	fresh, err := s.users.Get(ctx, u.ID)
+	if err != nil {
+		return nil, err
+	}
+	fresh.Briefing.Today = t
+	if err := s.users.Update(ctx, fresh); err != nil {
+		return nil, err
+	}
+	u.Briefing.Today = t
+	return t, nil
+}
+
+// announceDaily makes the user's daily briefing for day and announces it, unless the user
+// doesn't want that.
+func (s *BriefingService) announceDaily(ctx context.Context, u *user.User, day string) error {
+	t, err := s.makeDaily(ctx, u, day)
+	if err != nil || s.Notifications == nil || u.Briefing.NoNotify {
+		return err
+	}
+	m := Message{Title: t.Title, Body: t.Summary, URL: "/briefing", Tag: "briefing-" + string(BriefingDaily)}
+	if _, err := s.Notifications.Notify(ctx, u.ID, m, briefingTTL); err != nil {
+		s.log.Warn("announcing a briefing failed", "user", u.ID, "err", err)
+	}
+	return nil
+}
+
+// makeWeekly makes a weekly review of the user: the note, and the notification announcing it.
+func (s *BriefingService) makeWeekly(ctx context.Context, u *user.User) (*recording.Recording, error) {
+	d, err := s.data(ctx, u)
+	if err != nil {
+		return nil, err
+	}
+	title, markdown, summary := s.weekly(ctx, d)
 	folderID, err := s.folder(ctx, u)
 	if err != nil {
 		return nil, err
@@ -260,7 +378,7 @@ func (s *BriefingService) make(ctx context.Context, u *user.User, kind BriefingK
 		return nil, err
 	}
 	if s.Notifications != nil {
-		m := Message{Title: title, Body: summary, URL: "/conversations/" + rec.ID, Tag: "briefing-" + string(kind)}
+		m := Message{Title: title, Body: summary, URL: "/conversations/" + rec.ID, Tag: "briefing-" + string(BriefingWeekly)}
 		if _, err := s.Notifications.Notify(ctx, u.ID, m, briefingTTL); err != nil {
 			s.log.Warn("announcing a briefing failed", "user", u.ID, "err", err)
 		}
@@ -456,46 +574,72 @@ func (d *briefingData) kindName(r *recording.Recording) string {
 	}
 }
 
-// daily makes the daily briefing: the tasks due today and overdue, what came in since the
-// day before (with a digest), and the open action items of the last week. summary is the
-// notification's text.
+// daily makes the daily briefing: the tasks due today and, as the user chose, the overdue and
+// upcoming ones, what came in since the last briefing (with a digest), and the open action
+// items of the last days. summary is the notification's text.
 func (s *BriefingService) daily(ctx context.Context, d *briefingData) (title, markdown, summary string) {
 	title = d.tr("Briefing for ", "Briefing für ") + d.shortDate(d.now)
-	var b strings.Builder
+	b := d.u.Briefing
+	var out strings.Builder
 
-	overdue := d.openTasks(func(r *recording.Recording) bool { return r.Due != nil && r.Due.Date < d.today })
 	today := d.openTasks(func(r *recording.Recording) bool { return r.Due != nil && r.Due.Date == d.today })
-	since := d.now.Add(-24 * time.Hour)
-	if last, err := time.ParseInLocation(recording.DateLayout, d.u.Briefing.LastDaily, d.loc); err == nil && last.Before(since) && d.now.Sub(last) < 7*24*time.Hour {
-		since = last
-	}
-	incoming := d.incoming(since)
-
 	var lines []string
 	for _, r := range today {
 		lines = append(lines, d.taskLine(r, false))
 	}
-	list(&b, d.tr("Due today", "Heute fällig"), lines, d.tr("Nothing is due today.", "Heute ist nichts fällig."))
-	lines = nil
-	for _, r := range overdue {
-		lines = append(lines, d.taskLine(r, true))
-	}
-	list(&b, d.tr("Overdue", "Überfällig"), lines, "")
+	list(&out, d.tr("Due today", "Heute fällig"), lines, d.tr("Nothing is due today.", "Heute ist nichts fällig."))
 
-	if len(incoming) > 0 {
-		fmt.Fprintf(&b, "## %s\n\n", d.tr("New since yesterday", "Neu seit gestern"))
-		if digest := s.digest(ctx, d, incoming, false); digest != "" {
-			b.WriteString(digest + "\n\n")
-		}
+	var overdue []*recording.Recording
+	if b.Shows(user.SectionOverdue) {
+		overdue = d.openTasks(func(r *recording.Recording) bool { return r.Due != nil && r.Due.Date < d.today })
 		lines = nil
-		for _, r := range incoming {
-			lines = append(lines, fmt.Sprintf("- %s (%s)", d.ref(r), d.kindName(r)))
+		for _, r := range overdue {
+			lines = append(lines, d.taskLine(r, true))
 		}
-		list(&b, d.tr("All new notes", "Alle neuen Notizen"), lines, "")
+		list(&out, d.tr("Overdue", "Überfällig"), lines, "")
 	}
 
-	items := d.actionItems(d.now.Add(-7 * 24 * time.Hour))
-	list(&b, d.tr("Open action items", "Offene Aufgaben aus Gesprächen"), items, "")
+	if b.Shows(user.SectionUpcoming) {
+		next := d.now.AddDate(0, 0, 7).Format(recording.DateLayout)
+		lines = nil
+		for _, r := range d.openTasks(func(r *recording.Recording) bool { return r.Due != nil && r.Due.Date > d.today && r.Due.Date <= next }) {
+			lines = append(lines, d.taskLine(r, true))
+		}
+		list(&out, d.tr("Coming up this week", "Diese Woche fällig"), lines, "")
+	}
+
+	// New is what came in since the day before, or since the last briefing when that was
+	// longer ago (but no more than a week).
+	since := d.now.Add(-24 * time.Hour)
+	if last := b.Today; last != nil && last.MadeAt.Before(since) && d.now.Sub(last.MadeAt) < 7*24*time.Hour {
+		since = last.MadeAt
+	}
+	var incoming []*recording.Recording
+	if b.Shows(user.SectionNew) || b.Shows(user.SectionDigest) {
+		incoming = d.incoming(since)
+	}
+	if len(incoming) > 0 {
+		// The digest comes first, the notes below it; without a digest, the notes are all.
+		newHeading := d.tr("New since yesterday", "Neu seit gestern")
+		if b.Shows(user.SectionDigest) {
+			if digest := s.digest(ctx, d, incoming, false); digest != "" {
+				fmt.Fprintf(&out, "## %s\n\n%s\n\n", newHeading, digest)
+				newHeading = d.tr("All new notes", "Alle neuen Notizen")
+			}
+		}
+		if b.Shows(user.SectionNew) {
+			lines = nil
+			for _, r := range incoming {
+				lines = append(lines, fmt.Sprintf("- %s (%s)", d.ref(r), d.kindName(r)))
+			}
+			list(&out, newHeading, lines, "")
+		}
+	}
+
+	if b.Shows(user.SectionActionItems) {
+		items := d.actionItems(d.now.AddDate(0, 0, -b.ActionDays()))
+		list(&out, d.tr("Open action items", "Offene Aufgaben aus Gesprächen"), items, "")
+	}
 
 	var parts []string
 	if n := len(today); n > 0 {
@@ -510,7 +654,7 @@ func (s *BriefingService) daily(ctx context.Context, d *briefingData) (title, ma
 	if len(parts) == 0 {
 		parts = append(parts, d.tr("A quiet day: nothing due, nothing new.", "Ein ruhiger Tag: nichts fällig, nichts Neues."))
 	}
-	return title, strings.TrimSpace(b.String()), strings.Join(parts, " · ")
+	return title, strings.TrimSpace(out.String()), strings.Join(parts, " · ")
 }
 
 // actionItems lists the action items of the notes since from that were neither made into

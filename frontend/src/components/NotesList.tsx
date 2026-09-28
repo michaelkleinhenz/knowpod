@@ -7,7 +7,7 @@ import { useAuth } from '../auth';
 import { FolderTree, NOTE_TYPE } from './FolderTree';
 import { FilterBar } from './SavedFilters';
 import { TimerBar } from './TimeControls';
-import { MicIcon, NewBoardIcon, NewFolderIcon, NewNoteIcon, RefreshIcon, SearchIcon, SparkleIcon, TrashIcon, UploadIcon } from './Icons';
+import { HomeIcon, MicIcon, NewBoardIcon, NewFolderIcon, NewNoteIcon, RefreshIcon, SearchIcon, SparkleIcon, TrashIcon, UploadIcon } from './Icons';
 import { useRecorder } from '../context/Recorder';
 import { NoteTreeRows, useNoteTree } from './NoteTree';
 import { DueView } from './DueView';
@@ -271,6 +271,15 @@ export function NotesList({ activeId }: { activeId?: string }) {
         <div className="conversations-head">
           <h1>{t('conversations.title')}</h1>
           <div className="head-actions">
+            <button
+              type="button"
+              className="pill-button icon-only-mobile"
+              onClick={() => navigate('/briefing')}
+              title={t('briefing.homeLabel')}
+              aria-label={t('briefing.homeLabel')}
+            >
+              <HomeIcon /> <span>{t('briefing.home')}</span>
+            </button>
             <button type="button" className="pill-button icon-only-mobile" onClick={() => void createText()} disabled={creating} aria-label={t('conversations.newNote')}>
               <NewNoteIcon /> <span>{t('conversations.newNote')}</span>
             </button>

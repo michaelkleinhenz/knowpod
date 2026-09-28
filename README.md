@@ -21,8 +21,8 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
 - **Todo management.** Any note can be a task with a due date, time, repeat rule, priority
   and reminder, typed in plain English or German ("Call Anna tomorrow 3pm p1"). Action items
   from your conversations become tasks in one click, and reminders arrive as push
-  notifications on your phone and computer. A daily briefing and a weekly review sum up
-  what is due and what came in.
+  notifications on your phone and computer. A daily briefing on the home page and a weekly
+  review sum up what is due and what came in.
 - **Integrations with your tools and gadgets.**
 
   | Source | What arrives in knowpod |

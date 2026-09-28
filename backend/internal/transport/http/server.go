@@ -213,6 +213,8 @@ func (s *Server) Router() http.Handler {
 			u.Get("/me/briefing", s.handleGetBriefing)
 			u.Put("/me/briefing", s.handleUpdateBriefing)
 			u.With(httprate.LimitByIP(10, time.Minute)).Post("/me/briefing/run", s.handleMakeBriefing)
+			u.Get("/me/briefing/today", s.handleTodayBriefing)
+			u.With(httprate.LimitByIP(10, time.Minute)).Post("/me/briefing/today", s.handleRemakeTodayBriefing)
 			u.Get("/me/mcp", s.handleGetMCP)
 			u.Post("/me/mcp", s.handleEnableMCP)
 			u.Delete("/me/mcp", s.handleDisableMCP)

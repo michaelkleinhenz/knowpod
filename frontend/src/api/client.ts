@@ -438,13 +438,32 @@ export interface AskAnswer {
   model: string;
 }
 
+// BriefingSection is a part of the daily briefing besides the tasks due today.
+export type BriefingSection = 'overdue' | 'upcoming' | 'new' | 'digest' | 'actionItems';
+export const BRIEFING_SECTIONS: BriefingSection[] = ['overdue', 'upcoming', 'new', 'digest', 'actionItems'];
+
 // BriefingSettings say when the daily briefing and the weekly review are made: at time
-// (HH:MM, in the user's time zone), the review on weeklyDay (0 is Sunday).
+// (HH:MM, in the user's time zone), the review on weeklyDay (0 is Sunday); whether the daily
+// briefing is announced, what it shows, and how many days back it looks for action items.
 export interface BriefingSettings {
   daily: boolean;
   weekly: boolean;
   time: string;
   weeklyDay: number;
+  notify: boolean;
+  sections: BriefingSection[];
+  actionItemDays: number;
+}
+
+// DailyBriefing is today's daily briefing, shown on the home page; only off is set when the
+// user turned it off.
+export interface DailyBriefing {
+  off?: boolean;
+  day?: string;
+  title?: string;
+  markdown?: string;
+  summary?: string;
+  madeAt?: string;
 }
 
 // ShareRole is what a user a note is shared with may do: read it, or also change it.
@@ -623,7 +642,9 @@ export const api = {
   ask: (question: string, history: AskTurn[] = []) => request<AskAnswer>('POST', '/ask', { question, history }),
   briefing: () => request<BriefingSettings>('GET', '/me/briefing'),
   saveBriefing: (b: BriefingSettings) => request<BriefingSettings>('PUT', '/me/briefing', b),
-  makeBriefing: (kind: 'daily' | 'weekly') => request<Recording>('POST', '/me/briefing/run', { kind }),
+  makeBriefing: (kind: 'weekly') => request<Recording>('POST', '/me/briefing/run', { kind }),
+  todayBriefing: () => request<DailyBriefing>('GET', '/me/briefing/today'),
+  remakeTodayBriefing: () => request<DailyBriefing>('POST', '/me/briefing/today'),
   dismissActionItem: (id: string, itemId: string, dismissed: boolean) =>
     request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/action-items/${encodeURIComponent(itemId)}/dismissed`, { dismissed }),
   notifications: () => request<NotificationStatus>('GET', '/me/notifications'),
