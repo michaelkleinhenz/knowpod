@@ -34,8 +34,12 @@ import (
 // (-ldflags "-X main.version=…").
 var version = "dev"
 
-// reminderInterval is how often due task reminders are looked for.
-const reminderInterval = 30 * time.Second
+// reminderInterval is how often due task reminders are looked for; briefingInterval how
+// often due briefings are.
+const (
+	reminderInterval = 30 * time.Second
+	briefingInterval = time.Minute
+)
 
 func main() {
 	log := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
@@ -124,7 +128,7 @@ func main() {
 			}},
 		{Name: "archive", From: recording.StatusReceived, To: recording.StatusStored,
 			Run: func(ctx context.Context, rec *recording.Recording) error {
-				if rec.IsDocument() {
+				if rec.IsDocument() && rec.Source == recording.SourceRemarkable {
 					return remarkableSvc.Store(ctx, rec)
 				}
 				return archiver.Run(ctx, rec)
@@ -184,23 +188,29 @@ func main() {
 	actions.OnRequeued = aiPipeline.Wake
 	actions.Events = events
 	wakeAI = aiPipeline.Wake // archived recordings move on to transcription right away
+	askSvc := service.NewAskService(aiSvc, actions, log)
+	briefingSvc := service.NewBriefingService(users, actions, folderRepo, aiSvc, log)
+	briefingSvc.Notifications = notifySvc
+	briefingSvc.TimeEntries = timeRepo
 
 	jobCtx, jobCancel := context.WithCancel(ctx)
 	var jobs sync.WaitGroup
-	jobs.Add(6)
+	jobs.Add(7)
 	go func() { defer jobs.Done(); pipeline.Start(jobCtx) }()
 	go func() { defer jobs.Done(); aiPipeline.Start(jobCtx) }()
 	go func() { defer jobs.Done(); purgeStaleUploads(jobCtx, uploadSvc, cfg.UploadTTL, log) }()
 	go func() { defer jobs.Done(); pullRemarkable(jobCtx, remarkableSvc, cfg.RemarkablePullInterval, log) }()
 	go func() { defer jobs.Done(); notifySvc.Run(jobCtx, reminderInterval) }()
 	go func() { defer jobs.Done(); purgeTrash(jobCtx, actions, log) }()
+	go func() { defer jobs.Done(); briefingSvc.Run(jobCtx, briefingInterval) }()
 
 	// HTTP server.
 	srv := httpx.NewServer(httpx.Deps{
 		Cfg: cfg, Log: log, DB: store, Auth: authSvc, Users: userSvc, Devices: deviceSvc, Uploads: uploadSvc,
 		Manual: manualSvc, Actions: actions, Objects: objects, Pocket: pocketSvc, AI: aiSvc, Themes: themeSvc,
 		Labels: labelSvc, Folders: folderSvc, Remarkable: remarkableSvc, Notifications: notifySvc,
-		Filters: filterSvc, Times: timeSvc, Calendar: calendarSvc, MCP: mcpSvc, OAuth: oauthSvc, Events: events, Version: version,
+		Filters: filterSvc, Times: timeSvc, Calendar: calendarSvc, MCP: mcpSvc, OAuth: oauthSvc, Events: events,
+		Ask: askSvc, Briefings: briefingSvc, Version: version,
 	})
 	httpServer := &http.Server{
 		Addr:              ":" + cfg.Port,

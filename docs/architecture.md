@@ -275,10 +275,32 @@ Stages, dispatched by `source`/`type` in `main.go`:
 ### Browser uploads (`service/manual_upload.go`)
 
 `POST /api/v1/recordings` streams the raw request body into the spool (`<id>.download`),
-hashing it and keeping the first bytes to identify the format. Only WAV (which must parse
-as integer PCM) and MP3 are accepted. The recording is created directly in `received` with
-`source` `upload`, the file name as title and `X-Recorded-At` as recording time, and the
-worker takes it from there like a fetched Pocket file.
+hashing it and keeping the first bytes to identify the format. WAV (which must parse as
+integer PCM) and MP3 are accepted as audio. The recording is created directly in `received`
+with `source` `upload`, the file name as title and `X-Recorded-At` as recording time, and
+the worker takes it from there like a fetched Pocket file.
+
+Photos (JPEG, PNG, WebP, GIF, up to 20 MB, the most a model takes in one piece) and PDFs
+become documents (`type: document`, `source: upload`); HEIC photos are refused, since the
+models can't read them. The archive stage stores the file as it is as the document's `file`
+(`Archiver.storeDocument`; `pages` is 1 for a photo), and the transcription stage has the
+document model read it (`AIService.readUpload`: photos with a prompt that describes a photo
+without text, PDFs like reMarkable PDFs). Documents over 20 MB are stored but not read.
+
+**Voice memos** are recorded in the web app (`lib/wavRecorder.ts`): an audio worklet
+(`public/recorder-worklet.js`) hands the microphone's audio to the page, which averages it
+down to 16 kHz mono 16-bit PCM (what transcription uses anyway, about 2 MB a minute) and
+writes a WAV file. It is uploaded like a WAV file with `X-Recorder: 1` (`source: recorder`)
+and the moments marked while recording in `X-Highlights` (offsets in ms), which become the
+recording's highlights. The recorder lives in the app frame (`context/Recorder.tsx`), so a
+memo keeps recording while the user moves between pages.
+
+**Share target.** The installed app registers as a share target (`share_target` in the
+manifest, `vite.config.ts`): other apps post links, text and files to `/share`. The service
+worker (`public/share-sw.js`, imported into the generated one) keeps them in the cache
+`knowpod-share` and opens the page `/share` (`pages/Share.tsx`), which saves text as a text
+note and uploads the files as above. A post that reaches the server (no service worker yet)
+is redirected to the page, which asks to share again.
 
 ### Archive
 
@@ -433,10 +455,10 @@ response; notifications get `202`, and `GET`/`DELETE` (event streams, sessions) 
 Without a valid token it answers `401` with `WWW-Authenticate: Bearer …, resource_metadata="…"`,
 which starts OAuth in assistants that support it (below). It implements
 `initialize` (agreeing on the client's protocol version when it knows it), `ping`,
-`tools/list` and `tools/call`; the tools (`search_notes`, `get_note`, `list_tasks`,
-`list_folders`, `list_labels`, `create_note`, `update_note`, `update_task`) call the same
-services as the REST API with the token's user as the account, so ownership checks apply
-unchanged. Notes are named by ID or number, folders and labels by ID or name. Tool failures
+`tools/list` and `tools/call`; the tools (`search_notes`, `find_notes`, `get_note`,
+`list_tasks`, `list_folders`, `list_labels`, `create_note`, `update_note`, `update_task`) call
+the same services as the REST API with the token's user as the account, so ownership checks
+apply unchanged. Notes are named by ID or number, folders and labels by ID or name. Tool failures
 (unknown note, invalid input) come back as results with `isError`, so the assistant can
 correct itself; unexpected errors are logged and reported as "internal error".
 
@@ -548,6 +570,53 @@ window and sends `knowpod:open` to the page, which navigates to the note. Closin
 hides it (the page, and so the stream, keeps running) and a tray icon offers Open, Quit,
 **Keep Running When Closed** and **Start at Login** (started with `--hidden`, it stays in
 the tray).
+
+**Speakers.** Transcripts start each turn with a speaker label ("Speaker 1:", after the time
+stamp). The summary prompt also asks for `speakers`: the names the conversation makes clear
+for those labels, kept in `summary.speakers` when the label is in the transcript
+(`parseSpeakers`). `POST /recordings/{id}/speakers/rename` (`service/speakers.go`) replaces a
+label where it starts lines of the transcript and where the summary and the action items
+mention it as a whole word (a mention already followed by the rest of the new name stays),
+drops the suggestion for it and counts up the note's `revision`, since the text changed.
+Naming a speaker like another merges them.
+
+**Ask** (`service/ask.go`). `POST /ask` answers a question from the notes the account sees,
+without an index, in two calls to the summary model:
+
+1. **Search.** The model gets a catalog of up to 800 notes, newest first, one line each
+   (`c12 | date | kind | title | the start of the text`, shortened to fit 120,000
+   characters) and the question (with earlier questions of a follow-up), and answers with
+   up to 12 catalog references that fit by meaning and up to 16 keywords (names, synonyms,
+   English and German). The keywords and the question's longer words are counted in each
+   note's full text (title, summary, action items, transcript). The picked notes come first,
+   then the ones with the most keyword hits (a third of the places are kept for them), 8 in
+   all.
+2. **Answer.** The model gets those notes, each with its reference number: the summary or
+   text, then the transcript, cut to its share of 80,000 characters as excerpts around the
+   keywords (whole lines, the start always kept). It answers in Markdown citing `[1]`, `[2]`,
+   and names a supporting quote and, for transcripts, its time stamp per source.
+   `parseAnswer` keeps the sources the answer cites; a time stamp becomes `offsetMs` in a
+   recording with audio. The web app links citations to the notes (`/conversations/{id}?t=`
+   plays from the moment).
+
+`AskService.Find` runs the search step alone for the MCP tool `find_notes`, returning the
+notes with a passage around the keywords.
+
+**Briefings** (`service/briefing.go`). `users.briefing` holds a user's settings (`daily`,
+`weekly`, `time`, `weeklyDay`) and the days the last briefing and review were made
+(`lastDaily`, `lastWeekly`, in the user's time zone). `BriefingService.Run` (every minute,
+started in `main.go`) makes the ones due: past today's time, not made today, and for the
+review on its day. Each is marked made before it is made (on a fresh copy of the user, so
+settings changed meanwhile stay), so it is made once even when making it fails; turning
+briefings on after today's time marks today, so the first comes the next day. A briefing is
+a text note with `source: briefing` in the user's folder **Briefings** (found by name or
+made, remembered in `briefing.folderId`), announced through `NotificationService.Notify`.
+Its sections are put together from the user's notes: open tasks by date and priority,
+notes created since the last briefing (at most a week), action items neither made tasks
+nor dismissed, tasks checked off (`doneAt`, set by `SetDone`), time entries, and tasks
+without a date unchanged for 30 days. The summary model writes the digest of the new notes'
+summaries, citing `#12`; references to notes it wasn't given lose their `#`. Without a
+configured model the briefing has no digest. `POST /me/briefing/run` makes one right away.
 
 **Action items.** The summary's `actionItems` (`id`, `text`, `owner`, `due`) are offered below
 the summary. `POST /recordings/{id}/action-items/{itemId}/task` creates a text note under the

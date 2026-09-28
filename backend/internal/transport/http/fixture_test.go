@@ -86,7 +86,7 @@ func newAPIFixture(t *testing.T) *apiFixture {
 		{Name: "fetch", From: recording.StatusRemote, To: recording.StatusReceived, Run: rm.Fetch},
 		{Name: "archive", From: recording.StatusReceived, To: recording.StatusStored,
 			Run: func(ctx context.Context, rec *recording.Recording) error {
-				if rec.IsDocument() {
+				if rec.IsDocument() && rec.Source == recording.SourceRemarkable {
 					return rm.Store(ctx, rec)
 				}
 				return archiver.Run(ctx, rec)
@@ -99,16 +99,20 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	oauthSvc := service.NewOAuthService(oauthRepo, users)
 	mcp := service.NewMCPAccessService(users)
 	mcp.OAuth = oauthSvc
+	ai := service.NewAIService(memory.NewSettings(), themes, objects, nil, t.TempDir(), log)
+	briefings := service.NewBriefingService(users, actions, folderRepo, ai, log)
+	briefings.Notifications, briefings.TimeEntries = notifications, timeRepo
 	s := NewServer(Deps{
 		Cfg: config.Config{AdminToken: adminToken}, Log: log, Auth: auth,
 		Users:   userSvc,
 		Devices: service.NewDeviceService(devs), Uploads: service.NewUploadService(recs, spool, 1<<30),
 		Manual: service.NewManualUploadService(recs, spool, 1<<30), Actions: actions, Objects: objects,
 		Pocket: service.NewPocketService(recs, users, nil, spool, 1<<20, log),
-		AI:     service.NewAIService(memory.NewSettings(), themes, objects, nil, t.TempDir(), log),
+		AI:     ai,
 		Themes: themes, Labels: labels, Folders: folders, Remarkable: rm, Notifications: notifications,
 		Filters: filters, Times: service.NewTimeService(timeRepo, recs, users), Calendar: service.NewCalendarService(users, recs),
 		MCP: mcp, OAuth: oauthSvc, Events: events,
+		Ask: service.NewAskService(ai, actions, log), Briefings: briefings,
 	})
 	srv := httptest.NewServer(s.Router())
 	t.Cleanup(srv.Close)

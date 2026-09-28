@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { Recording } from '../api/client';
 import { isTask } from '../lib/labels';
-import { noteType, statusLabel, title } from '../lib/recordings';
+import { iconKind, statusLabel, title } from '../lib/recordings';
 import { ChevronIcon, NewNoteIcon, NoteIcon, ShareIcon } from './Icons';
 import { TaskMeta } from './TaskControls';
 
@@ -67,7 +67,7 @@ export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = t
           draggable={!!onDragStart}
           onDragStart={onDragStart}
         >
-          <NoteIcon type={noteType(r)} label={t(`conversations.types.${noteType(r)}`)} />
+          <NoteIcon type={iconKind(r)} label={t(`conversations.types.${iconKind(r)}`)} />
           <span className="conversation-title">
             <span className="note-title-line">
               <span className="note-title-text">{title(r)}</span>

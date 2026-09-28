@@ -281,3 +281,52 @@ func TestOwnerLanguage(t *testing.T) {
 		t.Fatalf("summary language %q, %v", rec.Summary.Language, err)
 	}
 }
+
+func TestArchiveAndReadAnUploadedPhoto(t *testing.T) {
+	ctx := context.Background()
+	ai := &fakeAI{answer: "```markdown\n# Plan\n- [ ] Ship it\n```"}
+	s, objects := newAI(t, ai)
+	spool, _ := NewSpool(t.TempDir())
+	arch := NewArchiver(spool, objects, false, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	jpeg := append([]byte{0xFF, 0xD8, 0xFF}, []byte("photo bytes")...)
+	rec := &recording.Recording{ID: "p1", OwnerID: "alice", Type: recording.TypeDocument, Source: recording.SourceUpload, SourceContentType: "image/jpeg"}
+	if err := os.WriteFile(spool.DownloadPath("p1"), jpeg, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := arch.Run(ctx, rec); err != nil {
+		t.Fatal(err)
+	}
+	if rec.File == nil || rec.File.Key != "recordings/alice/p1.jpg" || rec.File.ContentType != "image/jpeg" || rec.Pages != 1 || rec.Audio != nil || !rec.IsImage() {
+		t.Fatalf("archived = %+v, file %+v", rec, rec.File)
+	}
+
+	if err := s.Transcribe(ctx, rec); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Transcript == nil || rec.Transcript.Text != "# Plan\n- [ ] Ship it" {
+		t.Fatalf("transcript = %+v", rec.Transcript)
+	}
+	parts := ai.requests[0].Messages[0].Content.([]any)
+	if prompt := parts[0].(openrouter.TextPart).Text; !strings.Contains(prompt, "This is a photo") {
+		t.Errorf("prompt = %q", prompt)
+	}
+	if img := parts[1].(openrouter.ImagePart); !strings.HasPrefix(img.ImageURL.URL, "data:image/jpeg;base64,") {
+		t.Errorf("image part = %+v", img)
+	}
+}
+
+func TestSummaryKeepsTheSpeakerNames(t *testing.T) {
+	ai := &fakeAI{answer: `{"title":"Intro","summary":"Hi.","actionItems":[],"speakers":[{"label":"Speaker 2","name":"Ben"}]}`}
+	s, _ := newAI(t, ai)
+	rec := &recording.Recording{ID: "r1", Transcript: &recording.Transcript{Text: "[0:01] Speaker 1: Hi Ben.\n[0:02] Speaker 2: Hi."}}
+	if err := s.Summarize(context.Background(), rec); err != nil {
+		t.Fatal(err)
+	}
+	if len(rec.Summary.Speakers) != 1 || rec.Summary.Speakers[0].Name != "Ben" {
+		t.Fatalf("speakers = %+v", rec.Summary.Speakers)
+	}
+	if prompt := ai.requests[0].Messages[0].Content.(string); !strings.Contains(prompt, `"speakers"`) {
+		t.Error("the prompt doesn't ask for the speakers")
+	}
+}

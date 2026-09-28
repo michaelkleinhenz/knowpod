@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react';
-import type { NoteType } from '../api/client';
+import type { IconKind } from '../lib/recordings';
 
 // Small inline icons (stroke uses currentColor).
 
 // NoteIcon shows a note as a page; its content says the note's type: a sound wave for audio
 // recordings, lines of text with a heading for text notes, the reMarkable logo for documents imported
-// from the reMarkable, columns of cards for boards.
-export function NoteIcon({ type, label }: { type: NoteType; label?: string }) {
+// from the reMarkable, a picture for photos, "PDF" for uploaded PDFs, columns of cards for boards.
+export function NoteIcon({ type, label }: { type: IconKind; label?: string }) {
   return (
     <svg
       className={`doc-icon doc-icon-${type}`}
@@ -19,7 +19,17 @@ export function NoteIcon({ type, label }: { type: NoteType; label?: string }) {
     >
       {label && <title>{label}</title>}
       <rect x="0.5" y="0.5" width="29" height="37" rx="4" fill="var(--color-surface)" stroke="var(--color-border)" />
-      {type === 'document' ? (
+      {type === 'photo' ? (
+        <>
+          <rect x="5.5" y="9.5" width="19" height="17" rx="2" fill="none" stroke="var(--color-muted)" opacity="0.7" />
+          <circle cx="11" cy="14.5" r="2" fill="var(--color-warning)" opacity="0.8" />
+          <path d="M6.5 25l6-6.5 4 4 3-3 4.5 5.5z" fill="var(--color-primary)" opacity="0.8" />
+        </>
+      ) : type === 'pdf' ? (
+        <text x="15" y="23" textAnchor="middle" fill="var(--color-error)" fontFamily="system-ui, sans-serif" fontSize="8.5" fontWeight="700" letterSpacing="0.2">
+          PDF
+        </text>
+      ) : type === 'document' ? (
         // The reMarkable logo: its "rM" monogram.
         <text x="15" y="23.5" textAnchor="middle" fill="var(--color-text)" fontFamily="Georgia, 'Times New Roman', serif" fontSize="13" fontWeight="600" letterSpacing="-0.6">
           rM
@@ -392,6 +402,42 @@ export function ShareIcon({ size = 18 }: { size?: number }) {
       <circle cx="9" cy="8" r="3.2" />
       <path d="M3 19.5c.6-3.3 3-5.2 6-5.2s5.4 1.9 6 5.2" />
       <path d="M15.5 5.2a3 3 0 0 1 0 5.6M17.5 14.6c1.8.7 3 2.4 3.4 4.9" />
+    </svg>
+  );
+}
+
+export function SparkleIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z" />
+      <path d="M19 15.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z" />
+    </svg>
+  );
+}
+
+export function MicIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21" />
+    </svg>
+  );
+}
+
+export function CameraIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 8h3l1.8-2.5h6.4L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" />
+      <circle cx="12" cy="13" r="3.5" />
+    </svg>
+  );
+}
+
+export function PauseIcon({ size = 14 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <rect x="6" y="5" width="4" height="14" rx="1" />
+      <rect x="14" y="5" width="4" height="14" rx="1" />
     </svg>
   );
 }

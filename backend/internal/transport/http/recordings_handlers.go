@@ -47,12 +47,24 @@ func (s *Server) handleGetRecording(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, rec)
 }
 
-// handleUploadRecording stores an audio file sent as the raw request body (WAV or MP3). The
-// file name comes in X-Filename (URL-encoded) and optionally the recording time in
-// X-Recorded-At (RFC 3339).
+// handleUploadRecording stores a file sent as the raw request body: audio (WAV or MP3), a
+// photo or a PDF. The file name comes in X-Filename (URL-encoded) and optionally the
+// recording time in X-Recorded-At (RFC 3339). A voice memo recorded in the web app sends
+// X-Recorder: 1, and the moments marked while recording in X-Highlights (comma-separated
+// offsets in milliseconds).
 func (s *Server) handleUploadRecording(w http.ResponseWriter, r *http.Request) {
 	name, _ := url.QueryUnescape(r.Header.Get("X-Filename"))
-	in := service.ManualUpload{Filename: name, Body: r.Body}
+	in := service.ManualUpload{Filename: name, Body: r.Body, Recorded: r.Header.Get("X-Recorder") == "1"}
+	if h := strings.TrimSpace(r.Header.Get("X-Highlights")); h != "" {
+		for _, part := range strings.Split(h, ",") {
+			ms, err := strconv.ParseInt(strings.TrimSpace(part), 10, 64)
+			if err != nil {
+				writeCode(w, http.StatusBadRequest, "invalid_request", "X-Highlights must be comma-separated offsets in milliseconds")
+				return
+			}
+			in.Highlights = append(in.Highlights, ms)
+		}
+	}
 	if t, err := time.Parse(time.RFC3339, r.Header.Get("X-Recorded-At")); err == nil {
 		t = t.UTC()
 		in.RecordedAt = &t
@@ -304,6 +316,20 @@ func (s *Server) handleResummarize(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	rec, err := s.actions.Resummarize(r.Context(), accountFrom(r.Context()), chi.URLParam(r, "id"), opts)
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, rec)
+}
+
+// handleRenameSpeaker gives a speaker of the transcript a name.
+func (s *Server) handleRenameSpeaker(w http.ResponseWriter, r *http.Request) {
+	var in service.SpeakerRename
+	if !decode(w, r, &in) {
+		return
+	}
+	rec, err := s.actions.RenameSpeaker(r.Context(), accountFrom(r.Context()), chi.URLParam(r, "id"), in)
 	if err != nil {
 		s.writeErr(w, err)
 		return

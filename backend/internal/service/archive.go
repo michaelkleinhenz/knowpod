@@ -43,6 +43,9 @@ func ObjectKey(rec *recording.Recording, ext string) string {
 // left in place; Cleanup removes them once the new state is persisted.
 func (a *Archiver) Run(ctx context.Context, rec *recording.Recording) error {
 	srcPath := a.spool.SourcePath(rec)
+	if rec.IsDocument() {
+		return a.storeDocument(ctx, rec, srcPath)
+	}
 	if rec.Source != recording.SourceDevice && !isWAV(srcPath) {
 		return a.storeAsIs(ctx, rec, srcPath)
 	}
@@ -84,6 +87,22 @@ func (a *Archiver) storeAsIs(ctx context.Context, rec *recording.Recording, path
 	now := a.clock().UTC()
 	rec.Audio, rec.StoredAt = obj, &now
 	a.log.Info("recording archived", "id", rec.ID, "source", string(rec.Source), "contentType", ctype, "bytes", obj.Size)
+	return nil
+}
+
+// storeDocument uploads a photo or PDF uploaded in the web app as the document's file.
+func (a *Archiver) storeDocument(ctx context.Context, rec *recording.Recording, path string) error {
+	ctype := rec.SourceContentType
+	obj, err := a.put(ctx, path, ObjectKey(rec, documentExtension(ctype)), ctype)
+	if err != nil {
+		return err
+	}
+	now := a.clock().UTC()
+	rec.File, rec.StoredAt = obj, &now
+	if rec.IsImage() {
+		rec.Pages = 1
+	}
+	a.log.Info("document archived", "id", rec.ID, "contentType", ctype, "bytes", obj.Size)
 	return nil
 }
 

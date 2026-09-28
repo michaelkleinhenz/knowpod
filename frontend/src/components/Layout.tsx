@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useOffline } from '../api/offline';
 import { useAuth } from '../auth';
+import { RecorderProvider } from '../context/Recorder';
 import { useDesktopNotifications } from '../lib/desktop';
 import { SignOutIcon } from './Icons';
 
@@ -15,7 +16,8 @@ export function Layout({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
   const onConversations = pathname === '/' || pathname.startsWith('/conversations/');
-  const onTime = pathname === '/time';
+  // The time log, Ask and shared items are shown next to the notes list, like a note.
+  const onTime = ['/time', '/ask', '/share'].includes(pathname);
   const admin = account?.role === 'admin';
   const offline = useOffline();
 
@@ -44,7 +46,7 @@ export function Layout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <>
+    <RecorderProvider>
       <header className="header">
         <Link to="/" className="brand">
           <img src="/favicon.svg" alt="" width="26" height="26" />
@@ -73,6 +75,7 @@ export function Layout({ children }: { children: ReactNode }) {
               <NavLink to="/" className={() => (onConversations ? 'active' : '')}>
                 {t('nav.conversations')}
               </NavLink>
+              <NavLink to="/ask">{t('nav.ask')}</NavLink>
               <NavLink to="/time">{t('nav.time')}</NavLink>
               <NavLink to="/settings">{t('nav.settings')}</NavLink>
               {admin && <NavLink to="/admin">{t('nav.admin')}</NavLink>}
@@ -88,6 +91,6 @@ export function Layout({ children }: { children: ReactNode }) {
         )}
       </header>
       <main className={`container${onConversations || onTime ? ' full' : ''}`}>{children}</main>
-    </>
+    </RecorderProvider>
   );
 }

@@ -89,7 +89,7 @@ func makeTask(rec *recording.Recording) error {
 
 // clearTask removes the fields only tasks have.
 func clearTask(rec *recording.Recording) {
-	rec.Done, rec.Due, rec.Priority = false, nil, 0
+	rec.Done, rec.DoneAt, rec.Due, rec.Priority = false, nil, nil, 0
 	clearReminders(rec)
 }
 
@@ -141,6 +141,13 @@ func (s *RecordingService) SetPriority(ctx context.Context, acc *Account, id str
 // to its next date instead.
 func (s *RecordingService) completeTask(ctx context.Context, rec *recording.Recording, done bool) {
 	loc := s.location(ctx, rec.OwnerID)
+	now := s.clock().UTC()
+	switch {
+	case done:
+		rec.DoneAt = &now
+	case rec.Done:
+		rec.DoneAt = nil
+	}
 	if done && rec.Due != nil && rec.Due.Repeat != nil {
 		rec.Due.Advance(s.clock().In(loc).Format(recording.DateLayout))
 		done = false

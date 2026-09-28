@@ -316,3 +316,21 @@ func TestKnownPushService(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckingOffRecordsWhen(t *testing.T) {
+	f := newTaskFixture(t)
+	ctx := context.Background()
+	rec := f.note(t, TextNoteInput{TaskFields: TaskFields{Task: true}})
+	got, err := f.s.SetDone(ctx, f.acc, rec.ID, true)
+	if err != nil || got.DoneAt == nil || !got.DoneAt.Equal(f.now) {
+		t.Fatalf("done: %+v, %v", got.DoneAt, err)
+	}
+	if got, _ = f.s.SetDone(ctx, f.acc, rec.ID, false); got.DoneAt != nil {
+		t.Fatalf("reopened: %v", got.DoneAt)
+	}
+	// A repeating task stays open, but counts as done now.
+	rep := f.note(t, TextNoteInput{TaskFields: TaskFields{Due: &recording.Due{Date: "2026-09-27", Repeat: &recording.Repeat{Every: 1, Unit: recording.RepeatDay}}}})
+	if got, _ = f.s.SetDone(ctx, f.acc, rep.ID, true); got.Done || got.DoneAt == nil || got.Due.Date != "2026-09-28" {
+		t.Fatalf("repeating: done %v at %v, due %+v", got.Done, got.DoneAt, got.Due)
+	}
+}

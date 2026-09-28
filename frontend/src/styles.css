@@ -5006,3 +5006,393 @@ a.note-ref:hover {
   border-top: 1px solid var(--color-border);
   font-size: 0.9rem;
 }
+
+/* --- Ask your notes --- */
+
+.ask-page,
+.share-page {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 0 0 2rem;
+}
+
+.ask-head h1 {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-right: auto;
+}
+
+.ask-head h1 svg {
+  color: var(--color-primary);
+}
+
+.ask-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1rem 0 1.5rem;
+}
+
+.ask-examples .pill-button {
+  white-space: normal;
+  text-align: left;
+  font-weight: 500;
+}
+
+.ask-turn + .ask-turn {
+  margin-top: 1.75rem;
+  padding-top: 1.25rem;
+  border-top: 1px dashed var(--color-border);
+}
+
+.ask-question {
+  margin: 0 0 0.75rem;
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+
+.ask-pending {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ask-spinner {
+  width: 0.9rem;
+  height: 0.9rem;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: ask-spin 0.8s linear infinite;
+}
+
+@keyframes ask-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ask-spinner {
+    animation: none;
+  }
+}
+
+/* A citation in an answer: a small numbered link to its note. */
+.ask-cite {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.25rem;
+  margin: 0 0.1rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  vertical-align: 0.15em;
+  color: var(--color-primary-text);
+  background: var(--color-highlight);
+  border-radius: 999px;
+  text-decoration: none;
+}
+
+.ask-cite:hover {
+  background: var(--color-highlight-strong);
+}
+
+.ask-sources {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.ask-sources li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-soft);
+  border-radius: 8px;
+}
+
+.ask-sources .doc-icon {
+  flex: none;
+  width: 22px;
+  height: 28px;
+}
+
+.ask-ref {
+  flex: none;
+  min-width: 1.3rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-primary-text);
+  text-align: center;
+  padding-top: 0.2rem;
+}
+
+.ask-source-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.ask-source-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.ask-source-meta {
+  font-size: 0.82rem;
+}
+
+.ask-quote {
+  font-size: 0.88rem;
+  font-style: italic;
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}
+
+.ask-form {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+  margin-top: 1.5rem;
+  padding: 0.75rem 0;
+  background: var(--color-surface);
+}
+
+.ask-form textarea {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 16px;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  resize: none;
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.ask-form textarea:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -1px;
+}
+
+/* --- Speakers of a transcript --- */
+
+.speakers {
+  margin: 0 0 1rem;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid var(--color-border-soft);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+
+.speakers summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.speakers-hint {
+  font-weight: 400;
+  color: var(--color-success);
+}
+
+.speaker-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.speaker-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.speaker-row .speaker {
+  min-width: 6.5rem;
+}
+
+.speaker-row input {
+  flex: 1 1 8rem;
+  min-width: 0;
+  max-width: 14rem;
+  font: inherit;
+  font-size: 16px;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.speaker-suggestion {
+  color: var(--color-success);
+  border-color: var(--color-success);
+}
+
+/* --- Voice memo recorder: a bar floating at the bottom while it records --- */
+
+.recorder-bar {
+  position: fixed;
+  z-index: 40;
+  left: 50%;
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: calc(100vw - 1.5rem);
+  padding: 0.45rem 0.6rem 0.45rem 1rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.18);
+}
+
+.recorder-bar.error {
+  flex-wrap: wrap;
+  border-radius: 14px;
+  justify-content: center;
+}
+
+.recorder-dot {
+  flex: none;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  background: var(--color-error);
+  animation: recorder-pulse 1.2s ease-in-out infinite;
+}
+
+.recorder-bar.paused .recorder-dot {
+  animation: none;
+  background: var(--color-muted);
+}
+
+@keyframes recorder-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recorder-dot {
+    animation: none;
+  }
+}
+
+.recorder-time {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  min-width: 3.2rem;
+}
+
+.recorder-level {
+  width: 3.5rem;
+  height: 0.35rem;
+  border-radius: 999px;
+  background: var(--color-track);
+  overflow: hidden;
+}
+
+.recorder-level span {
+  display: block;
+  height: 100%;
+  background: var(--color-success);
+  transform-origin: left;
+  transition: transform 0.1s linear;
+}
+
+.recorder-marks {
+  font-size: 0.8rem;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.recorder-save {
+  color: var(--color-on-primary);
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.recorder-save:hover {
+  background: var(--color-primary-hover);
+}
+
+@media (max-width: 480px) {
+  .recorder-level,
+  .recorder-marks {
+    display: none;
+  }
+}
+
+/* --- Photos and shared items --- */
+
+.photo-link {
+  display: block;
+  margin-bottom: 1rem;
+}
+
+.document-photo {
+  display: block;
+  max-width: 100%;
+  max-height: 80vh;
+  margin: 0 auto;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-surface);
+}
+
+.share-page h1 {
+  font-size: 1.5rem;
+  margin: 1rem 0 0.5rem;
+}
+
+.share-files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.share-files li {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.share-files .doc-icon {
+  flex: none;
+  width: 22px;
+  height: 28px;
+}
+
+.share-file-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* --- Briefing settings --- */
+
+.briefing-when {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+}

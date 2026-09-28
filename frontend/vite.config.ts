@@ -38,11 +38,25 @@ export default defineConfig({
           { src: '/pwa-512.png', sizes: '512x512', type: 'image/png' },
           { src: '/pwa-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
+        // Other apps can share links, text, photos, PDFs and audio with the installed app
+        // (public/share-sw.js takes them, src/pages/Share.tsx saves them).
+        share_target: {
+          action: '/share',
+          method: 'POST',
+          enctype: 'multipart/form-data',
+          params: {
+            title: 'title',
+            text: 'text',
+            url: 'url',
+            files: [{ name: 'files', accept: ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf', 'audio/wav', 'audio/x-wav', 'audio/mpeg', '.jpg', '.jpeg', '.png', '.webp', '.gif', '.pdf', '.wav', '.mp3'] }],
+          },
+        },
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,webmanifest}'],
-        // Shows the task reminders sent through Web Push (public/push-sw.js).
-        importScripts: ['push-sw.js'],
+        // Shows the task reminders sent through Web Push (public/push-sw.js) and takes what
+        // other apps share with the installed app (public/share-sw.js).
+        importScripts: ['push-sw.js', 'share-sw.js'],
         navigateFallback: '/index.html',
         // Never answer API calls, audio, the health check or the API description from the
         // app-shell fallback.

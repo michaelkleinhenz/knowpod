@@ -333,9 +333,13 @@ export interface Recording {
   deviceId: string;
   // Absent for audio recordings.
   type?: 'text' | 'document' | 'board';
-  source?: 'pocket' | 'upload' | 'remarkable';
+  // Absent for device uploads; "upload" for files uploaded in the browser (audio, photos,
+  // PDFs), "recorder" for voice memos recorded in the app, "briefing" for briefings.
+  source?: 'pocket' | 'upload' | 'recorder' | 'remarkable' | 'briefing';
   title?: string;
   recordingId: string;
+  // The media type of a file fetched or uploaded (e.g. "image/jpeg" for an uploaded photo).
+  sourceContentType?: string;
   // The note's number among the user's notes; "#12" in a note's text links to note 12.
   number?: number;
   status: RecordingStatus;
@@ -359,6 +363,8 @@ export interface Recording {
     editedAt?: string;
     // Follow-ups found in the conversation; left out in the notes list.
     actionItems?: ActionItem[];
+    // Names the AI recognized for the transcript's speaker labels, offered for renaming.
+    speakers?: SpeakerName[];
     createdAt: string;
   };
   summaryOptions?: SummaryOptions;
@@ -366,6 +372,8 @@ export interface Recording {
   // IDs of the note's labels; done is the check mark of a note labeled "task".
   labels?: string[];
   done?: boolean;
+  // When the task was last checked off.
+  doneAt?: string;
   // A task's due date and priority, and when its next reminder is sent.
   due?: Due;
   priority?: Priority;
@@ -396,6 +404,47 @@ export interface Recording {
   // sent back when editing them so that someone else's edit is never undone.
   version?: number;
   revision?: number;
+}
+
+// SpeakerName names the speaker with a label ("Speaker 1") in a transcript.
+export interface SpeakerName {
+  label: string;
+  name: string;
+}
+
+// AskTurn is an earlier question and its answer, sent along with a follow-up question.
+export interface AskTurn {
+  question: string;
+  answer: string;
+}
+
+// AskSource is a note an answer cites as [ref]; quote is the passage it draws on, offsetMs
+// where that is said in a recording.
+export interface AskSource {
+  ref: number;
+  id: string;
+  number?: number;
+  title: string;
+  type: 'audio' | 'text' | 'document';
+  date: string;
+  quote?: string;
+  offsetMs?: number;
+}
+
+// AskAnswer is the answer to a question about the notes, in Markdown citing its sources as [1].
+export interface AskAnswer {
+  answer: string;
+  sources: AskSource[];
+  model: string;
+}
+
+// BriefingSettings say when the daily briefing and the weekly review are made: at time
+// (HH:MM, in the user's time zone), the review on weeklyDay (0 is Sunday).
+export interface BriefingSettings {
+  daily: boolean;
+  weekly: boolean;
+  time: string;
+  weeklyDay: number;
 }
 
 // ShareRole is what a user a note is shared with may do: read it, or also change it.
@@ -456,16 +505,27 @@ export interface ModelOption {
   audioPrice?: string;
 }
 
-// uploadRecording sends an audio file as the request body and reports progress (0..1). It
-// uses XMLHttpRequest because fetch can't report upload progress.
-function uploadRecording(file: File, onProgress: (fraction: number) => void): Promise<Recording> {
+// UploadOptions describe a voice memo recorded in the app: when it started and the moments
+// marked while recording (milliseconds from the start).
+export interface UploadOptions {
+  recorder?: boolean;
+  recordedAt?: Date;
+  highlights?: number[];
+}
+
+// uploadRecording sends a file (audio, a photo or a PDF) as the request body and reports
+// progress (0..1). It uses XMLHttpRequest because fetch can't report upload progress.
+function uploadRecording(file: File, onProgress: (fraction: number) => void, opts: UploadOptions = {}): Promise<Recording> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', '/api/v1/recordings');
     xhr.withCredentials = true;
     xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
     xhr.setRequestHeader('X-Filename', encodeURIComponent(file.name));
-    if (file.lastModified) xhr.setRequestHeader('X-Recorded-At', new Date(file.lastModified).toISOString());
+    const recordedAt = opts.recordedAt ?? (file.lastModified ? new Date(file.lastModified) : undefined);
+    if (recordedAt) xhr.setRequestHeader('X-Recorded-At', recordedAt.toISOString());
+    if (opts.recorder) xhr.setRequestHeader('X-Recorder', '1');
+    if (opts.highlights?.length) xhr.setRequestHeader('X-Highlights', opts.highlights.map((ms) => Math.round(ms)).join(','));
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
     xhr.onload = () => {
       let data: unknown = null;
@@ -558,6 +618,12 @@ export const api = {
     request<{ redirectTo: string }>('POST', '/oauth/authorize', { ...params, approve }),
   createActionItemTask: (id: string, itemId: string) =>
     request<{ task: Recording; note: Recording }>('POST', `/recordings/${encodeURIComponent(id)}/action-items/${encodeURIComponent(itemId)}/task`),
+  renameSpeaker: (id: string, from: string, to: string) =>
+    request<Recording>('POST', `/recordings/${encodeURIComponent(id)}/speakers/rename`, { from, to }),
+  ask: (question: string, history: AskTurn[] = []) => request<AskAnswer>('POST', '/ask', { question, history }),
+  briefing: () => request<BriefingSettings>('GET', '/me/briefing'),
+  saveBriefing: (b: BriefingSettings) => request<BriefingSettings>('PUT', '/me/briefing', b),
+  makeBriefing: (kind: 'daily' | 'weekly') => request<Recording>('POST', '/me/briefing/run', { kind }),
   dismissActionItem: (id: string, itemId: string, dismissed: boolean) =>
     request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/action-items/${encodeURIComponent(itemId)}/dismissed`, { dismissed }),
   notifications: () => request<NotificationStatus>('GET', '/me/notifications'),

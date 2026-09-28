@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: knowpod-service API
-  version: 0.12.0
+  version: 0.13.0
   description: |
     Backend for the knowpod AI audio recorder.
 
@@ -58,6 +58,18 @@ info:
 
     **Notifications** — reminders are sent through Web Push to the browsers and installed apps
     the user turned them on in (`/me/notifications`).
+
+    **Ask** — `POST /ask` answers a question from the user's notes, citing them: the summary
+    model picks the fitting notes from a catalog of them and names words to look up in the
+    full texts and transcripts, then answers from the notes found.
+
+    **Briefings** — users turn on a daily briefing and a weekly review (`/me/briefing`): notes
+    in their folder "Briefings" with the tasks due and overdue, what came in (with a digest by
+    the summary model) and open action items, announced by a notification.
+
+    **Browser uploads** — besides audio, photos (e.g. of a whiteboard) and PDFs are uploaded
+    with `POST /recordings`; they become documents whose text is read by the document model.
+    Voice memos recorded in the web app come the same way, with their highlights.
 
     **AI processing** — every archived recording is transcribed and then summarized through
     OpenRouter, with the API key and models set by an administrator
@@ -116,6 +128,10 @@ tags:
     description: Estimates, the timer and focus sessions, and the time log of your notes.
   - name: Calendar
     description: A read-only iCalendar feed of your tasks with dates.
+  - name: Ask
+    description: Questions answered from your notes, with the notes cited.
+  - name: Briefings
+    description: Your daily briefing and weekly review.
   - name: MCP server
     description: |
       Access for AI assistants (Claude, ChatGPT, …) through the MCP server at `/mcp`, outside
@@ -862,11 +878,16 @@ paths:
               schema: { type: array, items: { $ref: "#/components/schemas/Recording" } }
     post:
       tags: ["Recordings"]
-      summary: Upload an audio file
+      summary: Upload an audio file, a photo or a PDF
       description: |
         Uploads a WAV (integer PCM) or MP3 file as the raw request body. It is processed like
         other recordings: WAV is archived as FLAC, MP3 as it is, and both are transcribed
         and summarized. The format is detected from the content, not the file name.
+
+        A photo (JPEG, PNG, WebP or GIF, up to 20 MB) or PDF becomes a document (`type:
+        document`, file at `GET /recordings/{id}/file`): the document model writes down the
+        text it shows (a photo without text is described), which is then summarized. HEIC
+        photos are refused; convert them to JPEG first.
       security: [{ sessionCookie: [] }]
       parameters:
         - name: X-Filename
@@ -877,11 +898,24 @@ paths:
           in: header
           description: When the audio was recorded (RFC 3339), e.g. the file's modification time
           schema: { type: string, format: date-time }
+        - name: X-Recorder
+          in: header
+          description: '"1" for a voice memo recorded in the web app (`source: recorder`); only audio'
+          schema: { type: string, enum: ["1"] }
+        - name: X-Highlights
+          in: header
+          description: The moments marked while recording, as comma-separated offsets in milliseconds, e.g. "12500,63000"
+          schema: { type: string }
       requestBody:
         required: true
         content:
           audio/wav: { schema: { type: string, format: binary } }
           audio/mpeg: { schema: { type: string, format: binary } }
+          image/jpeg: { schema: { type: string, format: binary } }
+          image/png: { schema: { type: string, format: binary } }
+          image/webp: { schema: { type: string, format: binary } }
+          image/gif: { schema: { type: string, format: binary } }
+          application/pdf: { schema: { type: string, format: binary } }
       responses:
         "201":
           description: Stored; processing starts
@@ -889,7 +923,7 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "413": { $ref: "#/components/responses/Error" }
         "415":
-          description: Not a WAV or MP3 file
+          description: Not a WAV or MP3 file, a supported photo or a PDF
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
         "422":
           description: A WAV file that isn't integer PCM
@@ -1295,6 +1329,40 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
+
+  /recordings/{recordingId}/speakers/rename:
+    post:
+      tags: ["Recordings"]
+      summary: Name a speaker of the transcript
+      description: |
+        Replaces a speaker's label (e.g. "Speaker 1") where it starts the speaker's lines in the
+        transcript, and where the summary and its action items mention it, with a name. Naming a
+        speaker like another one merges the two. `summary.speakers` holds the names the model
+        recognized, to offer. Needs editing rights; counts up the note's `revision`.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from, to]
+              properties:
+                from: { type: string, description: The speaker's label in the transcript, example: "Speaker 1" }
+                to: { type: string, maxLength: 40, description: The speaker's name (no colons or brackets), example: "Anna" }
+      responses:
+        "200":
+          description: Renamed
+          content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
+        "400":
+          description: The transcript has no such speaker, or the name isn't valid
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "404": { $ref: "#/components/responses/Error" }
+        "409":
+          description: The note has no transcript with speakers
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
   /recordings/{recordingId}/labels:
     put:
@@ -1756,6 +1824,100 @@ paths:
       security: [{ sessionCookie: [] }]
       responses:
         "204": { description: Turned off }
+
+  /ask:
+    post:
+      tags: ["Ask"]
+      summary: Ask a question about your notes
+      description: |
+        Answers a question from your notes and those shared with you. The summary model picks
+        the notes that fit the question from a catalog of them (title, date, the start of the
+        text) and names words to look for, which are looked up in the full texts and
+        transcripts; it then answers from the notes found, citing them as [1], [2], … in
+        `answer`. `sources` lists the cited notes with a supporting passage and, for
+        recordings, where it is said. Follow-up questions send the conversation so far in
+        `history`. Limited to 30 questions per minute.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question]
+              properties:
+                question: { type: string, maxLength: 1000, example: "What did Anna say about the Q3 budget?" }
+                history:
+                  type: array
+                  description: The earlier questions and answers, oldest first (the last 3 are used)
+                  items:
+                    type: object
+                    properties:
+                      question: { type: string }
+                      answer: { type: string }
+      responses:
+        "200":
+          description: The answer; empty with no sources when you have no notes
+          content: { application/json: { schema: { $ref: "#/components/schemas/AskAnswer" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "409":
+          description: The AI models are not set up
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "429": { description: Too many questions }
+
+  /me/briefing:
+    get:
+      tags: ["Briefings"]
+      summary: Get your briefing settings
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: Settings
+          content: { application/json: { schema: { $ref: "#/components/schemas/BriefingSettings" } } }
+    put:
+      tags: ["Briefings"]
+      summary: Change your briefing settings
+      description: |
+        Turns the daily briefing and the weekly review on or off, and sets when they are made
+        (in your time zone). Turned on after today's time, the first one is made the next day.
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/BriefingSettings" } } }
+      responses:
+        "200":
+          description: Saved
+          content: { application/json: { schema: { $ref: "#/components/schemas/BriefingSettings" } } }
+        "400": { $ref: "#/components/responses/Error" }
+
+  /me/briefing/run:
+    post:
+      tags: ["Briefings"]
+      summary: Make a briefing now
+      description: |
+        Makes a daily briefing or weekly review right away, whether or not they are turned on,
+        and sends its notification. It is a text note (`source: briefing`) in your folder
+        "Briefings", which is made when missing. The daily briefing lists the tasks due today
+        and overdue, the notes that came in since the day before (with a digest by the summary
+        model, when it is set up) and the open action items of the last week. The weekly review
+        covers the seven days before (and today so far): new notes (with a digest), tasks
+        checked off, time logged, and the tasks overdue, coming up and waiting for over 30 days.
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind]
+              properties:
+                kind: { type: string, enum: [daily, weekly] }
+      responses:
+        "201":
+          description: The briefing's note
+          content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "429": { description: Too many requests }
 
   /me/mcp:
     get:
@@ -2276,8 +2438,8 @@ components:
         ownerId: { type: string, description: The user the recording belongs to }
         number: { type: integer, format: int64, description: 'The note''s number among its owner''s notes (1, 2, 3, …), never reused; "#12" in a note''s text links to note 12' }
         deviceId: { type: string, description: '"pocket:<userId>" for Pocket, "upload:<userId>" for browser uploads, "text:<userId>" for text notes, "board:<userId>" for boards, "remarkable:<userId>" for reMarkable documents' }
-        type: { type: string, enum: [text, document, board], description: 'The kind of note: absent for audio recordings, "text" for Markdown notes (title and text in `summary`), "document" for reMarkable documents (the text read from the pages in `transcript`), "board" for kanban boards (title in `summary`, setup in `board`)' }
-        source: { type: string, enum: [pocket, upload, remarkable], description: Absent for device uploads }
+        type: { type: string, enum: [text, document, board], description: 'The kind of note: absent for audio recordings, "text" for Markdown notes (title and text in `summary`), "document" for reMarkable documents and uploaded photos and PDFs (the text read from the pages in `transcript`), "board" for kanban boards (title in `summary`, setup in `board`)' }
+        source: { type: string, enum: [pocket, upload, recorder, remarkable, briefing], description: 'Absent for device uploads; "upload" for files uploaded in the browser, "recorder" for voice memos recorded there, "briefing" for daily briefings and weekly reviews' }
         title: { type: string, description: Title from the source (Pocket, the document's name on the reMarkable) }
         recordingId: { type: string, description: Device-assigned ID, the Pocket recording ID, or the reMarkable document ID }
         status: { $ref: "#/components/schemas/Status" }
@@ -2302,6 +2464,7 @@ components:
         highlights: { type: array, items: { $ref: "#/components/schemas/Highlight" } }
         labels: { type: array, items: { type: string }, description: IDs of the note's labels (see GET /labels) }
         done: { type: boolean, description: Check mark of a note labeled `task` }
+        doneAt: { type: string, format: date-time, description: When the task was last checked off }
         due: { $ref: "#/components/schemas/Due" }
         priority: { $ref: "#/components/schemas/Priority" }
         remindAt: { type: string, format: date-time, description: When the task's next reminder is sent; absent when none is pending }
@@ -2333,6 +2496,14 @@ components:
             themeName: { type: string }
             editedAt: { type: string, format: date-time, description: Set when a person edited the summary }
             actionItems: { type: array, items: { $ref: "#/components/schemas/ActionItem" }, description: 'Follow-ups found in the conversation; left out in lists' }
+            speakers:
+              type: array
+              description: The names the model recognized for the transcript's speaker labels, offered for naming the speakers
+              items:
+                type: object
+                properties:
+                  label: { type: string, example: Speaker 1 }
+                  name: { type: string, example: Anna }
             createdAt: { type: string, format: date-time }
         attempts: { type: integer }
         lastError: { type: string }
@@ -2458,6 +2629,33 @@ components:
         until: { type: string, format: date-time, description: When a focus session ends by itself }
         seconds: { type: integer, format: int64, description: How long it lasted; a running timer up to now }
         createdAt: { type: string, format: date-time }
+
+    AskAnswer:
+      type: object
+      properties:
+        answer: { type: string, description: 'Markdown citing the sources as [1], [2], …' }
+        model: { type: string }
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              ref: { type: integer, description: The number the answer cites the note with }
+              id: { type: string }
+              number: { type: integer, format: int64, description: The note's number among its owner's notes }
+              title: { type: string }
+              type: { type: string, enum: [audio, text, document] }
+              date: { type: string, format: date-time, description: When the note was recorded or made }
+              quote: { type: string, description: A short passage of the note the answer draws on }
+              offsetMs: { type: integer, format: int64, description: Where the quote is said in a recording }
+
+    BriefingSettings:
+      type: object
+      properties:
+        daily: { type: boolean, description: Make a briefing every day }
+        weekly: { type: boolean, description: Make a weekly review }
+        time: { type: string, example: "07:00", description: When they are made (HH:MM in your time zone) }
+        weeklyDay: { type: integer, minimum: 0, maximum: 6, description: 'The day of the weekly review (0 is Sunday); Monday (1) until one is chosen' }
 
     CalendarSettings:
       type: object

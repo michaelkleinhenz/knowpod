@@ -39,6 +39,48 @@ type User struct {
 	Calendar Calendar `bson:"calendar"`
 	// MCP is the user's access for AI assistants through the MCP server.
 	MCP MCP `bson:"mcp"`
+	// Briefing is when the user gets a daily briefing and a weekly review.
+	Briefing Briefing `bson:"briefing"`
+}
+
+// Briefing sets up a user's briefings: a note made every morning with the day's tasks and
+// what came in since the day before, and a weekly review, each announced by a notification.
+type Briefing struct {
+	Daily  bool `bson:"daily,omitempty"`
+	Weekly bool `bson:"weekly,omitempty"`
+	// Time is when briefings are made, HH:MM in the user's time zone; empty is DefaultBriefingTime.
+	Time string `bson:"time,omitempty"`
+	// WeeklyDay is the day of the weekly review (0 is Sunday); nil is DefaultReviewDay.
+	WeeklyDay *int `bson:"weeklyDay,omitempty"`
+	// FolderID is the folder the briefings go into, made on first use.
+	FolderID string `bson:"folderId,omitempty"`
+	// LastDaily and LastWeekly are the days (YYYY-MM-DD, in the user's time zone) the last
+	// briefing and review were made, so each is made once.
+	LastDaily  string `bson:"lastDaily,omitempty"`
+	LastWeekly string `bson:"lastWeekly,omitempty"`
+}
+
+// DefaultBriefingTime is when briefings are made unless the user chose another time.
+const DefaultBriefingTime = "07:00"
+
+// DefaultReviewDay is the day of the weekly review unless the user chose another day: it
+// looks back on the week before.
+const DefaultReviewDay = time.Monday
+
+// ReviewDay returns the day of the weekly review.
+func (b Briefing) ReviewDay() time.Weekday {
+	if b.WeeklyDay == nil {
+		return DefaultReviewDay
+	}
+	return time.Weekday(*b.WeeklyDay)
+}
+
+// At returns the time of day briefings are made.
+func (b Briefing) At() string {
+	if b.Time == "" {
+		return DefaultBriefingTime
+	}
+	return b.Time
 }
 
 // Calendar is a user's read-only iCalendar feed of their tasks with dates. Its URL holds a

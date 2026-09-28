@@ -67,6 +67,19 @@ var mcpTools = []*mcpTool{
 		run:         (*Server).mcpSearchNotes,
 	},
 	{
+		Name:  "find_notes",
+		Title: "Find notes about a topic",
+		Description: "Finds the user's notes about a topic or question by what they are about, not only by their words: " +
+			"an AI model reads the catalog of notes and looks through the full texts and transcripts, also for synonyms " +
+			"and translations. Returns the most relevant notes first, each with a passage showing why. Use get_note to read one.",
+		InputSchema: schemaObject([]string{"query"}, map[string]any{
+			"query": schemaOf("string", "The topic or question, in plain words, e.g. \"what did Anna say about the Q3 budget\"."),
+			"limit": map[string]any{"type": "integer", "minimum": 1, "maximum": 20, "description": "At most this many notes (default 10)."},
+		}),
+		Annotations: mcpReadOnly,
+		run:         (*Server).mcpFindNotes,
+	},
+	{
 		Name:  "get_note",
 		Title: "Read a note",
 		Description: "Reads one note in full: its text (Markdown; for recordings the summary), the transcript of a " +
@@ -457,6 +470,43 @@ func (s *Server) mcpSearchNotes(ctx context.Context, acc *service.Account, raw j
 		if len(out) == limit {
 			break
 		}
+	}
+	return map[string]any{"notes": out}, nil
+}
+
+func (s *Server) mcpFindNotes(ctx context.Context, acc *service.Account, raw json.RawMessage) (any, error) {
+	var in struct {
+		Query string `json:"query"`
+		Limit int    `json:"limit"`
+	}
+	if err := mcpArgs(raw, &in); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(in.Query) == "" {
+		return nil, &mcpArgError{"query is required"}
+	}
+	if s.ask == nil {
+		return nil, &mcpArgError{"finding notes by topic is not available; use search_notes"}
+	}
+	limit := in.Limit
+	if limit <= 0 || limit > 20 {
+		limit = 10
+	}
+	found, err := s.ask.Find(ctx, acc, in.Query, limit)
+	if err != nil {
+		return nil, err
+	}
+	c, err := s.mcpLoad(ctx, acc)
+	if err != nil {
+		return nil, err
+	}
+	type foundNote struct {
+		*mcpNote
+		Excerpt string `json:"excerpt,omitempty"`
+	}
+	out := []foundNote{}
+	for _, f := range found {
+		out = append(out, foundNote{c.note(f.Note, false), f.Excerpt})
 	}
 	return map[string]any{"notes": out}, nil
 }
