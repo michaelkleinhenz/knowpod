@@ -2,6 +2,7 @@ package remarkable
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
@@ -138,7 +139,15 @@ type DocumentWrite struct {
 	// EPUB is the document's new file; nil keeps the file and changes only the name and
 	// folder.
 	EPUB []byte
+	// TextScale, when set, is the reader's text size (1 is the tablet's default) of a new
+	// document. An existing document gets it only if it is still at the default size, so a
+	// size chosen on the tablet stays.
+	TextScale float64
 }
+
+// TextScale is the reader's text size for the notes sent to the tablet; the default size
+// looks large for them.
+const TextScale = 0.8
 
 // maxWriteAttempts bounds how often a write is redone when another device changed the
 // account meanwhile.
@@ -211,6 +220,7 @@ func (s *Session) writeDocuments(ctx context.Context, docs []DocumentWrite, newI
 	ids := make([]string, len(docs))
 	for i, d := range docs {
 		var files []Entry
+		var content []byte // a changed .content
 		meta := map[string]any{}
 		id := d.ID
 		if j, ok := at[id]; ok && id != "" {
@@ -224,6 +234,13 @@ func (s *Session) writeDocuments(ctx context.Context, docs []DocumentWrite, newI
 						return nil, err
 					}
 					_ = json.Unmarshal(raw, &meta)
+				}
+				if f.ID == id+".content" && d.TextScale > 0 {
+					raw, err := s.Blob(ctx, f.Hash, f.ID, 1<<20)
+					if err != nil {
+						return nil, err
+					}
+					content = scaledContent(raw, d.TextScale)
 				}
 			}
 		} else {
@@ -240,12 +257,12 @@ func (s *Session) writeDocuments(ctx context.Context, docs []DocumentWrite, newI
 				"createdTime": ms, "lastOpened": "0", "lastOpenedPage": 0, "pinned": false, "deleted": false,
 				"metadatamodified": false, "modified": false, "synced": true, "version": 0, "type": TypeDocument,
 			}
-			content, _ := json.Marshal(map[string]any{
+			newContent, _ := json.Marshal(map[string]any{
 				"coverPageNumber": 0, "documentMetadata": map[string]any{}, "extraMetadata": map[string]any{},
 				"fileType": "epub", "fontName": "", "lastOpenedPage": 0, "lineHeight": -1, "margins": 100,
-				"orientation": "portrait", "pageCount": 0, "pages": []string{}, "textAlignment": "left", "textScale": 1,
+				"orientation": "portrait", "pageCount": 0, "pages": []string{}, "textAlignment": "left", "textScale": cmp.Or(d.TextScale, 1),
 			})
-			e, err := put(id+".content", content)
+			e, err := put(id+".content", newContent)
 			if err != nil {
 				return nil, err
 			}
@@ -256,6 +273,9 @@ func (s *Session) writeDocuments(ctx context.Context, docs []DocumentWrite, newI
 		changed := map[string][]byte{id + ".metadata": metaJSON}
 		if d.EPUB != nil {
 			changed[id+".epub"] = d.EPUB
+		}
+		if content != nil {
+			changed[id+".content"] = content
 		}
 		for name, data := range changed {
 			e, err := put(name, data)
@@ -318,4 +338,27 @@ func replaceEntry(entries []Entry, e Entry) []Entry {
 		}
 	}
 	return append(entries, e)
+}
+
+// scaledContent returns the .content file with the text size set, or nil when the document
+// isn't at the default size (1) or the file can't be read: a size chosen on the tablet, or
+// anything else in the file, is left as it is.
+func scaledContent(raw []byte, scale float64) []byte {
+	var c map[string]any
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber() // keeps big numbers as they are
+	if dec.Decode(&c) != nil {
+		return nil
+	}
+	if cur, ok := c["textScale"].(json.Number); ok {
+		if v, err := cur.Float64(); err != nil || v != 1 {
+			return nil
+		}
+	}
+	c["textScale"] = scale
+	out, err := json.Marshal(c)
+	if err != nil {
+		return nil
+	}
+	return out
 }

@@ -84,6 +84,20 @@ export function NewNoteIcon() {
   );
 }
 
+// FullscreenIcon is four corner brackets pointing outwards, for the editor's full-screen
+// focus mode; with exit, they point inwards.
+export function FullscreenIcon({ exit = false }: { exit?: boolean }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <path
+        d={exit ? 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5' : 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5'}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 // HomeIcon is a house, for the home page with today's briefing.
 export function HomeIcon({ size = 16 }: { size?: number }) {
   return (

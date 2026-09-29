@@ -123,7 +123,7 @@ func (s *RemarkableService) push(ctx context.Context, l *tablet.Link) error {
 		switch {
 		case in:
 			name := documentName(r.Summary.Title)
-			if c != nil && !c.Removed && c.Error == "" && c.Revision == r.Revision && c.Name == name && c.Parent == parent {
+			if c != nil && !c.Removed && c.Error == "" && c.Revision == r.Revision && c.Name == name && c.Parent == parent && c.Scaled {
 				continue
 			}
 			full, err := s.recs.Get(ctx, r.ID)
@@ -147,6 +147,9 @@ func (s *RemarkableService) push(ctx context.Context, l *tablet.Link) error {
 			w := remarkable.DocumentWrite{Name: name, Parent: parent, EPUB: epub}
 			if c != nil {
 				w.ID = c.DocumentID
+			}
+			if c == nil || !c.Scaled {
+				w.TextScale = remarkable.TextScale
 			}
 			sends = append(sends, tabletSend{id: r.ID, revision: full.Revision, write: w})
 		case c != nil && !c.Removed && c.DocumentID != "":
@@ -193,6 +196,7 @@ func (s *RemarkableService) push(ctx context.Context, l *tablet.Link) error {
 			}
 			c.Revision, c.Name, c.Parent = snd.revision, snd.write.Name, snd.write.Parent
 			c.Removed = snd.write.Parent == remarkable.TrashParent
+			c.Scaled = c.Scaled || snd.write.TextScale > 0
 			c.SentAt, c.Error = &now, ""
 			return true
 		}); err != nil {
@@ -273,16 +277,17 @@ func documentName(title string) string {
 	return name
 }
 
-// sentDocuments returns the cloud documents that are copies of the user's text notes.
-func (s *RemarkableService) sentDocuments(ctx context.Context, userID string) (map[string]bool, error) {
+// sentDocuments returns the user's text notes that have a copy in the cloud, by the copy's
+// document ID.
+func (s *RemarkableService) sentDocuments(ctx context.Context, userID string) (map[string]*recording.Recording, error) {
 	notes, err := s.recs.List(ctx, recording.ListFilter{OwnerID: userID, Trash: recording.TrashAny, Brief: true})
 	if err != nil {
 		return nil, err
 	}
-	out := map[string]bool{}
+	out := map[string]*recording.Recording{}
 	for _, r := range notes {
 		if r.Tablet != nil && r.Tablet.DocumentID != "" {
-			out[r.Tablet.DocumentID] = true
+			out[r.Tablet.DocumentID] = r
 		}
 	}
 	return out, nil

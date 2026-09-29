@@ -295,7 +295,25 @@ the account: each file `PUT /sync/v3/files/<sha256>` (with `rm-filename` and a C
 changed the account meanwhile (412), it is read and written again. Sends run at the start
 of each pull and, through `NoteEvents.OwnerChanged` → `RemarkableService.Nudge`, 20 s after
 a user's notes stopped changing (at most 2 minutes after the first change); failures are
-kept in `tablet.error` and tried again. Pulls leave out documents that are a note's copy.
+kept in `tablet.error` and tried again. Pulls leave out documents that are a note's copy
+as notes, but read what was written on them (below).
+
+**Text size.** A new copy's `.content` gets `textScale` 0.8 (`remarkable.TextScale`; the
+tablet's default 1 looks large for these notes). Copies sent before that are sent once more
+(`tablet.scaled` false): `DocumentWrite.TextScale` sets the size in their existing
+`.content` only while it is still 1, and changes nothing else in the file, so a size chosen
+on the tablet stays. From then on the size is never touched.
+
+**Handwriting on copies** (`service/remarkable_ink.go`). What is written on a copy is stored
+by the tablet as page files (`<id>/<page>.rm`). On each pull, for every copy whose item
+`ContentHash` differs from the note's `tablet.inkHash`, `pullInk` reads the item, downloads
+it when it has `.rm` files and renders the strokes of the pages that have any
+(`Archive.Ink`, which also takes page files the `.content` doesn't list) with
+`remarkable.WritePDF` on blank pages: the note's own text is not in it. The PDF is kept as
+the note's attachment *reMarkable scribbles.pdf* (`tablet.inkAttachment`), replaced in
+place when the handwriting changes and removed when it was all erased. `inkHash` is set
+also when there is nothing to keep, so an untouched copy costs one lookup per change.
+Failures are logged and retried with the next pull.
 
 Stages, dispatched by `source`/`type` in `main.go`:
 

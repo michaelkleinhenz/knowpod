@@ -598,8 +598,18 @@ export interface BackupSummary {
 }
 
 // restoreBackup replaces all data with the contents of a backup file.
-async function restoreBackup(file: File): Promise<BackupSummary> {
-  const res = await fetch('/api/v1/admin/restore?confirm=replace-all-data', {
+function restoreBackup(file: File): Promise<BackupSummary> {
+  return restoreFrom('/api/v1/admin/restore?confirm=replace-all-data', file);
+}
+
+// restorePersonalBackup replaces the user's own notes and content with the contents of a
+// personal backup file.
+function restorePersonalBackup(file: File): Promise<BackupSummary> {
+  return restoreFrom('/api/v1/me/restore?confirm=replace-my-data', file);
+}
+
+async function restoreFrom(url: string, file: File): Promise<BackupSummary> {
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/zip' },
     credentials: 'same-origin',
@@ -799,6 +809,8 @@ export const api = {
   deleteUser: (id: string) => request<void>('DELETE', `/admin/users/${encodeURIComponent(id)}`),
   backupURL: '/api/v1/admin/backup',
   restoreBackup,
+  personalBackupURL: '/api/v1/me/backup',
+  restorePersonalBackup,
   openRouterSettings: () => request<OpenRouterSettings>('GET', '/admin/settings/openrouter'),
   saveOpenRouterSettings: (u: { apiKey?: string; transcriptionModel?: string; summaryModel?: string; documentModel?: string }) =>
     request<OpenRouterSettings>('PUT', '/admin/settings/openrouter', u),

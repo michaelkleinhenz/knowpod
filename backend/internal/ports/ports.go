@@ -77,6 +77,9 @@ type RecordingRepository interface {
 	// RemoveMember takes the user off the shares and members of all recordings (when the
 	// user is deleted).
 	RemoveMember(ctx context.Context, userID string) error
+	// ReserveNumbers makes sure ownerID's next note number is above upTo, for notes that
+	// are created with their old numbers (restored from a backup).
+	ReserveNumbers(ctx context.Context, ownerID string, upTo int64) error
 }
 
 // maxSaveAttempts bounds how often SaveProcessed tries again.

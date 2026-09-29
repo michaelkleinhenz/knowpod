@@ -5,7 +5,7 @@ import { api, Recording } from '../api/client';
 import { purgeDate } from '../lib/trash';
 import { Board, boardLanes } from '../components/Board';
 import { CopyButton } from '../components/CopyButton';
-import { BackIcon, CalendarIcon, CopyIcon, DownloadIcon, NewNoteIcon, RetranscribeIcon, TrashIcon } from '../components/Icons';
+import { BackIcon, CalendarIcon, CopyIcon, DownloadIcon, FullscreenIcon, NewNoteIcon, RetranscribeIcon, TrashIcon } from '../components/Icons';
 import { inline, Markdown } from '../components/Markdown';
 import { NoteDone, NoteLabels } from '../components/Labels';
 import { Attachments } from '../components/Attachments';
@@ -116,7 +116,7 @@ function Highlights({ highlights, durationMs, onSeek }: { highlights: { offsetMs
 // SyncState is a colored dot before the note's number under its title: green when all is saved,
 // amber for unsaved changes, pulsing while saving, red when a save failed (click to retry).
 // The words are its tooltip and are read out by screen readers.
-function SyncState({ sync, error, onRetry }: { sync: Sync; error: string | null; onRetry: () => void }) {
+function SyncState({ sync, error, onRetry, quiet = false }: { sync: Sync; error: string | null; onRetry: () => void; quiet?: boolean }) {
   const { t } = useTranslation();
   const text =
     sync === 'saved'
@@ -142,9 +142,12 @@ function SyncState({ sync, error, onRetry }: { sync: Sync; error: string | null;
           <span className="sync-dot" aria-hidden="true" />
         </span>
       )}
-      <span className="sr-only" role="status" aria-live="polite">
-        {text}
-      </span>
+      {/* Only one of the dots on the page announces the state. */}
+      {!quiet && (
+        <span className="sr-only" role="status" aria-live="polite">
+          {text}
+        </span>
+      )}
     </>
   );
 }
@@ -252,6 +255,32 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart,
     } finally {
       setBusy(false);
     }
+  }
+
+  // Focus mode shows the text editor alone, full screen (Esc leaves it). The editor stays
+  // mounted, so unsaved edits and the undo history carry over.
+  const [focus, setFocus] = useState(false);
+  function enterFocus() {
+    setTab('summary');
+    setFocus(true);
+  }
+  useEffect(() => {
+    if (!focus) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !e.defaultPrevented) setFocus(false);
+    };
+    document.addEventListener('keydown', onKey);
+    document.body.classList.add('focus-open');
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.classList.remove('focus-open');
+    };
+  }, [focus]);
+
+  // convertToTask makes a task of a checklist item of the text: a note at the level this note
+  // is at (in its folder, or under its parent note). The editor removes the item afterwards.
+  async function convertToTask(title: string, markdown: string) {
+    notes.upsert(await api.createTextNote(title, markdown, rec.parentId, { task: true }, rec.folderId));
   }
 
   // createSub makes an empty text note under this one and opens it, ready to type its title.
@@ -495,6 +524,11 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart,
       <div className="note-main">
         {editable && !fromRemarkable && (
           <div className="note-sync">
+            {!isBoard && summary && (
+              <button type="button" className="icon-button focus-toggle" title={t('editor.focus.enter')} aria-label={t('editor.focus.enter')} onClick={() => enterFocus()}>
+                <FullscreenIcon />
+              </button>
+            )}
             <SyncState sync={autosave.sync} error={autosave.error} onRetry={() => void autosave.save()} />
           </div>
         )}
@@ -604,9 +638,18 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart,
         <div className="conversation-body" role={isText || isBoard ? undefined : 'tabpanel'}>
           {isBoard && <Board rec={rec} setRec={setRec} />}
           {/* The summary stays mounted on other tabs so unsaved edits and the undo history survive. */}
-          <div hidden={tab !== 'summary' || isBoard}>
+          <div hidden={tab !== 'summary' || isBoard} className={focus ? 'focus-mode' : undefined}>
+            {focus && (
+              <div className="focus-bar">
+                <button type="button" className="icon-button" title={t('editor.focus.exit')} aria-label={t('editor.focus.exit')} onClick={() => setFocus(false)}>
+                  <FullscreenIcon exit />
+                </button>
+                <SyncState sync={autosave.sync} error={autosave.error} onRetry={() => void autosave.save()} quiet />
+              </div>
+            )}
             {isBoard ? null : summary ? (
               <>
+                <div className="editor-wrap">
                 <Suspense
                   fallback={
                     <div className="prose editor-content">
@@ -623,8 +666,10 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart,
                     onChange={autosave.changed}
                     onSaveShortcut={() => void autosave.save()}
                     readOnly={textReadOnly}
+                    onConvertTask={convertToTask}
                   />
                 </Suspense>
+                </div>
                 {!isText && <ActionItems rec={rec} setRec={setRec} />}
                 {summary.model && <p className="model-note">{t('conversation.summarizedWith', { model: summary.model })}</p>}
               </>

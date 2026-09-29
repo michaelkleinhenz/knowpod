@@ -228,6 +228,22 @@ func TestNoteNumbers(t *testing.T) {
 	}
 }
 
+func TestReserveNumbers(t *testing.T) {
+	ctx := context.Background()
+	recs := NewRecordingRepo(testStore(t))
+	if err := recs.ReserveNumbers(ctx, "ann", 41); err != nil {
+		t.Fatal(err)
+	}
+	// A lower reservation never moves the counter back.
+	if err := recs.ReserveNumbers(ctx, "ann", 5); err != nil {
+		t.Fatal(err)
+	}
+	rec := &recording.Recording{ID: NewID(), OwnerID: "ann", DeviceID: "d", ClientID: NewID()}
+	if err := recs.Create(ctx, rec); err != nil || rec.Number != 42 {
+		t.Fatalf("create: %d %v", rec.Number, err)
+	}
+}
+
 func TestReminderQueue(t *testing.T) {
 	ctx := context.Background()
 	repo := NewRecordingRepo(testStore(t))

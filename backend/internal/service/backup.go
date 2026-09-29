@@ -41,6 +41,8 @@ type BackupManifest struct {
 	Version    int       `json:"version"`
 	CreatedAt  time.Time `json:"createdAt"`
 	AppVersion string    `json:"appVersion,omitempty"`
+	// Owner is the user a personal backup was made for; empty for a full backup.
+	Owner string `json:"owner,omitempty"`
 	// Collections holds the number of documents per collection.
 	Collections map[string]int `json:"collections"`
 	Objects     []BackupObject `json:"objects"`
@@ -187,7 +189,7 @@ func (s *BackupService) Restore(ctx context.Context, src io.Reader) (*BackupSumm
 	for _, f := range zr.File {
 		files[f.Name] = f
 	}
-	m, err := readManifest(files[manifestName])
+	m, err := readManifest(files[manifestName], backupFormat)
 	if err != nil {
 		return nil, err
 	}
@@ -208,7 +210,7 @@ func (s *BackupService) Restore(ctx context.Context, src io.Reader) (*BackupSumm
 	return summarize(m), nil
 }
 
-func readManifest(f *zip.File) (*BackupManifest, error) {
+func readManifest(f *zip.File, format string) (*BackupManifest, error) {
 	if f == nil {
 		return nil, invalid("not a knowpod backup: %s is missing (is the file complete?)", manifestName)
 	}
@@ -221,7 +223,7 @@ func readManifest(f *zip.File) (*BackupManifest, error) {
 	if err := json.NewDecoder(rc).Decode(&m); err != nil {
 		return nil, invalid("the backup's manifest is unreadable (%v)", err)
 	}
-	if m.Format != backupFormat {
+	if m.Format != format {
 		return nil, invalid("not a knowpod backup")
 	}
 	if m.Version != backupVersion {

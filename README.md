@@ -55,7 +55,7 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
 ## Features
 
 - **Users** sign in with email and password and each see only their own notes and
-  devices, plus the notes others shared with them. Admins manage users and the AI settings, and can download a full backup (database and S3 files) and restore from one, in the UI or with `ADMIN_TOKEN` ([details](docs/operations.md#built-in-backup-and-restore)).
+  devices, plus the notes others shared with them. Admins manage users and the AI settings, and can download a full backup (database and S3 files) and restore from one, in the UI or with `ADMIN_TOKEN` ([details](docs/operations.md#built-in-backup-and-restore)). Every user can download a backup of their own notes and content and restore it (Settings → Backup, [details](docs/operations.md#personal-backup-and-restore)).
 - **Sharing.** Any note (a todo list, say) can be shared with other users, together with
   everything under it, for viewing or editing. Changes show up for everyone right away;
   each person files a shared note in their own folder, with their own labels and reminders.
@@ -78,7 +78,7 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
   are, and a vision model reads the pages (and any typed text) into text that is summarized like a transcript. These notes are read-only in knowpod too (their title and text can't be edited, as edits can't go back to the tablet); labels, tasks and folders still work.
   The other way, **text notes** put into the reMarkable folder (or a folder inside it) are sent to the tablet as
   e-books (EPUB) into the same folder there, and follow the note's edits; they stay editable in knowpod and show the
-  reMarkable logo with a pen. A note that leaves the folder or goes into the trash has its e-book put into the tablet's
+  reMarkable logo with a pen. They are sent at a smaller text size than the tablet's default (change it on the tablet and it stays). What you write or draw on such an e-book on the tablet is kept with the note as a PDF attachment, **reMarkable scribbles.pdf**, on blank pages (not the note's text), updated with the next import. A note that leaves the folder or goes into the trash has its e-book put into the tablet's
   trash. The reMarkable folder can't be deleted while a reMarkable is paired.
 - Notes come in types: **audio** notes (recordings, transcribed and summarized),
   **text** notes, plain Markdown documents written in the browser (**+** on **Workspace**), and

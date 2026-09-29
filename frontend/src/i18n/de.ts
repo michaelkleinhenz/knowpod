@@ -419,6 +419,9 @@ export const de: Translation = {
     link: 'Link',
     linkPrompt: 'Linkadresse (leer lassen, um den Link zu entfernen):',
     imageFailed: 'Das Bild konnte nicht hinzugefügt werden: {{detail}}',
+    focus: { enter: 'Fokusmodus', exit: 'Fokusmodus verlassen (Esc)' },
+    convertTask: 'Aus diesem Punkt eine Aufgabe machen',
+    convertFailed: 'Die Aufgabe konnte nicht erstellt werden: {{detail}}',
     imageUploading: 'Bild wird hinzugefügt …',
     placeholder: 'Tippe / für Befehle',
     slash: {
@@ -434,7 +437,7 @@ export const de: Translation = {
       orderedList: 'Nummerierte Liste',
       orderedListHint: 'Liste mit Nummerierung erstellen',
       checklist: 'Checkliste',
-      checklistHint: 'Punkte zum Abhaken, im Text gespeichert (keine Aufgaben)',
+      checklistHint: 'Punkte zum Abhaken, im Text gespeichert (per Hover zur Aufgabe machen)',
       codeBlock: 'Codeblock',
       codeBlockHint: 'Codeblock einfügen',
       quote: 'Zitat',
@@ -863,13 +866,29 @@ export const de: Translation = {
     },
     restoreConfirm: 'ALLE aktuellen Daten durch den Inhalt von „{{name}}“ ersetzen? Das lässt sich nicht rückgängig machen.',
   },
+  personalBackup: {
+    download: {
+      title: 'Backup deiner Notizen herunterladen',
+      hint: 'Eine Zip-Datei mit allen deinen Notizen (auch denen im Papierkorb) und ihren Audiodateien, Dokumenten, Bildern und Anhängen, dazu deine Ordner, Labels, Vorlagen, gespeicherten Filter und erfasste Zeit. Nicht enthalten sind dein Konto, deine Geräte, Verbindungen und wem deine Notizen freigegeben sind, sowie Notizen, die andere mit dir geteilt haben. Bei großen Archiven dauert das eine Weile; lass den Tab bis zum Ende des Downloads offen.',
+      button: 'Backup herunterladen',
+    },
+    restore: {
+      title: 'Notizen aus einem Backup wiederherstellen',
+      hint: 'Löscht alle deine aktuellen Notizen und Inhalte und setzt die aus einer Backup-Datei an ihre Stelle. Freigegebene Notizen und Ordner sind danach nicht mehr freigegeben. Dein Konto, deine Geräte und die Notizen anderer bleiben, wie sie sind. Die Datei wird zuerst geprüft; ist sie kein vollständiges Backup deiner Notizen, ändert sich nichts.',
+      button: 'Aus Datei wiederherstellen …',
+      running: 'Stelle wieder her … das kann dauern',
+      done: '{{notes}} Notizen und {{files}} Dateien wiederhergestellt.',
+      reload: 'App neu laden',
+    },
+    restoreConfirm: 'ALLE deine Notizen und Inhalte durch den Inhalt von „{{name}}“ ersetzen? Das lässt sich nicht rückgängig machen.',
+  },
   admin: {
     title: 'Admin',
     tabs: { users: 'Benutzer', general: 'Allgemein', backup: 'Backup' },
   },
   settings: {
     title: 'Einstellungen',
-    tabs: { general: 'Allgemein', account: 'Konto', devices: 'Geräte', themes: 'Vorlagen', labels: 'Labels', filters: 'Filter' },
+    tabs: { general: 'Allgemein', account: 'Konto', devices: 'Geräte', themes: 'Vorlagen', labels: 'Labels', filters: 'Filter', backup: 'Backup' },
     language: {
       title: 'Sprache',
       hint: 'Die Sprache der App. Sie wird mit deinem Konto gespeichert, und neue Transkripte und Zusammenfassungen werden in ihr geschrieben.',

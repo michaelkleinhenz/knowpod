@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -134,6 +135,46 @@ func (a *Archive) Pages() ([][]Stroke, error) {
 		return nil
 	})
 	return pages, err
+}
+
+// Ink returns the strokes of the pages that have any, in page order: the pages the
+// document lists, then page files it doesn't list (sorted by name). A reflowable document (an
+// EPUB) has a page file for each page something was written on. The typed text of a page is
+// not part of it.
+func (a *Archive) Ink() ([][]Stroke, error) {
+	ids := a.Content.PageIDs()
+	listed := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		listed[id] = true
+	}
+	var extra []string
+	for name := range a.files {
+		if rest, ok := strings.CutPrefix(name, a.ID+"/"); ok && !strings.Contains(rest, "/") {
+			if id, ok := strings.CutSuffix(rest, ".rm"); ok && !listed[id] {
+				extra = append(extra, id)
+			}
+		}
+	}
+	sort.Strings(extra)
+	pages := make([][]Stroke, 0)
+	for _, id := range append(ids, extra...) {
+		f, ok := a.files[a.ID+"/"+id+".rm"]
+		if !ok {
+			continue
+		}
+		data, err := readAll(f, 64<<20)
+		if err != nil {
+			return nil, err
+		}
+		strokes, err := ParseLines(data)
+		if err != nil {
+			return nil, fmt.Errorf("page %s: %w", id, err)
+		}
+		if len(strokes) > 0 {
+			pages = append(pages, strokes)
+		}
+	}
+	return pages, nil
 }
 
 // Texts returns the typed text of the document's pages in order, as Markdown; it is empty

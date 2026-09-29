@@ -417,6 +417,9 @@ export const en = {
     link: 'Link',
     linkPrompt: 'Link address (leave empty to remove the link):',
     imageFailed: 'The image could not be added: {{detail}}',
+    focus: { enter: 'Focus mode', exit: 'Leave focus mode (Esc)' },
+    convertTask: 'Make a task of this item',
+    convertFailed: 'The task could not be created: {{detail}}',
     imageUploading: 'Adding image…',
     placeholder: 'Type / for commands',
     slash: {
@@ -432,7 +435,7 @@ export const en = {
       orderedList: 'Numbered list',
       orderedListHint: 'Create a list with numbering',
       checklist: 'Checklist',
-      checklistHint: 'Items to check off, saved in the text (no tasks)',
+      checklistHint: 'Items to check off, saved in the text (hover one to make it a task)',
       codeBlock: 'Code block',
       codeBlockHint: 'Insert a block of code',
       quote: 'Quote',
@@ -861,13 +864,29 @@ export const en = {
     },
     restoreConfirm: 'Replace ALL current data with the contents of “{{name}}”? This cannot be undone.',
   },
+  personalBackup: {
+    download: {
+      title: 'Download a backup of your notes',
+      hint: 'A zip file with all your notes (also the ones in the trash) and their audio, documents, images and attachments, plus your folders, labels, themes, saved filters and logged time. It does not hold your account, devices, connections, or who your notes are shared with, nor notes others shared with you. Large archives take a while; keep the tab open until the download has finished.',
+      button: 'Download backup',
+    },
+    restore: {
+      title: 'Restore your notes from a backup',
+      hint: 'Deletes all your current notes and content and puts the ones from a backup file in their place. Notes and folders you shared are no longer shared afterwards. Your account, devices and other people’s notes stay as they are. The file is checked first; nothing changes if it is not a complete backup of your notes.',
+      button: 'Restore from file…',
+      running: 'Restoring… this can take a while',
+      done: 'Restored {{notes}} notes and {{files}} files.',
+      reload: 'Reload the app',
+    },
+    restoreConfirm: 'Replace ALL your notes and content with the contents of “{{name}}”? This cannot be undone.',
+  },
   admin: {
     title: 'Admin',
     tabs: { users: 'Users', general: 'General', backup: 'Backup' },
   },
   settings: {
     title: 'Settings',
-    tabs: { general: 'General', account: 'Account', devices: 'Devices', themes: 'Themes', labels: 'Labels', filters: 'Filters' },
+    tabs: { general: 'General', account: 'Account', devices: 'Devices', themes: 'Themes', labels: 'Labels', filters: 'Filters', backup: 'Backup' },
     language: {
       title: 'Language',
       hint: 'The language of the app. It is saved with your account, and new transcripts and summaries are written in it.',

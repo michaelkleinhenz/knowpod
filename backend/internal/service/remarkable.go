@@ -341,7 +341,7 @@ func (s *RemarkableService) sync(ctx context.Context, l *tablet.Link) (*tablet.P
 			return nil, err
 		}
 	}
-	var sent map[string]bool
+	var sent map[string]*recording.Recording
 	if len(docs) > 0 {
 		var err error
 		if sent, err = s.sentDocuments(ctx, l.UserID); err != nil {
@@ -351,8 +351,9 @@ func (s *RemarkableService) sync(ctx context.Context, l *tablet.Link) (*tablet.P
 	kept := docs[:0]
 	for _, d := range docs {
 		switch {
-		case sent[d.ID]:
+		case sent[d.ID] != nil:
 			// A copy of a text note, sent from here.
+			s.pullInk(ctx, sess, l, d, sent[d.ID])
 			continue
 		case l.Ignores(d.Name):
 			res.Ignored++

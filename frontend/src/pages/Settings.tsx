@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import { useAuth } from '../auth';
 import { DesktopAppSetup } from '../components/DesktopAppSetup';
 import { LabelSettings } from '../components/LabelSettings';
+import { PersonalBackup } from '../components/PersonalBackup';
 import { FilterSettings } from '../components/SavedFilters';
 import { TabbedPage, useTab } from '../components/Tabs';
 import { ThemeSettings } from '../components/ThemeSettings';
@@ -15,7 +16,7 @@ import { errorText } from '../lib/errors';
 import { FONT_SIZES, applyFontSize, currentFontSize } from '../lib/fontSize';
 import { APP_VERSION, desktopVersion } from '../lib/version';
 
-const TABS = ['general', 'account', 'devices', 'themes', 'labels', 'filters'] as const;
+const TABS = ['general', 'account', 'devices', 'themes', 'labels', 'filters', 'backup'] as const;
 
 // LanguageSettings changes the app language; it is saved with the user.
 function LanguageSettings() {
@@ -200,6 +201,7 @@ export function Settings() {
           <FilterSettings />
         </section>
       )}
+      {tab === 'backup' && <PersonalBackup />}
     </TabbedPage>
   );
 }

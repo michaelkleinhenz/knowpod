@@ -59,7 +59,8 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	if _, err := auth.EnsureBuiltInAdmin(ctx); err != nil {
 		t.Fatal(err)
 	}
-	themes := service.NewThemeService(memory.NewThemes())
+	themeRepo := memory.NewThemes()
+	themes := service.NewThemeService(themeRepo)
 	events := service.NewNoteEvents()
 	actions := service.NewRecordingService(events.Watch(recs), objects, spool, themes)
 	actions.Users, actions.Events = users, events
@@ -73,7 +74,8 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	actions.Folders = folders
 	folders.Notes = actions
 	userSvc.Folders = folderRepo
-	filters := service.NewFilterService(memory.NewFilters(), recs)
+	filterRepo := memory.NewFilters()
+	filters := service.NewFilterService(filterRepo, recs)
 	actions.Filters = filters
 	timeRepo := memory.NewTimeEntries()
 	actions.TimeEntries = timeRepo
@@ -108,9 +110,11 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	_ = objects.Put(ctx, "seed.txt", bytes.NewReader([]byte("seed")), 4, "text/plain")
 	backup := service.NewBackupService(backupDB, objects)
 	backup.TempDir = t.TempDir()
+	personal := service.NewPersonalBackupService(recs, folderRepo, labelRepo, themeRepo, filterRepo, timeRepo, objects, actions)
+	personal.TempDir = t.TempDir()
 	s := NewServer(Deps{
-		Backup: backup,
-		Cfg:    config.Config{AdminToken: adminToken}, Log: log, Auth: auth,
+		Backup: backup, PersonalBackup: personal,
+		Cfg: config.Config{AdminToken: adminToken}, Log: log, Auth: auth,
 		Users:   userSvc,
 		Devices: service.NewDeviceService(devs), Uploads: service.NewUploadService(recs, spool, 1<<30),
 		Manual: service.NewManualUploadService(recs, spool, 1<<30), Actions: actions, Objects: objects,

@@ -201,6 +201,9 @@ func main() {
 	backupSvc := service.NewBackupService(backupRepo, objects)
 	backupSvc.TempDir = cfg.UploadDir
 	backupSvc.Version = version
+	personalBackupSvc := service.NewPersonalBackupService(recs, folderRepo, labelRepo, themeRepo, filterRepo, timeRepo, objects, actions)
+	personalBackupSvc.TempDir = cfg.UploadDir
+	personalBackupSvc.Version = version
 
 	jobCtx, jobCancel := context.WithCancel(ctx)
 	var jobs sync.WaitGroup
@@ -219,7 +222,7 @@ func main() {
 		Manual: manualSvc, Actions: actions, Objects: objects, Pocket: pocketSvc, AI: aiSvc, Themes: themeSvc,
 		Labels: labelSvc, Folders: folderSvc, Remarkable: remarkableSvc, Notifications: notifySvc,
 		Filters: filterSvc, Times: timeSvc, Calendar: calendarSvc, MCP: mcpSvc, OAuth: oauthSvc, Events: events,
-		Ask: askSvc, Briefings: briefingSvc, Backup: backupSvc, Version: version,
+		Ask: askSvc, Briefings: briefingSvc, Backup: backupSvc, PersonalBackup: personalBackupSvc, Version: version,
 	})
 	httpServer := &http.Server{
 		Addr:              ":" + cfg.Port,

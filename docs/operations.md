@@ -592,6 +592,44 @@ Both accept an admin's session too (the web UI uses it) and are limited to 6 per
 - Restoring into an empty installation works: start the service with the new MongoDB and
   bucket, then restore. Point `AWS_S3_PREFIX` at where the files should go.
 
+### Personal backup and restore
+
+Every user can back up and restore their own notes and content (Settings → Backup, or the
+API with a session). The zip file has the same layout as the admin backup, but holds only
+what the user owns: their notes (also the ones in the trash) with their audio, documents,
+images and attachments, their folders, labels, themes, saved filters and finished time
+entries. It does **not** hold the account (password, tokens, Pocket and reMarkable
+connections, notification settings), devices, notes shared *with* the user, who the user's
+own notes and folders are shared with, notes that are still uploading, or a running timer.
+It contains the user's notes in the clear: store it like a secret.
+
+```sh
+curl -b cookies.txt -OJ https://your-host/api/v1/me/backup
+curl -b cookies.txt -X POST -H "Content-Type: application/zip" --data-binary @knowpod-notes-….zip \
+  "https://your-host/api/v1/me/restore?confirm=replace-my-data"
+```
+
+Scripts can use `ADMIN_TOKEN` too; they act as the built-in admin and get its own content.
+Both calls are limited to 6 per hour per IP.
+
+- A restore **replaces** the user's notes and content: the current ones are deleted (with
+  their files) and the backup's put in place, with their old IDs and note numbers, so `#12`
+  links keep working and new notes number on after the restored ones. Notes and folders
+  that were shared are no longer shared afterwards, and task assignees other than the user
+  are cleared. Nothing else changes: the account, devices and other users' data.
+- The whole file is checked first, and nothing changes if it isn't a complete personal
+  backup. It is refused if it holds a note, folder or other item that belongs to another
+  user now, and a note may only bring files under its own storage key
+  (`recordings/<owner>/<note>…`), so a doctored file can't overwrite anyone else's data.
+  A failure after the check leaves a partial restore; send the same backup again.
+- A backup of another account of the installation (say, one that was deleted and made
+  again) can be restored into a user's account: its content becomes theirs, as long as the
+  notes aren't somebody else's by now. Restoring into a different installation works the
+  same way, into an account of the same name or not.
+- Only one restore of a user, and no backup of that user during it, runs at a time
+  (409 `backup_busy`). It doesn't wait for or block an admin's full backup, so don't restore
+  personal backups while an admin restores the whole system.
+
 ## Known limitations
 
 - Single instance only (see [Scaling](#scaling-and-the-spool)).

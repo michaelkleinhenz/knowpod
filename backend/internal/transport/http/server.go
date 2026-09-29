@@ -63,9 +63,11 @@ type Server struct {
 	// briefings makes the users' daily and weekly briefings.
 	briefings *service.BriefingService
 	// backup makes and restores full backups.
-	backup  *service.BackupService
-	version string
-	now     func() time.Time
+	backup *service.BackupService
+	// personalBackup makes and restores a user's own backup.
+	personalBackup *service.PersonalBackupService
+	version        string
+	now            func() time.Time
 }
 
 // Deps are the server's constructor dependencies. Handlers of missing services are still
@@ -105,6 +107,8 @@ type Deps struct {
 	Briefings *service.BriefingService
 	// Backup is optional in tests that don't use it.
 	Backup *service.BackupService
+	// PersonalBackup is optional in tests that don't use it.
+	PersonalBackup *service.PersonalBackupService
 	// Version is the app version, reported by the MCP server.
 	Version string
 }
@@ -120,7 +124,7 @@ func NewServer(d Deps) *Server {
 		manual: d.Manual, actions: d.Actions, objects: d.Objects, pocket: d.Pocket, ai: d.AI, themes: d.Themes,
 		labels: d.Labels, folders: d.Folders, remarkable: d.Remarkable, notifications: d.Notifications,
 		filters: d.Filters, times: d.Times, calendar: d.Calendar, mcp: d.MCP, oauth: d.OAuth, events: d.Events,
-		ask: d.Ask, briefings: d.Briefings, backup: d.Backup, version: cmp.Or(d.Version, "dev"),
+		ask: d.Ask, briefings: d.Briefings, backup: d.Backup, personalBackup: d.PersonalBackup, version: cmp.Or(d.Version, "dev"),
 		now: time.Now,
 	}
 }
@@ -212,6 +216,8 @@ func (s *Server) Router() http.Handler {
 			u.Post("/me/notifications/test", s.handleTestNotification)
 			u.Get("/me/notifications/stream", s.handleNotificationStream)
 			u.Get("/me/events", s.handleNoteEvents)
+			u.With(httprate.LimitByIP(6, time.Hour)).Get("/me/backup", s.handlePersonalBackup)
+			u.With(httprate.LimitByIP(6, time.Hour)).Post("/me/restore", s.handlePersonalRestore)
 			u.Get("/me/calendar", s.handleGetCalendar)
 			u.Post("/me/calendar", s.handleEnableCalendar)
 			u.Delete("/me/calendar", s.handleDisableCalendar)
