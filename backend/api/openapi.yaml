@@ -153,6 +153,12 @@ tags:
       `/.well-known/oauth-protected-resource/mcp`, authorization server metadata at
       `/.well-known/oauth-authorization-server`, dynamic client registration, PKCE), or with
       your own MCP access token, `Authorization: Bearer kpm_…`.
+  - name: Backup
+    description: |
+      A backup of your own notes and content, and a restore from one. It is a zip file in the
+      layout of the admin backup (`db/`, `objects/`, and a `manifest.json` that comes last), with
+      only what you own, so you can keep it, or restore it into a fresh account. Other users'
+      data is never part of it, and a restore never touches it.
   - name: "Admin: users"
     description: Create, change and delete users. Administrators only.
   - name: "Admin: AI settings"
@@ -2439,6 +2445,76 @@ paths:
           description: The event stream
           content: { text/event-stream: { schema: { type: string } } }
         "403": { $ref: "#/components/responses/Error" }
+
+  /me/backup:
+    get:
+      tags: ["Backup"]
+      summary: Download a backup of your notes and content
+      description: |
+        Streams a zip file with everything you own: your notes (also the ones in the trash)
+        with their audio, documents, images and attachments, your folders, labels, themes,
+        saved filters and finished time entries. It leaves out your account (password,
+        tokens, connections), your devices, who your notes and folders are shared with, notes
+        shared with you by others, notes that are still being uploaded, and a running timer.
+        Send it back to `/me/restore` to get the content back. Limited to 6 per hour per IP.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      responses:
+        "200":
+          description: The backup
+          headers:
+            Content-Disposition: { schema: { type: string }, description: 'attachment; filename="knowpod-notes-<time>.zip"' }
+          content:
+            application/zip: { schema: { type: string, format: binary } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409":
+          description: A restore of your content is running (code `backup_busy`)
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /me/restore:
+    post:
+      tags: ["Backup"]
+      summary: Restore your notes and content from a backup
+      description: |
+        **Replaces all your notes and content.** Your notes (with their files), folders,
+        labels, themes, saved filters and time entries are deleted and the ones in the backup
+        are put in their place; notes and folders you had shared are no longer shared. Your
+        account, devices and everything of other users stay as they are. A backup of a
+        different account of this installation is restored as yours, unless it holds notes
+        that belong to somebody else now. The backup is checked completely before anything
+        changes; if the restore is interrupted afterwards, send the same backup again. Send
+        the zip file as the request body. Limited to 6 per hour per IP.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - name: confirm
+          in: query
+          required: true
+          description: Must be `replace-my-data`.
+          schema: { type: string, enum: [replace-my-data] }
+      requestBody:
+        required: true
+        content:
+          application/zip: { schema: { type: string, format: binary } }
+      responses:
+        "200":
+          description: Restored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  createdAt: { type: string, format: date-time, description: When the backup was made }
+                  collections: { type: object, additionalProperties: { type: integer }, description: Documents restored per collection }
+                  objects: { type: integer, description: Files restored to the object store }
+                  objectBytes: { type: integer, format: int64 }
+        "400":
+          description: The confirmation is missing (code `confirmation_required`), or the file isn't a complete personal knowpod backup that fits your account (code `invalid_input`); nothing was changed
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409":
+          description: Another backup or restore of your content is running (code `backup_busy`)
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
   /me/events:
     get:

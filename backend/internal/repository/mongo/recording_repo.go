@@ -45,6 +45,13 @@ func (r *RecordingRepo) nextNumber(ctx context.Context, ownerID string) (int64, 
 	return doc.Seq, err
 }
 
+// ReserveNumbers makes sure the owner's next note number is above upTo.
+func (r *RecordingRepo) ReserveNumbers(ctx context.Context, ownerID string, upTo int64) error {
+	_, err := r.counters.UpdateOne(ctx, bson.M{"_id": noteCounter(ownerID)}, bson.M{"$max": bson.M{"seq": upTo}},
+		options.Update().SetUpsert(true))
+	return err
+}
+
 // NumberNotes gives every owned recording without a number the owner's next one, oldest
 // first (notes from before numbers). The counters never fall behind numbers already used.
 // It is safe to run on every start.

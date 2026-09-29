@@ -55,6 +55,17 @@ func (m *Recordings) Create(_ context.Context, r *recording.Recording) error {
 	return nil
 }
 
+// ReserveNumbers makes sure the owner's next note number is above upTo.
+func (m *Recordings) ReserveNumbers(_ context.Context, ownerID string, upTo int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.numbers == nil {
+		m.numbers = map[string]int64{}
+	}
+	m.numbers[ownerID] = max(m.numbers[ownerID], upTo)
+	return nil
+}
+
 // clone copies a recording with the parts a caller might change in place (task date,
 // summary and action items), like a database keeps its own copy.
 func clone(r *recording.Recording) recording.Recording {

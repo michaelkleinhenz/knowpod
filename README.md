@@ -55,7 +55,7 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
 ## Features
 
 - **Users** sign in with email and password and each see only their own notes and
-  devices, plus the notes others shared with them. Admins manage users and the AI settings, and can download a full backup (database and S3 files) and restore from one, in the UI or with `ADMIN_TOKEN` ([details](docs/operations.md#built-in-backup-and-restore)).
+  devices, plus the notes others shared with them. Admins manage users and the AI settings, and can download a full backup (database and S3 files) and restore from one, in the UI or with `ADMIN_TOKEN` ([details](docs/operations.md#built-in-backup-and-restore)). Every user can download a backup of their own notes and content and restore it (Settings → Backup, [details](docs/operations.md#personal-backup-and-restore)).
 - **Sharing.** Any note (a todo list, say) can be shared with other users, together with
   everything under it, for viewing or editing. Changes show up for everyone right away;
   each person files a shared note in their own folder, with their own labels and reminders.
