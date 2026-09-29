@@ -7,13 +7,18 @@ function safeHref(url: string): string | null {
   return /^(https?:\/\/|mailto:)/i.test(url.trim()) ? url.trim() : null;
 }
 
+// safeImage allows only the pictures stored with notes, so Markdown can't load other sites.
+function safeImage(url: string): boolean {
+  return /^\/api\/v1\/recordings\/[\w-]+\/images\/[\w-]+$/.test(url);
+}
+
 // Cite renders a citation such as "[2]" (see Markdown's cite).
 export type Cite = (n: number) => ReactNode;
 
-// inline renders `code`, **bold**, *italic* / _italic_, ~~strike~~ and [links](https://…);
+// inline renders ![pictures](/api/v1/recordings/…) of notes, `code`, **bold**, *italic* / _italic_, ~~strike~~ and [links](https://…);
 // with noteLinks, "#12" links to the user's note 12; with cite, "[2]" is rendered by it.
 export function inline(text: string, noteLinks = false, cite?: Cite): ReactNode[] {
-  const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|~~[^~]+~~|\[[^\]]+\]\([^)\s]+\)|\[\d{1,2}\](?!\()|\*[^*\s][^*]*\*|_[^_\s][^_]*_)/);
+  const parts = text.split(/(!\[[^\]]*\]\([^)\s]+\)|`[^`]+`|\*\*[^*]+\*\*|~~[^~]+~~|\[[^\]]+\]\([^)\s]+\)|\[\d{1,2}\](?!\()|\*[^*\s][^*]*\*|_[^_\s][^_]*_)/);
   const inl = (t: string) => inline(t, noteLinks, cite);
   return parts.map((part, i) => {
     const citation = /^\[(\d{1,2})\]$/.exec(part);
@@ -21,6 +26,8 @@ export function inline(text: string, noteLinks = false, cite?: Cite): ReactNode[
     if (part.length > 1 && part.startsWith('`') && part.endsWith('`')) return <code key={i}>{part.slice(1, -1)}</code>;
     if (part.length > 3 && part.startsWith('**') && part.endsWith('**')) return <strong key={i}>{inl(part.slice(2, -2))}</strong>;
     if (part.length > 3 && part.startsWith('~~') && part.endsWith('~~')) return <s key={i}>{inl(part.slice(2, -2))}</s>;
+    const image = /^!\[([^\]]*)\]\(([^)\s]+)\)$/.exec(part);
+    if (image) return safeImage(image[2]) ? <img key={i} src={image[2]} alt={image[1]} loading="lazy" /> : <Fragment key={i}>{image[1]}</Fragment>;
     const link = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(part);
     if (link) {
       const href = safeHref(link[2]);

@@ -2,6 +2,7 @@ import { Editor, Extension, Range } from '@tiptap/core';
 import { Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
+import Image from '@tiptap/extension-image';
 import { TaskItem, TaskList } from '@tiptap/extension-list';
 import { Placeholder } from '@tiptap/extensions';
 import { Markdown } from '@tiptap/markdown';
@@ -11,7 +12,8 @@ import StarterKit from '@tiptap/starter-kit';
 import Suggestion, { SuggestionKeyDownProps, SuggestionProps } from '@tiptap/suggestion';
 import { ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Recording } from '../api/client';
+import { api, Recording } from '../api/client';
+import { errorText } from '../lib/errors';
 import { matchNotes, NOTE_REF, noteByNumber } from '../lib/noteRefs';
 import { iconKind, title } from '../lib/recordings';
 import { NoteIcon } from './Icons';
@@ -40,6 +42,13 @@ function cleanMarkdown(md: string): string {
     .replace(/\n+&nbsp;(?=\n|$)/g, '')
     .replace(/^(&nbsp;\n+)+/, '')
     .trim();
+}
+
+// --- Images -------------------------------------------------------------------------------
+
+// imageFiles returns the pictures among the files of a paste or drop.
+function imageFiles(files: FileList | null | undefined): File[] {
+  return Array.from(files ?? []).filter((f) => /^image\/(jpeg|png|webp|gif)$/.test(f.type));
 }
 
 // --- Slash commands ----------------------------------------------------------------------
@@ -344,6 +353,13 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
   noteIdRef.current = noteId;
   const openNoteRef = useRef(onOpenNote);
   openNoteRef.current = onOpenNote;
+  const editableRef = useRef(!readOnly);
+  editableRef.current = !readOnly;
+  // Pictures pasted or dropped into the text are uploaded to the note; imagesRef is set once
+  // the editor exists, since the handlers below are created with it.
+  const [uploading, setUploading] = useState(0);
+  const [imageError, setImageError] = useState('');
+  const insertImagesRef = useRef<(files: File[], pos?: number) => void>(() => {});
 
   const editor = useEditor({
     extensions: [
@@ -355,6 +371,7 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
       TaskList,
       TaskItem.configure({ nested: true }),
       Placeholder.configure({ placeholder: t('editor.placeholder'), showOnlyCurrent: true }),
+      Image.configure({ allowBase64: false }),
       Markdown,
       slashCommands(slash.bridge, (id) => t(`editor.slash.${id}`)),
       noteLinks(noteMenu.bridge, { notes: () => notesRef.current, noteId: () => noteIdRef.current }, t('noteRefs.openHint', { key: /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : t('noteRefs.ctrl') })),
@@ -380,6 +397,22 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
           return false;
         },
       },
+      // A picture pasted (a screenshot, a copied image) or dropped (from the desktop) is
+      // uploaded and shown in the text. Text that comes with it (Word) is pasted as usual.
+      handlePaste: (_view, event) => {
+        const files = imageFiles(event.clipboardData?.files);
+        if (!files.length || !editableRef.current || event.clipboardData?.getData('text/plain')) return false;
+        event.preventDefault();
+        insertImagesRef.current(files);
+        return true;
+      },
+      handleDrop: (view, event) => {
+        const files = imageFiles(event.dataTransfer?.files);
+        if (!files.length || !editableRef.current) return false;
+        event.preventDefault();
+        insertImagesRef.current(files, view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos);
+        return true;
+      },
       handleKeyDown: (_view, event) => {
         if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
           event.preventDefault();
@@ -392,6 +425,30 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
     onCreate: ({ editor: e }) => onReady(() => cleanMarkdown(e.getMarkdown())),
     onUpdate: () => onChange(),
   });
+
+  insertImagesRef.current = (files, pos) => {
+    const id = noteIdRef.current;
+    if (!id) return;
+    setImageError('');
+    setUploading((n) => n + files.length);
+    void (async () => {
+      let at = pos;
+      for (const file of files) {
+        try {
+          const { url } = await api.uploadNoteImage(id, file);
+          if (editor.isDestroyed) return;
+          const chain = editor.chain().focus();
+          if (at !== undefined) chain.insertContentAt(Math.min(at, editor.state.doc.content.size), { type: 'image', attrs: { src: url, alt: '' } }).run();
+          else chain.setImage({ src: url, alt: '' }).run();
+          at = undefined; // further pictures go after the cursor
+        } catch (err) {
+          setImageError(t('editor.imageFailed', { detail: errorText(err, t) }));
+        } finally {
+          setUploading((n) => n - 1);
+        }
+      }
+    })();
+  };
 
   // The owner can make a note editable or read-only for the user while it is open.
   useEffect(() => {
@@ -459,6 +516,12 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
         </BubbleButton>
       </BubbleMenu>
       <EditorContent editor={editor} />
+      {uploading > 0 && <p className="editor-status">{t('editor.imageUploading')}</p>}
+      {imageError && (
+        <p className="editor-status error" role="alert">
+          {imageError}
+        </p>
+      )}
       {slash.state && <SlashMenu state={slash.state} onHover={slash.hover} />}
       {noteMenu.state && <NoteMenu state={noteMenu.state} onHover={noteMenu.hover} />}
     </div>

@@ -403,6 +403,8 @@ export const de: Translation = {
     quote: 'Zitat',
     link: 'Link',
     linkPrompt: 'Linkadresse (leer lassen, um den Link zu entfernen):',
+    imageFailed: 'Das Bild konnte nicht hinzugefügt werden: {{detail}}',
+    imageUploading: 'Bild wird hinzugefügt …',
     placeholder: 'Tippe / für Befehle',
     slash: {
       label: 'Block einfügen',

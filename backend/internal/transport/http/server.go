@@ -277,6 +277,8 @@ func (s *Server) Router() http.Handler {
 			u.Post("/recordings/{id}/restore", s.handleRestoreRecording)
 			u.Get("/recordings/{id}/audio", s.handleRecordingAudio)
 			u.Get("/recordings/{id}/file", s.handleRecordingFile)
+			u.Post("/recordings/{id}/images", s.handleAddImage)
+			u.Get("/recordings/{id}/images/{imageId}", s.handleGetImage)
 			u.Post("/recordings/{id}/retranscribe", s.handleRetranscribe)
 			u.Post("/recordings/{id}/resummarize", s.handleResummarize)
 			u.Put("/recordings/{id}/summary", s.handleEditSummary)

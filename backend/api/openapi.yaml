@@ -1229,6 +1229,57 @@ paths:
           description: Not stored yet, or the note is not a document
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
+  /recordings/{recordingId}/images:
+    post:
+      tags: ["Recordings"]
+      summary: Add a picture to a note's text
+      description: |
+        Stores a picture (JPEG, PNG, WebP or GIF, up to 10 MB) sent as the request body, for
+        showing in the note's Markdown text. Refer to it with `![](url)` using the returned
+        `url`. The web app calls this when a picture is pasted or dropped into the editor.
+        Needs an editor of the note; the note's revision doesn't change. Pictures are deleted
+        with the note.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          image/*:
+            schema: { type: string, format: binary }
+      responses:
+        "201":
+          description: Stored
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, url]
+                properties:
+                  id: { type: string }
+                  url: { type: string, description: 'Path of the picture, e.g. /api/v1/recordings/{id}/images/{imageId}' }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+        "415": { $ref: "#/components/responses/Error" }
+
+  /recordings/{recordingId}/images/{imageId}:
+    get:
+      tags: ["Recordings"]
+      summary: Show a picture of a note's text
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+        - { name: imageId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The picture
+          content:
+            image/*:
+              schema: { type: string, format: binary }
+        "404": { $ref: "#/components/responses/Error" }
+
   /recordings/{recordingId}/restore:
     post:
       tags: ["Recordings"]

@@ -2026,6 +2026,30 @@ a {
   outline: none;
 }
 
+.editor-content img,
+.prose img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  margin: 0.5rem 0;
+}
+
+.editor-content img.ProseMirror-selectednode {
+  outline: 2px solid var(--color-primary, #4f7cff);
+}
+
+.editor-status {
+  margin: 0.25rem 1rem 0.75rem;
+  font-size: 0.85rem;
+  opacity: 0.75;
+}
+
+.editor-status.error {
+  color: var(--color-error);
+  opacity: 1;
+}
+
 .editor-content p {
   margin: 0 0 0.75rem;
 }

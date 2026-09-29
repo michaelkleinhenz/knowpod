@@ -703,3 +703,44 @@ func TestFolderOrder(t *testing.T) {
 		t.Fatalf("moved folder kept position %d", movedFolder.Position)
 	}
 }
+
+func TestNoteImages(t *testing.T) {
+	f := newAPIFixture(t)
+	admin := f.signedIn(adminEmail, adminPassword)
+
+	var note recording.Recording
+	admin.do("POST", "/api/v1/recordings/text", map[string]string{"title": "Pics", "markdown": ""}, nil, &note)
+	path := "/api/v1/recordings/" + note.ID
+
+	png := append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 100)...)
+	var img struct{ ID, URL string }
+	if res := admin.do("POST", path+"/images", png, map[string]string{"Content-Type": "image/png"}, &img); res.StatusCode != 201 ||
+		img.ID == "" || img.URL != path+"/images/"+img.ID {
+		t.Fatalf("add: %d %+v", res.StatusCode, img)
+	}
+	var body []byte
+	res := admin.do("GET", img.URL, nil, nil, &body)
+	if res.StatusCode != 200 || len(body) != len(png) || res.Header.Get("Content-Type") != "image/png" {
+		t.Fatalf("get: %d, %d bytes, %s", res.StatusCode, len(body), res.Header.Get("Content-Type"))
+	}
+	if res := admin.do("GET", path+"/images/nope", nil, nil, nil); res.StatusCode != 404 {
+		t.Fatalf("unknown image: %d", res.StatusCode)
+	}
+
+	// Only pictures are accepted.
+	var e errResponse
+	if res := admin.do("POST", path+"/images", []byte("%PDF-1.4 hello"), nil, &e); res.StatusCode != 415 {
+		t.Fatalf("pdf: %d %+v", res.StatusCode, e)
+	}
+	if res := admin.do("POST", path+"/images", []byte{}, nil, &e); res.StatusCode != 400 {
+		t.Fatalf("empty: %d %+v", res.StatusCode, e)
+	}
+
+	// Other users can't read it; deleting the note deletes it.
+	if res := admin.do("DELETE", path+"?permanent=1", nil, nil, nil); res.StatusCode != 204 {
+		t.Fatalf("delete: %d", res.StatusCode)
+	}
+	if res := admin.do("GET", img.URL, nil, nil, nil); res.StatusCode != 404 {
+		t.Fatalf("image of a deleted note: %d", res.StatusCode)
+	}
+}

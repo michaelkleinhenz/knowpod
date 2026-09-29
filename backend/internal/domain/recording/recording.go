@@ -116,6 +116,9 @@ type Recording struct {
 	Original          *Object    `bson:"original,omitempty" json:"original,omitempty"` // archived WAV, if kept; a document's files
 	// File is a document's viewable file: a PDF (notebooks are rendered to one) or EPUB.
 	File *Object `bson:"file,omitempty" json:"file,omitempty"`
+	// Images are the pictures pasted or dropped into the note's text; the text refers to them
+	// by their URL (see ImageID).
+	Images []Object `bson:"images,omitempty" json:"-"`
 	// Pages is the number of pages of a document.
 	Pages int `bson:"pages,omitempty" json:"pages,omitempty"`
 	// SourceRevision identifies the version of a document that was imported; a pull

@@ -111,6 +111,28 @@ func (s *Server) handleRecordingFile(w http.ResponseWriter, r *http.Request) {
 	s.streamObject(w, r, rec.File, fileName(rec, "document", strings.TrimPrefix(path.Ext(rec.File.Key), ".")))
 }
 
+// handleAddImage stores a picture pasted or dropped into a note's text, sent as the raw
+// request body, and returns the URL to refer to it by.
+func (s *Server) handleAddImage(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	imgID, err := s.actions.AddImage(r.Context(), accountFrom(r.Context()), id, http.MaxBytesReader(w, r.Body, 16<<20))
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]string{"id": imgID, "url": "/api/v1/recordings/" + url.PathEscape(id) + "/images/" + imgID})
+}
+
+// handleGetImage streams a picture of a note's text.
+func (s *Server) handleGetImage(w http.ResponseWriter, r *http.Request) {
+	obj, err := s.actions.Image(r.Context(), accountFrom(r.Context()), chi.URLParam(r, "id"), chi.URLParam(r, "imageId"))
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	s.streamObject(w, r, obj, "image"+path.Ext(obj.Key))
+}
+
 // streamObject sends a stored file, or the byte range asked for. ?download=1 sends it as an
 // attachment.
 func (s *Server) streamObject(w http.ResponseWriter, r *http.Request, obj *recording.Object, name string) {

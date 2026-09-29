@@ -401,6 +401,8 @@ export const en = {
     quote: 'Quote',
     link: 'Link',
     linkPrompt: 'Link address (leave empty to remove the link):',
+    imageFailed: 'The image could not be added: {{detail}}',
+    imageUploading: 'Adding image…',
     placeholder: 'Type / for commands',
     slash: {
       label: 'Insert block',

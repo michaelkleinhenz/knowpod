@@ -556,6 +556,25 @@ export interface UploadOptions {
   highlights?: number[];
 }
 
+// uploadNoteImage stores a picture for a note's text and returns the URL to show it from.
+async function uploadNoteImage(noteId: string, file: Blob): Promise<{ id: string; url: string }> {
+  const res = await fetch(`/api/v1/recordings/${encodeURIComponent(noteId)}/images`, {
+    method: 'POST',
+    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+    credentials: 'same-origin',
+    body: file,
+  });
+  const text = await res.text();
+  let data: { error?: string; code?: string; id?: string; url?: string } | null = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    // fall through
+  }
+  if (!res.ok || !data?.url) throw new ApiError(res.status, data?.error || `Error ${res.status}`, data?.code);
+  return { id: data.id ?? '', url: data.url };
+}
+
 // uploadRecording sends a file (audio, a photo or a PDF) as the request body and reports
 // progress (0..1). It uses XMLHttpRequest because fetch can't report upload progress.
 function uploadRecording(file: File, onProgress: (fraction: number) => void, opts: UploadOptions = {}): Promise<Recording> {
@@ -702,6 +721,7 @@ export const api = {
   audioURL: (id: string, download = false) => `/api/v1/recordings/${encodeURIComponent(id)}/audio${download ? '?download=1' : ''}`,
   fileURL: (id: string, download = false) => `/api/v1/recordings/${encodeURIComponent(id)}/file${download ? '?download=1' : ''}`,
   uploadRecording,
+  uploadNoteImage,
   users: () => request<User[]>('GET', '/admin/users'),
   createUser: (u: { email: string; password: string; role: Role }) => request<User>('POST', '/admin/users', u),
   updateUser: (id: string, u: { email?: string; role?: Role }) => request<User>('PUT', `/admin/users/${encodeURIComponent(id)}`, u),
