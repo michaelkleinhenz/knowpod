@@ -1,4 +1,5 @@
 import { Fragment, ReactNode } from 'react';
+import { imageWidth } from '../lib/imageWidth';
 import { NOTE_REF } from '../lib/noteRefs';
 import { NoteRef } from './NoteRef';
 
@@ -9,7 +10,7 @@ function safeHref(url: string): string | null {
 
 // safeImage allows only the pictures stored with notes, so Markdown can't load other sites.
 function safeImage(url: string): boolean {
-  return /^\/api\/v1\/recordings\/[\w-]+\/images\/[\w-]+$/.test(url);
+  return /^\/api\/v1\/recordings\/[\w-]+\/images\/[\w-]+(#w=\d{1,5})?$/.test(url);
 }
 
 // Cite renders a citation such as "[2]" (see Markdown's cite).
@@ -27,7 +28,7 @@ export function inline(text: string, noteLinks = false, cite?: Cite): ReactNode[
     if (part.length > 3 && part.startsWith('**') && part.endsWith('**')) return <strong key={i}>{inl(part.slice(2, -2))}</strong>;
     if (part.length > 3 && part.startsWith('~~') && part.endsWith('~~')) return <s key={i}>{inl(part.slice(2, -2))}</s>;
     const image = /^!\[([^\]]*)\]\(([^)\s]+)\)$/.exec(part);
-    if (image) return safeImage(image[2]) ? <img key={i} src={image[2]} alt={image[1]} loading="lazy" /> : <Fragment key={i}>{image[1]}</Fragment>;
+    if (image) return safeImage(image[2]) ? <img key={i} src={image[2]} alt={image[1]} width={imageWidth(image[2])} loading="lazy" /> : <Fragment key={i}>{image[1]}</Fragment>;
     const link = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(part);
     if (link) {
       const href = safeHref(link[2]);

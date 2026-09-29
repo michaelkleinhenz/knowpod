@@ -13,6 +13,7 @@ import Suggestion, { SuggestionKeyDownProps, SuggestionProps } from '@tiptap/sug
 import { ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, Recording } from '../api/client';
+import { imageWidth, MIN_IMAGE_WIDTH, withImageWidth } from '../lib/imageWidth';
 import { errorText } from '../lib/errors';
 import { matchNotes, NOTE_REF, noteByNumber } from '../lib/noteRefs';
 import { iconKind, title } from '../lib/recordings';
@@ -45,6 +46,63 @@ function cleanMarkdown(md: string): string {
 }
 
 // --- Images -------------------------------------------------------------------------------
+
+// ResizableImage is the picture node with a handle in its bottom-right corner to drag it to
+// another width; the width is stored in the src (see lib/imageWidth).
+const ResizableImage = Image.extend({
+  addNodeView() {
+    return ({ node: initial, editor, getPos }) => {
+      let node = initial;
+      const dom = document.createElement('div');
+      dom.className = 'img-resize';
+      const img = document.createElement('img');
+      const handle = document.createElement('span');
+      handle.className = 'img-resize-handle';
+      dom.append(img, handle);
+      const apply = () => {
+        img.src = node.attrs.src;
+        img.alt = node.attrs.alt ?? '';
+        const w = imageWidth(node.attrs.src);
+        img.style.width = w ? `${w}px` : '';
+        handle.style.display = editor.isEditable ? '' : 'none';
+      };
+      apply();
+      handle.addEventListener('pointerdown', (down) => {
+        if (!editor.isEditable) return;
+        down.preventDefault();
+        down.stopPropagation();
+        const startX = down.clientX;
+        const startWidth = img.getBoundingClientRect().width;
+        const max = dom.parentElement?.clientWidth ?? Infinity;
+        let width = startWidth;
+        const move = (e: PointerEvent) => {
+          width = Math.min(max, Math.max(MIN_IMAGE_WIDTH, startWidth + e.clientX - startX));
+          img.style.width = `${width}px`;
+        };
+        const up = () => {
+          window.removeEventListener('pointermove', move);
+          window.removeEventListener('pointerup', up);
+          const pos = getPos();
+          if (pos === undefined || width === startWidth) return;
+          editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, src: withImageWidth(node.attrs.src, width) }));
+        };
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', up);
+      });
+      return {
+        dom,
+        update(n) {
+          if (n.type !== node.type) return false;
+          node = n;
+          apply();
+          return true;
+        },
+        stopEvent: (e) => e.target === handle,
+        ignoreMutation: () => true,
+      };
+    };
+  },
+});
 
 // imageFiles returns the pictures among the files of a paste or drop.
 function imageFiles(files: FileList | null | undefined): File[] {
@@ -371,7 +429,7 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
       TaskList,
       TaskItem.configure({ nested: true }),
       Placeholder.configure({ placeholder: t('editor.placeholder'), showOnlyCurrent: true }),
-      Image.configure({ allowBase64: false }),
+      ResizableImage.configure({ allowBase64: false }),
       Markdown,
       slashCommands(slash.bridge, (id) => t(`editor.slash.${id}`)),
       noteLinks(noteMenu.bridge, { notes: () => notesRef.current, noteId: () => noteIdRef.current }, t('noteRefs.openHint', { key: /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : t('noteRefs.ctrl') })),
