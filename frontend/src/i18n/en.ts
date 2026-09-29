@@ -115,6 +115,9 @@ export const en = {
     resizeSidebar: 'Resize the list (drag, or use the arrow keys; double-click to reset)',
   },
   tasks: {
+    reporter: 'Reporter',
+    assignee: 'Assignee',
+    unassigned: 'Unassigned',
     setDate: 'Date',
     pickerTitle: 'Date and priority',
     typeDate: 'Type a date',
@@ -401,6 +404,8 @@ export const en = {
     quote: 'Quote',
     link: 'Link',
     linkPrompt: 'Link address (leave empty to remove the link):',
+    imageFailed: 'The image could not be added: {{detail}}',
+    imageUploading: 'Adding image…',
     placeholder: 'Type / for commands',
     slash: {
       label: 'Insert block',
@@ -592,6 +597,7 @@ export const en = {
       missingTerm: 'Something is missing after an operator (at {{at}}).',
       badDate: 'Unknown date at {{at}}: use today, tomorrow, week, month, overdue, none or 2026-10-01.',
       badType: 'Unknown type at {{at}}: use text, audio, document or board.',
+      badPerson: 'Unknown person at {{at}}: use me (or none for assignee).',
       badPriority: 'Unknown priority at {{at}}: use 1, 2, 3 or none.',
     },
     help: {
@@ -605,6 +611,7 @@ export const en = {
       dueSome: 'Tasks without a date, with any date, or on a day',
       dueCompare: 'Tasks due before or after a day',
       flags: 'Checked off, tasks, repeating, with an estimate',
+      people: 'Tasks assigned to you, unassigned, or made by you',
       priority: 'Tasks with this priority, or without one',
       type: 'Items of this kind',
       combine: 'And (& or a space), or (|), not (!), grouped with parentheses',

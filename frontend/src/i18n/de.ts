@@ -117,6 +117,9 @@ export const de: Translation = {
     resizeSidebar: 'Breite der Liste ändern (ziehen oder Pfeiltasten; Doppelklick setzt zurück)',
   },
   tasks: {
+    reporter: 'Melder',
+    assignee: 'Bearbeiter',
+    unassigned: 'Nicht zugewiesen',
     setDate: 'Datum',
     pickerTitle: 'Datum und Priorität',
     typeDate: 'Datum eingeben',
@@ -403,6 +406,8 @@ export const de: Translation = {
     quote: 'Zitat',
     link: 'Link',
     linkPrompt: 'Linkadresse (leer lassen, um den Link zu entfernen):',
+    imageFailed: 'Das Bild konnte nicht hinzugefügt werden: {{detail}}',
+    imageUploading: 'Bild wird hinzugefügt …',
     placeholder: 'Tippe / für Befehle',
     slash: {
       label: 'Block einfügen',
@@ -594,6 +599,7 @@ export const de: Translation = {
       missingTerm: 'Nach einem Operator fehlt etwas (bei {{at}}).',
       badDate: 'Unbekanntes Datum bei {{at}}: today, tomorrow, week, month, overdue, none oder 2026-10-01.',
       badType: 'Unbekannte Art bei {{at}}: text, audio, document oder board.',
+      badPerson: 'Unbekannte Person bei {{at}}: me (bei assignee auch none).',
       badPriority: 'Unbekannte Priorität bei {{at}}: 1, 2, 3 oder none.',
     },
     help: {
@@ -607,6 +613,7 @@ export const de: Translation = {
       dueSome: 'Aufgaben ohne Datum, mit Datum oder an einem Tag',
       dueCompare: 'Aufgaben fällig vor oder nach einem Tag',
       flags: 'Abgehakt, Aufgaben, wiederkehrend, mit Schätzung',
+      people: 'Aufgaben, die dir zugewiesen sind, nicht zugewiesen oder von dir erstellt',
       priority: 'Aufgaben mit dieser Priorität oder ohne',
       type: 'Einträge dieser Art',
       combine: 'Und (& oder ein Leerzeichen), oder (|), nicht (!), gruppiert mit Klammern',

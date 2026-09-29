@@ -368,10 +368,13 @@ func (m *Recordings) RemoveMember(_ context.Context, userID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, r := range m.recs {
-		if r.Member(userID) == nil && r.Share(userID) == nil {
+		if r.Member(userID) == nil && r.Share(userID) == nil && r.AssigneeID != userID {
 			continue
 		}
 		r = clone(&r)
+		if r.AssigneeID == userID {
+			r.AssigneeID = ""
+		}
 		r.Members = slices.DeleteFunc(r.Members, func(x recording.Member) bool { return x.UserID == userID })
 		r.Shares = slices.DeleteFunc(r.Shares, func(x recording.Share) bool { return x.UserID == userID })
 		m.bumped(r)

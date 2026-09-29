@@ -204,7 +204,11 @@ func (s *RecordingService) PurgeTrash(ctx context.Context) (int, error) {
 }
 
 func (s *RecordingService) delete(ctx context.Context, rec *recording.Recording) error {
-	for _, obj := range []*recording.Object{rec.Audio, rec.Original, rec.File} {
+	objs := []*recording.Object{rec.Audio, rec.Original, rec.File}
+	for i := range rec.Images {
+		objs = append(objs, &rec.Images[i])
+	}
+	for _, obj := range objs {
 		if obj != nil {
 			if err := s.objects.Delete(ctx, obj.Key); err != nil && !errors.Is(err, ErrNotFound) {
 				return err

@@ -395,6 +395,8 @@ export interface Recording {
   // A task's due date and priority, and when its next reminder is sent.
   due?: Due;
   priority?: Priority;
+  // assigneeId is the user a task is assigned to (the owner or someone the note is shared with).
+  assigneeId?: string;
   remindAt?: string;
   // How many minutes a task is expected to take, and the time logged on it.
   estimate?: number;
@@ -505,6 +507,8 @@ export interface Sharing {
   owner: ShareUser;
   members: ShareUser[];
   access: ShareAccess;
+  // reporter is the user who made the note (notes only).
+  reporter?: ShareUser;
 }
 
 // NoteEvent is a change of a note the user sees, sent over GET /me/events.
@@ -554,6 +558,25 @@ export interface UploadOptions {
   recorder?: boolean;
   recordedAt?: Date;
   highlights?: number[];
+}
+
+// uploadNoteImage stores a picture for a note's text and returns the URL to show it from.
+async function uploadNoteImage(noteId: string, file: Blob): Promise<{ id: string; url: string }> {
+  const res = await fetch(`/api/v1/recordings/${encodeURIComponent(noteId)}/images`, {
+    method: 'POST',
+    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+    credentials: 'same-origin',
+    body: file,
+  });
+  const text = await res.text();
+  let data: { error?: string; code?: string; id?: string; url?: string } | null = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    // fall through
+  }
+  if (!res.ok || !data?.url) throw new ApiError(res.status, data?.error || `Error ${res.status}`, data?.code);
+  return { id: data.id ?? '', url: data.url };
 }
 
 // uploadRecording sends a file (audio, a photo or a PDF) as the request body and reports
@@ -645,6 +668,7 @@ export const api = {
   setNoteDone: (id: string, done: boolean, final = false) =>
     request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/done`, final ? { done, final } : { done }),
   setNoteDue: (id: string, due: Due | null) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/due`, { due }),
+  setNoteAssignee: (id: string, assigneeId: string) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/assignee`, { assigneeId }),
   setNotePriority: (id: string, priority: Priority) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/priority`, { priority }),
   setNoteEstimate: (id: string, minutes: number) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/estimate`, { minutes }),
   filters: () => request<SavedFilter[]>('GET', '/filters'),
@@ -702,6 +726,7 @@ export const api = {
   audioURL: (id: string, download = false) => `/api/v1/recordings/${encodeURIComponent(id)}/audio${download ? '?download=1' : ''}`,
   fileURL: (id: string, download = false) => `/api/v1/recordings/${encodeURIComponent(id)}/file${download ? '?download=1' : ''}`,
   uploadRecording,
+  uploadNoteImage,
   users: () => request<User[]>('GET', '/admin/users'),
   createUser: (u: { email: string; password: string; role: Role }) => request<User>('POST', '/admin/users', u),
   updateUser: (id: string, u: { email?: string; role?: Role }) => request<User>('PUT', `/admin/users/${encodeURIComponent(id)}`, u),

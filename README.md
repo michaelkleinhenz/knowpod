@@ -13,7 +13,7 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
 ## What it does
 
 - **Notes of every kind.** Markdown text notes, transcribed and summarized recordings,
-  imported documents, photos and kanban boards, organized in folders, sub-notes and labels,
+  imported documents, photos and kanban boards (paste or drop pictures right into a note's text), organized in folders, sub-notes and labels,
   linked to each other by number, searchable, and available offline.
 - **Ask your notes.** Questions in your own words ("What did Anna say about the Q3
   budget?") are answered by AI from your notes, transcripts and documents, citing the notes

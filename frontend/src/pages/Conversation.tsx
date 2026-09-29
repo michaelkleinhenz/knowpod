@@ -9,10 +9,11 @@ import { BackIcon, CalendarIcon, CopyIcon, DownloadIcon, NewNoteIcon, Retranscri
 import { inline, Markdown } from '../components/Markdown';
 import { NoteDone, NoteLabels } from '../components/Labels';
 import { ActionItems } from '../components/ActionItems';
-import { PriorityFlag, TaskControls } from '../components/TaskControls';
+import { PriorityFlag, TaskControls, TaskPeople } from '../components/TaskControls';
 import { TimeControls } from '../components/TimeControls';
 import { useTaskParse } from '../lib/useTaskParse';
 import { formatDue, formatRepeat } from '../lib/tasks';
+import { isTask } from '../lib/labels';
 import { MoveToFolder } from '../components/MoveToFolder';
 import { ShareNote } from '../components/ShareNote';
 import { SubNotes } from '../components/SubNotes';
@@ -765,6 +766,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart,
             <fieldset className="note-aside-task view-only-fieldset" disabled={readOnly}>
               <NoteDone rec={rec} setRec={setRec} finish />
               <TaskControls rec={rec} setRec={setRec} />
+              {isTask(rec) && <TaskPeople rec={rec} setRec={setRec} />}
             </fieldset>
           </section>
           <section>

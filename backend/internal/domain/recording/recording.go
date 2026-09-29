@@ -116,6 +116,9 @@ type Recording struct {
 	Original          *Object    `bson:"original,omitempty" json:"original,omitempty"` // archived WAV, if kept; a document's files
 	// File is a document's viewable file: a PDF (notebooks are rendered to one) or EPUB.
 	File *Object `bson:"file,omitempty" json:"file,omitempty"`
+	// Images are the pictures pasted or dropped into the note's text; the text refers to them
+	// by their URL (see ImageID).
+	Images []Object `bson:"images,omitempty" json:"-"`
 	// Pages is the number of pages of a document.
 	Pages int `bson:"pages,omitempty" json:"pages,omitempty"`
 	// SourceRevision identifies the version of a document that was imported; a pull
@@ -131,6 +134,9 @@ type Recording struct {
 	// Due is when a task is due; Priority ranks it. Both belong to notes labeled as a task.
 	Due      *Due     `bson:"due,omitempty" json:"due,omitempty"`
 	Priority Priority `bson:"priority,omitempty" json:"priority,omitempty"`
+	// AssigneeID is the user a task is assigned to: its owner or one of its members. Empty
+	// is unassigned.
+	AssigneeID string `bson:"assigneeId,omitempty" json:"assigneeId,omitempty"`
 	// RemindAt is when the task's next reminder is sent; nil when none is pending (no
 	// reminder, done, or already sent).
 	RemindAt *time.Time `bson:"remindAt,omitempty" json:"remindAt,omitempty"`
@@ -237,7 +243,7 @@ func (r *Recording) IsBoard() bool { return r.Type == TypeBoard }
 // long-held copy doesn't undo them.
 func (r *Recording) KeepUserFields(stored *Recording) {
 	r.Labels, r.Done, r.DoneAt, r.FolderID, r.ParentID, r.Number = stored.Labels, stored.Done, stored.DoneAt, stored.FolderID, stored.ParentID, stored.Number
-	r.Due, r.Priority, r.RemindAt = stored.Due, stored.Priority, stored.RemindAt
+	r.Due, r.Priority, r.RemindAt, r.AssigneeID = stored.Due, stored.Priority, stored.RemindAt, stored.AssigneeID
 	r.Estimate, r.TrackedSeconds = stored.Estimate, stored.TrackedSeconds
 	r.Position, r.DeletedAt = stored.Position, stored.DeletedAt
 	r.Shares, r.Members, r.CreatedBy = stored.Shares, stored.Members, stored.CreatedBy

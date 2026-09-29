@@ -5,7 +5,8 @@
 // Terms: words (found in the title, "quoted" for phrases or keywords), #12 (note number),
 // label:Name or @Name, folder:Name (and the folders in it), due:today|tomorrow|overdue|week
 // |month|none|any|2026-10-01, due<2026-10-01 (also <=, >, >= with a date, today, tomorrow or
-// yesterday), done, task, p1-p3 (priority:none for none), repeat, estimate, type:text|audio|
+// yesterday), assignee:me|none and reporter:me (tasks assigned to, or made by, the signed-in
+// user), done, task, p1-p3 (priority:none for none), repeat, estimate, type:text|audio|
 // document|board, and today, tomorrow, overdue on their own. They combine with & (or just a
 // space), | and !, grouped with parentheses; & binds tighter than |.
 import type { Folder, Label, Recording } from '../api/client';
@@ -20,6 +21,8 @@ export interface FilterContext {
   folders: Folder[];
   // notes lets sub-notes count as in their parent's folder.
   notes?: Recording[];
+  // userId is the signed-in user, for assignee:me and reporter:me.
+  userId?: string;
   now?: Date;
 }
 
@@ -227,6 +230,13 @@ class Compiler {
           if (v === 'none' || v === '0') return (r) => !r.priority;
           if (!/^[123]$/.test(v)) throw new FilterSyntaxError('badPriority', at);
           return (r) => r.priority === Number(v);
+        case 'assignee':
+          if (v === 'none') return (r) => !r.assigneeId;
+          if (v !== 'me') throw new FilterSyntaxError('badPerson', at);
+          return (r) => !!this.ctx.userId && r.assigneeId === this.ctx.userId;
+        case 'reporter':
+          if (v !== 'me') throw new FilterSyntaxError('badPerson', at);
+          return (r) => !!this.ctx.userId && (r.createdBy || r.ownerId) === this.ctx.userId;
         case 'text':
         case 'title':
           return has(value);

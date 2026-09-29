@@ -133,3 +133,57 @@ func TestSharingAFolderOverTheAPI(t *testing.T) {
 		t.Fatalf("bob's notes after leaving: %+v", list)
 	}
 }
+
+func TestTaskAssignee(t *testing.T) {
+	f := newAPIFixture(t)
+	admin := f.signedIn(adminEmail, adminPassword)
+	var bobUser struct{ ID string }
+	admin.do("POST", "/api/v1/admin/users", map[string]string{"email": "bob@example.com", "password": "bob-password"}, nil, &bobUser)
+	admin.do("POST", "/api/v1/admin/users", map[string]string{"email": "carol@example.com", "password": "carol-password"}, nil, nil)
+	bob := f.signedIn("bob@example.com", "bob-password")
+
+	var note recording.Recording
+	admin.do("POST", "/api/v1/recordings/text", map[string]any{"title": "Call Anna", "markdown": ""}, nil, &note)
+	path := "/api/v1/recordings/" + note.ID
+	admin.do("POST", path+"/shares", map[string]string{"email": "bob@example.com", "role": "editor"}, nil, nil)
+
+	// Only tasks can be assigned.
+	var e errResponse
+	if res := admin.do("PUT", path+"/assignee", map[string]string{"assigneeId": bobUser.ID}, nil, &e); res.StatusCode != 400 {
+		t.Fatalf("assign a plain note: %d %+v", res.StatusCode, e)
+	}
+	admin.do("PUT", path+"/priority", map[string]int{"priority": 1}, nil, nil)
+
+	// The creator is the reporter; a user the note is shared with can be assigned, by any editor.
+	var sharing service.Sharing
+	bob.do("GET", path+"/shares", nil, nil, &sharing)
+	if sharing.Reporter == nil || sharing.Reporter.Email != adminEmail {
+		t.Fatalf("reporter: %+v", sharing.Reporter)
+	}
+	var task recording.Recording
+	if res := bob.do("PUT", path+"/assignee", map[string]string{"assigneeId": bobUser.ID}, nil, &task); res.StatusCode != 200 || task.AssigneeID != bobUser.ID {
+		t.Fatalf("assign: %d %+v", res.StatusCode, task.AssigneeID)
+	}
+	// Not to someone without access.
+	var carol struct{ ID string }
+	var users []struct{ ID, Email string }
+	admin.do("GET", "/api/v1/admin/users", nil, nil, &users)
+	for _, u := range users {
+		if u.Email == "carol@example.com" {
+			carol.ID = u.ID
+		}
+	}
+	if res := admin.do("PUT", path+"/assignee", map[string]string{"assigneeId": carol.ID}, nil, &e); res.StatusCode != 400 {
+		t.Fatalf("assign to carol: %d %+v", res.StatusCode, e)
+	}
+
+	// Unsharing unassigns.
+	if res := admin.do("DELETE", path+"/shares/"+bobUser.ID, nil, nil, nil); res.StatusCode != 200 {
+		t.Fatalf("unshare: %d", res.StatusCode)
+	}
+	var after recording.Recording
+	admin.do("GET", path, nil, nil, &after)
+	if after.AssigneeID != "" {
+		t.Fatalf("assignee after unsharing: %q", after.AssigneeID)
+	}
+}
