@@ -410,6 +410,8 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
       // A folder shared with the user is its owner's to change; editors add notes to it.
       const own = (f.access ?? 'owner') === 'owner';
       const canAdd = own || f.access === 'editor';
+      // Folders shared with the user can still be filed in the user's own tree.
+      const canMove = own || !!f.movable;
       return (
         <li key={f.id} className="tree-folder">
           {renaming ? (
@@ -418,7 +420,7 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
             <div
               className={`tree-row${dropClass(dropTarget, f.id)}`}
               data-folder={f.id}
-              draggable={own}
+              draggable={canMove}
               onDragStart={(e) => {
                 e.dataTransfer.setData(FOLDER_TYPE, f.id);
                 e.dataTransfer.effectAllowed = 'move';
@@ -438,7 +440,7 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
                 aria-expanded={isOpen}
                 onClick={() => openFolder(f)}
                 onKeyDown={
-                  own
+                  canMove
                     ? shiftKeys(
                         f,
                         () => children.get(f.parentId ?? '') ?? [],
