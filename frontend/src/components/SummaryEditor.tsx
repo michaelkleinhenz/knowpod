@@ -504,15 +504,16 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
     editorProps: {
       attributes: { class: 'prose editor-content', 'aria-label': t('editor.content') },
       handleDOMEvents: {
-        // Links and "#12" open on Ctrl/Cmd+click; a plain click places the cursor.
-        click: (_view, event) => {
+        // "#12" opens on Ctrl/Cmd+click; a plain click places the cursor. Links open on a click
+        // (unless text is being selected).
+        click: (view, event) => {
           const ref = (event.target as HTMLElement).closest<HTMLElement>('.note-ref');
           if (ref && (event.metaKey || event.ctrlKey) && openNoteRef.current) {
             openNoteRef.current(Number(ref.dataset.note));
             return true;
           }
           const a = (event.target as HTMLElement).closest('a');
-          if (a && (event.metaKey || event.ctrlKey)) {
+          if (a && (event.metaKey || event.ctrlKey || view.state.selection.empty)) {
             window.open(a.href, '_blank', 'noopener,noreferrer');
             return true;
           }
