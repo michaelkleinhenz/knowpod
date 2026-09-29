@@ -251,7 +251,8 @@ exchanges it for a user token (`/token/json/2/user/new`), and documents are
 content-addressed files below a root (`GET /sync/v4/root`, files at `/sync/v3/files/<hash>`
 with the file name in `rm-filename`). The root index lists every document and folder with
 the hash of its own index, which lists its files (`.metadata`, `.content`, `<page>.rm`,
-`.pdf`, …). Index schemas 3 and 4 are read. Nothing is ever written.
+`.pdf`, …). Index schemas 3 and 4 are read. The only writes are the copies of text notes
+(see **Sending text notes** below).
 
 A pull (`RemarkableService.Pull`, and `PullAll` on a ticker in `main.go`) keeps each
 user's link in `tablets`: the root hash and a cache of all items (name, parent, folder,
@@ -270,7 +271,31 @@ one of the same name in the same place; else a new one, numbered when the name i
 whose name and parent follow the cloud's, bounded by the folder depth and cycle-safe.
 Finished notes in one of the import's folders move with their documents; notes in
 processing are moved by a later pull, and notes the user moved elsewhere stay. Pulls and pairing for one user are serialized
-by an in-process lock.
+by an in-process lock. Every pull makes sure the reMarkable folder exists, even for an account
+without documents, and `FolderService.Delete` refuses to delete it while the user is paired
+(`remarkable: true` on it in folder lists). Imported notes are read-only: `EditSummary`
+refuses notes with `source: remarkable`.
+
+**Sending text notes** (`service/remarkable_push.go`, `remarkable/upload.go`,
+`remarkable/epub.go`). Text notes of the owner in the reMarkable folder or a folder inside it
+(not sub-notes, not in the trash) get a copy on the tablet: an EPUB (`remarkable.NoteEPUB`,
+the title as heading and the Markdown rendered as XHTML by goldmark with GFM; checklist
+boxes become ☐/☑; the same note always gives the same bytes). It goes into the cloud
+folder the knowpod folder mirrors (the nearest mirrored folder it is in; the top level for
+the reMarkable folder and folders made in knowpod). The note's `tablet` records the
+document ID and what was sent (revision, name, cloud folder); a note whose revision, title
+or folder differs, or whose last send failed, is sent again into the same document: its
+`.epub` and `.metadata` are replaced and its other files (what was written on it) kept, or
+a new document is made when it is gone from the cloud. A note that leaves these folders or
+goes into the trash has its document's parent set to `trash` (`tablet.removed`), and back
+when it returns. `Session.WriteDocuments` writes all of a user's changes as one change of
+the account: each file `PUT /sync/v3/files/<sha256>` (with `rm-filename` and a CRC32C
+`x-goog-hash`), the documents' indexes (schema 3), the root index (the schema read), then
+`PUT /sync/v3/root` with the generation read (`broadcast: true`); when another device
+changed the account meanwhile (412), it is read and written again. Sends run at the start
+of each pull and, through `NoteEvents.OwnerChanged` → `RemarkableService.Nudge`, 20 s after
+a user's notes stopped changing (at most 2 minutes after the first change); failures are
+kept in `tablet.error` and tried again. Pulls leave out documents that are a note's copy.
 
 Stages, dispatched by `source`/`type` in `main.go`:
 
@@ -763,6 +788,7 @@ implements the work.
 | `board` | A board's scope and columns (see **Boards** above) |
 | `file`, `pages` | A document's PDF or EPUB (S3 key, content type, size) and its page count |
 | `sourceRevision` | Content hash of the imported version of a reMarkable document |
+| `tablet` | A text note's copy on the owner's reMarkable: `documentId`, the `revision`, `name` and cloud `parent` sent last, `removed` (in the tablet's trash), `sentAt`, `error` |
 | `labels`, `done` | IDs of the note's labels (see below) and the check mark of a `task` note |
 | `estimate`, `trackedSeconds` | A task's estimate in minutes, and the time logged on the note (finished entries) |
 | `folderId` | The folder the note is in; absent at the top level |
@@ -857,8 +883,8 @@ reason MongoDB runs as a replica set). Nothing uses it yet.
 | `audio/*_test.go` | WAV parsing edge cases; FLAC output decodes to the exact input samples |
 | `service/themes_test.go`, `auth_test.go` | Themes (built-ins, own themes, isolation, fallback to Auto), summary prompts with theme/language/model, validation of summary options, language preference |
 | `service/*_test.go` | Users (built-in admin, create/update/delete with cascade, last-admin and self protection), per-user Pocket settings, browser uploads (formats, limits), ownership checks; upload protocol: chunks, idempotency, offsets, dropped connections, checksum reset, invalid audio, isolation between devices, purge; device tokens; sign-in with the default login, password change overriding it, session expiry and logout; transcription (FLAC chunks, passthrough, size limit), summaries and their parsing, OpenRouter settings and model filtering, delete/re-transcribe/re-summarize |
-| `remarkable/*_test.go` | Page files (v6 blocks, deleted items, erasers, highlighter colors; v5), typed text (insertions, concurrent inserts, deletions, formatting items, paragraph styles), index schemas, page order, PDF structure (cross-references, page size, title), PNG rendering, and the client against a fake cloud (`remarkabletest`): pairing, revoked tokens, file names, download limits |
-| `service/remarkable_test.go` | Pairing, all documents except trashed and deleted ones, the knowpod folder (created, reused, renamed, made again), mirrored cloud folders (created, renamed, moved, same names, cycles, depth, earlier imports) and notes moving with their documents, unchanged accounts costing two requests, rename vs. content change, notes in processing left alone, fetch and store of notebooks and PDFs, reading pages with a vision model, typed text (alone and next to handwriting), ignored document names, edited summaries kept |
+| `remarkable/*_test.go` | Page files (v6 blocks, deleted items, erasers, highlighter colors; v5), typed text (insertions, concurrent inserts, deletions, formatting items, paragraph styles), index schemas, page order, PDF structure (cross-references, page size, title), PNG rendering, and the client against a fake cloud (`remarkabletest`): pairing, revoked tokens, file names, download limits, writing documents (new, changed with the tablet's files kept, moved to the trash, made again when gone, redone after another device's change) and note EPUBs (well-formed, stable bytes, escaping, checklists) |
+| `service/remarkable_test.go` | Pairing, all documents except trashed and deleted ones, the knowpod folder (created, reused, renamed, made again), mirrored cloud folders (created, renamed, moved, same names, cycles, depth, earlier imports) and notes moving with their documents, unchanged accounts costing two requests, rename vs. content change, notes in processing left alone, fetch and store of notebooks and PDFs, reading pages with a vision model, typed text (alone and next to handwriting), ignored document names, edited summaries kept, sending text notes (folders, one root update, unchanged notes cost no requests, pulls leave copies out, edits, moves out and back, trash, documents deleted on the tablet, failures, nudges waiting for quiet), the reMarkable folder kept while paired |
 | `worker/worker_test.go` | Archive stage end to end, retry/backoff, permanent failure, recovery, disabled stages waiting |
 | `openrouter/*_test.go` | Request shape for audio, error handling, model list |
 | `audio/speech_test.go` | Speech chunks: count, duration, mono 16 kHz output |

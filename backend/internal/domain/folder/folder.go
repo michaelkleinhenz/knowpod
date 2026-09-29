@@ -26,9 +26,12 @@ type Folder struct {
 	// responses): "owner", or the role it is shared with them for.
 	Access recording.Role `bson:"-" json:"access,omitempty"`
 	// Shared says the folder, or one it is in, is shared with anyone (only in responses).
-	Shared    bool      `bson:"-" json:"shared,omitempty"`
-	CreatedAt time.Time `bson:"createdAt" json:"createdAt"`
-	UpdatedAt time.Time `bson:"updatedAt" json:"updatedAt"`
+	Shared bool `bson:"-" json:"shared,omitempty"`
+	// Remarkable says the folder is where the owner's paired reMarkable's documents are,
+	// so it can't be deleted (only in responses).
+	Remarkable bool      `bson:"-" json:"remarkable,omitempty"`
+	CreatedAt  time.Time `bson:"createdAt" json:"createdAt"`
+	UpdatedAt  time.Time `bson:"updatedAt" json:"updatedAt"`
 }
 
 // Share returns the folder's own share with a user, or nil.

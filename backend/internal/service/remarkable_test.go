@@ -24,6 +24,7 @@ type remarkableFixture struct {
 	recs    *memory.Recordings
 	folders *memory.Folders
 	objects *memstore.Store
+	links   *memory.TabletLinks
 	acc     *Account
 	queued  int
 }
@@ -36,8 +37,9 @@ func newRemarkableFixture(t *testing.T) *remarkableFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := &remarkableFixture{cloud: cloud, recs: memory.NewRecordings(), folders: memory.NewFolders(), objects: memstore.New(), acc: &Account{ID: "u1"}}
-	f.svc = NewRemarkableService(memory.NewTabletLinks(), f.recs, f.folders, f.objects, remarkable.NewClient(cloud.URL, cloud.URL),
+	f := &remarkableFixture{cloud: cloud, recs: memory.NewRecordings(), folders: memory.NewFolders(), objects: memstore.New(),
+		links: memory.NewTabletLinks(), acc: &Account{ID: "u1"}}
+	f.svc = NewRemarkableService(f.links, f.recs, f.folders, f.objects, remarkable.NewClient(cloud.URL, cloud.URL),
 		spool, 1<<20, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	f.svc.OnQueued = func() { f.queued++ }
 	return f
@@ -126,8 +128,9 @@ func TestRemarkablePullsAllDocumentsIntoTheFolder(t *testing.T) {
 	if v := f.pull(t); v.LastResult == nil || v.LastResult.Documents != 0 || v.LastResult.Imported != 0 {
 		t.Fatalf("empty account: %+v", v.LastResult)
 	}
-	if all, _ := f.folders.List(ctx, "u1"); len(all) != 0 {
-		t.Errorf("folder made without documents: %+v", all)
+	// The folder is there even without documents, for text notes to be sent from.
+	if all, _ := f.folders.List(ctx, "u1"); len(all) != 1 || all[0].Name != "reMarkable" {
+		t.Errorf("folder without documents: %+v", all)
 	}
 
 	f.cloud.Set(rt.Item{ID: "sub", Name: "Work", Folder: true})

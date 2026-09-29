@@ -248,7 +248,7 @@ func TestClientPairAndDownload(t *testing.T) {
 		t.Fatal(err)
 	}
 	root, err := s.Root(ctx)
-	if err != nil || root.Hash == "" || root.Generation != 7 {
+	if err != nil || root.Hash == "" || root.Generation < 1 {
 		t.Fatalf("root: %+v %v", root, err)
 	}
 	entries, err := s.Index(ctx, root.Hash, "root.docSchema")

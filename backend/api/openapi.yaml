@@ -28,7 +28,11 @@ info:
     imported as notes into the user's folder "reMarkable" (created when missing) (`type: document`) every few minutes or on `POST /me/remarkable/pull`,
     and imported again when they change. Handwritten notebooks are rendered to PDF; PDFs and
     EPUBs are kept as they are (`GET /recordings/{id}/file`). The text read from the pages
-    (handwriting and typed text) becomes the note's `transcript` and is summarized. Nothing is written to the cloud.
+    (handwriting and typed text) becomes the note's `transcript` and is summarized. These notes are read-only.
+    The other way, text notes put into the folder "reMarkable" (or a folder inside it) are sent to the tablet as
+    EPUBs shortly after they change, and follow the note's title, text and folder (`tablet` on the note); a note
+    that leaves the folder or goes into the trash has its copy put into the tablet's trash. Nothing else is written
+    to the cloud.
 
     **Text notes** — besides audio recordings, notes can be plain Markdown text written in the
     web UI (`POST /recordings/text`, `type: text`). They skip transcription and summaries.
@@ -451,7 +455,7 @@ paths:
       tags: ["Your account"]
       summary: Import new and changed documents now
       description: |
-        Reads all documents of the account (except the trash and ignored names) and queues new documents
+        Sends the changed text notes of the folder "reMarkable" to the tablet first. Then reads all documents of the account (except the trash and ignored names) and queues new documents
         and documents whose content changed. New notes go into the folder "reMarkable". Pulls also run automatically
         (`REMARKABLE_PULL_INTERVAL`, default 15 minutes).
       security: [{ sessionCookie: [] }]
@@ -664,10 +668,11 @@ paths:
     delete:
       tags: ["Folders"]
       summary: Delete a folder
-      description: The folder's notes and folders move up into the folder it was in; no note is deleted.
+      description: The folder's notes and folders move up into the folder it was in; no note is deleted. The folder of a paired reMarkable's documents (`remarkable`) can't be deleted.
       security: [{ sessionCookie: [] }, { adminToken: [] }]
       responses:
         "204": { description: Deleted }
+        "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
 
   /folders/{folderId}/shares:
@@ -2636,6 +2641,14 @@ components:
         parentId: { type: string, description: The note this one is a sub-note of; absent otherwise }
         position: { type: integer, description: Order among the notes in the same place, from 1 up; absent for unordered notes, which follow by title }
         board: { $ref: "#/components/schemas/Board" }
+        tablet:
+          type: object
+          description: A text note's copy on the owner's reMarkable (an EPUB of its title and text), sent while the note is in the reMarkable folder or a folder inside it. Absent for notes never sent.
+          properties:
+            documentId: { type: string, description: The document in the reMarkable cloud }
+            removed: { type: boolean, description: 'The copy is in the tablet''s trash, because the note left the reMarkable folder or went into the trash' }
+            sentAt: { type: string, format: date-time, description: When the copy was last written }
+            error: { type: string, description: Why the last send failed; it is tried again }
         access: { type: string, enum: [owner, editor, viewer], description: What you may do with the note }
         shared: { type: boolean, description: The note is shared with anyone; absent otherwise }
         createdBy: { type: string, description: 'The user who made the note, when it isn''t its owner (an editor of the note it is under)' }
@@ -2876,6 +2889,7 @@ components:
         position: { type: integer, description: Order among the folders in the same place, from 1 up; absent for unordered folders, which follow by name }
         access: { type: string, enum: [owner, editor, viewer], description: What you may do in the folder }
         shared: { type: boolean, description: The folder (or one it is in) is shared }
+        remarkable: { type: boolean, description: 'The folder of your paired reMarkable''s documents; it can''t be deleted while the reMarkable is paired' }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 

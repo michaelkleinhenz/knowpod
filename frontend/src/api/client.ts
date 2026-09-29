@@ -128,6 +128,8 @@ export interface Folder {
   access?: ShareAccess;
   // The folder, or one it is in, is shared.
   shared?: boolean;
+  // The folder of the paired reMarkable's documents; it can't be deleted while paired.
+  remarkable?: boolean;
 }
 
 export interface FolderInput {
@@ -187,6 +189,15 @@ export type RecordingStatus =
 // reMarkable cloud, whose text read from the pages is its transcript, or a kanban board of
 // other notes, whose title lives in summary.
 export type NoteType = 'audio' | 'text' | 'document' | 'board';
+
+// TabletCopy is a text note's EPUB copy on the owner's reMarkable.
+export interface TabletCopy {
+  documentId: string;
+  removed?: boolean;
+  sentAt?: string;
+  // Why the last send failed; it is tried again.
+  error?: string;
+}
 
 // BoardScope selects the notes a board shows: those in a folder (id '' is the top level),
 // with a label, or matching a saved filter. An empty kind shows none.
@@ -397,6 +408,9 @@ export interface Recording {
   position?: number;
   // A board's scope and columns.
   board?: Board;
+  // A text note's copy on the owner's reMarkable, sent while the note is in the
+  // reMarkable folder; removed once the note left it (the copy is in the tablet's trash).
+  tablet?: TabletCopy;
   // When the note was moved to the trash; it is deleted for good TRASH_DAYS later.
   deletedAt?: string;
   lastError?: string;

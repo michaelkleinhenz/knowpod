@@ -40,8 +40,9 @@ const itemReaders = 8
 // with a one-time code; pulls then import all documents of the account (except those in
 // the trash, and those whose name the user chose to ignore) as notes in the knowpod folder
 // "reMarkable", inside folders mirroring the cloud's folders, and import a document again
-// when it changed. Nothing is ever written to the cloud, and notes stay when documents are
-// deleted there.
+// when it changed. Notes stay when documents are deleted there. The other way, text notes
+// put into the reMarkable folder are sent to the tablet (see Nudge); nothing else is
+// written to the cloud.
 type RemarkableService struct {
 	links   ports.TabletLinkRepository
 	recs    ports.RecordingRepository
@@ -56,13 +57,18 @@ type RemarkableService struct {
 	OnQueued func()
 
 	mu    sync.Mutex
-	locks map[string]*sync.Mutex // per user: pairing and pulls don't overlap
+	locks map[string]*sync.Mutex // per user: pairing, pulls and sends don't overlap
+	// pending are the users' sends waiting to start (see Nudge); pushDelay is how long
+	// they wait.
+	pending   map[string]*pendingPush
+	pushDelay time.Duration
+	stopped   bool
 }
 
 // NewRemarkableService builds the service.
 func NewRemarkableService(links ports.TabletLinkRepository, recs ports.RecordingRepository, folders ports.FolderRepository, objects ports.ObjectStore, cloud *remarkable.Client, spool *Spool, maxSize int64, log *slog.Logger) *RemarkableService {
 	return &RemarkableService{links: links, recs: recs, folders: folders, objects: objects, cloud: cloud, spool: spool, maxSize: maxSize,
-		log: log, clock: time.Now, locks: map[string]*sync.Mutex{}}
+		log: log, clock: time.Now, locks: map[string]*sync.Mutex{}, pending: map[string]*pendingPush{}, pushDelay: pushDelay}
 }
 
 // lock serializes the operations on one user's link.
@@ -278,8 +284,14 @@ func (s *RemarkableService) PullAll(ctx context.Context) {
 	}
 }
 
-// pull reads the account's documents and queues the new and changed ones. The outcome is saved on the link. The caller holds the user's lock.
+// pull sends the user's changed text notes to the tablet, then reads the account's
+// documents and queues the new and changed ones. The outcome is saved on the link. The
+// caller holds the user's lock.
 func (s *RemarkableService) pull(ctx context.Context, l *tablet.Link) error {
+	if err := s.push(ctx, l); err != nil {
+		// The notes say why; the pull goes on.
+		s.log.Warn("sending notes to the reMarkable failed", "user", l.UserID, "err", err)
+	}
 	res, err := s.sync(ctx, l)
 	now := s.clock().UTC()
 	l.LastPullAt = &now
@@ -323,11 +335,28 @@ func (s *RemarkableService) sync(ctx context.Context, l *tablet.Link) (*tablet.P
 
 	docs, dirs := live(l.Items)
 	res := &tablet.PullResult{}
+	// The folder is there even without documents, for text notes to be sent from.
+	if l.FolderID == "" {
+		if _, err := s.folder(ctx, l); err != nil {
+			return nil, err
+		}
+	}
+	var sent map[string]bool
+	if len(docs) > 0 {
+		var err error
+		if sent, err = s.sentDocuments(ctx, l.UserID); err != nil {
+			return nil, err
+		}
+	}
 	kept := docs[:0]
 	for _, d := range docs {
-		if l.Ignores(d.Name) {
+		switch {
+		case sent[d.ID]:
+			// A copy of a text note, sent from here.
+			continue
+		case l.Ignores(d.Name):
 			res.Ignored++
-		} else {
+		default:
 			kept = append(kept, d)
 		}
 	}
@@ -349,7 +378,7 @@ func (s *RemarkableService) sync(ctx context.Context, l *tablet.Link) (*tablet.P
 	// The folders are mirrored, and notes moved along, when the cloud changed since the
 	// last complete placement or when new notes need a folder.
 	var m *mirror
-	if len(docs) > 0 && (fresh || l.MirroredHash != l.RootHash) {
+	if (len(docs) > 0 || len(dirs) > 0) && (fresh || l.MirroredHash != l.RootHash) {
 		var err error
 		if m, err = s.mirror(ctx, l, dirs); err != nil {
 			return nil, err

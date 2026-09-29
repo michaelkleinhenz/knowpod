@@ -1,7 +1,7 @@
 // Package remarkable reads documents from the reMarkable cloud. It pairs with an account
 // through a one-time code, lists the account's documents and folders, downloads a
-// document's files and renders handwritten notebooks to PDF and PNG. It never writes to the
-// cloud.
+// document's files and renders handwritten notebooks to PDF and PNG. The only writes are
+// EPUB documents made from notes (see WriteDocuments and NoteEPUB).
 //
 // The cloud API is not documented by reMarkable. This implementation follows the protocol
 // as used by rmapi (https://github.com/juruen/rmapi and its maintained fork

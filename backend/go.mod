@@ -10,6 +10,7 @@ require (
 	github.com/go-chi/cors v1.2.1
 	github.com/go-chi/httprate v0.14.1
 	github.com/mewkiz/flac v1.0.14
+	github.com/yuin/goldmark v1.8.6
 	golang.org/x/image v0.23.0
 	gopkg.in/yaml.v3 v3.0.1
 )

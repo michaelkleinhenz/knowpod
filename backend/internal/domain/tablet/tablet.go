@@ -1,5 +1,6 @@
 // Package tablet models a user's link to the reMarkable cloud: the pairing and what the last
-// pull saw. Documents are only read from the cloud, never written.
+// pull saw. Documents are read from the cloud; the only ones written are the copies of
+// text notes (recording.TabletCopy).
 package tablet
 
 import (

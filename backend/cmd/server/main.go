@@ -139,6 +139,8 @@ func main() {
 	pocketSvc.OnQueued = pipeline.Wake
 	manualSvc.OnReceived = pipeline.Wake
 	remarkableSvc.OnQueued = pipeline.Wake
+	// Text notes in the reMarkable folder go to the tablet shortly after they change.
+	events.OwnerChanged = remarkableSvc.Nudge
 
 	// AI processing (transcription, summaries) runs in its own worker so that slow model
 	// calls never delay archiving. Its stages wait until OpenRouter is configured.
@@ -160,6 +162,7 @@ func main() {
 	folderSvc := service.NewFolderService(folderRepo, recs)
 	actions.Folders = folderSvc
 	folderSvc.Notes = actions
+	folderSvc.Tablets = tabletRepo
 	userSvc.Folders = folderRepo
 	userSvc.Remarkable = remarkableSvc
 	filterSvc := service.NewFilterService(filterRepo, recs)
@@ -239,6 +242,8 @@ func main() {
 	defer cancel()
 	_ = httpServer.Shutdown(shutdownCtx)
 	jobCancel()
+	// Sends still waiting happen with the next pull after the restart.
+	remarkableSvc.StopNudges()
 	jobs.Wait()
 }
 
