@@ -78,7 +78,7 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
   are, and a vision model reads the pages (and any typed text) into text that is summarized like a transcript. These notes are read-only in knowpod too (their title and text can't be edited, as edits can't go back to the tablet); labels, tasks and folders still work.
   The other way, **text notes** put into the reMarkable folder (or a folder inside it) are sent to the tablet as
   e-books (EPUB) into the same folder there, and follow the note's edits; they stay editable in knowpod and show the
-  reMarkable logo with a pen. A note that leaves the folder or goes into the trash has its e-book put into the tablet's
+  reMarkable logo with a pen. They are sent at a smaller text size than the tablet's default (change it on the tablet and it stays). What you write or draw on such an e-book on the tablet is kept with the note as a PDF attachment, **reMarkable scribbles.pdf**, on blank pages (not the note's text), updated with the next import. A note that leaves the folder or goes into the trash has its e-book put into the tablet's
   trash. The reMarkable folder can't be deleted while a reMarkable is paired.
 - Notes come in types: **audio** notes (recordings, transcribed and summarized),
   **text** notes, plain Markdown documents written in the browser (**+** on **Workspace**), and

@@ -238,6 +238,13 @@ type TabletCopy struct {
 	SentAt  *time.Time `bson:"sentAt,omitempty" json:"sentAt,omitempty"`
 	// Error is why the last send failed; it is tried again.
 	Error string `bson:"error,omitempty" json:"error,omitempty"`
+	// Scaled says the copy was sent with the text size knowpod chooses; from then on the size
+	// is the reader's setting on the tablet, which is left alone.
+	Scaled bool `bson:"scaled,omitempty" json:"-"`
+	// InkHash is the content hash of the cloud document when what was written on it was last
+	// looked at; InkAttachment is the attachment holding that handwriting as a PDF.
+	InkHash       string `bson:"inkHash,omitempty" json:"-"`
+	InkAttachment string `bson:"inkAttachment,omitempty" json:"-"`
 }
 
 // IsText reports whether the note is a text note.

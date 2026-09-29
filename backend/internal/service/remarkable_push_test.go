@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"strings"
@@ -233,5 +234,144 @@ func TestRemarkableFolderCannotBeDeletedWhilePaired(t *testing.T) {
 	}
 	if err := folders.Delete(ctx, f.acc, tree["reMarkable"].ID); err != nil {
 		t.Fatalf("delete after unpairing: %v", err)
+	}
+}
+
+// textScaleOf returns the text size the document's .content asks the reader for.
+func (f *remarkableFixture) textScaleOf(t *testing.T, noteID string) float64 {
+	t.Helper()
+	r, _ := f.recs.Get(context.Background(), noteID)
+	_, files, ok := f.cloud.Document(r.Tablet.DocumentID)
+	if !ok {
+		t.Fatalf("the document of %s is not in the cloud", noteID)
+	}
+	var c struct {
+		TextScale float64 `json:"textScale"`
+	}
+	if err := json.Unmarshal(files[r.Tablet.DocumentID+".content"], &c); err != nil {
+		t.Fatal(err)
+	}
+	return c.TextScale
+}
+
+// setCopyContent replaces the document's .content, as the tablet does when the text size is
+// changed there, and forgets that the copy was scaled (as a copy sent before that existed).
+func (f *remarkableFixture) setCopyContent(t *testing.T, noteID, content string) {
+	t.Helper()
+	r, _ := f.recs.Get(context.Background(), noteID)
+	id := r.Tablet.DocumentID
+	meta, files, _ := f.cloud.Document(id)
+	f.cloud.Set(rt.Item{ID: id, Name: meta["visibleName"].(string), Content: content,
+		Files: map[string][]byte{".epub": files[id+".epub"]}})
+	f.changeNote(t, noteID, func(r *recording.Recording) { r.Tablet.Scaled = false })
+}
+
+func TestRemarkableSendsSmallerText(t *testing.T) {
+	f := newRemarkableFixture(t)
+	f.pair(t)
+	f.pull(t)
+	root := f.tree(t)["reMarkable"].ID
+	f.textNote(t, "a", "New", "text", root)
+	f.textNote(t, "b", "Default size", "text", root)
+	f.textNote(t, "c", "Own size", "text", root)
+	f.push(t)
+	for _, id := range []string{"a", "b", "c"} {
+		if got := f.textScaleOf(t, id); got != remarkable.TextScale {
+			t.Errorf("new copy of %s: text scale %v", id, got)
+		}
+	}
+
+	// Copies sent before are sent again once: at the default size they get the new size, but a
+	// size chosen on the tablet stays.
+	f.setCopyContent(t, "b", `{"fileType":"epub","textScale":1,"lastOpenedPage":4}`)
+	f.setCopyContent(t, "c", `{"fileType":"epub","textScale":1.3}`)
+	f.push(t)
+	if got := f.textScaleOf(t, "b"); got != remarkable.TextScale {
+		t.Errorf("default size copy: %v", got)
+	}
+	if got := f.textScaleOf(t, "c"); got != 1.3 {
+		t.Errorf("chosen size copy: %v", got)
+	}
+	r, _ := f.recs.Get(context.Background(), "b")
+	_, files, _ := f.cloud.Document(r.Tablet.DocumentID)
+	if !strings.Contains(string(files[r.Tablet.DocumentID+".content"]), `"lastOpenedPage":4`) {
+		t.Errorf("the rest of .content changed: %s", files[r.Tablet.DocumentID+".content"])
+	}
+
+	// From then on the size is left alone, also when it was changed to the default.
+	f.setCopyContent(t, "c", `{"fileType":"epub","textScale":1}`)
+	f.changeNote(t, "c", func(r *recording.Recording) { r.Tablet.Scaled = true })
+	f.changeNote(t, "c", func(r *recording.Recording) { r.Summary.Markdown, r.Revision = "more text", r.Revision+1 })
+	f.push(t)
+	if got := f.textScaleOf(t, "c"); got != 1 {
+		t.Errorf("size after a later change: %v", got)
+	}
+}
+
+func TestRemarkablePullsWhatWasWrittenOnACopy(t *testing.T) {
+	f := newRemarkableFixture(t)
+	ctx := context.Background()
+	f.pair(t)
+	f.pull(t)
+	root := f.tree(t)["reMarkable"].ID
+	f.textNote(t, "a", "Plan", "text", root)
+	f.push(t)
+	r, _ := f.recs.Get(ctx, "a")
+	doc := r.Tablet.DocumentID
+
+	// Untouched: nothing to keep, and it isn't looked at again.
+	f.pull(t)
+	if r, _ = f.recs.Get(ctx, "a"); len(r.Attachments) != 0 || r.Tablet.InkHash == "" {
+		t.Fatalf("untouched copy: %+v %+v", r.Attachments, r.Tablet)
+	}
+
+	// Something is written on it, on a page file the document doesn't list (an EPUB's).
+	f.cloud.AddFile(doc, doc+"/p1.rm", rt.Page(scribble))
+	f.pull(t)
+	r, _ = f.recs.Get(ctx, "a")
+	if len(r.Attachments) != 1 || r.Attachments[0].Name != "reMarkable scribbles.pdf" || r.Attachments[0].ContentType != "application/pdf" ||
+		r.Tablet.InkAttachment != r.Attachments[0].ID {
+		t.Fatalf("attachments: %+v %+v", r.Attachments, r.Tablet)
+	}
+	att := r.Attachments[0]
+	body, err := f.objects.Get(ctx, att.Key, 0, -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pdf, _ := io.ReadAll(body)
+	if !bytes.HasPrefix(pdf, []byte("%PDF")) || int64(len(pdf)) != att.Size {
+		t.Fatalf("pdf: %d bytes, size %d", len(pdf), att.Size)
+	}
+	if !strings.HasPrefix(att.Key, "recordings/u1/a/attachments/") {
+		t.Errorf("key: %s", att.Key)
+	}
+
+	// More is written: the same attachment is replaced, not added.
+	f.cloud.AddFile(doc, doc+"/p2.rm", rt.Page(scribble, scribble))
+	f.pull(t)
+	r, _ = f.recs.Get(ctx, "a")
+	if len(r.Attachments) != 1 || r.Attachments[0].ID != att.ID || r.Attachments[0].Size == att.Size {
+		t.Fatalf("after more ink: %+v", r.Attachments)
+	}
+
+	// The note's text is sent again: the handwriting stays.
+	f.changeNote(t, "a", func(r *recording.Recording) { r.Summary.Markdown, r.Revision = "changed", r.Revision+1 })
+	f.push(t)
+	f.pull(t)
+	if r, _ = f.recs.Get(ctx, "a"); len(r.Attachments) != 1 {
+		t.Fatalf("after a text change: %+v", r.Attachments)
+	}
+
+	// Everything is erased on the tablet: the attachment goes.
+	meta, files, _ := f.cloud.Document(doc)
+	f.cloud.Set(rt.Item{ID: doc, Name: meta["visibleName"].(string), Content: string(files[doc+".content"]),
+		Files: map[string][]byte{".epub": files[doc+".epub"]}})
+	f.pull(t)
+	r, _ = f.recs.Get(ctx, "a")
+	if len(r.Attachments) != 0 || r.Tablet.InkAttachment != "" {
+		t.Fatalf("after erasing: %+v %+v", r.Attachments, r.Tablet)
+	}
+	if _, err := f.objects.Get(ctx, att.Key, 0, -1); !errors.Is(err, ErrNotFound) {
+		t.Errorf("the PDF stayed in storage: %v", err)
 	}
 }
