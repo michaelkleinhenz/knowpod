@@ -14,11 +14,18 @@ export function noteType(r: Recording): NoteType {
 }
 
 // IconKind is what a note's icon shows: its type, or for a document uploaded in the app
-// whether it is a photo or a PDF (reMarkable documents show the reMarkable logo).
-export type IconKind = NoteType | 'photo' | 'pdf';
+// whether it is a photo or a PDF (reMarkable documents show the reMarkable logo), or for a
+// text note that is on the reMarkable the logo with a pen, as it stays editable.
+export type IconKind = NoteType | 'photo' | 'pdf' | 'remarkableText';
+
+// onTablet reports whether a text note has a copy on the reMarkable.
+export function onTablet(r: Recording): boolean {
+  return noteType(r) === 'text' && !!r.tablet && !r.tablet.removed;
+}
 
 export function iconKind(r: Recording): IconKind {
   const type = noteType(r);
+  if (onTablet(r)) return 'remarkableText';
   if (type !== 'document' || r.source === 'remarkable') return type;
   return (r.file?.contentType ?? r.sourceContentType ?? '').startsWith('image/') ? 'photo' : 'pdf';
 }

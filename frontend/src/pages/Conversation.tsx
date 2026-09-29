@@ -23,7 +23,7 @@ import { locale } from '../i18n';
 import { errorText } from '../lib/errors';
 import { folderPath, notePath } from '../lib/folders';
 import { noteRefPath } from '../lib/noteRefs';
-import { formatBytes, formatClock, formatDate, formatDuration, isPhoto, noteType, processing, statusLabel, title as titleOf, when } from '../lib/recordings';
+import { formatBytes, formatClock, formatDate, formatDuration, isPhoto, noteType, onTablet, processing, statusLabel, title as titleOf, when } from '../lib/recordings';
 import { Speakers } from '../components/Speakers';
 import { PdfViewer } from '../components/PdfViewer';
 
@@ -380,7 +380,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart,
       <p className="muted">{state ?? empty}</p>
     );
   const sourceBadge = isText
-    ? t('conversations.types.text')
+    ? t(onTablet(rec) ? 'conversations.types.remarkableText' : 'conversations.types.text')
     : isBoard
       ? t('conversations.types.board')
       : rec.source === 'pocket'
@@ -792,6 +792,18 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart,
                 <>
                   <dt>{t('noteInfo.type')}</dt>
                   <dd>{sourceBadge}</dd>
+                </>
+              )}
+              {onTablet(rec) && rec.tablet && (
+                <>
+                  <dt>{t('conversation.onRemarkable')}</dt>
+                  <dd className={rec.tablet.error ? 'error' : undefined}>
+                    {rec.tablet.error
+                      ? t('conversation.onRemarkableError', { error: rec.tablet.error })
+                      : rec.tablet.sentAt
+                        ? t('conversation.onRemarkableSent', { when: formatDate(rec.tablet.sentAt, { dateStyle: 'medium', timeStyle: 'short' }) })
+                        : null}
+                  </dd>
                 </>
               )}
               {rec.format?.durationMs ? (

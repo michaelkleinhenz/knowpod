@@ -498,15 +498,18 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
                     >
                       <PencilIcon />
                     </button>
-                    <button
-                      type="button"
-                      className="icon-button danger"
-                      title={t('common.delete')}
-                      aria-label={t('folders.deleteLabel', { name: f.name })}
-                      onClick={() => void remove(f)}
-                    >
-                      <TrashIcon />
-                    </button>
+                    {/* The folder of a paired reMarkable stays. */}
+                    {!f.remarkable && (
+                      <button
+                        type="button"
+                        className="icon-button danger"
+                        title={t('common.delete')}
+                        aria-label={t('folders.deleteLabel', { name: f.name })}
+                        onClick={() => void remove(f)}
+                      >
+                        <TrashIcon />
+                      </button>
+                    )}
                   </>
                 )}
               </span>

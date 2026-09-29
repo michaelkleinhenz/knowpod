@@ -173,6 +173,10 @@ type Recording struct {
 	// Board is the setup of a board note: its scope and columns.
 	Board *Board `bson:"board,omitempty" json:"board,omitempty"`
 
+	// Tablet is the copy of a text note on its owner's reMarkable, sent while the note is in
+	// the reMarkable folder; nil for notes never sent.
+	Tablet *TabletCopy `bson:"tablet,omitempty" json:"tablet,omitempty"`
+
 	// DeletedAt is when the note was moved to the trash; nil when it isn't in the trash.
 	// Notes in the trash are left out of lists and deleted for good after TrashRetention.
 	DeletedAt *time.Time `bson:"deletedAt,omitempty" json:"deletedAt,omitempty"`
@@ -195,6 +199,24 @@ type Recording struct {
 	StoredAt   *time.Time `bson:"storedAt,omitempty" json:"storedAt,omitempty"`
 }
 
+// TabletCopy is a text note's copy on its owner's reMarkable: an EPUB of its title and
+// text. It follows the note's changes while the note is in the reMarkable folder, and goes
+// into the tablet's trash when the note leaves the folder or goes into the trash.
+type TabletCopy struct {
+	// DocumentID is the document in the reMarkable cloud.
+	DocumentID string `bson:"documentId" json:"documentId"`
+	// Revision, Name and Parent are what was sent last: the note's revision, the
+	// document's name and its cloud folder ("trash" once taken off the tablet).
+	Revision int64  `bson:"revision" json:"-"`
+	Name     string `bson:"name" json:"-"`
+	Parent   string `bson:"parent,omitempty" json:"-"`
+	// Removed says the copy was taken off the tablet (it is in the tablet's trash).
+	Removed bool       `bson:"removed,omitempty" json:"removed,omitempty"`
+	SentAt  *time.Time `bson:"sentAt,omitempty" json:"sentAt,omitempty"`
+	// Error is why the last send failed; it is tried again.
+	Error string `bson:"error,omitempty" json:"error,omitempty"`
+}
+
 // IsText reports whether the note is a text note.
 func (r *Recording) IsText() bool { return r.Type == TypeText }
 
@@ -210,15 +232,16 @@ func (r *Recording) IsImage() bool {
 func (r *Recording) IsBoard() bool { return r.Type == TypeBoard }
 
 // KeepUserFields copies the fields a person changes at any time (labels, task fields, time
-// estimate and log, folder, parent note, position, trash, sharing), the note number and the
-// version from the stored copy, so that a processing step saving its long-held copy doesn't
-// undo them.
+// estimate and log, folder, parent note, position, trash, sharing), the note number, the
+// tablet copy and the version from the stored copy, so that a processing step saving its
+// long-held copy doesn't undo them.
 func (r *Recording) KeepUserFields(stored *Recording) {
 	r.Labels, r.Done, r.DoneAt, r.FolderID, r.ParentID, r.Number = stored.Labels, stored.Done, stored.DoneAt, stored.FolderID, stored.ParentID, stored.Number
 	r.Due, r.Priority, r.RemindAt = stored.Due, stored.Priority, stored.RemindAt
 	r.Estimate, r.TrackedSeconds = stored.Estimate, stored.TrackedSeconds
 	r.Position, r.DeletedAt = stored.Position, stored.DeletedAt
 	r.Shares, r.Members, r.CreatedBy = stored.Shares, stored.Members, stored.CreatedBy
+	r.Tablet = stored.Tablet
 	r.Version, r.Revision = stored.Version, stored.Revision
 }
 

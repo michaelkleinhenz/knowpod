@@ -34,6 +34,17 @@ export function NoteIcon({ type, label }: { type: IconKind; label?: string }) {
         <text x="15" y="23.5" textAnchor="middle" fill="var(--color-text)" fontFamily="Georgia, 'Times New Roman', serif" fontSize="13" fontWeight="600" letterSpacing="-0.6">
           rM
         </text>
+      ) : type === 'remarkableText' ? (
+        // The reMarkable monogram with a pen: a text note on the tablet, editable here.
+        <>
+          <text x="13.5" y="20" textAnchor="middle" fill="var(--color-text)" fontFamily="Georgia, 'Times New Roman', serif" fontSize="12" fontWeight="600" letterSpacing="-0.6">
+            rM
+          </text>
+          <g transform="rotate(-45 20 28)">
+            <rect x="14" y="26.6" width="10" height="2.8" rx="0.6" fill="var(--color-primary)" />
+            <path d="M24 26.6l2.6 1.4-2.6 1.4z" fill="var(--color-text)" />
+          </g>
+        </>
       ) : type === 'board' ? (
         <>
           <rect x="6" y="7" width="18" height="2.4" rx="1.2" fill="var(--color-muted)" opacity="0.45" />

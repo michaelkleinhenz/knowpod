@@ -30,6 +30,8 @@ type FolderService struct {
 	// Notes shares the notes in shared folders like the folders when they move or go.
 	// Optional; without it folders aren't shared.
 	Notes *RecordingService
+	// Tablets finds the folder of a paired reMarkable, which can't be deleted. Optional.
+	Tablets ports.TabletLinkRepository
 }
 
 // NewFolderService builds the service. recs is used to move notes out of deleted folders.
@@ -50,8 +52,10 @@ func (s *FolderService) List(ctx context.Context, acc *Account) ([]*folder.Folde
 		return nil, err
 	}
 	markShared(own)
+	remarkableFolder := s.remarkableFolder(ctx, acc.ID)
 	for _, f := range own {
 		f.Access = recording.RoleOwner
+		f.Remarkable = f.ID == remarkableFolder
 	}
 	shared, err := s.repo.ListSharedWith(ctx, acc.ID)
 	if err != nil {
@@ -227,11 +231,14 @@ func (s *FolderService) Reorder(ctx context.Context, acc *Account, ids []string)
 }
 
 // Delete removes one of the account's folders. Its notes and folders move up into the
-// folder it was in, so nothing is lost.
+// folder it was in, so nothing is lost. The folder of a paired reMarkable's documents stays.
 func (s *FolderService) Delete(ctx context.Context, acc *Account, id string) error {
 	f, err := s.own(ctx, acc, id)
 	if err != nil {
 		return err
+	}
+	if s.remarkableFolder(ctx, f.OwnerID) == id {
+		return errors.Join(ErrForbidden, errors.New("the reMarkable folder can't be deleted while a reMarkable is paired"))
 	}
 	before, err := s.members(ctx, f.OwnerID, id)
 	if err != nil {
@@ -261,6 +268,19 @@ func (s *FolderService) Delete(ctx context.Context, acc *Account, id string) err
 		return s.Notes.folderChanged(ctx, f.OwnerID, f.ParentID, before)
 	}
 	return nil
+}
+
+// remarkableFolder returns the folder of the user's paired reMarkable's documents, or ""
+// when no reMarkable is paired.
+func (s *FolderService) remarkableFolder(ctx context.Context, userID string) string {
+	if s.Tablets == nil {
+		return ""
+	}
+	l, err := s.Tablets.Get(ctx, userID)
+	if err != nil {
+		return ""
+	}
+	return l.FolderID
 }
 
 // Usable reports whether a note of ownerID may be put into the folder ("" is the top level).

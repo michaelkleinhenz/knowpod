@@ -117,6 +117,9 @@ type NoteEvent struct {
 // NoteEvents delivers NoteEvents to the users' live connections.
 type NoteEvents struct {
 	hub *hub[NoteEvent]
+	// OwnerChanged, when set, is called with the owner of every changed note (or of many
+	// notes at once), e.g. to send changed notes elsewhere. Set it before notes change.
+	OwnerChanged func(ownerID string)
 }
 
 // NewNoteEvents builds the event hub.
@@ -157,6 +160,13 @@ type watchedRecordings struct {
 
 func (w *watchedRecordings) changed(rec *recording.Recording) {
 	w.events.Publish(rec.Audience(), NoteEvent{Type: NoteChanged, ID: rec.ID, Version: rec.Version})
+	w.ownerChanged(rec.OwnerID)
+}
+
+func (w *watchedRecordings) ownerChanged(ownerID string) {
+	if f := w.events.OwnerChanged; f != nil {
+		f(ownerID)
+	}
 }
 
 // changedID publishes a change of a note that was made without reading it.
@@ -168,6 +178,7 @@ func (w *watchedRecordings) changedID(ctx context.Context, id string) {
 
 func (w *watchedRecordings) reload(userID string) {
 	w.events.Publish([]string{userID}, NoteEvent{Type: NotesReload})
+	w.ownerChanged(userID)
 }
 
 func (w *watchedRecordings) Create(ctx context.Context, r *recording.Recording) error {
@@ -191,6 +202,7 @@ func (w *watchedRecordings) Delete(ctx context.Context, id string) error {
 	err := w.RecordingRepository.Delete(ctx, id)
 	if err == nil && gerr == nil {
 		w.events.Publish(rec.Audience(), NoteEvent{Type: NoteChanged, ID: id})
+		w.ownerChanged(rec.OwnerID)
 	}
 	return err
 }

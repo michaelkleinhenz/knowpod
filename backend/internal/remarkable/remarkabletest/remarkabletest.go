@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -21,10 +22,14 @@ import (
 type Cloud struct {
 	*httptest.Server
 
-	mu       sync.Mutex
-	blobs    map[string][]byte
-	items    map[string]string // item ID → hash of its index
-	root     string
+	mu    sync.Mutex
+	blobs map[string][]byte
+	items map[string]string // item ID → hash of its index
+	root  string
+	gen   int64
+	// RaceRoot, when set, is called before a root update is taken, e.g. to change the
+	// account as another device would.
+	RaceRoot func()
 	codes    map[string]string // one-time code → device token
 	tokens   map[string]bool   // valid device tokens
 	requests []string          // "METHOD path rm-filename"
@@ -32,7 +37,7 @@ type Cloud struct {
 
 // New starts a fake cloud. Close it when done.
 func New() *Cloud {
-	c := &Cloud{blobs: map[string][]byte{}, items: map[string]string{}, codes: map[string]string{}, tokens: map[string]bool{}}
+	c := &Cloud{blobs: map[string][]byte{}, items: map[string]string{}, codes: map[string]string{}, tokens: map[string]bool{}, gen: 7}
 	c.Server = httptest.NewServer(c)
 	return c
 }
@@ -143,7 +148,105 @@ func (c *Cloud) rebuildRoot() {
 	h := c.Put([]byte(idx.String()))
 	c.mu.Lock()
 	c.root = h
+	c.gen++
 	c.mu.Unlock()
+}
+
+// Document returns a document's metadata and its files by name (e.g. "<id>.epub"), as
+// written by a client; ok is false when it isn't in the cloud.
+func (c *Cloud) Document(id string) (meta map[string]any, files map[string][]byte, ok bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	h, ok := c.items[id]
+	if !ok {
+		return nil, nil, false
+	}
+	files = map[string][]byte{}
+	for _, line := range strings.Split(string(c.blobs[h]), "\n")[1:] {
+		f := strings.Split(line, ":")
+		if len(f) == 5 {
+			files[f[2]] = c.blobs[f[0]]
+		}
+	}
+	_ = json.Unmarshal(files[id+".metadata"], &meta)
+	return meta, files, true
+}
+
+// AddFile adds a file to a document, as the tablet does for what is written on it.
+func (c *Cloud) AddFile(id, name string, data []byte) {
+	h := c.Put(data)
+	c.mu.Lock()
+	idx := string(c.blobs[c.items[id]]) + fmt.Sprintf("%s:0:%s:0:%d\n", h, name, len(data))
+	c.mu.Unlock()
+	ih := c.Put([]byte(idx))
+	c.mu.Lock()
+	c.items[id] = ih
+	c.mu.Unlock()
+	c.rebuildRoot()
+}
+
+// IDs returns the IDs of the documents and folders in the cloud.
+func (c *Cloud) IDs() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	ids := make([]string, 0, len(c.items))
+	for id := range c.items {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+// putRoot takes a root update: the root index is read to learn the items.
+func (c *Cloud) putRoot(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Hash       string `json:"hash"`
+		Generation int64  `json:"generation"`
+		Broadcast  bool   `json:"broadcast"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "bad body", http.StatusBadRequest)
+		return
+	}
+	if race := c.RaceRoot; race != nil {
+		c.RaceRoot = nil
+		c.mu.Unlock()
+		race()
+		c.mu.Lock()
+	}
+	want := c.gen
+	if c.root == "" {
+		want = 0 // an empty account has no root to read the generation from
+	}
+	if body.Generation != want {
+		http.Error(w, "generation mismatch", http.StatusPreconditionFailed)
+		return
+	}
+	idx, ok := c.blobs[body.Hash]
+	if !ok {
+		http.Error(w, "unknown root index", http.StatusBadRequest)
+		return
+	}
+	lines := strings.Split(strings.TrimSpace(string(idx)), "\n")
+	if lines[0] == "4" {
+		lines = lines[1:]
+	}
+	items := map[string]string{}
+	for _, line := range lines[1:] {
+		f := strings.Split(line, ":")
+		if len(f) != 5 {
+			http.Error(w, "bad root index line "+line, http.StatusBadRequest)
+			return
+		}
+		if _, ok := c.blobs[f[0]]; !ok {
+			http.Error(w, "unknown document index", http.StatusBadRequest)
+			return
+		}
+		items[f[2]] = f[0]
+	}
+	c.items, c.root = items, body.Hash
+	c.gen++
+	fmt.Fprintf(w, `{"hash":%q,"generation":%d}`, c.root, c.gen)
 }
 
 // ServeHTTP answers the endpoints the client uses.
@@ -177,7 +280,19 @@ func (c *Cloud) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 			return
 		}
-		fmt.Fprintf(w, `{"hash":%q,"generation":7,"schemaVersion":4}`, c.root)
+		fmt.Fprintf(w, `{"hash":%q,"generation":%d,"schemaVersion":4}`, c.root, c.gen)
+	case r.Method == "PUT" && r.URL.Path == "/sync/v3/root":
+		c.putRoot(w, r)
+	case r.Method == "PUT" && strings.HasPrefix(r.URL.Path, "/sync/v3/files/"):
+		data, _ := io.ReadAll(r.Body)
+		sum := sha256.Sum256(data)
+		h := hex.EncodeToString(sum[:])
+		if h != strings.TrimPrefix(r.URL.Path, "/sync/v3/files/") || r.Header.Get("x-goog-hash") == "" {
+			http.Error(w, "hash mismatch", http.StatusBadRequest)
+			return
+		}
+		c.blobs[h] = data
+		w.WriteHeader(http.StatusOK)
 	case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/sync/v3/files/"):
 		data, ok := c.blobs[strings.TrimPrefix(r.URL.Path, "/sync/v3/files/")]
 		if !ok {
