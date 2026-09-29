@@ -32,6 +32,11 @@ export const en = {
     signOut: 'Sign out',
     openMenu: 'Open menu',
     closeMenu: 'Close menu',
+    newNote: 'New Note',
+    newTask: 'New Task',
+    newTitle: 'Title',
+    create: 'Create',
+    cancel: 'Cancel',
   },
   offline: {
     badge: 'Offline',

@@ -34,6 +34,11 @@ export const de: Translation = {
     signOut: 'Abmelden',
     openMenu: 'Menü öffnen',
     closeMenu: 'Menü schließen',
+    newNote: 'Neue Notiz',
+    newTask: 'Neue Aufgabe',
+    newTitle: 'Titel',
+    create: 'Erstellen',
+    cancel: 'Abbrechen',
   },
   offline: {
     badge: 'Offline',

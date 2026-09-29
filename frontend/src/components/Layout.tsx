@@ -6,6 +6,7 @@ import { useAuth } from '../auth';
 import { RecorderProvider } from '../context/Recorder';
 import { useDesktopNotifications } from '../lib/desktop';
 import { SignOutIcon } from './Icons';
+import { NewItemDialog } from './NewItemDialog';
 
 // Layout is the app frame: a header with the navigation, which collapses into a menu
 // button on narrow screens.
@@ -15,6 +16,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
+  const [newKind, setNewKind] = useState<'note' | 'task' | null>(null);
   const onConversations = pathname === '/' || pathname === '/briefing' || pathname.startsWith('/conversations/');
   // The time log, the done tasks, Ask and shared items are shown next to the notes list, like a note.
   const onTime = ['/time', '/done', '/ask', '/share'].includes(pathname);
@@ -72,6 +74,13 @@ export function Layout({ children }: { children: ReactNode }) {
               <span />
             </button>
             <nav id="main-nav" className={`nav${open ? ' open' : ''}`}>
+              <button type="button" className="nav-new" onClick={() => setNewKind('note')}>
+                + {t('nav.newNote')}
+              </button>
+              <button type="button" className="nav-new" onClick={() => setNewKind('task')}>
+                + {t('nav.newTask')}
+              </button>
+              <span className="nav-divider" aria-hidden="true" />
               <NavLink to="/" className={() => (onConversations ? 'active' : '')}>
                 {t('nav.conversations')}
               </NavLink>
@@ -92,6 +101,7 @@ export function Layout({ children }: { children: ReactNode }) {
         )}
       </header>
       <main className={`container${onConversations || onTime ? ' full' : ''}`}>{children}</main>
+      {newKind && <NewItemDialog kind={newKind} onClose={() => setNewKind(null)} />}
     </RecorderProvider>
   );
 }
