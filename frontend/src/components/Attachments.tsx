@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, Attachment, Recording } from '../api/client';
 import { errorText } from '../lib/errors';
-import { formatBytes } from '../lib/recordings';
+import { formatBytes, inkAttachment } from '../lib/recordings';
 import { DownloadIcon, TrashIcon, UploadIcon } from './Icons';
 
 // Attachments lists the files attached to a note, stored with the note on the server, and
@@ -12,7 +12,9 @@ export function Attachments({ rec, setRec, readOnly }: { rec: Recording; setRec:
   const input = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState<{ name: string; fraction: number } | null>(null);
   const [error, setError] = useState('');
-  const files: Attachment[] = rec.attachments ?? [];
+  // The handwriting from the reMarkable is shown as a pill in the note's header instead.
+  const ink = inkAttachment(rec);
+  const files: Attachment[] = (rec.attachments ?? []).filter((a) => a !== ink);
   const editable = !readOnly && rec.source !== 'remarkable';
 
   async function add(list: FileList | null) {
