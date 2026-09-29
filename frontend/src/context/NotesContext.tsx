@@ -2,6 +2,7 @@ import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, 
 import { useTranslation } from 'react-i18next';
 import { api, ApiError, Folder, Label, NoteEvent, Recording, RECORDINGS_LIMIT, SavedFilter, TimeEntry } from '../api/client';
 import { forgetNote, isOffline, syncNotes, useOffline, writeOffline } from '../api/offline';
+import { useAuth } from '../auth';
 import { errorText } from '../lib/errors';
 import { FilterContext } from '../lib/filterQuery';
 import { processing } from '../lib/recordings';
@@ -58,6 +59,7 @@ const NotesContext = createContext<NotesState | null>(null);
 // for offline reading up to date; offline, the kept list is shown.
 export function NotesProvider({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
+  const { account } = useAuth();
   const [recordings, setRecordings] = useState<Recording[] | null>(null);
   const [labels, setLabels] = useState<Label[] | null>(null);
   const [folders, setFolders] = useState<Folder[] | null>(null);
@@ -292,7 +294,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(done);
   }, [timer, refreshNote, t]);
 
-  const filterContext = useMemo<FilterContext>(() => ({ labels: labels ?? [], folders: folders ?? [], notes: recordings ?? [] }), [labels, folders, recordings]);
+  const filterContext = useMemo<FilterContext>(() => ({ labels: labels ?? [], folders: folders ?? [], notes: recordings ?? [], userId: account?.id }), [labels, folders, recordings, account?.id]);
 
   const emptyTrash = useCallback(async () => {
     const gone = trash ?? [];

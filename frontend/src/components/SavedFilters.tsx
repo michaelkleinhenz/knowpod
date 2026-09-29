@@ -3,6 +3,7 @@ import { Trans, useTranslation } from 'react-i18next';
 import { api, Folder, Label, SavedFilter, SavedFilterInput } from '../api/client';
 import { useNotes } from '../context/NotesContext';
 import { errorText } from '../lib/errors';
+import { useAuth } from '../auth';
 import { FilterContext, parseFilter } from '../lib/filterQuery';
 import { BookmarkIcon, FilterIcon, PencilIcon, PinIcon, TrashIcon } from './Icons';
 
@@ -116,6 +117,7 @@ export function FilterHelp() {
     ['due<2026-10-01 · due>=today', 'dueCompare'],
     ['done · task · repeat · estimate', 'flags'],
     ['p1 · p2 · p3 · priority:none', 'priority'],
+    ['assignee:me · assignee:none · reporter:me', 'people'],
     ['type:text · type:audio · type:document · type:board', 'type'],
     ['a & b · a b · a | b · !a · (a | b) & c', 'combine'],
   ];
@@ -192,6 +194,7 @@ function FilterForm(props: { initial: SavedFilterInput; ctx: FilterContext; subm
 // FilterSettings manages the saved filters: create, edit, pin to the notes list, delete.
 export function FilterSettings() {
   const { t } = useTranslation();
+  const { account } = useAuth();
   const [filters, setFilters] = useState<SavedFilter[] | null>(null);
   const [labels, setLabels] = useState<Label[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
@@ -206,7 +209,7 @@ export function FilterSettings() {
     api.labels().then(setLabels, () => undefined);
     api.folders().then(setFolders, () => undefined);
   }, [load]);
-  const ctx = useMemo<FilterContext>(() => ({ labels, folders }), [labels, folders]);
+  const ctx = useMemo<FilterContext>(() => ({ labels, folders, userId: account?.id }), [labels, folders, account?.id]);
 
   async function act(fn: () => Promise<unknown>) {
     setError(null);
