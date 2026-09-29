@@ -198,6 +198,8 @@ export const en = {
     iosInstall: 'On iPhone and iPad, add knowpod to your Home Screen first (Share → Add to Home Screen), then open it from there and turn notifications on.',
     onHere: 'Notifications are on for this device.',
     offHere: 'Notifications are off for this device.',
+    serviceError: "The browser couldn't reach its push service, so notifications can't be turned on. Check that your network, firewall or an extension isn't blocking fcm.googleapis.com, then try again.",
+    serviceErrorBrave: "Brave has its push service turned off. Open brave://settings/privacy, turn on “Use Google Services for Push Messaging”, restart Brave and try again.",
     blocked: 'Notifications are blocked for knowpod in this browser. Allow them in the browser or system settings.',
     turnOn: 'Turn on',
     turnOff: 'Turn off',

@@ -200,6 +200,8 @@ export const de: Translation = {
     iosInstall: 'Auf iPhone und iPad füge knowpod zuerst zum Home-Bildschirm hinzu (Teilen → Zum Home-Bildschirm), öffne es von dort und schalte dann die Benachrichtigungen ein.',
     onHere: 'Benachrichtigungen sind auf diesem Gerät eingeschaltet.',
     offHere: 'Benachrichtigungen sind auf diesem Gerät ausgeschaltet.',
+    serviceError: 'Der Browser konnte seinen Push-Dienst nicht erreichen, deshalb lassen sich Benachrichtigungen nicht einschalten. Prüfe, ob Netzwerk, Firewall oder eine Erweiterung fcm.googleapis.com blockiert, und versuche es erneut.',
+    serviceErrorBrave: 'In Brave ist der Push-Dienst ausgeschaltet. Öffne brave://settings/privacy, schalte „Google-Dienste für Push-Nachrichten verwenden“ ein, starte Brave neu und versuche es erneut.',
     blocked: 'Benachrichtigungen für knowpod sind in diesem Browser blockiert. Erlaube sie in den Browser- oder Systemeinstellungen.',
     turnOn: 'Einschalten',
     turnOff: 'Ausschalten',

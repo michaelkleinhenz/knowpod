@@ -45,7 +45,7 @@ export async function currentSubscription(): Promise<PushSubscription | null> {
 }
 
 // subscribe asks for permission and makes this browser receive the user's notifications.
-export async function subscribe(publicKey: string): Promise<'granted' | 'denied' | 'unavailable'> {
+export async function subscribe(publicKey: string): Promise<'granted' | 'denied' | 'unavailable' | 'serviceError'> {
   const reg = await registration();
   if (!reg) return 'unavailable';
   const permission = await Notification.requestPermission();
@@ -55,7 +55,14 @@ export async function subscribe(publicKey: string): Promise<'granted' | 'denied'
     await sub.unsubscribe();
     sub = null;
   }
-  sub ??= await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(publicKey) as BufferSource });
+  try {
+    sub ??= await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(publicKey) as BufferSource });
+  } catch (err) {
+    // "Registration failed - push service error": the browser can't reach its push service
+    // (Brave turns Google's off by default; it can also be blocked by a network or extension).
+    if (err instanceof DOMException && err.name === 'AbortError') return 'serviceError';
+    throw err;
+  }
   await api.subscribePush(sub.toJSON());
   return 'granted';
 }

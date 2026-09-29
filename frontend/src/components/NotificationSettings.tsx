@@ -15,6 +15,9 @@ function deviceName(ua = ''): string {
 
 // NotificationSettings turns task reminders on or off for this browser (or installed app),
 // sends a test, and lists the other devices that receive them.
+// isBrave says whether this is Brave, which has the browser's push service off by default.
+const isBrave = () => typeof navigator !== 'undefined' && 'brave' in navigator;
+
 export function NotificationSettings() {
   const { t } = useTranslation();
   const [status, setStatus] = useState<NotificationStatus | null>(null);
@@ -60,6 +63,7 @@ export function NotificationSettings() {
       const result = await subscribe(status!.publicKey!);
       if (result === 'denied') setNotice(t('notifications.denied'));
       if (result === 'unavailable') setNotice(t('notifications.noServiceWorker'));
+      if (result === 'serviceError') setError(t(isBrave() ? 'notifications.serviceErrorBrave' : 'notifications.serviceError'));
     });
   const test = () =>
     run(async () => {
