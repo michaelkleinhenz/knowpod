@@ -32,8 +32,10 @@ import { PdfViewer } from '../components/PdfViewer';
 // The rich text editor is downloaded on first use; the summary is shown read-only meanwhile.
 const SummaryEditor = lazy(() => import('../components/SummaryEditor'));
 
-type Tab = 'summary' | 'transcript' | 'source';
+type Tab = 'summary' | 'transcript' | 'source' | 'ink';
 const TABS: Tab[] = ['summary', 'transcript', 'source'];
+// A text note on the reMarkable with handwriting switches between its text and the scribbles.
+const INK_TABS: Tab[] = ['summary', 'ink'];
 const POLL_MS = 5_000;
 
 const TIME = /^\[(?:(\d{1,2}):)?(\d{1,3}):(\d{2})\]\s*/;
@@ -426,7 +428,12 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart,
             ? t('conversation.sourceRemarkable')
             : '';
   // Documents name their tabs and actions after pages instead of audio.
-  const tabLabel = (id: Tab) => (isDocument && id !== 'summary' ? t(`conversation.documentTabs.${id}`) : t(`conversation.tabs.${id}`));
+  const tabLabel = (id: Tab) =>
+    id === 'ink' || (isText && id === 'summary')
+      ? t(`conversation.inkTabs.${id}`)
+      : isDocument && id !== 'summary'
+        ? t(`conversation.documentTabs.${id}`)
+        : t(`conversation.tabs.${id}`);
   const canReread = isDocument ? !!rec.file : !!rec.audio;
   // Boards use the whole width; other notes show their labels, date and details in a sidebar
   // when there is room for it (see .note-layout in styles.css).
@@ -450,6 +457,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart,
       </>
     ) : null;
   const ink = inkAttachment(rec);
+  const shownTab: Tab = isText && !ink && tab === 'ink' ? 'summary' : tab;
   const lanePills =
     lanes.length > 0
       ? lanes.map(({ board, lane }) => (
@@ -580,11 +588,6 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart,
               {location && <span className="meta-item meta-extra">{location}</span>}
               {lanePills && <span className="meta-extra">{lanePills}</span>}
               {state && <span className={`state-pill${rec.status === 'failed' ? ' bad' : ''}`}>{state}</span>}
-              {ink && (
-                <a className="state-pill lane-pill" href={api.attachmentURL(rec.id, ink.id)} download={ink.name} title={t('conversation.scribblesTitle')}>
-                  {t('conversation.scribbles')}
-                </a>
-              )}
             </p>
             <div className="header-labels">
               <NoteLabels rec={rec} setRec={setRec} />
@@ -629,11 +632,11 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart,
         {!readOnly && fromRemarkable && <p className="notice view-only-notice">{t('conversation.remarkableReadOnly')}</p>}
         {error && <p className="error">{error}</p>}
 
-        {!isText && !isBoard && (
+        {((!isText && !isBoard) || (isText && ink)) && (
           <div className="note-bar">
             <div className="segmented" role="tablist" aria-label={t('conversation.viewLabel')}>
-              {TABS.map((id) => (
-                <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}>
+              {(isText ? INK_TABS : TABS).map((id) => (
+                <button key={id} type="button" role="tab" aria-selected={shownTab === id} className={shownTab === id ? 'active' : ''} onClick={() => setTab(id)}>
                   {tabLabel(id)}
                 </button>
               ))}
@@ -641,10 +644,10 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart,
           </div>
         )}
 
-        <div className="conversation-body" role={isText || isBoard ? undefined : 'tabpanel'}>
+        <div className="conversation-body" role={(isText && !ink) || isBoard ? undefined : 'tabpanel'}>
           {isBoard && <Board rec={rec} setRec={setRec} />}
           {/* The summary stays mounted on other tabs so unsaved edits and the undo history survive. */}
-          <div hidden={tab !== 'summary' || isBoard} className={focus ? 'focus-mode' : undefined}>
+          <div hidden={shownTab !== 'summary' || isBoard} className={focus ? 'focus-mode' : undefined}>
             {focus && (
               <div className="focus-bar">
                 <button type="button" className="icon-button" title={t('editor.focus.exit')} aria-label={t('editor.focus.exit')} onClick={() => setFocus(false)}>
@@ -700,6 +703,17 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart,
               pending(t('conversation.noSummary'))
             )}
           </div>
+
+          {shownTab === 'ink' && ink && (
+            <div className="source">
+              <PdfViewer url={api.attachmentURL(rec.id, ink.id)} title={t('conversation.scribblesFrame', { title: titleOf(rec) })} />
+              <p>
+                <a className="pill-button" href={api.attachmentURL(rec.id, ink.id)} download={ink.name} title={t('conversation.scribblesTitle')}>
+                  <DownloadIcon /> <span>{t('conversation.scribbles')}</span>
+                </a>
+              </p>
+            </div>
+          )}
 
           {tab === 'transcript' &&
             isDocument &&

@@ -373,6 +373,8 @@ export const en = {
     downloadText: 'Download the note as a Markdown file',
     downloadAudio: 'Download the audio file',
     downloadDocument: 'Download the document',
+    inkTabs: { summary: 'Text', ink: 'Scribbles' },
+    scribblesFrame: 'Handwriting on “{{title}}”',
     scribbles: 'Scribbles from the reMarkable',
     scribblesTitle: 'Download the handwriting written on the reMarkable copy of this note',
     downloadDocumentText: 'Download the text as a text file',
