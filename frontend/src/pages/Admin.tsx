@@ -1,9 +1,10 @@
 import { useTranslation } from 'react-i18next';
+import { BackupSettings } from '../components/BackupSettings';
 import { OpenRouterSettings } from '../components/OpenRouterSettings';
 import { TabbedPage, useTab } from '../components/Tabs';
 import { Users } from './Users';
 
-const TABS = ['users', 'general'] as const;
+const TABS = ['users', 'general', 'backup'] as const;
 
 // Admin is for administrators: the users, and the settings that apply to all users.
 export function Admin() {
@@ -19,6 +20,7 @@ export function Admin() {
           <OpenRouterSettings />
         </section>
       )}
+      {tab === 'backup' && <BackupSettings />}
     </TabbedPage>
   );
 }

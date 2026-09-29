@@ -6,9 +6,11 @@ import (
 	"context"
 	"errors"
 	"io"
+	"sort"
 	"sync"
 
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/ports"
 )
 
 // Object is a stored object.
@@ -69,4 +71,21 @@ func (s *Store) Object(key string) (Object, bool) {
 	defer s.mu.Unlock()
 	o, ok := s.objects[key]
 	return o, ok
+}
+
+// List calls fn with every stored object, ordered by key.
+func (s *Store) List(_ context.Context, fn func(ports.ObjectInfo) error) error {
+	s.mu.Lock()
+	infos := make([]ports.ObjectInfo, 0, len(s.objects))
+	for k, o := range s.objects {
+		infos = append(infos, ports.ObjectInfo{Key: k, Size: int64(len(o.Data)), ContentType: o.ContentType})
+	}
+	s.mu.Unlock()
+	sort.Slice(infos, func(i, j int) bool { return infos[i].Key < infos[j].Key })
+	for _, info := range infos {
+		if err := fn(info); err != nil {
+			return err
+		}
+	}
+	return nil
 }

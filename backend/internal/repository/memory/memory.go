@@ -3,6 +3,8 @@ package memory
 
 import (
 	"context"
+	"errors"
+	"io"
 	"slices"
 	"sort"
 	"sync"
@@ -1346,4 +1348,61 @@ func (m *OAuth) findGrant(match func(*oauth.Grant) bool) (*oauth.Grant, error) {
 		}
 	}
 	return nil, domain.ErrNotFound
+}
+
+// Backup is an in-memory ports.BackupRepository holding raw documents per collection. It is
+// not connected to the other in-memory repositories.
+type Backup struct {
+	mu   sync.Mutex
+	Docs map[string][][]byte
+}
+
+// NewBackup builds an empty backup repository with the given collections.
+func NewBackup(collections ...string) *Backup {
+	b := &Backup{Docs: map[string][][]byte{}}
+	for _, c := range collections {
+		b.Docs[c] = nil
+	}
+	return b
+}
+
+func (b *Backup) Collections() []string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	names := make([]string, 0, len(b.Docs))
+	for c := range b.Docs {
+		names = append(names, c)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func (b *Backup) Export(_ context.Context, collection string, fn func([]byte) error) error {
+	b.mu.Lock()
+	docs := slices.Clone(b.Docs[collection])
+	b.mu.Unlock()
+	for _, d := range docs {
+		if err := fn(d); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (b *Backup) Replace(_ context.Context, collection string, next func() ([]byte, error)) error {
+	var docs [][]byte
+	for {
+		d, err := next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		docs = append(docs, slices.Clone(d))
+	}
+	b.mu.Lock()
+	b.Docs[collection] = docs
+	b.mu.Unlock()
+	return nil
 }

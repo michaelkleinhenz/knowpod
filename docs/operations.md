@@ -556,6 +556,42 @@ audio lives in S3, where you can enable versioning or replication. The spool is 
 transit area, but it does contain received recordings until they are archived, so don't
 wipe it while `received` recordings exist.
 
+### Built-in backup and restore
+
+Admins can also back up and restore everything through the service itself (Admin → Backup,
+or the API). A backup is one zip file with every MongoDB collection (users, notes, labels,
+folders, settings, OAuth grants, …; only the short-lived sessions are left out) and every
+object in the S3 bucket under `AWS_S3_PREFIX`. It contains password hashes, tokens and the
+OpenRouter key: store it like a secret.
+
+```sh
+# Download (streamed; the file is complete once curl exits successfully)
+curl -H "Authorization: Bearer $ADMIN_TOKEN" -OJ https://your-host/api/v1/admin/backup
+
+# Restore: replaces ALL data, so it must be confirmed
+curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/zip" \
+  --data-binary @knowpod-backup-….zip \
+  "https://your-host/api/v1/admin/restore?confirm=replace-all-data"
+```
+
+Both accept an admin's session too (the web UI uses it) and are limited to 6 per hour per IP.
+
+- The backup isn't a snapshot: the database is read first and the objects after it, so every
+  file the notes refer to is included, but changes made while it runs may or may not be.
+  For a consistent backup, run it when nobody is working.
+- A restore first checks the whole file (structure, counts, every object present in full)
+  and changes nothing if it isn't a complete knowpod backup. Then it writes the objects
+  (existing keys are overwritten; objects that aren't in the backup stay, unreferenced) and
+  replaces each collection. A failure in that second phase leaves a partial restore; send the
+  same backup again to finish it. Sessions are kept, so the admin who restores stays signed
+  in; users who aren't in the backup can no longer sign in.
+- The upload is spooled to `UPLOAD_DIR` (and each object once more while it is written to S3),
+  so the volume needs room for the backup file. Recordings that are still in the spool and
+  not yet archived aren't part of a backup.
+- Only one restore, and no backup during a restore, runs at a time (409 `backup_busy`).
+- Restoring into an empty installation works: start the service with the new MongoDB and
+  bucket, then restore. Point `AWS_S3_PREFIX` at where the files should go.
+
 ## Known limitations
 
 - Single instance only (see [Scaling](#scaling-and-the-spool)).

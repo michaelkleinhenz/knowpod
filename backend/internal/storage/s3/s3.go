@@ -18,6 +18,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/ports"
 )
 
 // Options configures the store.
@@ -90,4 +91,36 @@ func (s *Store) Get(ctx context.Context, key string, offset, length int64) (io.R
 func (s *Store) Delete(ctx context.Context, key string) error {
 	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(s.prefix + key)})
 	return err
+}
+
+// List calls fn with every object under the store's prefix. The content type comes from a
+// HEAD request per object.
+func (s *Store) List(ctx context.Context, fn func(ports.ObjectInfo) error) error {
+	pages := s3.NewListObjectsV2Paginator(s.client, &s3.ListObjectsV2Input{
+		Bucket: aws.String(s.bucket), Prefix: aws.String(s.prefix),
+	})
+	for pages.HasMorePages() {
+		page, err := pages.NextPage(ctx)
+		if err != nil {
+			return err
+		}
+		for _, o := range page.Contents {
+			full := aws.ToString(o.Key)
+			if strings.HasSuffix(full, "/") && aws.ToInt64(o.Size) == 0 {
+				continue // a console-made "folder" placeholder
+			}
+			head, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{Bucket: aws.String(s.bucket), Key: o.Key})
+			if err != nil {
+				return err
+			}
+			info := ports.ObjectInfo{
+				Key: strings.TrimPrefix(full, s.prefix), Size: aws.ToInt64(o.Size),
+				ContentType: aws.ToString(head.ContentType),
+			}
+			if err := fn(info); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

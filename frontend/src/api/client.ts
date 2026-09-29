@@ -590,6 +590,32 @@ async function uploadNoteImage(noteId: string, file: Blob): Promise<{ id: string
   return { id: data.id ?? '', url: data.url };
 }
 
+export interface BackupSummary {
+  createdAt: string;
+  collections: Record<string, number>;
+  objects: number;
+  objectBytes: number;
+}
+
+// restoreBackup replaces all data with the contents of a backup file.
+async function restoreBackup(file: File): Promise<BackupSummary> {
+  const res = await fetch('/api/v1/admin/restore?confirm=replace-all-data', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/zip' },
+    credentials: 'same-origin',
+    body: file,
+  });
+  const text = await res.text();
+  let data: (BackupSummary & { error?: string; code?: string }) | null = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    // fall through
+  }
+  if (!res.ok || !data) throw new ApiError(res.status, data?.error || `Error ${res.status}`, data?.code);
+  return data;
+}
+
 // uploadAttachment attaches a file to a note and reports progress (0..1).
 function uploadAttachment(noteId: string, file: File, onProgress: (fraction: number) => void): Promise<Attachment> {
   return new Promise((resolve, reject) => {
@@ -771,6 +797,8 @@ export const api = {
   setUserPassword: (id: string, password: string) =>
     request<void>('PUT', `/admin/users/${encodeURIComponent(id)}/password`, { password }),
   deleteUser: (id: string) => request<void>('DELETE', `/admin/users/${encodeURIComponent(id)}`),
+  backupURL: '/api/v1/admin/backup',
+  restoreBackup,
   openRouterSettings: () => request<OpenRouterSettings>('GET', '/admin/settings/openrouter'),
   saveOpenRouterSettings: (u: { apiKey?: string; transcriptionModel?: string; summaryModel?: string; documentModel?: string }) =>
     request<OpenRouterSettings>('PUT', '/admin/settings/openrouter', u),
