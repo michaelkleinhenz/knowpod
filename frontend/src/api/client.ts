@@ -346,6 +346,13 @@ export const RECORDINGS_LIMIT = 200;
 // TRASH_DAYS is how long notes stay in the trash before they are deleted for good.
 export const TRASH_DAYS = 14;
 
+export interface Attachment {
+  id: string;
+  name: string;
+  contentType: string;
+  size: number;
+}
+
 export interface Recording {
   id: string;
   deviceId: string;
@@ -370,6 +377,8 @@ export interface Recording {
   // A document's PDF (notebooks are rendered to one) or EPUB, and its number of pages.
   file?: { key: string; contentType: string; size: number };
   pages?: number;
+  // Files attached to the note, shown in the sidebar.
+  attachments?: Attachment[];
   transcript?: { text: string; model: string; createdAt: string };
   summary?: {
     title: string;
@@ -579,6 +588,29 @@ async function uploadNoteImage(noteId: string, file: Blob): Promise<{ id: string
   return { id: data.id ?? '', url: data.url };
 }
 
+// uploadAttachment attaches a file to a note and reports progress (0..1).
+function uploadAttachment(noteId: string, file: File, onProgress: (fraction: number) => void): Promise<Attachment> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `/api/v1/recordings/${encodeURIComponent(noteId)}/attachments?name=${encodeURIComponent(file.name)}`);
+    xhr.withCredentials = true;
+    xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
+    xhr.onload = () => {
+      let data: (Attachment & { error?: string; code?: string }) | null = null;
+      try {
+        data = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+      } catch {
+        // fall through
+      }
+      if (xhr.status >= 200 && xhr.status < 300 && data?.id) resolve(data);
+      else reject(new ApiError(xhr.status, data?.error || `Error ${xhr.status}`, data?.code));
+    };
+    xhr.onerror = () => reject(new ApiError(0, 'Network error'));
+    xhr.send(file);
+  });
+}
+
 // uploadRecording sends a file (audio, a photo or a PDF) as the request body and reports
 // progress (0..1). It uses XMLHttpRequest because fetch can't report upload progress.
 function uploadRecording(file: File, onProgress: (fraction: number) => void, opts: UploadOptions = {}): Promise<Recording> {
@@ -727,6 +759,10 @@ export const api = {
   fileURL: (id: string, download = false) => `/api/v1/recordings/${encodeURIComponent(id)}/file${download ? '?download=1' : ''}`,
   uploadRecording,
   uploadNoteImage,
+  uploadAttachment,
+  attachmentURL: (noteId: string, id: string) => `/api/v1/recordings/${encodeURIComponent(noteId)}/attachments/${encodeURIComponent(id)}`,
+  deleteAttachment: (noteId: string, id: string) =>
+    request<Recording>('DELETE', `/recordings/${encodeURIComponent(noteId)}/attachments/${encodeURIComponent(id)}`),
   users: () => request<User[]>('GET', '/admin/users'),
   createUser: (u: { email: string; password: string; role: Role }) => request<User>('POST', '/admin/users', u),
   updateUser: (id: string, u: { email?: string; role?: Role }) => request<User>('PUT', `/admin/users/${encodeURIComponent(id)}`, u),

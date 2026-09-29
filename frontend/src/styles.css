@@ -4523,6 +4523,57 @@ a.note-ref:hover {
   color: var(--color-muted);
 }
 
+.attachment-list {
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
+}
+
+.attachment-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.attachment-list a {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.attachment-list a:hover .attachment-name {
+  text-decoration: underline;
+}
+
+.attachment-list svg {
+  flex: none;
+}
+
+.attachment-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-size {
+  flex: none;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+
+.attachment-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
 .note-aside-task {
   display: flex;
   flex-wrap: wrap;

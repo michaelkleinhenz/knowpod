@@ -744,3 +744,41 @@ func TestNoteImages(t *testing.T) {
 		t.Fatalf("image of a deleted note: %d", res.StatusCode)
 	}
 }
+
+func TestNoteAttachments(t *testing.T) {
+	f := newAPIFixture(t)
+	admin := f.signedIn(adminEmail, adminPassword)
+
+	var note recording.Recording
+	admin.do("POST", "/api/v1/recordings/text", map[string]string{"title": "Files", "markdown": ""}, nil, &note)
+	path := "/api/v1/recordings/" + note.ID
+
+	data := []byte("<html><script>alert(1)</script></html>")
+	var att recording.Attachment
+	if res := admin.do("POST", path+"/attachments?name=..%2Freport.html", data, nil, &att); res.StatusCode != 201 ||
+		att.ID == "" || att.Name != "report.html" || att.Size != int64(len(data)) {
+		t.Fatalf("add: %d %+v", res.StatusCode, att)
+	}
+	var got recording.Recording
+	if admin.do("GET", path, nil, nil, &got); len(got.Attachments) != 1 || got.Attachments[0].ID != att.ID {
+		t.Fatalf("note attachments: %+v", got.Attachments)
+	}
+
+	var body []byte
+	res := admin.do("GET", path+"/attachments/"+att.ID, nil, nil, &body)
+	if res.StatusCode != 200 || len(body) != len(data) || res.Header.Get("Content-Type") != "application/octet-stream" ||
+		!strings.HasPrefix(res.Header.Get("Content-Disposition"), "attachment;") {
+		t.Fatalf("get: %d, %d bytes, %v", res.StatusCode, len(body), res.Header)
+	}
+	if res := admin.do("POST", path+"/attachments", []byte{}, nil, nil); res.StatusCode != 400 {
+		t.Fatalf("empty: %d", res.StatusCode)
+	}
+
+	var after recording.Recording
+	if res := admin.do("DELETE", path+"/attachments/"+att.ID, nil, nil, &after); res.StatusCode != 200 || len(after.Attachments) != 0 {
+		t.Fatalf("delete: %d %+v", res.StatusCode, after.Attachments)
+	}
+	if res := admin.do("GET", path+"/attachments/"+att.ID, nil, nil, nil); res.StatusCode != 404 {
+		t.Fatalf("removed: %d", res.StatusCode)
+	}
+}

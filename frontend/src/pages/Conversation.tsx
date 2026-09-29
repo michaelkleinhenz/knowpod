@@ -8,6 +8,7 @@ import { CopyButton } from '../components/CopyButton';
 import { BackIcon, CalendarIcon, CopyIcon, DownloadIcon, NewNoteIcon, RetranscribeIcon, TrashIcon } from '../components/Icons';
 import { inline, Markdown } from '../components/Markdown';
 import { NoteDone, NoteLabels } from '../components/Labels';
+import { Attachments } from '../components/Attachments';
 import { ActionItems } from '../components/ActionItems';
 import { PriorityFlag, TaskControls, TaskPeople } from '../components/TaskControls';
 import { TimeControls } from '../components/TimeControls';
@@ -777,6 +778,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart,
             <h2>{t('labels.title')}</h2>
             <NoteLabels rec={rec} setRec={setRec} withTask={false} />
           </section>
+          <Attachments rec={rec} setRec={setRec} readOnly={readOnly} />
           <section>
             <h2>{t('noteInfo.details')}</h2>
             <dl className="note-facts">

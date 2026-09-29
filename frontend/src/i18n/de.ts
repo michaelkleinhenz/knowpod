@@ -374,6 +374,14 @@ export const de: Translation = {
     highlightN: 'Markierung {{n}}',
     timeline: 'Zeitleiste mit Markierungen',
   },
+  attachments: {
+    title: 'Anhänge',
+    add: 'Dateien anhängen',
+    uploading: '{{name}} wird angehängt …',
+    remove: '{{name}} entfernen',
+    failed: 'Anhängen fehlgeschlagen: {{detail}}',
+    none: 'Noch keine Anhänge.',
+  },
   noteInfo: {
     title: 'Details',
     task: 'Aufgabe',

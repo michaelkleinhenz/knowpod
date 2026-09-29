@@ -87,6 +87,20 @@ type Object struct {
 	Size        int64  `bson:"size" json:"size"`
 }
 
+// Attachment is a file attached to a note. Its Object.Key stays on the server.
+type Attachment struct {
+	ID          string `bson:"id" json:"id"`
+	Name        string `bson:"name" json:"name"`
+	ContentType string `bson:"contentType" json:"contentType"`
+	Size        int64  `bson:"size" json:"size"`
+	Key         string `bson:"key" json:"-"`
+}
+
+// Object returns the stored file.
+func (a Attachment) Object() Object {
+	return Object{Key: a.Key, ContentType: a.ContentType, Size: a.Size}
+}
+
 // Recording is one audio recording of one device. The upload session and the recording are
 // the same document: its ID doubles as the upload ID.
 type Recording struct {
@@ -119,6 +133,9 @@ type Recording struct {
 	// Images are the pictures pasted or dropped into the note's text; the text refers to them
 	// by their URL (see ImageID).
 	Images []Object `bson:"images,omitempty" json:"-"`
+	// Attachments are the files the user attached to the note; the web app shows them in the
+	// sidebar.
+	Attachments []Attachment `bson:"attachments,omitempty" json:"attachments,omitempty"`
 	// Pages is the number of pages of a document.
 	Pages int `bson:"pages,omitempty" json:"pages,omitempty"`
 	// SourceRevision identifies the version of a document that was imported; a pull
