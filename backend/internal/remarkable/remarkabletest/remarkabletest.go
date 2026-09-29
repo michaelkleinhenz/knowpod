@@ -287,8 +287,8 @@ func (c *Cloud) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		data, _ := io.ReadAll(r.Body)
 		sum := sha256.Sum256(data)
 		h := hex.EncodeToString(sum[:])
-		if strings.HasSuffix(r.Header.Get("rm-filename"), ".docSchema") {
-			h = indexHash(data) // an index is named by the hash of its entries' hashes
+		if name := r.Header.Get("rm-filename"); strings.HasSuffix(name, ".docSchema") && !(name == "root.docSchema" && strings.HasPrefix(string(data), "4\n")) {
+			h = indexHash(data) // an index is named by the hash of its entries' hashes (a schema 4 root by that of its text)
 		}
 		if h != strings.TrimPrefix(r.URL.Path, "/sync/v3/files/") || r.Header.Get("x-goog-hash") == "" {
 			http.Error(w, "hash mismatch", http.StatusBadRequest)

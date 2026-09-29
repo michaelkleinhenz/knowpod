@@ -283,8 +283,24 @@ func (s *Session) writeDocuments(ctx context.Context, docs []DocumentWrite, newI
 		ids[i] = id
 	}
 
-	rootIdx, err := putIndex("root.docSchema", entries, FormatIndex(schema, entries))
-	if err != nil {
+	// A schema 4 root lists its items as type "0" and is named by the SHA-256 of its text; a
+	// schema 3 root lists them as documents and is named like any other index (as rmapi does).
+	rootEntries := append([]Entry(nil), entries...)
+	for i := range rootEntries {
+		rootEntries[i].Type = entryDocument
+		if schema == "4" {
+			rootEntries[i].Type = entryFile
+		}
+	}
+	rootData := FormatIndex(schema, rootEntries)
+	var rootIdx Entry
+	if schema == "4" {
+		h, err := s.putBlobAs(ctx, "root.docSchema", hashOf(rootData), rootData)
+		if err != nil {
+			return nil, err
+		}
+		rootIdx = Entry{Hash: h}
+	} else if rootIdx, err = putIndex("root.docSchema", rootEntries, rootData); err != nil {
 		return nil, err
 	}
 	if _, err := s.PutRoot(ctx, rootIdx.Hash, root.Generation); err != nil {
