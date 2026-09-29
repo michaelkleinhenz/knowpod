@@ -5793,6 +5793,16 @@ body.focus-open {
   margin: 0 auto;
 }
 
+.focus-mode .focus-title {
+  margin: 0 0 0.75rem;
+  font-size: 2rem;
+  overflow-wrap: anywhere;
+}
+
+.focus-mode .title-input.focus-title {
+  margin-left: -0.4rem;
+}
+
 .focus-mode .editor-content {
   min-height: 60vh;
   font-size: 1.05em;
