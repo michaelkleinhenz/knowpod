@@ -100,7 +100,11 @@ func TestWriteDocuments(t *testing.T) {
 	}
 
 	// Something written on the tablet stays when the file changes.
+	// What the tablet made from the old file goes, so it is made again from the new one.
 	cloud.AddFile(id, id+"/p1.rm", []byte("strokes"))
+	cloud.AddFile(id, id+".pdf", []byte("old pdf"))
+	cloud.AddFile(id, id+".epubindex", []byte("old index"))
+	cloud.AddFile(id, id+".thumbnails/p1.png", []byte("old thumbnail"))
 	ids, err = s.WriteDocuments(ctx, []DocumentWrite{{ID: id, Name: "Plan v2", Parent: "", EPUB: []byte("epub-2")}}, now)
 	if err != nil || ids[0] != id {
 		t.Fatalf("update: %v %v", ids, err)
@@ -109,6 +113,11 @@ func TestWriteDocuments(t *testing.T) {
 	if meta["visibleName"] != "Plan v2" || meta["parent"] != "" || meta["createdTime"] == nil || string(files[id+".epub"]) != "epub-2" || files[id+".content"] == nil ||
 		string(files[id+"/p1.rm"]) != "strokes" {
 		t.Fatalf("updated: %v %v", meta, files)
+	}
+	for _, name := range []string{id + ".pdf", id + ".epubindex", id + ".thumbnails/p1.png"} {
+		if _, ok := files[name]; ok {
+			t.Fatalf("%s was kept", name)
+		}
 	}
 
 	// Only the folder: the file stays.
