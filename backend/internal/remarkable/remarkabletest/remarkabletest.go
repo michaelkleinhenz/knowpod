@@ -287,6 +287,9 @@ func (c *Cloud) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		data, _ := io.ReadAll(r.Body)
 		sum := sha256.Sum256(data)
 		h := hex.EncodeToString(sum[:])
+		if strings.HasSuffix(r.Header.Get("rm-filename"), ".docSchema") {
+			h = indexHash(data) // an index is named by the hash of its entries' hashes
+		}
 		if h != strings.TrimPrefix(r.URL.Path, "/sync/v3/files/") || r.Header.Get("x-goog-hash") == "" {
 			http.Error(w, "hash mismatch", http.StatusBadRequest)
 			return
@@ -303,6 +306,22 @@ func (c *Cloud) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+// indexHash is the SHA-256 of the entries' hashes of an index file (by entry ID), the name
+// the real cloud demands for an index.
+func indexHash(data []byte) string {
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")[1:]
+	if len(lines) > 0 && strings.HasPrefix(lines[0], "0:.:") {
+		lines = lines[1:]
+	}
+	sort.Slice(lines, func(i, j int) bool { return strings.Split(lines[i], ":")[2] < strings.Split(lines[j], ":")[2] })
+	h := sha256.New()
+	for _, l := range lines {
+		raw, _ := hex.DecodeString(strings.Split(l, ":")[0])
+		h.Write(raw)
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // --- page files ---

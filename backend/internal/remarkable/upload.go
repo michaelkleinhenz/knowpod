@@ -41,9 +41,30 @@ func hashOf(data []byte) string {
 
 var castagnoli = crc32.MakeTable(crc32.Castagnoli)
 
+// indexHashOf returns the name an index file is stored under: not the hash of its text, but
+// the SHA-256 of its entries' hashes (as bytes) in the index's order, which the cloud checks.
+func indexHashOf(entries []Entry) (string, error) {
+	sorted := append([]Entry(nil), entries...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].ID < sorted[j].ID })
+	h := sha256.New()
+	for _, e := range sorted {
+		raw, err := hex.DecodeString(e.Hash)
+		if err != nil {
+			return "", fmt.Errorf("remarkable index entry %s: invalid hash %q", e.ID, e.Hash)
+		}
+		h.Write(raw)
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
 // PutBlob stores a file under its hash; name is its name in its index.
 func (s *Session) PutBlob(ctx context.Context, name string, data []byte) (string, error) {
-	hash := hashOf(data)
+	return s.putBlobAs(ctx, name, hashOf(data), data)
+}
+
+// putBlobAs stores a file under the given name in the cloud (its hash, or for an index the
+// hash of its entries).
+func (s *Session) putBlobAs(ctx context.Context, name, hash string, data []byte) (string, error) {
 	var crc [4]byte
 	binary.BigEndian.PutUint32(crc[:], crc32.Checksum(data, castagnoli))
 	res, raw, err := s.c.do(ctx, http.MethodPut, s.c.syncURL+"/sync/v3/files/"+hash, s.token, bytes.NewReader(data), map[string]string{
@@ -139,9 +160,22 @@ func (s *Session) WriteDocuments(ctx context.Context, docs []DocumentWrite, now 
 		}
 		return Entry{Hash: h, Type: entryFile, ID: name, Size: int64(len(data))}, nil
 	}
+	putIndex := func(name string, entries []Entry, data []byte) (Entry, error) {
+		h, err := indexHashOf(entries)
+		if err != nil {
+			return Entry{}, err
+		}
+		if !uploaded[h] {
+			if _, err := s.putBlobAs(ctx, name, h, data); err != nil {
+				return Entry{}, err
+			}
+			uploaded[h] = true
+		}
+		return Entry{Hash: h, Type: entryFile, ID: name, Size: int64(len(data))}, nil
+	}
 	newIDs := make([]string, len(docs))
 	for attempt := 1; ; attempt++ {
-		ids, err := s.writeDocuments(ctx, docs, newIDs, now, put)
+		ids, err := s.writeDocuments(ctx, docs, newIDs, now, put, putIndex)
 		if errors.Is(err, ErrRootChanged) && attempt < maxWriteAttempts {
 			continue
 		}
@@ -149,7 +183,7 @@ func (s *Session) WriteDocuments(ctx context.Context, docs []DocumentWrite, now 
 	}
 }
 
-func (s *Session) writeDocuments(ctx context.Context, docs []DocumentWrite, newIDs []string, now time.Time, put func(string, []byte) (Entry, error)) ([]string, error) {
+func (s *Session) writeDocuments(ctx context.Context, docs []DocumentWrite, newIDs []string, now time.Time, put func(string, []byte) (Entry, error), putIndex func(string, []Entry, []byte) (Entry, error)) ([]string, error) {
 	root, err := s.Root(ctx)
 	if err != nil {
 		return nil, err
@@ -231,7 +265,7 @@ func (s *Session) writeDocuments(ctx context.Context, docs []DocumentWrite, newI
 			files = replaceEntry(files, e)
 		}
 		idx := FormatIndex("3", files)
-		h, err := put(id+".docSchema", idx)
+		h, err := putIndex(id+".docSchema", files, idx)
 		if err != nil {
 			return nil, err
 		}
@@ -249,7 +283,7 @@ func (s *Session) writeDocuments(ctx context.Context, docs []DocumentWrite, newI
 		ids[i] = id
 	}
 
-	rootIdx, err := put("root.docSchema", FormatIndex(schema, entries))
+	rootIdx, err := putIndex("root.docSchema", entries, FormatIndex(schema, entries))
 	if err != nil {
 		return nil, err
 	}
