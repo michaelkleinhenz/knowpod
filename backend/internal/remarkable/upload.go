@@ -269,6 +269,13 @@ func (s *Session) writeDocuments(ctx context.Context, docs []DocumentWrite, newI
 			files = []Entry{e}
 		}
 		meta["visibleName"], meta["parent"], meta["lastModified"] = d.Name, d.Parent, strconv.FormatInt(now.UnixMilli(), 10)
+		// The tablet and the web app take a changed document as newer only when its
+		// metadata version went up, and keep showing the old file otherwise.
+		if _, existing := at[id]; existing {
+			v, _ := meta["version"].(float64)
+			meta["version"] = int64(v) + 1
+			meta["synced"] = true
+		}
 		metaJSON, _ := json.Marshal(meta)
 		changed := map[string][]byte{id + ".metadata": metaJSON}
 		if d.EPUB != nil {
