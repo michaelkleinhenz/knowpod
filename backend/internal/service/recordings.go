@@ -387,13 +387,18 @@ func (s *RecordingService) newNoteFolder(ctx context.Context, ownerID, parentID,
 
 // EditSummary replaces the summary's title and Markdown text with the user's version. The
 // model, theme and language it was made with are kept for reference. With a BaseRevision,
-// an edit of text someone else changed in the meantime is refused with ErrChanged.
+// an edit of text someone else changed in the meantime is refused with ErrChanged. Notes
+// of reMarkable documents are read-only: edits can't go back to the tablet, and the next
+// change of the document replaces them.
 func (s *RecordingService) EditSummary(ctx context.Context, acc *Account, id string, in SummaryEdit) (*recording.Recording, error) {
 	title, markdown, err := in.clean()
 	if err != nil {
 		return nil, err
 	}
 	return s.change(ctx, acc, id, recording.RoleEditor, func(rec *recording.Recording, _ recording.Role) error {
+		if rec.Source == recording.SourceRemarkable {
+			return errors.Join(ErrForbidden, errors.New("notes of reMarkable documents are read-only"))
+		}
 		if rec.Summary == nil {
 			return errors.Join(ErrNotReady, errors.New("the recording has no summary yet"))
 		}

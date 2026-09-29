@@ -147,12 +147,17 @@ func TestEditSummary(t *testing.T) {
 	_ = recs.Create(ctx, &recording.Recording{ID: "r1", OwnerID: "alice", DeviceID: "d", ClientID: "1", Status: recording.StatusSummarized,
 		Transcript: &recording.Transcript{Text: "t"}, Summary: &recording.Summary{Title: "Old", Markdown: "old", Model: "m", ThemeID: "meeting"}})
 	_ = recs.Create(ctx, &recording.Recording{ID: "r2", OwnerID: "alice", DeviceID: "d", ClientID: "2", Status: recording.StatusStored})
+	_ = recs.Create(ctx, &recording.Recording{ID: "r3", OwnerID: "alice", DeviceID: "d", ClientID: "3", Status: recording.StatusSummarized,
+		Type: recording.TypeDocument, Source: recording.SourceRemarkable, Summary: &recording.Summary{Title: "Doc", Markdown: "doc"}})
 
 	if _, err := s.EditSummary(ctx, bob, "r1", SummaryEdit{Title: "x", Markdown: "y"}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("other user: %v", err)
 	}
 	if _, err := s.EditSummary(ctx, alice, "r2", SummaryEdit{Title: "x", Markdown: "y"}); !errors.Is(err, ErrNotReady) {
 		t.Fatalf("no summary: %v", err)
+	}
+	if _, err := s.EditSummary(ctx, alice, "r3", SummaryEdit{Title: "x", Markdown: "y"}); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("reMarkable document: %v", err)
 	}
 	if _, err := s.EditSummary(ctx, alice, "r1", SummaryEdit{Title: "  ", Markdown: "y"}); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("empty title: %v", err)

@@ -324,6 +324,7 @@ export const en = {
     sourcePocket: 'Pocket',
     sourceUpload: 'Upload',
     sourceRemarkable: 'reMarkable',
+    remarkableReadOnly: 'Read from your reMarkable. Its text and title can’t be changed here, as changes can’t be synced back to the tablet; they follow the document when it changes there.',
     sourcePhoto: 'Photo',
     sourcePdf: 'PDF',
     sourceRecorder: 'Voice memo',

@@ -326,6 +326,7 @@ export const de: Translation = {
     sourcePocket: 'Pocket',
     sourceUpload: 'Upload',
     sourceRemarkable: 'reMarkable',
+    remarkableReadOnly: 'Von deinem reMarkable gelesen. Text und Titel lassen sich hier nicht ändern, da Änderungen nicht zurück aufs Tablet übertragen werden können; sie folgen dem Dokument, wenn es sich dort ändert.',
     sourcePhoto: 'Foto',
     sourcePdf: 'PDF',
     sourceRecorder: 'Sprachnotiz',
