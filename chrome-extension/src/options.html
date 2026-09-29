@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>knowpod Web Clipper options</title>
+  <style>
+    :root { color-scheme: light dark; font: 14px system-ui, sans-serif; }
+    body { min-width: 340px; padding: 14px; }
+    label { display: block; margin-bottom: 6px; font-weight: 600; }
+    input { width: 100%; box-sizing: border-box; padding: 6px; font: inherit; }
+    button { margin-top: 10px; padding: 6px 14px; font: inherit; }
+    #status { min-height: 1.3em; }
+    small { opacity: .7; }
+  </style>
+</head>
+<body>
+  <label for="server">knowpod server</label>
+  <input id="server" type="url" placeholder="https://knowpod.example.com" autocomplete="off">
+  <small>Sign in to this server in your browser; clips use that session.</small><br>
+  <button id="save" type="button">Save</button>
+  <p id="status" role="status"></p>
+  <script type="module" src="options.js"></script>
+</body>
+</html>
