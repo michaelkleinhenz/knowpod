@@ -650,6 +650,23 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart,
             {isBoard ? null : summary ? (
               <>
                 <div className="editor-wrap">
+                {focus &&
+                  (editable ? (
+                    <input
+                      className="title-input focus-title"
+                      aria-label={t('editor.title')}
+                      maxLength={200}
+                      readOnly={textReadOnly}
+                      value={autosave.title}
+                      onChange={(e) => autosave.setTitle(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (titleKey(e) || e.key !== 'Enter') return;
+                        (e.target as HTMLInputElement).blur();
+                      }}
+                    />
+                  ) : (
+                    <h1 className="focus-title">{titleOf(rec)}</h1>
+                  ))}
                 <Suspense
                   fallback={
                     <div className="prose editor-content">
