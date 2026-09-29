@@ -286,6 +286,7 @@ func (s *Server) Router() http.Handler {
 			u.Put("/recordings/{id}/done", s.handleSetNoteDone)
 			u.Put("/recordings/{id}/due", s.handleSetNoteDue)
 			u.Put("/recordings/{id}/priority", s.handleSetNotePriority)
+			u.Put("/recordings/{id}/assignee", s.handleSetNoteAssignee)
 			u.Put("/recordings/{id}/estimate", s.handleSetNoteEstimate)
 			u.Post("/recordings/{id}/action-items/{itemId}/task", s.handleCreateActionItemTask)
 			u.Put("/recordings/{id}/action-items/{itemId}/dismissed", s.handleDismissActionItem)

@@ -1715,6 +1715,35 @@ paths:
         "400": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
 
+  /recordings/{recordingId}/assignee:
+    put:
+      tags: ["Recordings", "Tasks"]
+      summary: Assign a task
+      description: |
+        Assigns a task (a note labeled `task`) to the note's owner or to a user it is shared
+        with; an empty `assigneeId` unassigns it. Needs an editor of the note. The reporter of
+        a task is the user who made the note (`GET /recordings/{id}/shares`, `reporter`). An
+        assignee who loses access to the note, or is deleted, is unassigned.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [assigneeId]
+              properties:
+                assigneeId: { type: string, description: 'User ID; empty for none' }
+      responses:
+        "200":
+          description: Saved
+          content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
   /recordings/{recordingId}/action-items/{itemId}/task:
     post:
       tags: ["Recordings", "Tasks"]
@@ -2518,6 +2547,7 @@ components:
         owner: { $ref: "#/components/schemas/ShareUser" }
         members: { type: array, items: { $ref: "#/components/schemas/ShareUser" } }
         access: { type: string, enum: [owner, editor, viewer], description: What you may do with the note }
+        reporter: { $ref: "#/components/schemas/ShareUser" }
 
     ShareUser:
       type: object
@@ -2685,6 +2715,7 @@ components:
         doneAt: { type: string, format: date-time, description: When the task was last checked off }
         due: { $ref: "#/components/schemas/Due" }
         priority: { $ref: "#/components/schemas/Priority" }
+        assigneeId: { type: string, description: 'The user a task is assigned to (the owner or a user the note is shared with); absent when unassigned' }
         remindAt: { type: string, format: date-time, description: When the task's next reminder is sent; absent when none is pending }
         estimate: { type: integer, description: How many minutes the task is expected to take; absent for none }
         trackedSeconds: { type: integer, format: int64, description: Time logged on the note with the timer or by hand (finished entries) }

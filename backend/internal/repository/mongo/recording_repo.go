@@ -266,6 +266,11 @@ func (r *RecordingRepo) RemoveMember(ctx context.Context, userID string) error {
 	_, err := r.c.UpdateMany(ctx,
 		bson.M{"$or": bson.A{bson.M{"members.userId": userID}, bson.M{"shares.userId": userID}}},
 		bump(bson.M{"$pull": bson.M{"members": bson.M{"userId": userID}, "shares": bson.M{"userId": userID}}}))
+	if err != nil {
+		return err
+	}
+	// Tasks assigned to the user are unassigned.
+	_, err = r.c.UpdateMany(ctx, bson.M{"assigneeId": userID}, bump(bson.M{"$unset": bson.M{"assigneeId": ""}}))
 	return err
 }
 

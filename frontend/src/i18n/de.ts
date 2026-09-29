@@ -117,6 +117,9 @@ export const de: Translation = {
     resizeSidebar: 'Breite der Liste ändern (ziehen oder Pfeiltasten; Doppelklick setzt zurück)',
   },
   tasks: {
+    reporter: 'Melder',
+    assignee: 'Bearbeiter',
+    unassigned: 'Nicht zugewiesen',
     setDate: 'Datum',
     pickerTitle: 'Datum und Priorität',
     typeDate: 'Datum eingeben',

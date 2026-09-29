@@ -42,6 +42,22 @@ func (s *Server) handleSetNotePriority(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, rec)
 }
 
+// handleSetNoteAssignee assigns a task to the note's owner or a user it is shared with.
+func (s *Server) handleSetNoteAssignee(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		AssigneeID string `json:"assigneeId"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	rec, err := s.actions.SetAssignee(r.Context(), accountFrom(r.Context()), chi.URLParam(r, "id"), in.AssigneeID)
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, rec)
+}
+
 // actionItemTaskResult is the task made from an action item and the note it came from.
 type actionItemTaskResult struct {
 	Task *recording.Recording `json:"task"`

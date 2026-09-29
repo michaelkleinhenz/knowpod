@@ -1,7 +1,7 @@
 import { KeyboardEvent, MouseEvent as ReactMouseEvent, useEffect, useMemo, useState } from 'react';
 import i18n from 'i18next';
 import { useTranslation } from 'react-i18next';
-import { api, Due, Priority, Recording, Repeat } from '../api/client';
+import { api, Due, Priority, Recording, Repeat, Sharing } from '../api/client';
 import { errorText } from '../lib/errors';
 import { isoDate, parseTask } from '../lib/dateParse';
 import { dueDate, formatDue, formatReminder, formatRepeat, overdue, REMINDERS } from '../lib/tasks';
@@ -291,5 +291,58 @@ export function TaskControls({ rec, setRec }: { rec: Recording; setRec: (r: Reco
       {open && <TaskPicker rec={rec} save={save} onClose={() => setOpen(false)} />}
       {error && <p className="error">{error}</p>}
     </div>
+  );
+}
+
+// TaskPeople shows who reported a task (who made the note) and lets the user pick who it is
+// assigned to among the people who have access to the note.
+export function TaskPeople({ rec, setRec }: { rec: Recording; setRec: (r: Recording) => void }) {
+  const { t } = useTranslation();
+  const [sharing, setSharing] = useState<Sharing | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    api.sharing(rec.id).then(
+      (s) => live && setSharing(s),
+      () => live && setSharing(null),
+    );
+    return () => {
+      live = false;
+    };
+  }, [rec.id, rec.shared, rec.version]);
+
+  if (!sharing) return null;
+  const people = [sharing.owner, ...sharing.members];
+  const name = (u: { email: string; userId: string }) => u.email || u.userId;
+  const assignee = rec.assigneeId ?? '';
+  async function assign(id: string) {
+    setError(null);
+    try {
+      setRec(await api.setNoteAssignee(rec.id, id));
+    } catch (err) {
+      setError(errorText(err, t));
+    }
+  }
+  return (
+    <dl className="note-facts task-people">
+      <dt>{t('tasks.reporter')}</dt>
+      <dd>{sharing.reporter ? name(sharing.reporter) : '—'}</dd>
+      <dt>
+        <label htmlFor="task-assignee">{t('tasks.assignee')}</label>
+      </dt>
+      <dd>
+        <select id="task-assignee" value={assignee} onChange={(e) => void assign(e.target.value)}>
+          <option value="">{t('tasks.unassigned')}</option>
+          {assignee && !people.some((u) => u.userId === assignee) && <option value={assignee}>{assignee}</option>}
+          {people.map((u) => (
+            <option key={u.userId} value={u.userId}>
+              {name(u)}
+            </option>
+          ))}
+        </select>
+        {error && <p className="error">{error}</p>}
+      </dd>
+    </dl>
   );
 }

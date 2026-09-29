@@ -395,6 +395,8 @@ export interface Recording {
   // A task's due date and priority, and when its next reminder is sent.
   due?: Due;
   priority?: Priority;
+  // assigneeId is the user a task is assigned to (the owner or someone the note is shared with).
+  assigneeId?: string;
   remindAt?: string;
   // How many minutes a task is expected to take, and the time logged on it.
   estimate?: number;
@@ -505,6 +507,8 @@ export interface Sharing {
   owner: ShareUser;
   members: ShareUser[];
   access: ShareAccess;
+  // reporter is the user who made the note (notes only).
+  reporter?: ShareUser;
 }
 
 // NoteEvent is a change of a note the user sees, sent over GET /me/events.
@@ -664,6 +668,7 @@ export const api = {
   setNoteDone: (id: string, done: boolean, final = false) =>
     request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/done`, final ? { done, final } : { done }),
   setNoteDue: (id: string, due: Due | null) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/due`, { due }),
+  setNoteAssignee: (id: string, assigneeId: string) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/assignee`, { assigneeId }),
   setNotePriority: (id: string, priority: Priority) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/priority`, { priority }),
   setNoteEstimate: (id: string, minutes: number) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/estimate`, { minutes }),
   filters: () => request<SavedFilter[]>('GET', '/filters'),

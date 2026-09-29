@@ -5603,3 +5603,12 @@ a.note-ref:hover {
 .briefing-off p:last-child {
   margin: 0;
 }
+
+.task-people {
+  margin-top: 0.75rem;
+}
+
+.task-people select {
+  width: 100%;
+  max-width: 100%;
+}

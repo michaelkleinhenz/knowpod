@@ -115,6 +115,9 @@ export const en = {
     resizeSidebar: 'Resize the list (drag, or use the arrow keys; double-click to reset)',
   },
   tasks: {
+    reporter: 'Reporter',
+    assignee: 'Assignee',
+    unassigned: 'Unassigned',
     setDate: 'Date',
     pickerTitle: 'Date and priority',
     typeDate: 'Type a date',

@@ -89,7 +89,7 @@ func makeTask(rec *recording.Recording) error {
 
 // clearTask removes the fields only tasks have.
 func clearTask(rec *recording.Recording) {
-	rec.Done, rec.DoneAt, rec.Due, rec.Priority = false, nil, nil, 0
+	rec.Done, rec.DoneAt, rec.Due, rec.Priority, rec.AssigneeID = false, nil, nil, 0, ""
 	clearReminders(rec)
 }
 
@@ -133,6 +133,21 @@ func (s *RecordingService) SetPriority(ctx context.Context, acc *Account, id str
 			}
 		}
 		rec.Priority = p
+		return nil
+	})
+}
+
+// SetAssignee assigns the task to the note's owner or one of the users it is shared with
+// ("" clears it). Only notes labeled as a task can be assigned.
+func (s *RecordingService) SetAssignee(ctx context.Context, acc *Account, id, assigneeID string) (*recording.Recording, error) {
+	return s.change(ctx, acc, id, recording.RoleEditor, func(rec *recording.Recording, _ recording.Role) error {
+		if !slices.Contains(rec.Labels, label.Task) {
+			return invalid("only notes labeled as a task can be assigned")
+		}
+		if assigneeID != "" && !slices.Contains(rec.Audience(), assigneeID) {
+			return invalid("a task can only be assigned to the owner of the note or a user it is shared with")
+		}
+		rec.AssigneeID = assigneeID
 		return nil
 	})
 }

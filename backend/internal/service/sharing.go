@@ -1,6 +1,7 @@
 package service
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"slices"
@@ -27,6 +28,17 @@ func roleOf(acc *Account, rec *recording.Recording) recording.Role {
 		return recording.RoleOwner
 	}
 	if m := rec.Member(acc.ID); m != nil {
+		return m.Role
+	}
+	return ""
+}
+
+// roleIn is what the user may do with the note ("" for none).
+func roleIn(rec *recording.Recording, userID string) recording.Role {
+	if userID == rec.OwnerID {
+		return recording.RoleOwner
+	}
+	if m := rec.Member(userID); m != nil {
 		return m.Role
 	}
 	return ""
@@ -124,6 +136,9 @@ type Sharing struct {
 	Members []ShareUser `json:"members"`
 	// Access is what the account asking may do with the note.
 	Access recording.Role `json:"access"`
+	// Reporter is the user who made the note (a task's reporter): its owner, or the editor
+	// who created it under a shared note. Only for notes.
+	Reporter *ShareUser `json:"reporter,omitempty"`
 }
 
 // Sharing returns who the note is shared with.
@@ -142,6 +157,8 @@ func (s *RecordingService) sharingOf(ctx context.Context, rec *recording.Recordi
 		out.Members = append(out.Members, ShareUser{UserID: m.UserID, Email: s.email(ctx, m.UserID), Role: m.Role,
 			Inherited: rec.Share(m.UserID) == nil})
 	}
+	reporter := cmp.Or(rec.CreatedBy, rec.OwnerID)
+	out.Reporter = &ShareUser{UserID: reporter, Email: s.email(ctx, reporter), Role: roleIn(rec, reporter)}
 	return out
 }
 
@@ -293,6 +310,9 @@ func (s *RecordingService) syncMembersAt(ctx context.Context, id string, depth i
 			}
 		}
 		rec.Members = next
+		if rec.AssigneeID != "" && !slices.Contains(rec.Audience(), rec.AssigneeID) {
+			rec.AssigneeID = ""
+		}
 		s.scheduleMemberReminders(ctx, rec)
 		err = s.save(ctx, rec)
 		if errors.Is(err, ErrChanged) && attempt < maxChangeAttempts {
