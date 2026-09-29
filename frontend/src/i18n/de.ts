@@ -375,6 +375,8 @@ export const de: Translation = {
     downloadText: 'Notiz als Markdown-Datei herunterladen',
     downloadAudio: 'Audiodatei herunterladen',
     downloadDocument: 'Dokument herunterladen',
+    scribbles: 'Handschrift vom reMarkable',
+    scribblesTitle: 'Die auf der reMarkable-Kopie dieser Notiz geschriebene Handschrift herunterladen',
     downloadDocumentText: 'Text als Textdatei herunterladen',
     highlights: 'Markierungen',
     highlightsHint: 'Momente, die während der Aufnahme markiert wurden. Klicke auf einen, um ab dort zu hören.',

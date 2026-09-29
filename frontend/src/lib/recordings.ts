@@ -23,6 +23,14 @@ export function onTablet(r: Recording): boolean {
   return noteType(r) === 'text' && !!r.tablet && !r.tablet.removed;
 }
 
+// INK_NAME is the name of the attachment the server keeps the handwriting from the reMarkable in.
+export const INK_NAME = 'reMarkable scribbles.pdf';
+
+// inkAttachment returns the handwriting PDF of a text note's copy on the reMarkable, if any.
+export function inkAttachment(r: Recording) {
+  return r.source !== 'remarkable' && r.tablet ? r.attachments?.find((a) => a.name === INK_NAME) : undefined;
+}
+
 export function iconKind(r: Recording): IconKind {
   const type = noteType(r);
   if (onTablet(r)) return 'remarkableText';

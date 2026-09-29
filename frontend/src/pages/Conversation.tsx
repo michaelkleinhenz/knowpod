@@ -25,7 +25,7 @@ import { locale } from '../i18n';
 import { errorText } from '../lib/errors';
 import { folderPath, notePath } from '../lib/folders';
 import { noteRefPath } from '../lib/noteRefs';
-import { formatBytes, formatClock, formatDate, formatDuration, isPhoto, noteType, onTablet, processing, statusLabel, title as titleOf, when } from '../lib/recordings';
+import { formatBytes, formatClock, formatDate, formatDuration, inkAttachment, isPhoto, noteType, onTablet, processing, statusLabel, title as titleOf, when } from '../lib/recordings';
 import { Speakers } from '../components/Speakers';
 import { PdfViewer } from '../components/PdfViewer';
 
@@ -449,6 +449,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart,
         ))}
       </>
     ) : null;
+  const ink = inkAttachment(rec);
   const lanePills =
     lanes.length > 0
       ? lanes.map(({ board, lane }) => (
@@ -579,6 +580,11 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart,
               {location && <span className="meta-item meta-extra">{location}</span>}
               {lanePills && <span className="meta-extra">{lanePills}</span>}
               {state && <span className={`state-pill${rec.status === 'failed' ? ' bad' : ''}`}>{state}</span>}
+              {ink && (
+                <a className="state-pill lane-pill" href={api.attachmentURL(rec.id, ink.id)} download={ink.name} title={t('conversation.scribblesTitle')}>
+                  {t('conversation.scribbles')}
+                </a>
+              )}
             </p>
             <div className="header-labels">
               <NoteLabels rec={rec} setRec={setRec} />
