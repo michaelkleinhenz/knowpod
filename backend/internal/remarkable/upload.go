@@ -235,13 +235,16 @@ func (s *Session) writeDocuments(ctx context.Context, docs []DocumentWrite, newI
 					}
 					_ = json.Unmarshal(raw, &meta)
 				}
-				if f.ID == id+".content" && d.TextScale > 0 {
+				if f.ID == id+".content" && (d.TextScale > 0 || d.EPUB != nil) {
 					raw, err := s.Blob(ctx, f.Hash, f.ID, 1<<20)
 					if err != nil {
 						return nil, err
 					}
-					content = scaledContent(raw, d.TextScale)
+					content = changedContent(raw, d.TextScale, d.EPUB)
 				}
+			}
+			if d.EPUB != nil {
+				files = withoutConverted(files, id)
 			}
 		} else {
 			if d.EPUB == nil {
@@ -347,22 +350,50 @@ func replaceEntry(entries []Entry, e Entry) []Entry {
 	return append(entries, e)
 }
 
-// scaledContent returns the .content file with the text size set, or nil when the document
-// isn't at the default size (1) or the file can't be read: a size chosen on the tablet, or
-// anything else in the file, is left as it is.
-func scaledContent(raw []byte, scale float64) []byte {
+// withoutConverted leaves out what the tablet made from a document's old EPUB: it reads an
+// EPUB through a PDF made from it (with an index of its pages) and shows thumbnails of
+// those pages, and keeps showing them as long as they are there, even for a new EPUB.
+// Without them, the tablet makes them again from the new file.
+func withoutConverted(files []Entry, id string) []Entry {
+	out := files[:0]
+	for _, f := range files {
+		switch {
+		case f.ID == id+".pdf", f.ID == id+".epubindex", strings.HasPrefix(f.ID, id+".thumbnails/"):
+			continue
+		}
+		out = append(out, f)
+	}
+	return out
+}
+
+// changedContent returns the .content file for a changed document, or nil when there is
+// nothing to change or the file can't be read. With scale, the text size is set if the
+// document is still at the default size (1), so a size chosen on the tablet stays. With a
+// new EPUB, the file size it records follows the new file. Anything else in the file is
+// left as it is.
+func changedContent(raw []byte, scale float64, epub []byte) []byte {
 	var c map[string]any
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber() // keeps big numbers as they are
 	if dec.Decode(&c) != nil {
 		return nil
 	}
-	if cur, ok := c["textScale"].(json.Number); ok {
-		if v, err := cur.Float64(); err != nil || v != 1 {
-			return nil
+	changed := false
+	if scale > 0 {
+		cur, ok := c["textScale"].(json.Number)
+		v, err := cur.Float64()
+		if !ok || (err == nil && v == 1) {
+			c["textScale"] = scale
+			changed = true
 		}
 	}
-	c["textScale"] = scale
+	if _, ok := c["sizeInBytes"]; ok && epub != nil {
+		c["sizeInBytes"] = strconv.Itoa(len(epub))
+		changed = true
+	}
+	if !changed {
+		return nil
+	}
 	out, err := json.Marshal(c)
 	if err != nil {
 		return nil
