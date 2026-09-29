@@ -34,6 +34,10 @@ interface Props {
   onOpenNote?: (n: number) => void;
   // readOnly shows the text without letting it be changed (a note shared for viewing).
   readOnly?: boolean;
+  // onConvertTask makes a task of a checklist item (title, and the full text when it is too
+  // long for a title). The task is created next to the note; when it resolves, the item is
+  // removed from the text.
+  onConvertTask?: (title: string, markdown: string) => Promise<void>;
 }
 
 // cleanMarkdown drops the "&nbsp;" lines that empty paragraphs become: Markdown has no
@@ -395,12 +399,67 @@ function BubbleButton(props: { label: string; active?: boolean; onClick: () => v
   );
 }
 
+// TASK_TITLE_MAX is the longest task title, in characters.
+const TASK_TITLE_MAX = 200;
+
+const CONVERT_ICON =
+  '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h4v4M13 3L7.5 8.5M11 9.5V12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h2.5"/></svg>';
+
+// checklistItemText returns the text of a checklist item that can be made a task: an open
+// item of one line, without sub-items. Others give "".
+function checklistItemText(item: PMNode): string {
+  if (item.attrs.checked || item.childCount !== 1) return '';
+  return item.textContent.trim();
+}
+
+// taskItemWithConvert is the checklist item with a button at its right that makes a task of
+// it (shown on hover, see .task-convert in styles.css). It builds on the item's own view.
+function taskItemWithConvert(convert: (item: PMNode, getPos: () => number | undefined) => void, label: string) {
+  return TaskItem.extend({
+    addNodeView() {
+      const parent = this.parent?.();
+      return (props) => {
+        const view = parent?.(props);
+        if (!view) return {} as never;
+        let item = props.node;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'task-convert';
+        button.contentEditable = 'false';
+        button.title = label;
+        button.setAttribute('aria-label', label);
+        button.innerHTML = CONVERT_ICON;
+        button.addEventListener('mousedown', (e) => e.preventDefault());
+        button.addEventListener('click', (e) => {
+          e.preventDefault();
+          convert(item, props.getPos);
+        });
+        const sync = () => {
+          button.hidden = !checklistItemText(item);
+        };
+        sync();
+        view.dom.append(button);
+        const update = view.update?.bind(view);
+        view.update = (node, ...rest) => {
+          const ok = update ? update(node, ...rest) : false;
+          if (ok) {
+            item = node;
+            sync();
+          }
+          return ok;
+        };
+        return view;
+      };
+    },
+  });
+}
+
 // SummaryEditor shows a summary as an always-editable document: clicking into the text
 // places the cursor there, like in a word processor. There is no fixed toolbar: typing "/"
 // at the start of a line opens a block menu, and selecting text shows a formatting bubble.
 // The text is loaded from and read as Markdown, which is how summaries are stored; saving
 // is done by the caller (useAutosave). It is loaded on demand (see Conversation.tsx).
-export default function SummaryEditor({ markdown, onReady, onChange, onSaveShortcut, notes, noteId, onOpenNote, readOnly = false }: Props) {
+export default function SummaryEditor({ markdown, onReady, onChange, onSaveShortcut, notes, noteId, onOpenNote, readOnly = false, onConvertTask }: Props) {
   const { t } = useTranslation();
   const slash = useMenuBridge<SlashItem>();
   const noteMenu = useMenuBridge<Recording>();
@@ -417,6 +476,11 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
   // the editor exists, since the handlers below are created with it.
   const [uploading, setUploading] = useState(0);
   const [imageError, setImageError] = useState('');
+  const [convertError, setConvertError] = useState('');
+  const convertTaskRef = useRef(onConvertTask);
+  convertTaskRef.current = onConvertTask;
+  // Set once the editor exists, like insertImagesRef.
+  const convertItemRef = useRef<(item: PMNode, getPos: () => number | undefined) => void>(() => {});
   const insertImagesRef = useRef<(files: File[], pos?: number) => void>(() => {});
 
   const editor = useEditor({
@@ -427,7 +491,7 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
         link: { openOnClick: false, autolink: true, protocols: ['http', 'https', 'mailto'] },
       }),
       TaskList,
-      TaskItem.configure({ nested: true }),
+      taskItemWithConvert((item, getPos) => convertItemRef.current(item, getPos), t('editor.convertTask')).configure({ nested: true }),
       Placeholder.configure({ placeholder: t('editor.placeholder'), showOnlyCurrent: true }),
       ResizableImage.configure({ allowBase64: false }),
       Markdown,
@@ -508,6 +572,37 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
     })();
   };
 
+  // Makes a task of a checklist item, then takes the item out of the list. The text may have
+  // changed while the task was being created, so the item is looked up again.
+  convertItemRef.current = (item, getPos) => {
+    const convert = convertTaskRef.current;
+    const text = checklistItemText(item);
+    if (!convert || !text || !editor.isEditable) return;
+    const chars = Array.from(text);
+    setConvertError('');
+    void (async () => {
+      try {
+        await convert(chars.slice(0, TASK_TITLE_MAX).join(''), chars.length > TASK_TITLE_MAX ? text : '');
+      } catch (err) {
+        setConvertError(t('editor.convertFailed', { detail: errorText(err, t) }));
+        return;
+      }
+      if (editor.isDestroyed) return;
+      let at = getPos();
+      if (at === undefined || !editor.state.doc.nodeAt(at)?.eq(item)) {
+        at = undefined;
+        editor.state.doc.descendants((n, pos) => {
+          if (at !== undefined) return false;
+          if (n.eq(item)) at = pos;
+          return at === undefined;
+        });
+      }
+      if (at === undefined) return; // the item was edited or removed meanwhile; the task stays
+      // deleteRange also removes the list when this was its last item.
+      editor.view.dispatch(editor.state.tr.deleteRange(at, at + item.nodeSize).scrollIntoView());
+    })();
+  };
+
   // The owner can make a note editable or read-only for the user while it is open.
   useEffect(() => {
     if (!editor.isDestroyed && editor.isEditable === readOnly) editor.setEditable(!readOnly, false);
@@ -578,6 +673,11 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
       {imageError && (
         <p className="editor-status error" role="alert">
           {imageError}
+        </p>
+      )}
+      {convertError && (
+        <p className="editor-status error" role="alert">
+          {convertError}
         </p>
       )}
       {slash.state && <SlashMenu state={slash.state} onHover={slash.hover} />}

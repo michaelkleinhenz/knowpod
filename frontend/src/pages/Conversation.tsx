@@ -254,6 +254,12 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart,
     }
   }
 
+  // convertToTask makes a task of a checklist item of the text: a note at the level this note
+  // is at (in its folder, or under its parent note). The editor removes the item afterwards.
+  async function convertToTask(title: string, markdown: string) {
+    notes.upsert(await api.createTextNote(title, markdown, rec.parentId, { task: true }, rec.folderId));
+  }
+
   // createSub makes an empty text note under this one and opens it, ready to type its title.
   async function createSub() {
     setBusy(true);
@@ -623,6 +629,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart,
                     onChange={autosave.changed}
                     onSaveShortcut={() => void autosave.save()}
                     readOnly={textReadOnly}
+                    onConvertTask={convertToTask}
                   />
                 </Suspense>
                 {!isText && <ActionItems rec={rec} setRec={setRec} />}

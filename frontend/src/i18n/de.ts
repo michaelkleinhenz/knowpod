@@ -419,6 +419,8 @@ export const de: Translation = {
     link: 'Link',
     linkPrompt: 'Linkadresse (leer lassen, um den Link zu entfernen):',
     imageFailed: 'Das Bild konnte nicht hinzugefügt werden: {{detail}}',
+    convertTask: 'Aus diesem Punkt eine Aufgabe machen',
+    convertFailed: 'Die Aufgabe konnte nicht erstellt werden: {{detail}}',
     imageUploading: 'Bild wird hinzugefügt …',
     placeholder: 'Tippe / für Befehle',
     slash: {
@@ -434,7 +436,7 @@ export const de: Translation = {
       orderedList: 'Nummerierte Liste',
       orderedListHint: 'Liste mit Nummerierung erstellen',
       checklist: 'Checkliste',
-      checklistHint: 'Punkte zum Abhaken, im Text gespeichert (keine Aufgaben)',
+      checklistHint: 'Punkte zum Abhaken, im Text gespeichert (per Hover zur Aufgabe machen)',
       codeBlock: 'Codeblock',
       codeBlockHint: 'Codeblock einfügen',
       quote: 'Zitat',

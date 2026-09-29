@@ -2304,6 +2304,50 @@ button.sync-state:focus-visible {
   min-width: 0;
 }
 
+/* Makes a task of the item; shown when the item is hovered or the button has focus. */
+.editor-content ul[data-type='taskList'] li {
+  position: relative;
+}
+
+.editor-content ul[data-type='taskList'] li > .task-convert {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5em;
+  height: 1.5em;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--color-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.editor-content ul[data-type='taskList'] li > .task-convert[hidden],
+.editor-content[contenteditable='false'] .task-convert {
+  display: none;
+}
+
+.editor-content ul[data-type='taskList'] li:hover > .task-convert,
+.editor-content ul[data-type='taskList'] li > .task-convert:focus-visible {
+  opacity: 1;
+}
+
+.editor-content ul[data-type='taskList'] li > .task-convert:hover {
+  background: var(--color-hover);
+  color: var(--color-primary);
+}
+
+/* Touch screens have no hover: show the button faintly. */
+@media (hover: none) {
+  .editor-content ul[data-type='taskList'] li > .task-convert {
+    opacity: 0.6;
+  }
+}
+
 .editor-content ul[data-type='taskList'] li[data-checked='true'] > div,
 .prose li.done {
   color: var(--color-muted);

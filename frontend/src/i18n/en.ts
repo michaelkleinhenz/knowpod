@@ -417,6 +417,8 @@ export const en = {
     link: 'Link',
     linkPrompt: 'Link address (leave empty to remove the link):',
     imageFailed: 'The image could not be added: {{detail}}',
+    convertTask: 'Make a task of this item',
+    convertFailed: 'The task could not be created: {{detail}}',
     imageUploading: 'Adding image…',
     placeholder: 'Type / for commands',
     slash: {
@@ -432,7 +434,7 @@ export const en = {
       orderedList: 'Numbered list',
       orderedListHint: 'Create a list with numbering',
       checklist: 'Checklist',
-      checklistHint: 'Items to check off, saved in the text (no tasks)',
+      checklistHint: 'Items to check off, saved in the text (hover one to make it a task)',
       codeBlock: 'Code block',
       codeBlockHint: 'Insert a block of code',
       quote: 'Quote',
