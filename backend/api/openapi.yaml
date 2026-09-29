@@ -1280,6 +1280,73 @@ paths:
               schema: { type: string, format: binary }
         "404": { $ref: "#/components/responses/Error" }
 
+  /recordings/{recordingId}/attachments:
+    post:
+      tags: ["Recordings"]
+      summary: Attach a file to a note
+      description: |
+        Stores a file of any type (up to 50 MB, at most 100 per note) sent as the request body
+        and lists it in the note's `attachments`, which the web app shows in the sidebar. Needs
+        an editor of the note; the note's revision doesn't change. Attachments are deleted with
+        the note.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+        - { name: name, in: query, required: false, schema: { type: string }, description: The file's name }
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: { type: string, format: binary }
+      responses:
+        "201":
+          description: Stored
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, name, contentType, size]
+                properties:
+                  id: { type: string }
+                  name: { type: string }
+                  contentType: { type: string }
+                  size: { type: integer, format: int64 }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "413": { $ref: "#/components/responses/Error" }
+
+  /recordings/{recordingId}/attachments/{attachmentId}:
+    get:
+      tags: ["Recordings"]
+      summary: Download an attached file
+      description: Always sent as a download with the media type application/octet-stream.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+        - { name: attachmentId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The file
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "404": { $ref: "#/components/responses/Error" }
+    delete:
+      tags: ["Recordings"]
+      summary: Remove an attached file
+      description: Needs an editor of the note.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+        - { name: attachmentId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The note without the file
+          content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
   /recordings/{recordingId}/restore:
     post:
       tags: ["Recordings"]
@@ -2708,6 +2775,17 @@ components:
         original: { $ref: "#/components/schemas/Object" }
         file: { $ref: "#/components/schemas/Object" }
         pages: { type: integer, description: Number of pages of a document }
+        attachments:
+          type: array
+          description: Files attached to the note
+          items:
+            type: object
+            required: [id, name, contentType, size]
+            properties:
+              id: { type: string }
+              name: { type: string }
+              contentType: { type: string }
+              size: { type: integer, format: int64 }
         summaryOptions: { $ref: "#/components/schemas/SummaryOptions" }
         highlights: { type: array, items: { $ref: "#/components/schemas/Highlight" } }
         labels: { type: array, items: { type: string }, description: IDs of the note's labels (see GET /labels) }

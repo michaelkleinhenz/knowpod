@@ -2035,8 +2035,34 @@ a {
   margin: 0.5rem 0;
 }
 
-.editor-content img.ProseMirror-selectednode {
+.editor-content img.ProseMirror-selectednode,
+.editor-content .img-resize.ProseMirror-selectednode img {
   outline: 2px solid var(--color-primary, #4f7cff);
+}
+
+.img-resize {
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.img-resize-handle {
+  position: absolute;
+  right: 4px;
+  bottom: 12px;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: var(--color-primary, #4f7cff);
+  border: 2px solid #fff;
+  cursor: nwse-resize;
+  opacity: 0;
+  touch-action: none;
+}
+
+.img-resize:hover .img-resize-handle,
+.img-resize.ProseMirror-selectednode .img-resize-handle {
+  opacity: 1;
 }
 
 .editor-status {
@@ -4497,6 +4523,57 @@ a.note-ref:hover {
   color: var(--color-muted);
 }
 
+.attachment-list {
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
+}
+
+.attachment-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.attachment-list a {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.attachment-list a:hover .attachment-name {
+  text-decoration: underline;
+}
+
+.attachment-list svg {
+  flex: none;
+}
+
+.attachment-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-size {
+  flex: none;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+
+.attachment-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
 .note-aside-task {
   display: flex;
   flex-wrap: wrap;
@@ -5611,4 +5688,26 @@ a.note-ref:hover {
 .task-people select {
   width: 100%;
   max-width: 100%;
+  appearance: none;
+  font: inherit;
+  font-size: var(--input-font-size);
+  color: var(--color-text);
+  padding: 0.4rem 1.9rem 0.4rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background-color: var(--color-surface);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.task-people select:hover {
+  background-color: var(--color-bg);
+}
+
+.task-people select:focus-visible {
+  outline: 2px solid var(--color-primary, #4f7cff);
+  outline-offset: 1px;
 }

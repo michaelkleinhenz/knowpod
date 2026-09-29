@@ -208,6 +208,10 @@ func (s *RecordingService) delete(ctx context.Context, rec *recording.Recording)
 	for i := range rec.Images {
 		objs = append(objs, &rec.Images[i])
 	}
+	for _, a := range rec.Attachments {
+		obj := a.Object()
+		objs = append(objs, &obj)
+	}
 	for _, obj := range objs {
 		if obj != nil {
 			if err := s.objects.Delete(ctx, obj.Key); err != nil && !errors.Is(err, ErrNotFound) {

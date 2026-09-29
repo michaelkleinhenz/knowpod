@@ -133,6 +133,44 @@ func (s *Server) handleGetImage(w http.ResponseWriter, r *http.Request) {
 	s.streamObject(w, r, obj, "image"+path.Ext(obj.Key))
 }
 
+// handleAddAttachment stores a file of any type attached to the note, sent as the raw request
+// body with its name in ?name=.
+func (s *Server) handleAddAttachment(w http.ResponseWriter, r *http.Request) {
+	att, err := s.actions.AddAttachment(r.Context(), accountFrom(r.Context()), chi.URLParam(r, "id"), r.URL.Query().Get("name"), http.MaxBytesReader(w, r.Body, 51<<20))
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, att)
+}
+
+// handleGetAttachment sends an attached file. It is always a download, with a fixed media
+// type, so a file such as HTML can't run in the app's origin.
+func (s *Server) handleGetAttachment(w http.ResponseWriter, r *http.Request) {
+	att, err := s.actions.Attachment(r.Context(), accountFrom(r.Context()), chi.URLParam(r, "id"), chi.URLParam(r, "attachmentId"))
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	q := r.URL.Query()
+	q.Set("download", "1")
+	r.URL.RawQuery = q.Encode()
+	obj := att.Object()
+	obj.ContentType = "application/octet-stream"
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	s.streamObject(w, r, &obj, att.Name)
+}
+
+// handleDeleteAttachment removes an attached file.
+func (s *Server) handleDeleteAttachment(w http.ResponseWriter, r *http.Request) {
+	rec, err := s.actions.DeleteAttachment(r.Context(), accountFrom(r.Context()), chi.URLParam(r, "id"), chi.URLParam(r, "attachmentId"))
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, rec)
+}
+
 // streamObject sends a stored file, or the byte range asked for. ?download=1 sends it as an
 // attachment.
 func (s *Server) streamObject(w http.ResponseWriter, r *http.Request, obj *recording.Object, name string) {

@@ -372,6 +372,14 @@ export const en = {
     highlightN: 'Highlight {{n}}',
     timeline: 'Timeline with highlights',
   },
+  attachments: {
+    title: 'Attachments',
+    add: 'Attach files',
+    uploading: 'Attaching {{name}}…',
+    remove: 'Remove {{name}}',
+    failed: 'Attaching failed: {{detail}}',
+    none: 'No attachments yet.',
+  },
   noteInfo: {
     title: 'Details',
     task: 'Task',
