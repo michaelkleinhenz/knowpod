@@ -1037,6 +1037,13 @@ a {
   top: 0;
   right: -0.35rem;
   z-index: 1;
+  display: flex;
+  align-items: center;
+}
+
+.note-sync .focus-toggle {
+  width: 1.5rem;
+  height: 1.5rem;
 }
 
 .note-sync .sync-state {
@@ -1051,7 +1058,7 @@ a {
 }
 
 .note-sync ~ .conversation-header .title-block {
-  padding-right: 1.25rem;
+  padding-right: 3rem;
 }
 
 .lane-pill {
@@ -5760,4 +5767,57 @@ a.note-ref:hover {
 .task-people select:focus-visible {
   outline: 2px solid var(--color-primary, #4f7cff);
   outline-offset: 1px;
+}
+
+/* --- Focus mode: the text editor alone, full screen --- */
+
+body.focus-open {
+  overflow: hidden;
+}
+
+.focus-mode {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  overflow-y: auto;
+  padding: 3.5rem 1rem 30vh;
+  background: var(--color-bg);
+}
+
+.focus-mode > :not(.editor-wrap):not(.focus-bar) {
+  display: none;
+}
+
+.focus-mode .editor-wrap {
+  max-width: 46rem;
+  margin: 0 auto;
+}
+
+.focus-mode .editor-content {
+  min-height: 60vh;
+  font-size: 1.05em;
+}
+
+.focus-bar {
+  position: fixed;
+  top: 0.5rem;
+  right: 0.75rem;
+  z-index: 201;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.focus-bar .sync-state,
+.focus-bar .icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.focus-bar .sync-dot {
+  width: 0.5rem;
+  height: 0.5rem;
 }

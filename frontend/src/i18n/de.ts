@@ -419,6 +419,7 @@ export const de: Translation = {
     link: 'Link',
     linkPrompt: 'Linkadresse (leer lassen, um den Link zu entfernen):',
     imageFailed: 'Das Bild konnte nicht hinzugefügt werden: {{detail}}',
+    focus: { enter: 'Fokusmodus', exit: 'Fokusmodus verlassen (Esc)' },
     convertTask: 'Aus diesem Punkt eine Aufgabe machen',
     convertFailed: 'Die Aufgabe konnte nicht erstellt werden: {{detail}}',
     imageUploading: 'Bild wird hinzugefügt …',

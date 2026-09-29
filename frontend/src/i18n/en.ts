@@ -417,6 +417,7 @@ export const en = {
     link: 'Link',
     linkPrompt: 'Link address (leave empty to remove the link):',
     imageFailed: 'The image could not be added: {{detail}}',
+    focus: { enter: 'Focus mode', exit: 'Leave focus mode (Esc)' },
     convertTask: 'Make a task of this item',
     convertFailed: 'The task could not be created: {{detail}}',
     imageUploading: 'Adding image…',
