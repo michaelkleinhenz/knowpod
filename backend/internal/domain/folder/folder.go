@@ -22,6 +22,12 @@ type Folder struct {
 	// Shares are the users the owner shared this folder with, together with everything in
 	// it: its notes (and their sub-notes) and its folders.
 	Shares []recording.Share `bson:"shares,omitempty" json:"-"`
+	// Placements are where the users the folder is shared with filed it in their own tree
+	// (see Placement).
+	Placements []Placement `bson:"placements,omitempty" json:"-"`
+	// Movable says the user the folder is shown to may file it elsewhere in their own tree:
+	// a folder shared with them that is not in another shared folder (only in responses).
+	Movable bool `bson:"-" json:"movable,omitempty"`
 	// Access is what the user the folder is shown to may do with the notes in it (only in
 	// responses): "owner", or the role it is shared with them for.
 	Access recording.Role `bson:"-" json:"access,omitempty"`
@@ -42,4 +48,38 @@ func (f *Folder) Share(userID string) *recording.Share {
 		}
 	}
 	return nil
+}
+
+// Placement is where a user the folder is shared with keeps it in their own folder tree:
+// in one of their own folders (empty is their top level), at a position among the folders
+// there. The folder itself stays where its owner put it.
+type Placement struct {
+	UserID   string `bson:"userId"`
+	ParentID string `bson:"parentId,omitempty"`
+	Position int    `bson:"position,omitempty"`
+}
+
+// Placement returns the user's placement of the folder, or nil.
+func (f *Folder) Placement(userID string) *Placement {
+	for i := range f.Placements {
+		if f.Placements[i].UserID == userID {
+			return &f.Placements[i]
+		}
+	}
+	return nil
+}
+
+// SetPlacement stores where the user keeps the folder; the default place (top level,
+// unordered) stores nothing.
+func (f *Folder) SetPlacement(userID, parentID string, position int) {
+	kept := f.Placements[:0]
+	for _, p := range f.Placements {
+		if p.UserID != userID {
+			kept = append(kept, p)
+		}
+	}
+	f.Placements = kept
+	if parentID != "" || position != 0 {
+		f.Placements = append(f.Placements, Placement{UserID: userID, ParentID: parentID, Position: position})
+	}
 }

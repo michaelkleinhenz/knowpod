@@ -62,8 +62,10 @@ func (s *FolderService) List(ctx context.Context, acc *Account) ([]*folder.Folde
 		return nil, err
 	}
 	seen := map[string]bool{}
+	ownByID := make(map[string]*folder.Folder, len(own))
 	for _, f := range own {
 		seen[f.ID] = true
+		ownByID[f.ID] = f
 	}
 	out := own
 	owners := map[string]bool{}
@@ -94,10 +96,17 @@ func (s *FolderService) List(ctx context.Context, acc *Account) ([]*folder.Folde
 			}
 			seen[f.ID] = true
 			c := *f
-			c.Access, c.Shared, c.Shares = role, true, nil
+			c.Access, c.Shared, c.Shares, c.Placements = role, true, nil, nil
 			if parent := byID[f.ParentID]; parent == nil || !inShared(byID, parent, acc.ID) {
-				// Shown at the account's top level, after the account's own ordered folders.
-				c.ParentID, c.Position = "", 0
+				// Shown where the account filed it among its own folders, else at its top
+				// level, after the account's own ordered folders.
+				c.ParentID, c.Position, c.Movable = "", 0, true
+				if pl := f.Placement(acc.ID); pl != nil {
+					c.Position = pl.Position
+					if pl.ParentID == "" || ownByID[pl.ParentID] != nil {
+						c.ParentID = pl.ParentID
+					}
+				}
 			}
 			out = append(out, &c)
 		}
@@ -149,9 +158,16 @@ func (s *FolderService) Create(ctx context.Context, acc *Account, in FolderInput
 
 // Update renames one of the account's folders or moves it into another folder.
 func (s *FolderService) Update(ctx context.Context, acc *Account, id string, in FolderInput) (*folder.Folder, error) {
-	f, err := s.own(ctx, acc, id)
+	f, err := s.repo.Get(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if !acc.Owns(f.OwnerID) {
+		// Filing is all the recipient may do; the name is the owner's.
+		if name := strings.Join(strings.Fields(in.Name), " "); name != "" && name != f.Name {
+			return nil, ErrNotFound
+		}
+		return s.place(ctx, acc, f, strings.TrimSpace(in.ParentID))
 	}
 	if err := s.validate(ctx, f.OwnerID, id, &in); err != nil {
 		return nil, err
@@ -184,6 +200,70 @@ func (s *FolderService) Update(ctx context.Context, acc *Account, id string, in 
 	return f, nil
 }
 
+// sharedRoot reports whether f, a folder of someone else, is shared with the account
+// directly or through a folder, but not through a folder the account sees it in: the
+// account's own tree is where such a folder can be filed.
+func (s *FolderService) sharedRoot(ctx context.Context, acc *Account, f *folder.Folder) (bool, error) {
+	if acc.ID == "" || acc.Owns(f.OwnerID) {
+		return false, nil
+	}
+	all, err := s.repo.List(ctx, f.OwnerID)
+	if err != nil {
+		return false, err
+	}
+	byID := make(map[string]*folder.Folder, len(all))
+	for _, x := range all {
+		byID[x.ID] = x
+	}
+	if !inShared(byID, byID[f.ID], acc.ID) {
+		return false, nil
+	}
+	parent := byID[f.ParentID]
+	return parent == nil || !inShared(byID, parent, acc.ID), nil
+}
+
+// place files a folder shared with the account in one of the account's own folders (empty
+// is the top level). Only the account sees the change; the folder stays where it is for
+// its owner and everyone else.
+func (s *FolderService) place(ctx context.Context, acc *Account, f *folder.Folder, parentID string) (*folder.Folder, error) {
+	root, err := s.sharedRoot(ctx, acc, f)
+	if err != nil {
+		return nil, err
+	}
+	if !root {
+		return nil, ErrNotFound
+	}
+	if parentID != "" {
+		p, err := s.repo.Get(ctx, parentID)
+		if err != nil || !acc.Owns(p.OwnerID) {
+			return nil, invalid("unknown folder %q", parentID)
+		}
+	}
+	pos := 0
+	if pl := f.Placement(acc.ID); pl != nil && pl.ParentID == parentID {
+		pos = pl.Position
+	}
+	f.SetPlacement(acc.ID, parentID, pos)
+	if err := s.repo.Update(ctx, f); err != nil {
+		return nil, err
+	}
+	return s.shownTo(ctx, acc, f.ID)
+}
+
+// shownTo returns folder id as List shows it to the account.
+func (s *FolderService) shownTo(ctx context.Context, acc *Account, id string) (*folder.Folder, error) {
+	list, err := s.List(ctx, acc)
+	if err != nil {
+		return nil, err
+	}
+	for _, f := range list {
+		if f.ID == id {
+			return f, nil
+		}
+	}
+	return nil, ErrNotFound
+}
+
 // members returns everyone the folder is shared with (see folderMembers).
 func (s *FolderService) members(ctx context.Context, ownerID, id string) ([]recording.Member, error) {
 	return folderMembers(ctx, s.repo, ownerID, id)
@@ -201,28 +281,55 @@ func (s *FolderService) Reorder(ctx context.Context, acc *Account, ids []string)
 	if len(ids) > maxReorder {
 		return invalid("at most %d folders can be ordered at once", maxReorder)
 	}
-	list := make([]*folder.Folder, 0, len(ids))
+	type item struct {
+		f      *folder.Folder
+		parent string
+		mine   bool
+	}
+	list := make([]item, 0, len(ids))
 	seen := make(map[string]bool, len(ids))
 	for _, id := range ids {
 		if seen[id] {
 			return invalid("folder %q is listed twice", id)
 		}
 		seen[id] = true
-		f, err := s.own(ctx, acc, id)
+		f, err := s.repo.Get(ctx, id)
 		if err != nil {
 			return err
 		}
-		if len(list) > 0 && f.ParentID != list[0].ParentID {
+		it := item{f: f, parent: f.ParentID, mine: acc.Owns(f.OwnerID)}
+		if !it.mine {
+			root, err := s.sharedRoot(ctx, acc, f)
+			if err != nil {
+				return err
+			}
+			if !root {
+				return ErrNotFound
+			}
+			it.parent = ""
+			if pl := f.Placement(acc.ID); pl != nil {
+				it.parent = pl.ParentID
+			}
+		}
+		if len(list) > 0 && it.parent != list[0].parent {
 			return invalid("the folders to order must be in the same place")
 		}
-		list = append(list, f)
+		list = append(list, it)
 	}
 	now := s.clock().UTC()
-	for i, f := range list {
-		if f.Position == i+1 {
-			continue
+	for i, it := range list {
+		f := it.f
+		if it.mine {
+			if f.Position == i+1 {
+				continue
+			}
+			f.Position, f.UpdatedAt = i+1, now
+		} else {
+			if pl := f.Placement(acc.ID); pl != nil && pl.Position == i+1 {
+				continue
+			}
+			f.SetPlacement(acc.ID, it.parent, i+1)
 		}
-		f.Position, f.UpdatedAt = i+1, now
 		if err := s.repo.Update(ctx, f); err != nil {
 			return err
 		}

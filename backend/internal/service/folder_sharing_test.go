@@ -272,3 +272,71 @@ func TestLeavingAndUnsharingAFolder(t *testing.T) {
 		t.Errorf("a note shared by itself is in bob's folder %q", got.FolderID)
 	}
 }
+
+func TestFilingASharedFolderInOwnFolders(t *testing.T) {
+	f := newFolderFixture(t)
+	ctx := context.Background()
+	f.shareFolder(t, f.work.ID, recording.RoleViewer)
+	mine, err := f.folders.Create(ctx, f.bob, FolderInput{Name: "Mine"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := f.folders.Create(ctx, f.bob, FolderInput{Name: "Other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !f.bobsFolders(t)[f.work.ID].Movable {
+		t.Fatal("a shared folder at the top level is not movable")
+	}
+	if f.bobsFolders(t)[f.projects.ID].Movable {
+		t.Fatal("a folder inside a shared folder is movable")
+	}
+
+	// Into one of bob's folders; only bob sees it there.
+	got, err := f.folders.Update(ctx, f.bob, f.work.ID, FolderInput{ParentID: mine.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ParentID != mine.ID || got.Access != recording.RoleViewer {
+		t.Fatalf("got parent %q access %q", got.ParentID, got.Access)
+	}
+	if p := f.bobsFolders(t)[f.work.ID].ParentID; p != mine.ID {
+		t.Fatalf("bob sees the folder in %q", p)
+	}
+	own, _ := f.folders.List(ctx, f.acc)
+	for _, x := range own {
+		if x.ID == f.work.ID && x.ParentID != "" {
+			t.Fatalf("the owner's folder moved to %q", x.ParentID)
+		}
+	}
+	if !f.bobsFolders(t)[f.projects.ID].Shared || f.bobsFolders(t)[f.projects.ID].ParentID != f.work.ID {
+		t.Fatal("sub-folder no longer under the shared folder")
+	}
+
+	// Not into someone else's folder, nor a folder that is not visible; not renamed.
+	if _, err := f.folders.Update(ctx, f.bob, f.work.ID, FolderInput{ParentID: f.home.ID}); err == nil {
+		t.Fatal("filed into the owner's folder")
+	}
+	if _, err := f.folders.Update(ctx, f.bob, f.projects.ID, FolderInput{ParentID: mine.ID}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("moved a folder inside a shared one: %v", err)
+	}
+	if _, err := f.folders.Update(ctx, f.bob, f.home.ID, FolderInput{ParentID: mine.ID}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("moved an unshared folder: %v", err)
+	}
+
+	// Ordered among bob's folders.
+	if _, err := f.folders.Update(ctx, f.bob, f.work.ID, FolderInput{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.folders.Reorder(ctx, f.bob, []string{f.work.ID, mine.ID, other.ID}); err != nil {
+		t.Fatal(err)
+	}
+	m := f.bobsFolders(t)
+	if m[f.work.ID].Position != 1 || m[mine.ID].Position != 2 || m[other.ID].Position != 3 {
+		t.Fatalf("positions %d %d %d", m[f.work.ID].Position, m[mine.ID].Position, m[other.ID].Position)
+	}
+	if err := f.folders.Reorder(ctx, f.bob, []string{f.work.ID, f.projects.ID}); err == nil {
+		t.Fatal("ordered a folder inside a shared one")
+	}
+}

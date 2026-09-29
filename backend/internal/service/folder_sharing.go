@@ -15,7 +15,8 @@ import (
 // editors, and it is then shared together with everything in it: the notes in it (with
 // their sub-notes) and its folders, at any depth. The notes get the folder's users as
 // members (see syncMembers), so everything that works for a shared note works for them.
-// The users see the folder in their folder tree (at the top level), with its folders and
+// The users see the folder in their folder tree (at the top level, or wherever they filed it
+// in their own folders), with its folders and
 // notes; editors can also add notes to it, which belong to the folder's owner.
 
 // folderMembers returns everyone the folder id of ownerID is shared with: the users of its

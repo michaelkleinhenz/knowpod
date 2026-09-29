@@ -128,6 +128,8 @@ export interface Folder {
   access?: ShareAccess;
   // The folder, or one it is in, is shared.
   shared?: boolean;
+  // A folder shared with the user that they can file in their own folders, but not change.
+  movable?: boolean;
   // The folder of the paired reMarkable's documents; it can't be deleted while paired.
   remarkable?: boolean;
 }
