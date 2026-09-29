@@ -62,8 +62,10 @@ type Server struct {
 	ask *service.AskService
 	// briefings makes the users' daily and weekly briefings.
 	briefings *service.BriefingService
-	version   string
-	now       func() time.Time
+	// backup makes and restores full backups.
+	backup  *service.BackupService
+	version string
+	now     func() time.Time
 }
 
 // Deps are the server's constructor dependencies. Handlers of missing services are still
@@ -101,6 +103,8 @@ type Deps struct {
 	// Ask and Briefings are optional in tests that don't use them.
 	Ask       *service.AskService
 	Briefings *service.BriefingService
+	// Backup is optional in tests that don't use it.
+	Backup *service.BackupService
 	// Version is the app version, reported by the MCP server.
 	Version string
 }
@@ -116,7 +120,7 @@ func NewServer(d Deps) *Server {
 		manual: d.Manual, actions: d.Actions, objects: d.Objects, pocket: d.Pocket, ai: d.AI, themes: d.Themes,
 		labels: d.Labels, folders: d.Folders, remarkable: d.Remarkable, notifications: d.Notifications,
 		filters: d.Filters, times: d.Times, calendar: d.Calendar, mcp: d.MCP, oauth: d.OAuth, events: d.Events,
-		ask: d.Ask, briefings: d.Briefings, version: cmp.Or(d.Version, "dev"),
+		ask: d.Ask, briefings: d.Briefings, backup: d.Backup, version: cmp.Or(d.Version, "dev"),
 		now: time.Now,
 	}
 }
@@ -315,6 +319,8 @@ func (s *Server) Router() http.Handler {
 			a.Put("/users/{id}/password", s.handleSetUserPassword)
 			a.Get("/settings/openrouter", s.handleGetOpenRouterSettings)
 			a.Put("/settings/openrouter", s.handleUpdateOpenRouterSettings)
+			a.With(httprate.LimitByIP(6, time.Hour)).Get("/backup", s.handleBackup)
+			a.With(httprate.LimitByIP(6, time.Hour)).Post("/restore", s.handleRestore)
 		})
 	})
 

@@ -53,6 +53,7 @@ var errorCodes = []struct {
 	{service.ErrNotPaired, http.StatusConflict, "not_paired"},
 	{service.ErrCloudUnavailable, http.StatusBadGateway, "remarkable_unavailable"},
 	{service.ErrEmailTaken, http.StatusConflict, "email_taken"},
+	{service.ErrBackupBusy, http.StatusConflict, "backup_busy"},
 	{service.ErrNotReady, http.StatusConflict, "not_ready"},
 	{service.ErrConflict, http.StatusConflict, "conflict"},
 	{service.ErrUnsupportedMedia, http.StatusUnsupportedMediaType, "unsupported_media"},

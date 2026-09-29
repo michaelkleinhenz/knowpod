@@ -235,6 +235,31 @@ type ObjectStore interface {
 	Delete(ctx context.Context, key string) error
 }
 
+// ObjectInfo describes a stored object.
+type ObjectInfo struct {
+	Key         string
+	Size        int64
+	ContentType string
+}
+
+// ObjectLister lists every stored object, in any order (used by backups). Keys are the ones
+// Get and Put take.
+type ObjectLister interface {
+	List(ctx context.Context, fn func(ObjectInfo) error) error
+}
+
+// BackupRepository exports and replaces the whole database (used by backups). Documents are
+// raw BSON, so nothing is lost to the domain types.
+type BackupRepository interface {
+	// Collections lists the collections a backup holds.
+	Collections() []string
+	// Export calls fn with every document of the collection.
+	Export(ctx context.Context, collection string, fn func(doc []byte) error) error
+	// Replace deletes every document of the collection and inserts the ones next returns,
+	// until it returns io.EOF.
+	Replace(ctx context.Context, collection string, next func() ([]byte, error)) error
+}
+
 // FilterRepository persists users' saved filters. Get of a missing filter returns
 // domain.ErrNotFound.
 type FilterRepository interface {

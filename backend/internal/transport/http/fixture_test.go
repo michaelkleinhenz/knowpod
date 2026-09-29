@@ -103,8 +103,14 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	ai := service.NewAIService(memory.NewSettings(), themes, objects, nil, t.TempDir(), log)
 	briefings := service.NewBriefingService(users, actions, folderRepo, ai, log)
 	briefings.Notifications, briefings.TimeEntries = notifications, timeRepo
+	backupDB := memory.NewBackup("users", "recordings")
+	backupDB.Docs["users"] = [][]byte{{5, 0, 0, 0, 0}}
+	_ = objects.Put(ctx, "seed.txt", bytes.NewReader([]byte("seed")), 4, "text/plain")
+	backup := service.NewBackupService(backupDB, objects)
+	backup.TempDir = t.TempDir()
 	s := NewServer(Deps{
-		Cfg: config.Config{AdminToken: adminToken}, Log: log, Auth: auth,
+		Backup: backup,
+		Cfg:    config.Config{AdminToken: adminToken}, Log: log, Auth: auth,
 		Users:   userSvc,
 		Devices: service.NewDeviceService(devs), Uploads: service.NewUploadService(recs, spool, 1<<30),
 		Manual: service.NewManualUploadService(recs, spool, 1<<30), Actions: actions, Objects: objects,

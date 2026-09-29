@@ -157,6 +157,14 @@ tags:
     description: Create, change and delete users. Administrators only.
   - name: "Admin: AI settings"
     description: OpenRouter API key and the models used to transcribe and summarize recordings. Administrators only.
+  - name: "Admin: backup"
+    description: |
+      A full backup of everything in the system, and a full restore from one. Administrators
+      only (or `ADMIN_TOKEN`). A backup is a zip file with the database (every collection except
+      the short-lived sessions, as raw BSON in `db/`), every object of the S3 bucket (`objects/`)
+      and a `manifest.json`, which comes last: a download that was cut off isn't a valid backup.
+      The data isn't frozen while the backup is written; the database goes first and the objects
+      after it, so every object the notes refer to is included.
 paths:
   /info:
     get:
@@ -2576,6 +2584,73 @@ paths:
           description: Saved
           content: { application/json: { schema: { $ref: "#/components/schemas/OpenRouterSettings" } } }
         "400": { $ref: "#/components/responses/Error" }
+
+  /admin/backup:
+    get:
+      tags: ["Admin: backup"]
+      summary: Download a full backup
+      description: |
+        Streams a zip file with all users, notes, settings and every file in the object
+        store. Use it from scripts with the admin token:
+        `curl -H "Authorization: Bearer $ADMIN_TOKEN" -OJ https://your-host/api/v1/admin/backup`.
+        Large installations take a while; the response is streamed. Limited to 6 per hour per IP.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      responses:
+        "200":
+          description: The backup
+          headers:
+            Content-Disposition: { schema: { type: string }, description: 'attachment; filename="knowpod-backup-<time>.zip"' }
+          content:
+            application/zip: { schema: { type: string, format: binary } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409":
+          description: A restore is running (code `backup_busy`)
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /admin/restore:
+    post:
+      tags: ["Admin: backup"]
+      summary: Restore everything from a backup
+      description: |
+        **Replaces all data.** Every collection except the sessions is emptied and filled from
+        the backup, and the backup's files are written to the object store (files that aren't in
+        the backup stay, unreferenced). The backup is checked completely before anything
+        changes. If the restore is interrupted afterwards, send the same backup again. Users
+        who aren't in the backup lose their access. Send the zip file as the request body:
+        `curl -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/zip" --data-binary @backup.zip "https://your-host/api/v1/admin/restore?confirm=replace-all-data"`.
+        Limited to 6 per hour per IP.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - name: confirm
+          in: query
+          required: true
+          description: Must be `replace-all-data`.
+          schema: { type: string, enum: [replace-all-data] }
+      requestBody:
+        required: true
+        content:
+          application/zip: { schema: { type: string, format: binary } }
+      responses:
+        "200":
+          description: Restored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  createdAt: { type: string, format: date-time, description: When the backup was made }
+                  collections: { type: object, additionalProperties: { type: integer }, description: Documents restored per collection }
+                  objects: { type: integer, description: Files restored to the object store }
+                  objectBytes: { type: integer, format: int64 }
+        "400":
+          description: The confirmation is missing (code `confirmation_required`), or the file isn't a complete knowpod backup (code `invalid_input`); nothing was changed
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "401": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409":
+          description: Another backup or restore is running (code `backup_busy`)
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
 components:
   securitySchemes:

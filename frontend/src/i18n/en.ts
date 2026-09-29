@@ -52,6 +52,8 @@ export const en = {
     last_admin: 'There must be at least one admin.',
     forbidden: "You're not allowed to do this.",
     changed: 'Someone else changed this note in the meantime. Reload it and try again.',
+    confirmation_required: 'Confirm the restore first.',
+    backup_busy: 'Another backup or restore is running. Try again when it has finished.',
     admin_only: 'Only administrators can do this.',
     not_found: 'Not found.',
     not_ready: "This isn't possible yet: {{detail}}",
@@ -841,9 +843,25 @@ export const en = {
     allow: 'Allow',
     deny: 'Decline',
   },
+  backup: {
+    download: {
+      title: 'Download a backup',
+      hint: 'A zip file with everything in the system: all users, notes, settings and every file in the S3 bucket. Large installations take a while; keep the tab open until the download has finished.',
+      button: 'Download backup',
+      script: 'Scripts download it with the admin token (ADMIN_TOKEN):',
+    },
+    restore: {
+      title: 'Restore from a backup',
+      hint: 'Replaces all users, notes and settings with the ones in a backup file and writes its files back to the bucket. The file is checked first; nothing changes if it is not a complete backup. Users who are not in the backup lose their access.',
+      button: 'Restore from file…',
+      running: 'Restoring… this can take a while',
+      done: 'Restored {{users}} users, {{notes}} notes and {{files}} files.',
+    },
+    restoreConfirm: 'Replace ALL current data with the contents of “{{name}}”? This cannot be undone.',
+  },
   admin: {
     title: 'Admin',
-    tabs: { users: 'Users', general: 'General' },
+    tabs: { users: 'Users', general: 'General', backup: 'Backup' },
   },
   settings: {
     title: 'Settings',

@@ -54,6 +54,8 @@ export const de: Translation = {
     last_admin: 'Es muss mindestens einen Admin geben.',
     forbidden: 'Dafür fehlt dir die Berechtigung.',
     changed: 'Jemand anderes hat diese Notiz inzwischen geändert. Lade sie neu und versuche es noch einmal.',
+    confirmation_required: 'Bestätige zuerst die Wiederherstellung.',
+    backup_busy: 'Ein anderes Backup oder eine andere Wiederherstellung läuft. Versuche es danach erneut.',
     admin_only: 'Das können nur Admins.',
     not_found: 'Nicht gefunden.',
     not_ready: 'Das ist noch nicht möglich: {{detail}}',
@@ -843,9 +845,25 @@ export const de: Translation = {
     allow: 'Erlauben',
     deny: 'Ablehnen',
   },
+  backup: {
+    download: {
+      title: 'Backup herunterladen',
+      hint: 'Eine Zip-Datei mit allem im System: alle Benutzer, Notizen, Einstellungen und jede Datei im S3-Bucket. Bei großen Installationen dauert das eine Weile; lass den Tab bis zum Ende des Downloads offen.',
+      button: 'Backup herunterladen',
+      script: 'Skripte laden es mit dem Admin-Token (ADMIN_TOKEN) herunter:',
+    },
+    restore: {
+      title: 'Aus einem Backup wiederherstellen',
+      hint: 'Ersetzt alle Benutzer, Notizen und Einstellungen durch die einer Backup-Datei und schreibt ihre Dateien zurück in den Bucket. Die Datei wird zuerst geprüft; ist sie kein vollständiges Backup, ändert sich nichts. Benutzer, die nicht im Backup sind, verlieren ihren Zugang.',
+      button: 'Aus Datei wiederherstellen …',
+      running: 'Stelle wieder her … das kann dauern',
+      done: '{{users}} Benutzer, {{notes}} Notizen und {{files}} Dateien wiederhergestellt.',
+    },
+    restoreConfirm: 'ALLE aktuellen Daten durch den Inhalt von „{{name}}“ ersetzen? Das lässt sich nicht rückgängig machen.',
+  },
   admin: {
     title: 'Admin',
-    tabs: { users: 'Benutzer', general: 'Allgemein' },
+    tabs: { users: 'Benutzer', general: 'Allgemein', backup: 'Backup' },
   },
   settings: {
     title: 'Einstellungen',

@@ -75,6 +75,7 @@ func main() {
 	filterRepo := repo.NewFilterRepo(store)
 	timeRepo := repo.NewTimeEntryRepo(store)
 	oauthRepo := repo.NewOAuthRepo(store)
+	backupRepo := repo.NewBackupRepo(store)
 
 	// Object storage.
 	objects, err := s3store.New(ctx, s3store.Options{
@@ -197,6 +198,10 @@ func main() {
 	briefingSvc.Notifications = notifySvc
 	briefingSvc.TimeEntries = timeRepo
 
+	backupSvc := service.NewBackupService(backupRepo, objects)
+	backupSvc.TempDir = cfg.UploadDir
+	backupSvc.Version = version
+
 	jobCtx, jobCancel := context.WithCancel(ctx)
 	var jobs sync.WaitGroup
 	jobs.Add(7)
@@ -214,7 +219,7 @@ func main() {
 		Manual: manualSvc, Actions: actions, Objects: objects, Pocket: pocketSvc, AI: aiSvc, Themes: themeSvc,
 		Labels: labelSvc, Folders: folderSvc, Remarkable: remarkableSvc, Notifications: notifySvc,
 		Filters: filterSvc, Times: timeSvc, Calendar: calendarSvc, MCP: mcpSvc, OAuth: oauthSvc, Events: events,
-		Ask: askSvc, Briefings: briefingSvc, Version: version,
+		Ask: askSvc, Briefings: briefingSvc, Backup: backupSvc, Version: version,
 	})
 	httpServer := &http.Server{
 		Addr:              ":" + cfg.Port,
