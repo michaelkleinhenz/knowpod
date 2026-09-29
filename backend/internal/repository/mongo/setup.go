@@ -31,10 +31,12 @@ const (
 	// the access users gave them.
 	CollOAuthClients = "oauthClients"
 	CollOAuthGrants  = "oauthGrants"
+	// CollNoteVersions holds the earlier versions of notes' titles and texts.
+	CollNoteVersions = "noteVersions"
 )
 
 // collections lists every collection the service owns. Setup creates any that are missing.
-var collections = []string{CollDevices, CollRecordings, CollUsers, CollSessions, CollSettings, CollThemes, CollLabels, CollFolders, CollTablets, CollCounters, CollPushSubscriptions, CollFilters, CollTimeEntries, CollOAuthClients, CollOAuthGrants}
+var collections = []string{CollDevices, CollRecordings, CollUsers, CollSessions, CollSettings, CollThemes, CollLabels, CollFolders, CollTablets, CollCounters, CollPushSubscriptions, CollFilters, CollTimeEntries, CollOAuthClients, CollOAuthGrants, CollNoteVersions}
 
 // indexes lists the indexes per collection. Setup creates them; CreateMany on an existing
 // identical index is a no-op.
@@ -70,6 +72,13 @@ var indexes = map[string][]mongo.IndexModel{
 		// Note numbers are unique per user.
 		{Keys: bson.D{{Key: "ownerId", Value: 1}, {Key: "number", Value: 1}},
 			Options: options.Index().SetUnique(true).SetPartialFilterExpression(bson.M{"number": bson.M{"$exists": true}})},
+		// Published notes, found by their link.
+		{Keys: bson.D{{Key: "public.token", Value: 1}},
+			Options: options.Index().SetUnique(true).SetPartialFilterExpression(bson.M{"public.token": bson.M{"$exists": true}})},
+	},
+	CollNoteVersions: {
+		// A note's versions, newest first.
+		{Keys: bson.D{{Key: "noteId", Value: 1}, {Key: "createdAt", Value: -1}}},
 	},
 	CollUsers: {
 		{Keys: bson.D{{Key: "email", Value: 1}}, Options: options.Index().SetUnique(true)},

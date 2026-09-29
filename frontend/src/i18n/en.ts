@@ -431,6 +431,52 @@ export const en = {
     convertFailed: 'The task could not be created: {{detail}}',
     imageUploading: 'Adding image…',
     placeholder: 'Type / for commands',
+    table: {
+      label: 'Table',
+      addRowBefore: 'Row above',
+      addRowAfter: 'Row below',
+      addColumnBefore: 'Column left',
+      addColumnAfter: 'Column right',
+      deleteRow: 'Delete row',
+      deleteColumn: 'Delete column',
+      toggleHeader: 'Header row',
+      deleteTable: 'Delete table',
+    },
+    ai: {
+      button: 'Ask AI',
+      title: 'AI writing',
+      placeholderSelection: 'Tell the AI what to do with the text…',
+      placeholderCursor: 'Tell the AI what to write…',
+      run: 'Go',
+      actions: {
+        improve: 'Improve writing',
+        fix: 'Fix spelling & grammar',
+        shorter: 'Make shorter',
+        longer: 'Make longer',
+        simplify: 'Simplify language',
+        professional: 'More professional',
+        casual: 'More casual',
+        summarize: 'Summarize',
+        tasks: 'Find action items',
+        table: 'Turn into a table',
+        continue: 'Continue writing',
+      },
+      translate: 'Translate into…',
+      working: 'Writing…',
+      replace: 'Replace',
+      insert: 'Insert',
+      insertBelow: 'Insert below',
+      retry: 'Try again',
+      discard: 'Discard',
+      cancel: 'Cancel',
+      failed: 'The AI could not write this: {{detail}}',
+      model: 'Written by {{model}}. Check it before you use it.',
+    },
+    templates: {
+      label: 'Insert template',
+      none: 'No templates yet.',
+      failed: 'The template could not be inserted: {{detail}}',
+    },
     slash: {
       label: 'Insert block',
       heading1: 'Heading 1',
@@ -451,6 +497,12 @@ export const en = {
       quoteHint: 'Insert a quotation',
       divider: 'Divider',
       dividerHint: 'Separate sections with a line',
+      table: 'Table',
+      tableHint: 'Rows and columns, with a header row',
+      template: 'Template',
+      templateHint: 'Insert the text of a template',
+      ai: 'Ask AI',
+      aiHint: 'Have the AI write or continue the text (Ctrl+J)',
     },
     undo: 'Undo',
     redo: 'Redo',
@@ -634,7 +686,7 @@ export const en = {
       dueRange: 'Tasks due in the next 7 or 30 days',
       dueSome: 'Tasks without a date, with any date, or on a day',
       dueCompare: 'Tasks due before or after a day',
-      flags: 'Checked off, tasks, repeating, with an estimate',
+      flags: 'Checked off, tasks, repeating, with an estimate, templates',
       people: 'Tasks assigned to you, unassigned, or made by you',
       priority: 'Tasks with this priority, or without one',
       type: 'Items of this kind',
@@ -1026,6 +1078,174 @@ export const en = {
     apiKeyPlaceholderSet: 'Set ({{hint}}). Enter a new key to replace it.',
     disconnect: 'Disconnect',
     disconnectConfirm: 'Disconnect Pocket? New Pocket recordings stop arriving.',
+  },
+  templates: {
+    label: 'Template',
+    blank: 'Blank',
+    builtInGroup: 'Built-in templates',
+    ownGroup: 'Your templates',
+    useAsTemplate: 'Use as template',
+    useAsTemplateHint: 'Offered when you make a new note or type /template. Placeholders: {{placeholders}}.',
+    badge: 'Template',
+    titleOptional: 'Title (optional with a template)',
+    builtIn: {
+      meeting: {
+        name: 'Meeting notes',
+        title: 'Meeting {{date}}',
+        markdown: `**Date:** {{date}}, {{time}}
+
+**Attendees:** Names
+
+## Agenda
+
+1. Topic
+
+## Notes
+
+Discussion
+
+## Decisions
+
+| Decision | Owner | Notes |
+| --- | --- | --- |
+| Decision | Name | Notes |
+
+## Action items
+
+- [ ] Follow-up`,
+      },
+      oneOnOne: {
+        name: 'One-on-one',
+        title: '1:1 {{date}}',
+        markdown: `## How are things going?
+
+Check-in
+
+## Updates
+
+- Update
+
+## Topics
+
+- Topic
+
+## Feedback
+
+Feedback
+
+## Action items
+
+- [ ] Follow-up`,
+      },
+      project: {
+        name: 'Project brief',
+        title: 'Project brief',
+        markdown: `## Goal
+
+What should be different when this project is done?
+
+## Background
+
+Why now, and what we know so far.
+
+## Scope
+
+| In scope | Out of scope |
+| --- | --- |
+| Item | Item |
+
+## Milestones
+
+| Milestone | Date | Owner |
+| --- | --- | --- |
+| Kickoff | {{isoDate}} | Name |
+
+## Risks
+
+- Risk
+
+## Next steps
+
+- [ ] First step`,
+      },
+      journal: {
+        name: 'Daily journal',
+        title: '{{weekday}}, {{date}}',
+        markdown: `## Grateful for
+
+- Something
+
+## Focus for today
+
+- [ ] Most important thing
+
+## Notes
+
+Notes
+
+## Reflection
+
+What went well? What would I do differently?`,
+      },
+      weekly: {
+        name: 'Weekly plan',
+        title: 'Week of {{date}}',
+        markdown: `## Priorities
+
+1. Priority
+
+## Schedule
+
+| Day | Focus |
+| --- | --- |
+| Monday | Focus |
+| Tuesday | Focus |
+| Wednesday | Focus |
+| Thursday | Focus |
+| Friday | Focus |
+
+## To do
+
+- [ ] Task
+
+## Review
+
+What got done, and what moves to next week?`,
+      },
+    },
+  },
+  history: {
+    button: 'Version history',
+    title: 'Version history',
+    intro: 'Earlier versions of the title and text. While you edit, a version is kept at most every 10 minutes; the last 50 are kept.',
+    none: 'No earlier versions yet. They are kept as the text changes.',
+    current: 'Current version',
+    reasons: { edit: 'Before an edit', restore: 'Before a restore', regenerate: 'Before regenerating' },
+    savedAt: 'Saved {{when}}',
+    restore: 'Restore this version',
+    restoreConfirm: 'Replace the current title and text with this version? The current text is kept as a version.',
+    restored: 'Version restored.',
+    close: 'Close',
+    choose: 'Choose a version to see it.',
+  },
+  publish: {
+    heading: 'Publish to the web',
+    explain: "Anyone with the link can read this note's title and text, without signing in. Sub-notes, attachments and labels stay private.",
+    publish: 'Publish',
+    unpublish: 'Stop publishing',
+    unpublishConfirm: 'Stop publishing this note? The link stops working, and publishing again makes a new one.',
+    copy: 'Copy link',
+    open: 'Open page',
+    link: 'Public link',
+    notOwner: 'Published by its owner.',
+    noBoards: "Boards can't be published.",
+    badge: 'Published',
+  },
+  publicPage: {
+    loading: 'Loading…',
+    notFound: "This page doesn't exist or is no longer published.",
+    updated: 'Updated {{when}}',
+    footer: 'Published with knowpod',
   },
   themes: {
     auto: { name: 'Auto', description: 'Adaptive structure' },

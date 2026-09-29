@@ -15,6 +15,7 @@ import (
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/filter"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/folder"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/label"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/noteversion"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/oauth"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/push"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
@@ -111,6 +112,18 @@ func (m *Recordings) Get(_ context.Context, id string) (*recording.Recording, er
 	}
 	c := clone(&r)
 	return &c, nil
+}
+
+func (m *Recordings) GetByPublicToken(_ context.Context, token string) (*recording.Recording, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, r := range m.recs {
+		if token != "" && r.Public != nil && r.Public.Token == token {
+			c := clone(&r)
+			return &c, nil
+		}
+	}
+	return nil, domain.ErrNotFound
 }
 
 func (m *Recordings) GetByClientID(_ context.Context, deviceID, clientID string) (*recording.Recording, error) {
@@ -1415,5 +1428,87 @@ func (b *Backup) Replace(_ context.Context, collection string, next func() ([]by
 	b.mu.Lock()
 	b.Docs[collection] = docs
 	b.mu.Unlock()
+	return nil
+}
+
+// NoteVersions is an in-memory ports.NoteVersionRepository.
+type NoteVersions struct {
+	mu       sync.Mutex
+	versions []noteversion.Version // in the order they were made
+}
+
+// NewNoteVersions builds an empty repository.
+func NewNoteVersions() *NoteVersions { return &NoteVersions{} }
+
+func (m *NoteVersions) Create(_ context.Context, v *noteversion.Version) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, x := range m.versions {
+		if x.ID == v.ID {
+			return domain.ErrDuplicate
+		}
+	}
+	m.versions = append(m.versions, *v)
+	return nil
+}
+
+func (m *NoteVersions) Get(_ context.Context, id string) (*noteversion.Version, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, v := range m.versions {
+		if v.ID == id {
+			return &v, nil
+		}
+	}
+	return nil, domain.ErrNotFound
+}
+
+// newest returns the note's versions, newest first, without their text.
+func (m *NoteVersions) newest(noteID string) []*noteversion.Version {
+	out := []*noteversion.Version{}
+	for i := len(m.versions) - 1; i >= 0; i-- {
+		if v := m.versions[i]; v.NoteID == noteID {
+			v.Markdown = ""
+			out = append(out, &v)
+		}
+	}
+	slices.SortStableFunc(out, func(a, b *noteversion.Version) int { return b.CreatedAt.Compare(a.CreatedAt) })
+	return out
+}
+
+func (m *NoteVersions) List(_ context.Context, noteID string) ([]*noteversion.Version, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.newest(noteID), nil
+}
+
+func (m *NoteVersions) Latest(_ context.Context, noteID string) (*noteversion.Version, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if list := m.newest(noteID); len(list) > 0 {
+		return list[0], nil
+	}
+	return nil, domain.ErrNotFound
+}
+
+func (m *NoteVersions) Prune(_ context.Context, noteID string, keep int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	list := m.newest(noteID)
+	if len(list) <= keep {
+		return nil
+	}
+	drop := map[string]bool{}
+	for _, v := range list[keep:] {
+		drop[v.ID] = true
+	}
+	m.versions = slices.DeleteFunc(m.versions, func(v noteversion.Version) bool { return drop[v.ID] })
+	return nil
+}
+
+func (m *NoteVersions) DeleteByNote(_ context.Context, noteID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.versions = slices.DeleteFunc(m.versions, func(v noteversion.Version) bool { return v.NoteID == noteID })
 	return nil
 }

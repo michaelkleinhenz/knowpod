@@ -197,6 +197,10 @@ func (s *Server) Router() http.Handler {
 		// --- calendar feeds (authenticated by the secret in the link) ---
 		api.With(httprate.LimitByIP(60, time.Minute)).Get("/calendar/{token}.ics", s.handleCalendarFeed)
 
+		// --- published notes (authenticated by the secret in the link) ---
+		api.With(httprate.LimitByIP(120, time.Minute)).Get("/public/{token}", s.handlePublicNote)
+		api.With(httprate.LimitByIP(600, time.Minute)).Get("/public/{token}/images/{imageId}", s.handlePublicImage)
+
 		// --- the signed-in user's own data (session, or ADMIN_TOKEN for everyone's) ---
 		api.Group(func(u chi.Router) {
 			u.Use(s.requireUser)
@@ -237,6 +241,7 @@ func (s *Server) Router() http.Handler {
 			u.Get("/ai/models", s.handleOpenRouterModels)
 			u.Get("/ai/languages", s.handleSummaryLanguages)
 			u.With(httprate.LimitByIP(30, time.Minute)).Post("/ask", s.handleAsk)
+			u.With(httprate.LimitByIP(30, time.Minute)).Post("/ai/write", s.handleAIWrite)
 
 			u.Get("/themes", s.handleListThemes)
 			u.Post("/themes", s.handleCreateTheme)
@@ -313,6 +318,12 @@ func (s *Server) Router() http.Handler {
 			u.Get("/recordings/{id}/summary", s.handleDownloadSummary)
 			u.Get("/recordings/{id}/transcript", s.handleDownloadTranscript)
 			u.Post("/recordings/{id}/speakers/rename", s.handleRenameSpeaker)
+			u.Get("/recordings/{id}/versions", s.handleListVersions)
+			u.Get("/recordings/{id}/versions/{versionId}", s.handleGetVersion)
+			u.Post("/recordings/{id}/versions/{versionId}/restore", s.handleRestoreVersion)
+			u.Put("/recordings/{id}/template", s.handleSetTemplate)
+			u.Put("/recordings/{id}/public", s.handlePublishNote)
+			u.Delete("/recordings/{id}/public", s.handleUnpublishNote)
 		})
 
 		// --- administration (admins, or ADMIN_TOKEN) ---

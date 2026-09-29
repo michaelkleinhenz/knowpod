@@ -76,6 +76,7 @@ func main() {
 	timeRepo := repo.NewTimeEntryRepo(store)
 	oauthRepo := repo.NewOAuthRepo(store)
 	backupRepo := repo.NewBackupRepo(store)
+	versionRepo := repo.NewNoteVersionRepo(store)
 
 	// Object storage.
 	objects, err := s3store.New(ctx, s3store.Options{
@@ -192,6 +193,7 @@ func main() {
 	notifySvc := service.NewNotificationService(pushRepo, users, recs, pusher, log)
 	actions.OnRequeued = aiPipeline.Wake
 	actions.Events = events
+	actions.Versions = versionRepo
 	wakeAI = aiPipeline.Wake // archived recordings move on to transcription right away
 	askSvc := service.NewAskService(aiSvc, actions, log)
 	briefingSvc := service.NewBriefingService(users, actions, folderRepo, aiSvc, log)

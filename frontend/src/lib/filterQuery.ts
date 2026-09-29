@@ -6,7 +6,7 @@
 // label:Name or @Name, folder:Name (and the folders in it), due:today|tomorrow|overdue|week
 // |month|none|any|2026-10-01, due<2026-10-01 (also <=, >, >= with a date, today, tomorrow or
 // yesterday), assignee:me|none and reporter:me (tasks assigned to, or made by, the signed-in
-// user), done, task, p1-p3 (priority:none for none), repeat, estimate, type:text|audio|
+// user), done, task, p1-p3 (priority:none for none), repeat, estimate, template, type:text|audio|
 // document|board, and today, tomorrow, overdue on their own. They combine with & (or just a
 // space), | and !, grouped with parentheses; & binds tighter than |.
 import type { Folder, Label, Recording } from '../api/client';
@@ -252,6 +252,8 @@ class Compiler {
         return (r) => !!r.due?.repeat;
       case 'estimate':
         return (r) => !!r.estimate;
+      case 'template':
+        return (r) => !!r.template;
       case 'today':
       case 'tomorrow':
       case 'overdue':

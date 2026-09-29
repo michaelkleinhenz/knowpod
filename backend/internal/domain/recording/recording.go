@@ -200,6 +200,13 @@ type Recording struct {
 	// the reMarkable folder; nil for notes never sent.
 	Tablet *TabletCopy `bson:"tablet,omitempty" json:"tablet,omitempty"`
 
+	// Template marks a text note as a template: the web app offers it when a new note is made,
+	// and its title and text are copied into the new note.
+	Template bool `bson:"template,omitempty" json:"template,omitempty"`
+	// Public is the note's public web link: anyone with the link reads its title and text
+	// without signing in. Nil when the note isn't published.
+	Public *PublicLink `bson:"public,omitempty" json:"public,omitempty"`
+
 	// DeletedAt is when the note was moved to the trash; nil when it isn't in the trash.
 	// Notes in the trash are left out of lists and deleted for good after TrashRetention.
 	DeletedAt *time.Time `bson:"deletedAt,omitempty" json:"deletedAt,omitempty"`
@@ -220,6 +227,14 @@ type Recording struct {
 	UpdatedAt  time.Time  `bson:"updatedAt" json:"updatedAt"`
 	ReceivedAt *time.Time `bson:"receivedAt,omitempty" json:"receivedAt,omitempty"`
 	StoredAt   *time.Time `bson:"storedAt,omitempty" json:"storedAt,omitempty"`
+}
+
+// PublicLink publishes a note on the web: /p/<Token> shows its title and text to anyone
+// with the link, read-only.
+type PublicLink struct {
+	// Token is the secret part of the link: 32 random bytes, hex-encoded.
+	Token     string    `bson:"token" json:"token"`
+	CreatedAt time.Time `bson:"createdAt" json:"createdAt"`
 }
 
 // TabletCopy is a text note's copy on its owner's reMarkable: an EPUB of its title and
@@ -262,8 +277,8 @@ func (r *Recording) IsImage() bool {
 func (r *Recording) IsBoard() bool { return r.Type == TypeBoard }
 
 // KeepUserFields copies the fields a person changes at any time (labels, task fields, time
-// estimate and log, folder, parent note, position, trash, sharing), the note number, the
-// tablet copy and the version from the stored copy, so that a processing step saving its
+// estimate and log, folder, parent note, position, trash, sharing, template, public link), the
+// note number, the tablet copy and the version from the stored copy, so that a processing step saving its
 // long-held copy doesn't undo them.
 func (r *Recording) KeepUserFields(stored *Recording) {
 	r.Labels, r.Done, r.DoneAt, r.FolderID, r.ParentID, r.Number = stored.Labels, stored.Done, stored.DoneAt, stored.FolderID, stored.ParentID, stored.Number
@@ -272,6 +287,7 @@ func (r *Recording) KeepUserFields(stored *Recording) {
 	r.Position, r.DeletedAt = stored.Position, stored.DeletedAt
 	r.Shares, r.Members, r.CreatedBy = stored.Shares, stored.Members, stored.CreatedBy
 	r.Tablet = stored.Tablet
+	r.Template, r.Public = stored.Template, stored.Public
 	r.Version, r.Revision = stored.Version, stored.Revision
 }
 

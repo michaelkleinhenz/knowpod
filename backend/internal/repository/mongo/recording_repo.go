@@ -109,6 +109,13 @@ func (r *RecordingRepo) GetByClientID(ctx context.Context, deviceID, clientID st
 	return r.findOne(ctx, bson.M{"deviceId": deviceID, "clientId": clientID})
 }
 
+func (r *RecordingRepo) GetByPublicToken(ctx context.Context, token string) (*recording.Recording, error) {
+	if token == "" {
+		return nil, ErrNotFound
+	}
+	return r.findOne(ctx, bson.M{"public.token": token})
+}
+
 // Update replaces the recording while it is still at rec.Version (recordings from before
 // versions have none, which counts as 0) and counts the version up.
 func (r *RecordingRepo) Update(ctx context.Context, rec *recording.Recording) error {

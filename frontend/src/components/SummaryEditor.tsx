@@ -1,9 +1,10 @@
-import { Editor, Extension, Range } from '@tiptap/core';
+import { Editor, Extension, isTextSelection, Range } from '@tiptap/core';
 import { Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import Image from '@tiptap/extension-image';
 import { TaskItem, TaskList } from '@tiptap/extension-list';
+import { TableKit } from '@tiptap/extension-table';
 import { Placeholder } from '@tiptap/extensions';
 import { Markdown } from '@tiptap/markdown';
 import { EditorContent, useEditor, useEditorState } from '@tiptap/react';
@@ -17,7 +18,9 @@ import { imageWidth, MIN_IMAGE_WIDTH, withImageWidth } from '../lib/imageWidth';
 import { errorText } from '../lib/errors';
 import { matchNotes, NOTE_REF, noteByNumber } from '../lib/noteRefs';
 import { iconKind, title } from '../lib/recordings';
-import { NoteIcon } from './Icons';
+import { fillTemplate, loadTemplate, Template } from '../lib/templates';
+import { AiPanel, AiTargetExtension, aiTargetKey, insertMarkdown } from './AiWriter';
+import { NoteIcon, SparkleIcon } from './Icons';
 
 interface Props {
   markdown: string;
@@ -38,6 +41,12 @@ interface Props {
   // long for a title). The task is created next to the note; when it resolves, the item is
   // removed from the text.
   onConvertTask?: (title: string, markdown: string) => Promise<void>;
+  // aiEnabled offers the AI's help with writing (the summary model is set up).
+  aiEnabled?: boolean;
+  // templates are offered by "/template"; their text goes in at the cursor, with {{title}}
+  // filled in with title.
+  templates?: Template[];
+  title?: string;
 }
 
 // cleanMarkdown drops the "&nbsp;" lines that empty paragraphs become: Markdown has no
@@ -115,10 +124,18 @@ function imageFiles(files: FileList | null | undefined): File[] {
 
 // --- Slash commands ----------------------------------------------------------------------
 
+// SlashUI opens the editor's menus from a slash command.
+interface SlashUI {
+  openAI: () => void;
+  openTemplates: () => void;
+  // offers says whether a command is available (the AI is set up, there are templates).
+  offers: (id: string) => boolean;
+}
+
 interface SlashItem {
   id: string;
   icon: string;
-  run: (editor: Editor, range: Range) => void;
+  run: (editor: Editor, range: Range, ui: SlashUI) => void;
 }
 
 const SLASH_ITEMS: SlashItem[] = [
@@ -132,6 +149,23 @@ const SLASH_ITEMS: SlashItem[] = [
   { id: 'codeBlock', icon: '</>', run: (e, r) => e.chain().focus().deleteRange(r).toggleCodeBlock().run() },
   { id: 'quote', icon: '❝', run: (e, r) => e.chain().focus().deleteRange(r).toggleBlockquote().run() },
   { id: 'divider', icon: '—', run: (e, r) => e.chain().focus().deleteRange(r).setHorizontalRule().run() },
+  { id: 'table', icon: '▦', run: (e, r) => e.chain().focus().deleteRange(r).insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
+  {
+    id: 'template',
+    icon: '❏',
+    run: (e, r, ui) => {
+      e.chain().focus().deleteRange(r).run();
+      ui.openTemplates();
+    },
+  },
+  {
+    id: 'ai',
+    icon: '✦',
+    run: (e, r, ui) => {
+      e.chain().focus().deleteRange(r).run();
+      ui.openAI();
+    },
+  },
 ];
 
 // MenuState is an open suggestion menu: its entries, where the cursor is, and the entry
@@ -210,7 +244,7 @@ function useMenuBridge<T>() {
   return { state, bridge: bridge.current, hover };
 }
 
-function slashCommands(bridge: MenuBridge<SlashItem>, label: (id: string) => string) {
+function slashCommands(bridge: MenuBridge<SlashItem>, label: (id: string) => string, ui: () => SlashUI) {
   return Extension.create({
     name: 'slashCommands',
     addProseMirrorPlugins() {
@@ -221,9 +255,9 @@ function slashCommands(bridge: MenuBridge<SlashItem>, label: (id: string) => str
           startOfLine: true, // "/" at the start of a line, as in word processors
           items: ({ query }) => {
             const q = query.toLowerCase();
-            return SLASH_ITEMS.filter((item) => !q || label(item.id).toLowerCase().includes(q) || item.id.toLowerCase().includes(q));
+            return SLASH_ITEMS.filter((item) => ui().offers(item.id) && (!q || label(item.id).toLowerCase().includes(q) || item.id.toLowerCase().includes(q)));
           },
-          command: ({ editor, range, props }) => props.run(editor, range),
+          command: ({ editor, range, props }) => props.run(editor, range, ui()),
           render: menuRender(bridge),
         }),
       ];
@@ -381,7 +415,60 @@ function SlashMenu({ state, onHover }: { state: SlashState; onHover: (i: number)
   );
 }
 
+// TemplateMenu lists the templates after "/template"; the chosen one's text is inserted.
+function TemplateMenu({ templates, rect, onChoose, onClose }: { templates: Template[]; rect: DOMRect; onChoose: (tpl: Template) => void; onClose: () => void }) {
+  const { t } = useTranslation();
+  const [selected, setSelected] = useState(0);
+  const { menu, pos } = useMenuPosition(rect, templates.length, selected);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') setSelected((i) => (i + (e.key === 'ArrowDown' ? 1 : -1) + templates.length) % templates.length);
+      else if (e.key === 'Enter') onChoose(templates[selected]);
+      else return;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    const onDown = (e: MouseEvent) => !menu.current?.contains(e.target as Node) && onClose();
+    document.addEventListener('keydown', onKey, true);
+    document.addEventListener('mousedown', onDown);
+    return () => {
+      document.removeEventListener('keydown', onKey, true);
+      document.removeEventListener('mousedown', onDown);
+    };
+  }, [templates, selected, onChoose, onClose, menu]);
+  return (
+    <div ref={menu} className="slash-menu" style={{ top: pos.top, left: pos.left }} role="listbox" aria-label={t('editor.templates.label')}>
+      {templates.map((tpl, i) => (
+        <button
+          key={tpl.id}
+          type="button"
+          role="option"
+          aria-selected={i === selected}
+          className={i === selected ? 'selected' : ''}
+          onMouseEnter={() => setSelected(i)}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => onChoose(tpl)}
+        >
+          <span className="slash-icon" aria-hidden="true">
+            ❏
+          </span>
+          <span className="slash-text">
+            <span className="slash-title">{tpl.name}</span>
+            <span className="slash-desc">{t(tpl.noteId ? 'templates.ownGroup' : 'templates.builtInGroup')}</span>
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // --- Selection bubble --------------------------------------------------------------------
+
+// The formatting bubble (on a text selection) and the table bubble (in a table), named so
+// they can be hidden by a transaction.
+const formatMenuKey = new PluginKey('formatMenu');
+const tableMenuKey = new PluginKey('tableMenu');
 
 function BubbleButton(props: { label: string; active?: boolean; onClick: () => void; children: ReactNode }) {
   return (
@@ -459,7 +546,7 @@ function taskItemWithConvert(convert: (item: PMNode, getPos: () => number | unde
 // at the start of a line opens a block menu, and selecting text shows a formatting bubble.
 // The text is loaded from and read as Markdown, which is how summaries are stored; saving
 // is done by the caller (useAutosave). It is loaded on demand (see Conversation.tsx).
-export default function SummaryEditor({ markdown, onReady, onChange, onSaveShortcut, notes, noteId, onOpenNote, readOnly = false, onConvertTask }: Props) {
+export default function SummaryEditor({ markdown, onReady, onChange, onSaveShortcut, notes, noteId, onOpenNote, readOnly = false, onConvertTask, aiEnabled = false, templates, title: noteTitle }: Props) {
   const { t } = useTranslation();
   const slash = useMenuBridge<SlashItem>();
   const noteMenu = useMenuBridge<Recording>();
@@ -482,6 +569,12 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
   // Set once the editor exists, like insertImagesRef.
   const convertItemRef = useRef<(item: PMNode, getPos: () => number | undefined) => void>(() => {});
   const insertImagesRef = useRef<(files: File[], pos?: number) => void>(() => {});
+  // The AI panel and the template menu are opened from slash commands and shortcuts.
+  const [aiOpen, setAiOpen] = useState(false);
+  const aiOpenRef = useRef(false);
+  aiOpenRef.current = aiOpen;
+  const [templateMenu, setTemplateMenu] = useState<{ pos: number; rect: DOMRect } | null>(null);
+  const slashUI = useRef<SlashUI>({ openAI: () => {}, openTemplates: () => {}, offers: () => true });
 
   const editor = useEditor({
     extensions: [
@@ -494,8 +587,11 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
       taskItemWithConvert((item, getPos) => convertItemRef.current(item, getPos), t('editor.convertTask')).configure({ nested: true }),
       Placeholder.configure({ placeholder: t('editor.placeholder'), showOnlyCurrent: true }),
       ResizableImage.configure({ allowBase64: false }),
+      // Column widths can't be kept in Markdown, so columns aren't resized.
+      TableKit.configure({ table: { resizable: false } }),
       Markdown,
-      slashCommands(slash.bridge, (id) => t(`editor.slash.${id}`)),
+      AiTargetExtension,
+      slashCommands(slash.bridge, (id) => t(`editor.slash.${id}`), () => slashUI.current),
       noteLinks(noteMenu.bridge, { notes: () => notesRef.current, noteId: () => noteIdRef.current }, t('noteRefs.openHint', { key: /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : t('noteRefs.ctrl') })),
     ],
     content: markdown,
@@ -540,6 +636,12 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
         if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
           event.preventDefault();
           onSaveShortcut();
+          return true;
+        }
+        // Ctrl/Cmd+J asks the AI about the selected text, or to write at the cursor.
+        if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 'j' && slashUI.current.offers('ai')) {
+          event.preventDefault();
+          slashUI.current.openAI();
           return true;
         }
         return false;
@@ -604,6 +706,39 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
     })();
   };
 
+  slashUI.current = {
+    // Markdown can't keep a table in a table, so none is offered in one.
+    offers: (id) => (id === 'ai' ? aiEnabled && editor.isEditable : id === 'template' ? !!templates?.length : id === 'table' ? !editor.isActive('table') : true),
+    openAI: () => {
+      if (!aiEnabled || !editor.isEditable) return;
+      const { from, to } = editor.state.selection;
+      aiOpenRef.current = true;
+      // The bubbles give way to the panel (they would stay, as it holds the focus).
+      editor.view.dispatch(editor.state.tr.setMeta(aiTargetKey, { from, to }).setMeta(formatMenuKey, 'hide').setMeta(tableMenuKey, 'hide'));
+      setTemplateMenu(null);
+      setAiOpen(true);
+    },
+    openTemplates: () => {
+      const pos = editor.state.selection.from;
+      const c = editor.view.coordsAtPos(pos);
+      setAiOpen(false);
+      setTemplateMenu({ pos, rect: new DOMRect(c.left, c.top, 0, c.bottom - c.top) });
+    },
+  };
+
+  // insertTemplate puts a template's text in where "/template" was typed.
+  const [templateError, setTemplateError] = useState('');
+  async function insertTemplate(tpl: Template, pos: number) {
+    setTemplateMenu(null);
+    setTemplateError('');
+    try {
+      const text = fillTemplate(await loadTemplate(tpl), { title: noteTitle });
+      if (!editor.isDestroyed && text) insertMarkdown(editor, pos, text);
+    } catch (err) {
+      setTemplateError(t('editor.templates.failed', { detail: errorText(err, t) }));
+    }
+  }
+
   // The owner can make a note editable or read-only for the user while it is open.
   useEffect(() => {
     if (!editor.isDestroyed && editor.isEditable === readOnly) editor.setEditable(!readOnly, false);
@@ -626,6 +761,7 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
       bulletList: e.isActive('bulletList'),
       orderedList: e.isActive('orderedList'),
       checklist: e.isActive('taskList'),
+      headerRow: e.isActive('tableHeader'),
     }),
   });
 
@@ -641,7 +777,18 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
   const chain = () => editor.chain().focus();
   return (
     <div className="doc-editor">
-      <BubbleMenu editor={editor} className="bubble-menu" options={{ placement: 'top' }}>
+      <BubbleMenu
+        editor={editor}
+        pluginKey={formatMenuKey}
+        className="bubble-menu"
+        options={{ placement: 'top' }}
+        // As by default (a text selection in the focused editor), but not over the AI panel.
+        shouldShow={({ editor: e, view, state, from, to, element }) => {
+          if (aiOpenRef.current || !e.isEditable || state.selection.empty) return false;
+          const emptyText = !state.doc.textBetween(from, to).length && isTextSelection(state.selection);
+          return !emptyText && (view.hasFocus() || element.contains(document.activeElement));
+        }}
+      >
         <BubbleButton label={t('editor.bold')} active={marks.bold} onClick={() => chain().toggleBold().run()}>
           <b>B</b>
         </BubbleButton>
@@ -668,6 +815,52 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
         <BubbleButton label={t('editor.link')} active={marks.link} onClick={setLink}>
           {t('editor.link')}
         </BubbleButton>
+        {aiEnabled && (
+          <>
+            <span className="bubble-sep" />
+            <BubbleButton label={t('editor.ai.button')} onClick={() => slashUI.current.openAI()}>
+              <span className="bubble-ai">
+                <SparkleIcon size={14} /> {t('editor.ai.button')}
+              </span>
+            </BubbleButton>
+          </>
+        )}
+      </BubbleMenu>
+      <BubbleMenu
+        editor={editor}
+        pluginKey={tableMenuKey}
+        className="bubble-menu table-menu"
+        options={{ placement: 'top-start' }}
+        shouldShow={({ editor: e, state }) => e.isEditable && state.selection.empty && e.isActive('table') && !aiOpen}
+        getReferencedVirtualElement={() => {
+          const at = editor.view.domAtPos(editor.state.selection.from).node;
+          const table = (at instanceof Element ? at : at.parentElement)?.closest('table');
+          return table ? { getBoundingClientRect: () => table.getBoundingClientRect() } : null;
+        }}
+      >
+        <span className="table-menu-label">{t('editor.table.label')}</span>
+        <BubbleButton label={t('editor.table.addRowBefore')} onClick={() => chain().addRowBefore().run()}>
+          {t('editor.table.addRowBefore')}
+        </BubbleButton>
+        <BubbleButton label={t('editor.table.addRowAfter')} onClick={() => chain().addRowAfter().run()}>
+          {t('editor.table.addRowAfter')}
+        </BubbleButton>
+        <BubbleButton label={t('editor.table.addColumnBefore')} onClick={() => chain().addColumnBefore().run()}>
+          {t('editor.table.addColumnBefore')}
+        </BubbleButton>
+        <BubbleButton label={t('editor.table.addColumnAfter')} onClick={() => chain().addColumnAfter().run()}>
+          {t('editor.table.addColumnAfter')}
+        </BubbleButton>
+        <span className="bubble-sep" />
+        <BubbleButton label={t('editor.table.deleteRow')} onClick={() => chain().deleteRow().run()}>
+          {t('editor.table.deleteRow')}
+        </BubbleButton>
+        <BubbleButton label={t('editor.table.deleteColumn')} onClick={() => chain().deleteColumn().run()}>
+          {t('editor.table.deleteColumn')}
+        </BubbleButton>
+        <BubbleButton label={t('editor.table.deleteTable')} onClick={() => chain().deleteTable().run()}>
+          {t('editor.table.deleteTable')}
+        </BubbleButton>
       </BubbleMenu>
       <EditorContent editor={editor} />
       {uploading > 0 && <p className="editor-status">{t('editor.imageUploading')}</p>}
@@ -680,6 +873,15 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
         <p className="editor-status error" role="alert">
           {convertError}
         </p>
+      )}
+      {templateError && (
+        <p className="editor-status error" role="alert">
+          {templateError}
+        </p>
+      )}
+      {aiOpen && <AiPanel editor={editor} onClose={() => setAiOpen(false)} />}
+      {templateMenu && templates && (
+        <TemplateMenu templates={templates} rect={templateMenu.rect} onChoose={(tpl) => void insertTemplate(tpl, templateMenu.pos)} onClose={() => setTemplateMenu(null)} />
       )}
       {slash.state && <SlashMenu state={slash.state} onHover={slash.hover} />}
       {noteMenu.state && <NoteMenu state={noteMenu.state} onHover={noteMenu.hover} />}

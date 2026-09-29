@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/label"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/noteversion"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/ports"
 )
@@ -42,6 +43,9 @@ type RecordingService struct {
 	// Events tells users' open apps about changes the repository can't see: a note no
 	// longer shared with them. Optional.
 	Events *NoteEvents
+	// Versions keeps the earlier versions of notes' titles and texts. Optional; without it
+	// no history is kept.
+	Versions ports.NoteVersionRepository
 }
 
 // NewRecordingService builds the service.
@@ -227,6 +231,9 @@ func (s *RecordingService) delete(ctx context.Context, rec *recording.Recording)
 			return err
 		}
 	}
+	if err := s.deleteVersions(ctx, rec.ID); err != nil {
+		return err
+	}
 	return s.recs.Delete(ctx, rec.ID)
 }
 
@@ -398,12 +405,21 @@ func (s *RecordingService) newNoteFolder(ctx context.Context, ownerID, parentID,
 // an edit of text someone else changed in the meantime is refused with ErrChanged. Notes
 // of reMarkable documents are read-only: edits can't go back to the tablet, and the next
 // change of the document replaces them.
+//
+// The title and text it replaces are kept as a version of the note (see keepVersion).
 func (s *RecordingService) EditSummary(ctx context.Context, acc *Account, id string, in SummaryEdit) (*recording.Recording, error) {
+	return s.editSummary(ctx, acc, id, in, noteversion.ReasonEdit)
+}
+
+// editSummary is EditSummary; reason says why the replaced text is kept as a version.
+func (s *RecordingService) editSummary(ctx context.Context, acc *Account, id string, in SummaryEdit, reason string) (*recording.Recording, error) {
 	title, markdown, err := in.clean()
 	if err != nil {
 		return nil, err
 	}
-	return s.change(ctx, acc, id, recording.RoleEditor, func(rec *recording.Recording, _ recording.Role) error {
+	var before recording.Summary
+	var rev int64
+	out, err := s.change(ctx, acc, id, recording.RoleEditor, func(rec *recording.Recording, _ recording.Role) error {
 		if rec.Source == recording.SourceRemarkable {
 			return errors.Join(ErrForbidden, errors.New("notes of reMarkable documents are read-only"))
 		}
@@ -413,6 +429,7 @@ func (s *RecordingService) EditSummary(ctx context.Context, acc *Account, id str
 		if in.BaseRevision != nil && *in.BaseRevision != rec.Revision {
 			return errors.Join(ErrChanged, errors.New("the note's text was changed by someone else"))
 		}
+		before, rev = *rec.Summary, rec.Revision
 		now := s.clock().UTC()
 		summary := *rec.Summary
 		summary.Title, summary.Markdown, summary.EditedAt = title, markdown, &now
@@ -420,6 +437,11 @@ func (s *RecordingService) EditSummary(ctx context.Context, acc *Account, id str
 		rec.Revision++
 		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
+	s.keepVersion(ctx, out, before, rev, reason, reason != noteversion.ReasonEdit)
+	return out, nil
 }
 
 // SetLabels replaces the note's labels. Unknown and duplicate IDs are refused. Taking the
@@ -731,7 +753,10 @@ func (s *RecordingService) validOptions(ctx context.Context, acc *Account, o *re
 // requeue sends the owner's note back into processing: prepare clears what is made again
 // and returns the status processing starts from.
 func (s *RecordingService) requeue(ctx context.Context, acc *Account, id string, prepare func(rec *recording.Recording) (recording.Status, error)) (*recording.Recording, error) {
+	var before *recording.Summary
+	var rev int64
 	rec, err := s.change(ctx, acc, id, recording.RoleOwner, func(rec *recording.Recording, _ recording.Role) error {
+		before, rev = rec.Summary, rec.Revision
 		status, err := prepare(rec)
 		if err != nil {
 			return err
@@ -744,6 +769,10 @@ func (s *RecordingService) requeue(ctx context.Context, acc *Account, id string,
 	})
 	if err != nil {
 		return nil, err
+	}
+	// The text made before is kept, so an edited summary isn't lost by making it again.
+	if before != nil && rec.Summary == nil {
+		s.keepVersion(ctx, rec, *before, rev, noteversion.ReasonRegenerate, true)
 	}
 	if s.OnRequeued != nil {
 		s.OnRequeued()

@@ -14,6 +14,7 @@ import (
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/filter"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/folder"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/label"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/noteversion"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/oauth"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/push"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
@@ -31,6 +32,8 @@ type RecordingRepository interface {
 	Create(ctx context.Context, r *recording.Recording) error
 	Get(ctx context.Context, id string) (*recording.Recording, error)
 	GetByClientID(ctx context.Context, deviceID, clientID string) (*recording.Recording, error)
+	// GetByPublicToken returns the note published with the token (see recording.PublicLink).
+	GetByPublicToken(ctx context.Context, token string) (*recording.Recording, error)
 	// Update replaces the stored recording only while it is still at r.Version, and then
 	// counts r.Version up; otherwise it returns domain.ErrChanged and changes nothing.
 	Update(ctx context.Context, r *recording.Recording) error
@@ -100,6 +103,20 @@ func SaveProcessed(ctx context.Context, recs RecordingRepository, rec *recording
 		}
 		rec.KeepUserFields(stored)
 	}
+}
+
+// NoteVersionRepository keeps the earlier versions of notes' titles and texts. Get of a
+// missing version returns domain.ErrNotFound.
+type NoteVersionRepository interface {
+	Create(ctx context.Context, v *noteversion.Version) error
+	Get(ctx context.Context, id string) (*noteversion.Version, error)
+	// List returns the note's versions, newest first, without their Markdown.
+	List(ctx context.Context, noteID string) ([]*noteversion.Version, error)
+	// Latest returns the note's newest version, without its Markdown.
+	Latest(ctx context.Context, noteID string) (*noteversion.Version, error)
+	// Prune deletes the note's versions except the newest keep.
+	Prune(ctx context.Context, noteID string, keep int) error
+	DeleteByNote(ctx context.Context, noteID string) error
 }
 
 // DeviceRepository persists devices. Lookups of missing documents return domain.ErrNotFound.

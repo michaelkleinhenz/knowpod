@@ -14,7 +14,10 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
 
 - **Notes of every kind.** Markdown text notes, transcribed and summarized recordings,
   imported documents, photos and kanban boards (paste or drop pictures right into a note's text), organized in folders, sub-notes and labels,
-  linked to each other by number, searchable, and available offline.
+  linked to each other by number, searchable, and available offline. Notes hold tables,
+  start from templates, keep their earlier versions, and can be published on the web.
+- **Write with AI.** Select text and have the AI improve, shorten, translate or reshape it
+  (a table, a checklist of action items), or ask it to write or continue at the cursor.
 - **Ask your notes.** Questions in your own words ("What did Anna say about the Q3
   budget?") are answered by AI from your notes, transcripts and documents, citing the notes
   and the moment in a recording.
@@ -110,6 +113,28 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
   for good.
 - Summaries list the **action items** found in the conversation; each becomes a task under
   the note with one click, due on the date that was named.
+- **Tables**: type **/table** for a table with a header row; inside one, a toolbar adds and
+  deletes rows and columns. Tables are stored as Markdown (GitHub style), so they show up in
+  downloads, on the reMarkable and on published pages.
+- **Templates**: **+ New Note** and **+ New Task** can start from a template: built-in ones
+  (meeting notes, one-on-one, project brief, daily journal, weekly plan) or any text note
+  marked **Use as template** in its sidebar. **/template** in a note inserts one at the
+  cursor. `{{date}}`, `{{isoDate}}`, `{{time}}`, `{{weekday}}` and `{{title}}` are filled in.
+  The filter word `template` lists your templates.
+- **Version history**: the clock button on a note shows the earlier versions of its title
+  and text and restores one. While you edit, a version is kept at most every 10 minutes;
+  restoring and regenerating a summary always keep the text they replace, so they can be
+  undone. The newest 50 versions of each note are kept.
+- **Publish to the web**: the owner of a note publishes it from the **Share** panel. Anyone
+  with the link (`/p/…`) reads its title and text, with its pictures, without signing in;
+  sub-notes, attachments, labels and other notes stay private. **Stop publishing** takes the
+  link down, and it stops working while the note is in the trash.
+- **Writing with AI**: select text and click **Ask AI** (or press Ctrl/⌘+J, or type **/ai**
+  on an empty line). Choose an action (improve, fix spelling and grammar, shorter, longer,
+  simpler, more professional or casual, summarize, find action items, turn into a table,
+  translate) or say what to do in your own words; at the cursor, the AI continues the text
+  or writes what you ask for. The answer is shown first, to replace the selection with,
+  insert below it, try again or discard. It uses the summary model.
 - **Saved filters**: the search box understands a filter language like Todoist's, e.g.
   `label:Task & due:week & !done`, `@Work | folder:"Side projects"` or `(p1 | p2) overdue`
   (plain words still search the titles). A search can be saved as a filter and pinned below

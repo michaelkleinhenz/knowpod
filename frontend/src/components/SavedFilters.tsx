@@ -115,7 +115,7 @@ export function FilterHelp() {
     ['due:week · due:month', 'dueRange'],
     ['due:none · due:any · due:2026-10-01', 'dueSome'],
     ['due<2026-10-01 · due>=today', 'dueCompare'],
-    ['done · task · repeat · estimate', 'flags'],
+    ['done · task · repeat · estimate · template', 'flags'],
     ['p1 · p2 · p3 · priority:none', 'priority'],
     ['assignee:me · assignee:none · reporter:me', 'people'],
     ['type:text · type:audio · type:document · type:board', 'type'],
