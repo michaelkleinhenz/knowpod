@@ -12,6 +12,7 @@ import { Login } from './pages/Login';
 import { NoteByNumber } from './pages/NoteByNumber';
 import { NotesHome, NotesLayout } from './pages/NotesLayout';
 import { OAuthAuthorize } from './pages/OAuthAuthorize';
+import { PublicNote } from './pages/PublicNote';
 import { Settings } from './pages/Settings';
 import { Share } from './pages/Share';
 import { TimeLog } from './pages/TimeLog';
@@ -29,6 +30,14 @@ function RequireLogin({ children, admin = false }: { children: ReactNode; admin?
 }
 
 export default function App() {
+  // Published notes are shown to anyone, without the app's frame.
+  if (useLocation().pathname.startsWith('/p/')) {
+    return (
+      <Routes>
+        <Route path="/p/:token" element={<PublicNote />} />
+      </Routes>
+    );
+  }
   return (
     <Layout>
       <Routes>

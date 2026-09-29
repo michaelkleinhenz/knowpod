@@ -1,4 +1,4 @@
-import { CSSProperties, FormEvent, RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { CSSProperties, FormEvent, ReactNode, RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -6,7 +6,8 @@ import { api, Folder, Recording, ShareRole, Sharing } from '../api/client';
 import { useAuth } from '../auth';
 import { useNotes } from '../context/NotesContext';
 import { errorText } from '../lib/errors';
-import { ShareIcon } from './Icons';
+import { CopyButton } from './CopyButton';
+import { CopyIcon, GlobeIcon, ShareIcon } from './Icons';
 
 // What a SharePanel shares: a note or a folder, through the API calls for it.
 interface ShareTarget {
@@ -28,7 +29,7 @@ interface ShareTarget {
 // SharePanel shows who a note or folder is shared with. The owner shares it (and everything
 // under or in it) by email, changes what each person may do, and stops sharing it; someone
 // it is shared with sees who else has it and can leave it.
-function SharePanel({ target, className, style }: { target: ShareTarget; className?: string; style?: CSSProperties }) {
+function SharePanel({ target, className, style, children }: { target: ShareTarget; className?: string; style?: CSSProperties; children?: ReactNode }) {
   const { t } = useTranslation();
   const { account: user } = useAuth();
   const [sharing, setSharing] = useState<Sharing | null>(null);
@@ -167,6 +168,69 @@ function SharePanel({ target, className, style }: { target: ShareTarget; classNa
         ))
       )}
       {error && <p className="error">{error}</p>}
+      {children}
+    </div>
+  );
+}
+
+// PublishNote is the part of a note's share panel that publishes it on the web: anyone with
+// the link reads its title and text. Only the owner publishes; others see the link.
+function PublishNote({ rec, setRec }: { rec: Recording; setRec: (r: Recording) => void }) {
+  const { t } = useTranslation();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const owner = (rec.access ?? 'owner') === 'owner';
+  const url = rec.public ? api.publicURL(rec.public.token) : '';
+  if (!owner && !rec.public) return null;
+
+  async function change(publish: boolean) {
+    if (!publish && !window.confirm(t('publish.unpublishConfirm'))) return;
+    setBusy(true);
+    setError(null);
+    try {
+      setRec(publish ? await api.publish(rec.id) : await api.unpublish(rec.id));
+    } catch (err) {
+      setError(errorText(err, t));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="publish-section">
+      <h3 className="share-heading">
+        <GlobeIcon size={15} /> {t('publish.heading')}
+      </h3>
+      {rec.type === 'board' ? (
+        <p className="muted share-hint">{t('publish.noBoards')}</p>
+      ) : rec.public ? (
+        <>
+          <div className="publish-link">
+            <input type="text" readOnly value={url} aria-label={t('publish.link')} onFocus={(e) => e.target.select()} />
+            <CopyButton className="icon-button" icon={<CopyIcon />} text={url} label={t('publish.copy')} />
+          </div>
+          <div className="share-form">
+            <a className="pill-button" href={url} target="_blank" rel="noreferrer">
+              {t('publish.open')}
+            </a>
+            {owner ? (
+              <button type="button" className="pill-button danger" disabled={busy} onClick={() => void change(false)}>
+                {t('publish.unpublish')}
+              </button>
+            ) : (
+              <span className="muted share-hint">{t('publish.notOwner')}</span>
+            )}
+          </div>
+        </>
+      ) : (
+        <div className="share-form">
+          <button type="button" className="pill-button" disabled={busy || !rec.summary} onClick={() => void change(true)}>
+            {t('publish.publish')}
+          </button>
+          <p className="muted share-hint">{t('publish.explain')}</p>
+        </div>
+      )}
+      {error && <p className="error">{error}</p>}
     </div>
   );
 }
@@ -235,7 +299,11 @@ export function ShareNote({ rec, setRec }: { rec: Recording; setRec: (r: Recordi
       >
         <ShareIcon />
       </button>
-      {open && <SharePanel target={target} />}
+      {open && (
+        <SharePanel target={target}>
+          <PublishNote rec={rec} setRec={setRec} />
+        </SharePanel>
+      )}
     </div>
   );
 }

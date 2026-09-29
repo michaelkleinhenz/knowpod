@@ -487,8 +487,39 @@ user's labels, folders and notes, both for the workspace list (the search box ta
 language; plain words search the titles) and for boards that show a filter. The language
 has words, `#12`, `label:`/`@`, `folder:` (and the folders in it), `due:` (`today`,
 `tomorrow`, `overdue`, `week`, `month`, `none`, `any`, a date) and `due<`/`<=`/`>`/`>=`,
-`done`, `task`, `p1`–`p3`, `repeat`, `estimate` and `type:`, combined with `&` (or a
+`done`, `task`, `p1`–`p3`, `repeat`, `estimate`, `template` and `type:`, combined with `&` (or a
 space), `|`, `!` and parentheses.
+
+**Version history** (`domain/noteversion`, `service/note_versions.go`). The
+`noteVersions` collection keeps notes' earlier titles and texts. `editSummary` (edits and
+`RestoreVersion`) and `requeue` (re-transcribe, re-summarize) hand the text they replace to
+`keepVersion`, after the change was saved: an edit keeps it only when the note's newest
+version is older than 10 minutes (the web app saves every few seconds, so a stretch of typing
+becomes one version), restoring and regenerating always keep it. Empty and unchanged texts
+aren't kept, a note keeps its newest 50 versions (`Prune`), and deleting a note for good
+deletes them. Keeping a version is best effort: a failure never fails the edit. Lists leave
+out the text. Versions are in the admin backup, not in personal backups.
+
+**Templates** (`service/note_publishing.go`, `frontend/src/lib/templates.ts`). A text note
+with `template: true` (`PUT /recordings/{id}/template`) is offered when a new note is made,
+next to the built-in templates, which live in the translations. The web app copies the
+template's title and text into the new note and fills in the placeholders, so the server
+knows nothing more about templates.
+
+**Publishing** (`service/note_publishing.go`). `PUT /recordings/{id}/public` gives the note
+a `public` link: a 256-bit random token, stored as it is (so the owner can see the link
+again) and found through a unique partial index on `public.token`. `GET /public/{token}` and
+`GET /public/{token}/images/{imageId}` need no sign-in; they answer 404 for unknown tokens and
+for notes in the trash. The text's pictures of the note itself are pointed at the public
+image route, others are dropped. The web app shows it at `/p/<token>`, outside the app's
+frame. `DELETE /recordings/{id}/public` takes the link down; publishing again makes a new one.
+
+**Writing with AI** (`service/ai_write.go`). `POST /ai/write` sends a passage of a note (the
+selection as Markdown, or for `continue` the text before the cursor) with the note around it
+to the summary model, with a task by `action`, and returns Markdown; nothing is saved. The
+editor (`components/AiWriter.tsx`) marks the target with a decoration that follows edits
+made meanwhile, shows the answer, and puts it in on request. Markdown can't keep block
+content in a table cell, so an answer that isn't a single paragraph goes below the table.
 
 **Time tracking** (`domain/timelog`, `service/timelog.go`). `PUT /recordings/{id}/estimate`
 sets a task's `estimate` in minutes (and labels the note as a task). Time is logged in the

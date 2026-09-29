@@ -1619,6 +1619,163 @@ paths:
           description: The note has no transcript with speakers
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
+  /recordings/{recordingId}/versions:
+    get:
+      tags: ["Recordings"]
+      summary: List the earlier versions of the note's text
+      description: |
+        The note's title and text as they were before changes replaced them, newest first,
+        without the text (`markdown`). While a person keeps editing, the text is kept at most
+        once in 10 minutes; restoring a version and making a summary again always keep the
+        text they replace. Empty texts aren't kept, and a note keeps its newest 50 versions.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The versions
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/NoteVersion" } } } }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /recordings/{recordingId}/versions/{versionId}:
+    get:
+      tags: ["Recordings"]
+      summary: Get an earlier version of the note's text
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+        - { name: versionId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The version, with its text
+          content: { application/json: { schema: { $ref: "#/components/schemas/NoteVersion" } } }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /recordings/{recordingId}/versions/{versionId}/restore:
+    post:
+      tags: ["Recordings"]
+      summary: Restore an earlier version of the note's text
+      description: |
+        Makes the version's title and text the note's again, like an edit (needs editing
+        rights; notes of reMarkable documents are read-only). The text it replaces is kept as
+        a version, so restoring can be undone. With `baseRevision`, text someone else changed
+        meanwhile is not replaced (409 `changed`).
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+        - { name: versionId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                baseRevision: { type: integer, format: int64, description: The note's `revision` the restore was chosen on }
+      responses:
+        "200":
+          description: Restored
+          content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409":
+          description: Someone else changed the text meanwhile (`changed`), or the note has no text yet
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /recordings/{recordingId}/template:
+    put:
+      tags: ["Recordings"]
+      summary: Make the note a template, or a plain note again
+      description: |
+        Templates are text notes the web app offers when a new note is made; their title and
+        text are copied into the new note, with `{{date}}`, `{{time}}`, `{{weekday}}` and
+        `{{title}}` filled in. Needs editing rights; only text notes can be templates.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [template]
+              properties:
+                template: { type: boolean }
+      responses:
+        "200":
+          description: Saved
+          content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /recordings/{recordingId}/public:
+    put:
+      tags: ["Recordings"]
+      summary: Publish the note on the web
+      description: |
+        Gives the note a public link, `/p/<token>` in the web app (the note's `public.token`),
+        which shows its title and text, read-only, to anyone who has it, without signing in.
+        A published note keeps its link. Only the owner publishes; boards and notes without
+        text can't be published. The link stops working while the note is in the trash.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Published
+          content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409":
+          description: The note has no text yet
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+    delete:
+      tags: ["Recordings"]
+      summary: Take the note's public link down
+      description: The link stops working; publishing the note again makes a new one. Only the owner.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Not published any more
+          content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /public/{token}:
+    get:
+      tags: ["Recordings"]
+      summary: Read a published note
+      description: |
+        A note published with `PUT /recordings/{recordingId}/public`, for anyone with its link;
+        the secret token in the link authenticates the request. Pictures in the text point at
+        `/public/{token}/images/{imageId}`. Limited to 120 requests per minute.
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The note
+          content: { application/json: { schema: { $ref: "#/components/schemas/PublicNote" } } }
+        "404": { $ref: "#/components/responses/Error" }
+        "429": { description: Too many requests }
+
+  /public/{token}/images/{imageId}:
+    get:
+      tags: ["Recordings"]
+      summary: Get a picture of a published note
+      parameters:
+        - { name: token, in: path, required: true, schema: { type: string } }
+        - { name: imageId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The picture
+          content: { image/*: { schema: { type: string, format: binary } } }
+        "404": { $ref: "#/components/responses/Error" }
+        "429": { description: Too many requests }
+
   /recordings/{recordingId}/labels:
     put:
       tags: ["Recordings", "Labels"]
@@ -2151,6 +2308,49 @@ paths:
           description: The AI models are not set up
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
         "429": { description: Too many questions }
+
+  /ai/write:
+    post:
+      tags: ["Ask"]
+      summary: Have the AI write or rewrite part of a note
+      description: |
+        The summary model works on a passage of a note for the editor and answers with
+        Markdown; nothing is saved. `action` says what to do: `improve`, `fix` (spelling and
+        grammar), `shorter`, `longer`, `simplify`, `professional`, `casual`, `summarize`,
+        `tasks` (a checklist of the action items), `table`, `translate` (into `language`, a
+        summary language), `continue` (writes on from `text`, the text before the cursor),
+        `custom` (does `instruction` with `text`) or `write` (writes new text as
+        `instruction` asks). `context` is the note around the passage, optional. Limited to
+        30 requests per minute.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [improve, fix, shorter, longer, simplify, professional, casual, summarize, tasks, table, translate, continue, custom, write] }
+                text: { type: string, maxLength: 20000, description: The passage as Markdown; empty for `write` }
+                context: { type: string, description: The note around the passage (the first 8000 characters are used) }
+                instruction: { type: string, maxLength: 1000, example: "Rewrite this as an email to the team" }
+                language: { type: string, example: de-DE, description: 'For `translate`: one of GET /ai/languages' }
+      responses:
+        "200":
+          description: The text written
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  markdown: { type: string }
+                  model: { type: string }
+        "400": { $ref: "#/components/responses/Error" }
+        "409":
+          description: The AI models are not set up
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "429": { description: Too many requests }
 
   /me/briefing:
     get:
@@ -2764,6 +2964,13 @@ components:
       properties:
         owner: { $ref: "#/components/schemas/ShareUser" }
         members: { type: array, items: { $ref: "#/components/schemas/ShareUser" } }
+        template: { type: boolean, description: The text note is a template, offered when a new note is made; absent otherwise }
+        public:
+          type: object
+          description: The note's public web link; absent when it isn't published
+          properties:
+            token: { type: string, description: 'The secret part of the link: /p/<token> in the web app, GET /public/<token> in the API' }
+            createdAt: { type: string, format: date-time }
         access: { type: string, enum: [owner, editor, viewer], description: What you may do with the note }
         reporter: { $ref: "#/components/schemas/ShareUser" }
 
@@ -3118,6 +3325,27 @@ components:
         seconds: { type: integer, format: int64, description: How long it lasted; a running timer up to now }
         createdAt: { type: string, format: date-time }
 
+    NoteVersion:
+      type: object
+      description: A note's title and text as they were before a change replaced them.
+      properties:
+        id: { type: string }
+        noteId: { type: string }
+        revision: { type: integer, format: int64, description: The note's `revision` the text had }
+        title: { type: string }
+        markdown: { type: string, description: The text; left out of lists }
+        savedAt: { type: string, format: date-time, description: When this text was saved }
+        createdAt: { type: string, format: date-time, description: When a change replaced it }
+        reason: { type: string, enum: [edit, restore, regenerate], description: What replaced it }
+    PublicNote:
+      type: object
+      description: A published note as anyone with its link sees it.
+      properties:
+        title: { type: string }
+        markdown: { type: string }
+        type: { type: string, enum: [text, document] , description: Absent for recordings }
+        date: { type: string, format: date-time, description: When the note was recorded or made }
+        updatedAt: { type: string, format: date-time, description: When its text last changed }
     AskAnswer:
       type: object
       properties:

@@ -1,4 +1,4 @@
-import { lazy, ReactNode, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, ReactNode, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, Recording } from '../api/client';
@@ -28,6 +28,8 @@ import { noteRefPath } from '../lib/noteRefs';
 import { formatBytes, formatClock, formatDate, formatDuration, inkAttachment, isPhoto, noteType, onTablet, processing, statusLabel, title as titleOf, when } from '../lib/recordings';
 import { Speakers } from '../components/Speakers';
 import { PdfViewer } from '../components/PdfViewer';
+import { VersionHistory } from '../components/VersionHistory';
+import { builtInTemplates, ownTemplates, PLACEHOLDERS } from '../lib/templates';
 
 // The rich text editor is downloaded on first use; the summary is shown read-only meanwhile.
 const SummaryEditor = lazy(() => import('../components/SummaryEditor'));
@@ -157,6 +159,8 @@ function SyncState({ sync, error, onRetry, quiet = false }: { sync: Sync; error:
 interface BodyProps {
   rec: Recording;
   aiReady: boolean;
+  // aiWriting says the summary model is set up, for the AI's help in the editor.
+  aiWriting: boolean;
   tab: Tab;
   setTab: (t: Tab) => void;
   setRec: (r: Recording) => void;
@@ -174,7 +178,7 @@ interface BodyProps {
 // NoteBody is a note's page below the back link. It is re-created when a new summary
 // arrives (see the key in Conversation), so the editor always starts from the stored text.
 // Text notes show only their text (kept as the summary): no transcript, source or AI actions.
-function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart, startAt, onStarted }: BodyProps) {
+function NoteBody({ rec, aiReady, aiWriting, tab, setTab, setRec, reload, created, restart, startAt, onStarted }: BodyProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const notes = useNotes();
@@ -299,6 +303,29 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart,
       setBusy(false);
     }
   }
+
+  // restoreVersion makes an earlier version the note's text. Pending edits are saved first
+  // (the text they make is kept as a version too); the editor then starts on the restored text.
+  async function restoreVersion(versionId: string) {
+    if (!(await autosave.save()) && autosave.dirty()) throw new Error(autosave.error ?? t('editor.sync.dirty'));
+    autosave.discard();
+    try {
+      setRec(await api.restoreVersion(rec.id, versionId));
+    } finally {
+      restart();
+    }
+  }
+
+  // setTemplate makes the note a template, offered when new notes are made, or a plain note.
+  async function setTemplate(template: boolean) {
+    setError(null);
+    try {
+      setRec(await api.setTemplate(rec.id, template));
+    } catch (err) {
+      setError(errorText(err, t));
+    }
+  }
+  const templates = useMemo(() => [...ownTemplates(notes.recordings, rec.id), ...builtInTemplates(t)], [notes.recordings, rec.id, t]);
 
   // Regenerating replaces the summary, so pending edits are dropped (after the user
   // confirmed) instead of being saved over the new summary later.
@@ -518,6 +545,7 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart,
           <NewNoteIcon />
         </button>
       )}
+      {summary && !isBoard && <VersionHistory rec={rec} canRestore={!textReadOnly && !rec.deletedAt} onRestore={restoreVersion} />}
       <MoveToFolder rec={rec} setRec={setRec} />
       {!rec.deletedAt && <ShareNote rec={rec} setRec={setRec} />}
       {!rec.deletedAt && !readOnly && (
@@ -587,6 +615,12 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart,
               {sourceBadge && <span className="meta-item meta-extra">{sourceBadge}</span>}
               {location && <span className="meta-item meta-extra">{location}</span>}
               {lanePills && <span className="meta-extra">{lanePills}</span>}
+              {rec.template && <span className="state-pill template-pill">{t('templates.badge')}</span>}
+              {rec.public && (
+                <a className="state-pill public-pill" href={api.publicURL(rec.public.token)} target="_blank" rel="noreferrer" title={t('publish.open')}>
+                  {t('publish.badge')}
+                </a>
+              )}
               {state && <span className={`state-pill${rec.status === 'failed' ? ' bad' : ''}`}>{state}</span>}
             </p>
             <div className="header-labels">
@@ -693,6 +727,9 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart,
                     onSaveShortcut={() => void autosave.save()}
                     readOnly={textReadOnly}
                     onConvertTask={convertToTask}
+                    aiEnabled={aiWriting && !textReadOnly}
+                    templates={templates}
+                    title={autosave.title}
                   />
                 </Suspense>
                 </div>
@@ -861,6 +898,16 @@ function NoteBody({ rec, aiReady, tab, setTab, setRec, reload, created, restart,
             <NoteLabels rec={rec} setRec={setRec} withTask={false} />
           </section>
           <Attachments rec={rec} setRec={setRec} readOnly={readOnly} />
+          {isText && !fromRemarkable && !rec.deletedAt && (
+            <section>
+              <h2>{t('templates.label')}</h2>
+              <label className="check-row">
+                <input type="checkbox" checked={!!rec.template} disabled={readOnly} onChange={(e) => void setTemplate(e.target.checked)} />
+                {t('templates.useAsTemplate')}
+              </label>
+              <p className="muted field-note">{t('templates.useAsTemplateHint', { placeholders: PLACEHOLDERS })}</p>
+            </section>
+          )}
           <section>
             <h2>{t('noteInfo.details')}</h2>
             <dl className="note-facts">
@@ -963,6 +1010,7 @@ export function Conversation() {
     [upsert],
   );
   const [aiReady, setAIReady] = useState(true);
+  const [aiWriting, setAIWriting] = useState(false);
   // generation counts the restarts of the open note (see NoteBody's restart).
   const [generation, setGeneration] = useState(0);
   const restart = useCallback(() => setGeneration((g) => g + 1), []);
@@ -981,6 +1029,7 @@ export function Conversation() {
       if (openId.current !== id) return;
       setRec(r);
       setAIReady(ai.transcription && ai.summary);
+      setAIWriting(ai.summary);
       setError(null);
     } catch (err) {
       setError(errorText(err, t));
@@ -1045,6 +1094,7 @@ export function Conversation() {
           key={`${rec.id}:${rec.summary?.createdAt ?? ''}:${generation}`}
           rec={rec}
           aiReady={aiReady}
+          aiWriting={aiWriting}
           tab={tab}
           setTab={setTab}
           setRec={setRec}

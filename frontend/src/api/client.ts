@@ -317,6 +317,53 @@ export interface TaskFields {
   priority?: Priority;
 }
 
+// NoteVersion is a note's title and text as they were before a change replaced them. Lists
+// leave out the text (markdown).
+export interface NoteVersion {
+  id: string;
+  noteId: string;
+  revision: number;
+  title: string;
+  markdown?: string;
+  savedAt: string;
+  createdAt: string;
+  reason: 'edit' | 'restore' | 'regenerate';
+}
+
+// PublicNote is a published note as anyone with its link sees it.
+export interface PublicNote {
+  title: string;
+  markdown: string;
+  type?: NoteType;
+  date: string;
+  updatedAt: string;
+}
+
+// WriteAction is what the AI does with a passage of a note (see POST /ai/write).
+export type WriteAction =
+  | 'improve'
+  | 'fix'
+  | 'shorter'
+  | 'longer'
+  | 'simplify'
+  | 'professional'
+  | 'casual'
+  | 'summarize'
+  | 'tasks'
+  | 'table'
+  | 'translate'
+  | 'continue'
+  | 'custom'
+  | 'write';
+
+export interface WriteInput {
+  action: WriteAction;
+  text: string;
+  context?: string;
+  instruction?: string;
+  language?: string;
+}
+
 // ActionItem is a follow-up the AI found in a conversation, offered as a task.
 export interface ActionItem {
   id: string;
@@ -424,6 +471,10 @@ export interface Recording {
   // A text note's copy on the owner's reMarkable, sent while the note is in the
   // reMarkable folder; removed once the note left it (the copy is in the tablet's trash).
   tablet?: TabletCopy;
+  // The text note is a template, offered when a new note is made.
+  template?: boolean;
+  // The note's public web link (/p/<token>); absent when it isn't published.
+  public?: { token: string; createdAt: string };
   // When the note was moved to the trash; it is deleted for good TRASH_DAYS later.
   deletedAt?: string;
   lastError?: string;
@@ -716,6 +767,20 @@ export const api = {
   // "changed" when someone else edited them since.
   editSummary: (id: string, title: string, markdown: string, baseRevision?: number) =>
     request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/summary`, { title, markdown, baseRevision }),
+  versions: (id: string) => request<NoteVersion[]>('GET', `/recordings/${encodeURIComponent(id)}/versions`),
+  version: (id: string, versionId: string) =>
+    request<NoteVersion>('GET', `/recordings/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}`),
+  // restoreVersion makes an earlier version the note's text again; with baseRevision it fails
+  // with the code "changed" when someone else edited the text since.
+  restoreVersion: (id: string, versionId: string, baseRevision?: number) =>
+    request<Recording>('POST', `/recordings/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}/restore`, { baseRevision }),
+  setTemplate: (id: string, template: boolean) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/template`, { template }),
+  publish: (id: string) => request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/public`),
+  unpublish: (id: string) => request<Recording>('DELETE', `/recordings/${encodeURIComponent(id)}/public`),
+  publicNote: (token: string) => request<PublicNote>('GET', `/public/${encodeURIComponent(token)}`),
+  // publicURL is the address of a published note's page.
+  publicURL: (token: string) => `${window.location.origin}/p/${token}`,
+  aiWrite: (input: WriteInput) => request<{ markdown: string; model: string }>('POST', '/ai/write', input),
   sharing: (id: string) => request<Sharing>('GET', `/recordings/${encodeURIComponent(id)}/shares`),
   share: (id: string, email: string, role: ShareRole) => request<Sharing>('POST', `/recordings/${encodeURIComponent(id)}/shares`, { email, role }),
   setShareRole: (id: string, userId: string, role: ShareRole) =>

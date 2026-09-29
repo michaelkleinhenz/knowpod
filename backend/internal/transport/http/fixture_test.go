@@ -14,6 +14,7 @@ import (
 
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/config"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/openrouter"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/remarkable"
 	rt "github.com/michaelkleinhenz/knowpod-service/backend/internal/remarkable/remarkabletest"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/repository/memory"
@@ -43,6 +44,31 @@ type apiFixture struct {
 	notifications *service.NotificationService
 	// events tells the web app about note changes.
 	events *service.NoteEvents
+	// ai answers the AI requests once the models are set up (see withAI).
+	ai     *service.AIService
+	writer *fakeWriter
+}
+
+// fakeWriter answers every AI request with a fixed text.
+type fakeWriter struct {
+	answer   string
+	requests []openrouter.Request
+}
+
+func (w *fakeWriter) Complete(_ context.Context, _ string, r openrouter.Request) (string, error) {
+	w.requests = append(w.requests, r)
+	return w.answer, nil
+}
+
+func (w *fakeWriter) Models(context.Context) ([]openrouter.Model, error) { return nil, nil }
+
+// withAI sets up the AI models, answered by the fake writer.
+func (f *apiFixture) withAI() {
+	f.t.Helper()
+	key, model := "sk-test", "test/model"
+	if _, err := f.ai.UpdateSettings(context.Background(), service.OpenRouterUpdate{APIKey: &key, TranscriptionModel: &model, SummaryModel: &model}); err != nil {
+		f.t.Fatal(err)
+	}
 }
 
 func newAPIFixture(t *testing.T) *apiFixture {
@@ -64,6 +90,7 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	events := service.NewNoteEvents()
 	actions := service.NewRecordingService(events.Watch(recs), objects, spool, themes)
 	actions.Users, actions.Events = users, events
+	actions.Versions = memory.NewNoteVersions()
 	labelRepo := memory.NewLabels()
 	labels := service.NewLabelService(labelRepo, recs)
 	actions.Labels = labels
@@ -102,7 +129,8 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	oauthSvc := service.NewOAuthService(oauthRepo, users)
 	mcp := service.NewMCPAccessService(users)
 	mcp.OAuth = oauthSvc
-	ai := service.NewAIService(memory.NewSettings(), themes, objects, nil, t.TempDir(), log)
+	writer := &fakeWriter{answer: "Written"}
+	ai := service.NewAIService(memory.NewSettings(), themes, objects, writer, t.TempDir(), log)
 	briefings := service.NewBriefingService(users, actions, folderRepo, ai, log)
 	briefings.Notifications, briefings.TimeEntries = notifications, timeRepo
 	backupDB := memory.NewBackup("users", "recordings")
@@ -129,7 +157,7 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	t.Cleanup(srv.Close)
 	t.Cleanup(notifications.Shutdown) // before srv.Close, which waits for open streams
 	t.Cleanup(events.Shutdown)
-	return &apiFixture{t: t, srv: srv, recs: recs, users: users, worker: w, cloud: cloud, remarkable: rm, notifications: notifications, events: events}
+	return &apiFixture{t: t, srv: srv, recs: recs, users: users, worker: w, cloud: cloud, remarkable: rm, notifications: notifications, events: events, ai: ai, writer: writer}
 }
 
 // client is an HTTP client with its own cookie jar, i.e. one browser.

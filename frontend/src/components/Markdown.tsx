@@ -8,9 +8,10 @@ function safeHref(url: string): string | null {
   return /^(https?:\/\/|mailto:)/i.test(url.trim()) ? url.trim() : null;
 }
 
-// safeImage allows only the pictures stored with notes, so Markdown can't load other sites.
+// safeImage allows only the pictures stored with notes (also through a published note's
+// link), so Markdown can't load other sites.
 function safeImage(url: string): boolean {
-  return /^\/api\/v1\/recordings\/[\w-]+\/images\/[\w-]+(#w=\d{1,5})?$/.test(url);
+  return /^\/api\/v1\/(recordings|public)\/[\w-]+\/images\/[\w-]+(#w=\d{1,5})?$/.test(url);
 }
 
 // Cite renders a citation such as "[2]" (see Markdown's cite).
@@ -71,15 +72,55 @@ type Block =
   | { kind: 'hr' }
   | { kind: 'code'; text: string }
   | { kind: 'quote'; children: Block[] }
-  | { kind: 'ul' | 'ol'; start: number; items: ListItem[] };
+  | { kind: 'ul' | 'ol'; start: number; items: ListItem[] }
+  | { kind: 'table'; align: Align[]; head: string[]; rows: string[][] };
+
+type Align = 'left' | 'center' | 'right' | undefined;
 
 const HEADING = /^(#{1,6})\s+(.*)$/;
 const LIST = /^(\s*)([-*+•]|\d+[.)])\s+(.*)$/;
 const FENCE = /^\s*(```|~~~)/;
 const TASK = /^\[([ xX])\]\s+(.*)$/;
 const RULE = /^\s*([-*_])(\s*\1){2,}\s*$/;
+const TABLE_RULE = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
 const indentOf = (line: string) => line.length - line.trimStart().length;
 const startsBlock = (line: string) => HEADING.test(line.trim()) || LIST.test(line) || FENCE.test(line) || RULE.test(line) || /^\s*>/.test(line);
+
+// cells splits a table row into its cells: at the pipes that aren't escaped (\|) or in
+// `code`, without the outer pipes.
+function cells(line: string): string[] {
+  let row = line.trim();
+  if (row.startsWith('|')) row = row.slice(1);
+  if (row.endsWith('|') && !row.endsWith('\\|')) row = row.slice(0, -1);
+  const out: string[] = [];
+  let cell = '';
+  let code = false;
+  for (let i = 0; i < row.length; i++) {
+    const c = row[i];
+    if (c === '\\' && row[i + 1] === '|') {
+      cell += '|';
+      i++;
+    } else if (c === '`') {
+      code = !code;
+      cell += c;
+    } else if (c === '|' && !code) {
+      out.push(cell.trim());
+      cell = '';
+    } else {
+      cell += c;
+    }
+  }
+  out.push(cell.trim());
+  return out;
+}
+
+// tableAt says whether a table starts at lines[i]: a row with pipes, then the rule under the
+// header ("| --- | :-: |") with as many cells.
+function tableAt(lines: string[], i: number): boolean {
+  const head = lines[i];
+  const rule = lines[i + 1];
+  return !!rule && head.includes('|') && TABLE_RULE.test(rule) && rule.includes('-') && cells(head).length === cells(rule).length;
+}
 
 // parse splits Markdown into blocks: headings, paragraphs, nested bullet, numbered and
 // task lists, quotes, rules and code blocks. No raw HTML is ever rendered.
@@ -99,6 +140,19 @@ function parse(lines: string[]): Block[] {
       for (i++; i < lines.length && !lines[i].trim().startsWith(fence); i++) code.push(lines[i]);
       i++;
       blocks.push({ kind: 'code', text: code.join('\n') });
+      continue;
+    }
+    if (tableAt(lines, i)) {
+      const head = cells(line);
+      const align: Align[] = cells(lines[i + 1]).map((c) =>
+        c.startsWith(':') && c.endsWith(':') ? 'center' : c.endsWith(':') ? 'right' : c.startsWith(':') ? 'left' : undefined,
+      );
+      const rows: string[][] = [];
+      for (i += 2; i < lines.length && lines[i].trim() && lines[i].includes('|') && !startsBlock(lines[i]); i++) {
+        const row = cells(lines[i]);
+        rows.push(head.map((_, j) => row[j] ?? ''));
+      }
+      blocks.push({ kind: 'table', align, head, rows });
       continue;
     }
     const heading = HEADING.exec(trimmed);
@@ -151,7 +205,7 @@ function parse(lines: string[]): Block[] {
       continue;
     }
     const para: string[] = [];
-    for (; i < lines.length && lines[i].trim() && (para.length === 0 || !startsBlock(lines[i])); i++) para.push(lines[i].trim());
+    for (; i < lines.length && lines[i].trim() && (para.length === 0 || (!startsBlock(lines[i]) && !tableAt(lines, i))); i++) para.push(lines[i].trim());
     blocks.push({ kind: 'p', text: para.join(' ') });
   }
   return blocks;
@@ -175,6 +229,33 @@ function render(blocks: Block[], noteLinks: boolean, cite?: Cite): ReactNode[] {
         );
       case 'quote':
         return <blockquote key={i}>{render(b.children, noteLinks, cite)}</blockquote>;
+      case 'table':
+        return (
+          <div key={i} className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  {b.head.map((c, j) => (
+                    <th key={j} style={b.align[j] ? { textAlign: b.align[j] } : undefined}>
+                      {inline(c, noteLinks, cite)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {b.rows.map((row, r) => (
+                  <tr key={r}>
+                    {row.map((c, j) => (
+                      <td key={j} style={b.align[j] ? { textAlign: b.align[j] } : undefined}>
+                        {inline(c, noteLinks, cite)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
       case 'ul':
       case 'ol': {
         let tasks = b.kind === 'ul';

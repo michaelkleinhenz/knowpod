@@ -433,6 +433,52 @@ export const de: Translation = {
     convertFailed: 'Die Aufgabe konnte nicht erstellt werden: {{detail}}',
     imageUploading: 'Bild wird hinzugefügt …',
     placeholder: 'Tippe / für Befehle',
+    table: {
+      label: 'Tabelle',
+      addRowBefore: 'Zeile darüber',
+      addRowAfter: 'Zeile darunter',
+      addColumnBefore: 'Spalte links',
+      addColumnAfter: 'Spalte rechts',
+      deleteRow: 'Zeile löschen',
+      deleteColumn: 'Spalte löschen',
+      toggleHeader: 'Kopfzeile',
+      deleteTable: 'Tabelle löschen',
+    },
+    ai: {
+      button: 'KI fragen',
+      title: 'Schreiben mit KI',
+      placeholderSelection: 'Sag der KI, was sie mit dem Text tun soll …',
+      placeholderCursor: 'Sag der KI, was sie schreiben soll …',
+      run: 'Los',
+      actions: {
+        improve: 'Besser formulieren',
+        fix: 'Rechtschreibung & Grammatik',
+        shorter: 'Kürzer',
+        longer: 'Ausführlicher',
+        simplify: 'Einfacher',
+        professional: 'Sachlicher',
+        casual: 'Lockerer',
+        summarize: 'Zusammenfassen',
+        tasks: 'Aufgaben finden',
+        table: 'In Tabelle umwandeln',
+        continue: 'Weiterschreiben',
+      },
+      translate: 'Übersetzen in …',
+      working: 'Schreibe …',
+      replace: 'Ersetzen',
+      insert: 'Einfügen',
+      insertBelow: 'Darunter einfügen',
+      retry: 'Nochmal',
+      discard: 'Verwerfen',
+      cancel: 'Abbrechen',
+      failed: 'Die KI konnte das nicht schreiben: {{detail}}',
+      model: 'Geschrieben von {{model}}. Prüfe den Text, bevor du ihn verwendest.',
+    },
+    templates: {
+      label: 'Vorlage einfügen',
+      none: 'Noch keine Vorlagen.',
+      failed: 'Die Vorlage konnte nicht eingefügt werden: {{detail}}',
+    },
     slash: {
       label: 'Block einfügen',
       heading1: 'Überschrift 1',
@@ -453,6 +499,12 @@ export const de: Translation = {
       quoteHint: 'Zitat einfügen',
       divider: 'Trennlinie',
       dividerHint: 'Abschnitte mit einer Linie trennen',
+      table: 'Tabelle',
+      tableHint: 'Zeilen und Spalten mit Kopfzeile',
+      template: 'Vorlage',
+      templateHint: 'Den Text einer Vorlage einfügen',
+      ai: 'KI fragen',
+      aiHint: 'Die KI Text schreiben oder fortsetzen lassen (Strg+J)',
     },
     undo: 'Rückgängig',
     redo: 'Wiederholen',
@@ -636,7 +688,7 @@ export const de: Translation = {
       dueRange: 'Aufgaben fällig in den nächsten 7 oder 30 Tagen',
       dueSome: 'Aufgaben ohne Datum, mit Datum oder an einem Tag',
       dueCompare: 'Aufgaben fällig vor oder nach einem Tag',
-      flags: 'Abgehakt, Aufgaben, wiederkehrend, mit Schätzung',
+      flags: 'Abgehakt, Aufgaben, wiederkehrend, mit Schätzung, Vorlagen',
       people: 'Aufgaben, die dir zugewiesen sind, nicht zugewiesen oder von dir erstellt',
       priority: 'Aufgaben mit dieser Priorität oder ohne',
       type: 'Einträge dieser Art',
@@ -1028,6 +1080,174 @@ export const de: Translation = {
     apiKeyPlaceholderSet: 'Hinterlegt ({{hint}}). Neuen Schlüssel eingeben, um ihn zu ersetzen.',
     disconnect: 'Trennen',
     disconnectConfirm: 'Pocket trennen? Neue Pocket-Aufnahmen kommen dann nicht mehr an.',
+  },
+  templates: {
+    label: 'Vorlage',
+    blank: 'Leer',
+    builtInGroup: 'Mitgelieferte Vorlagen',
+    ownGroup: 'Deine Vorlagen',
+    useAsTemplate: 'Als Vorlage verwenden',
+    useAsTemplateHint: 'Wird angeboten, wenn du eine neue Notiz anlegst oder /Vorlage tippst. Platzhalter: {{placeholders}}.',
+    badge: 'Vorlage',
+    titleOptional: 'Titel (mit Vorlage optional)',
+    builtIn: {
+      meeting: {
+        name: 'Besprechungsnotizen',
+        title: 'Besprechung {{date}}',
+        markdown: `**Datum:** {{date}}, {{time}}
+
+**Teilnehmende:** Namen
+
+## Tagesordnung
+
+1. Thema
+
+## Notizen
+
+Diskussion
+
+## Entscheidungen
+
+| Entscheidung | Verantwortlich | Notizen |
+| --- | --- | --- |
+| Entscheidung | Name | Notizen |
+
+## Aufgaben
+
+- [ ] Nachfassen`,
+      },
+      oneOnOne: {
+        name: 'Einzelgespräch',
+        title: '1:1 {{date}}',
+        markdown: `## Wie läuft es?
+
+Check-in
+
+## Neuigkeiten
+
+- Neuigkeit
+
+## Themen
+
+- Thema
+
+## Feedback
+
+Feedback
+
+## Aufgaben
+
+- [ ] Nachfassen`,
+      },
+      project: {
+        name: 'Projektsteckbrief',
+        title: 'Projektsteckbrief',
+        markdown: `## Ziel
+
+Was soll anders sein, wenn das Projekt fertig ist?
+
+## Hintergrund
+
+Warum jetzt, und was wir bisher wissen.
+
+## Umfang
+
+| Dazu gehört | Nicht dazu |
+| --- | --- |
+| Punkt | Punkt |
+
+## Meilensteine
+
+| Meilenstein | Datum | Verantwortlich |
+| --- | --- | --- |
+| Start | {{isoDate}} | Name |
+
+## Risiken
+
+- Risiko
+
+## Nächste Schritte
+
+- [ ] Erster Schritt`,
+      },
+      journal: {
+        name: 'Tagebuch',
+        title: '{{weekday}}, {{date}}',
+        markdown: `## Dankbar für
+
+- Etwas
+
+## Fokus heute
+
+- [ ] Das Wichtigste
+
+## Notizen
+
+Notizen
+
+## Rückblick
+
+Was lief gut? Was würde ich anders machen?`,
+      },
+      weekly: {
+        name: 'Wochenplan',
+        title: 'Woche vom {{date}}',
+        markdown: `## Prioritäten
+
+1. Priorität
+
+## Wochenplan
+
+| Tag | Fokus |
+| --- | --- |
+| Montag | Fokus |
+| Dienstag | Fokus |
+| Mittwoch | Fokus |
+| Donnerstag | Fokus |
+| Freitag | Fokus |
+
+## Zu erledigen
+
+- [ ] Aufgabe
+
+## Rückblick
+
+Was ist erledigt, und was wandert in die nächste Woche?`,
+      },
+    },
+  },
+  history: {
+    button: 'Versionsverlauf',
+    title: 'Versionsverlauf',
+    intro: 'Frühere Fassungen von Titel und Text. Beim Bearbeiten wird höchstens alle 10 Minuten eine Version aufbewahrt; die letzten 50 bleiben erhalten.',
+    none: 'Noch keine früheren Versionen. Sie werden aufbewahrt, wenn sich der Text ändert.',
+    current: 'Aktuelle Version',
+    reasons: { edit: 'Vor einer Bearbeitung', restore: 'Vor einer Wiederherstellung', regenerate: 'Vor dem Neuerstellen' },
+    savedAt: 'Gespeichert {{when}}',
+    restore: 'Diese Version wiederherstellen',
+    restoreConfirm: 'Titel und Text durch diese Version ersetzen? Der aktuelle Text wird als Version aufbewahrt.',
+    restored: 'Version wiederhergestellt.',
+    close: 'Schließen',
+    choose: 'Wähle eine Version, um sie anzusehen.',
+  },
+  publish: {
+    heading: 'Im Web veröffentlichen',
+    explain: 'Jede Person mit dem Link kann Titel und Text dieser Notiz lesen, ohne sich anzumelden. Unternotizen, Anhänge und Labels bleiben privat.',
+    publish: 'Veröffentlichen',
+    unpublish: 'Nicht mehr veröffentlichen',
+    unpublishConfirm: 'Diese Notiz nicht mehr veröffentlichen? Der Link funktioniert dann nicht mehr, und erneutes Veröffentlichen erzeugt einen neuen.',
+    copy: 'Link kopieren',
+    open: 'Seite öffnen',
+    link: 'Öffentlicher Link',
+    notOwner: 'Von der Eigentümerin oder dem Eigentümer veröffentlicht.',
+    noBoards: 'Boards können nicht veröffentlicht werden.',
+    badge: 'Veröffentlicht',
+  },
+  publicPage: {
+    loading: 'Lädt …',
+    notFound: 'Diese Seite gibt es nicht oder sie ist nicht mehr veröffentlicht.',
+    updated: 'Aktualisiert {{when}}',
+    footer: 'Veröffentlicht mit knowpod',
   },
   themes: {
     auto: { name: 'Automatisch', description: 'Passende Struktur' },
