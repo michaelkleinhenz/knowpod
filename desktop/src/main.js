@@ -7,7 +7,7 @@
 // server's live notification stream and hands each notification to notify() here. To get
 // them also while the window is closed, closing it only hides it: the app keeps running in
 // the tray (the menu bar on macOS) until Quit.
-const { app, BrowserWindow, Menu, Notification, Tray, dialog, ipcMain, nativeImage, powerMonitor, shell } = require('electron');
+const { app, BrowserWindow, Menu, Notification, Tray, dialog, ipcMain, nativeImage, powerMonitor, session, shell } = require('electron');
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -148,6 +148,7 @@ function createWindow() {
     if (mainWindow.isFullScreen()) mainWindow.webContents.send('knowpod:fullscreen', true);
   });
   if (!isMac) popUpMenuOnAlt(mainWindow);
+  mainWindow.webContents.on('context-menu', (_event, params) => showContextMenu(params));
 
   // Links to other sites open in the default browser; the app's own pages stay in the window.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -209,6 +210,134 @@ function popUpMenuOnAlt(window) {
   window.on('blur', () => {
     altAlone = false;
   });
+}
+
+// Spell checking. Windows and Linux check with Chromium's dictionaries (downloaded on first
+// use), in the languages chosen under Edit → Spelling or in the right-click menu: by default
+// the system's language and English, as a German desktop would otherwise mark all English
+// text. macOS checks with its own spell checker, which detects the language itself.
+const hasSpellingLanguages = !isMac;
+const defaultSpellingLanguage = 'en-US';
+
+const spellCheckEnabled = () => readConfig().spellcheck !== false;
+
+const languageNames = new Intl.DisplayNames(['en'], { type: 'language' });
+
+function languageName(code) {
+  try {
+    return languageNames.of(code) || code;
+  } catch {
+    return code;
+  }
+}
+
+// matchLanguage finds the dictionary for a language code ("de_AT" or "de" → "de-DE"), or null.
+function matchLanguage(code, available) {
+  const wanted = String(code || '').toLowerCase().replace('_', '-');
+  if (!wanted) return null;
+  const base = wanted.split('-')[0];
+  return (
+    available.find((c) => c.toLowerCase() === wanted) ||
+    available.find((c) => c.toLowerCase() === base) ||
+    available.find((c) => c.toLowerCase().startsWith(`${base}-`)) ||
+    null
+  );
+}
+
+// spellingLanguages are the saved languages, else the system's language and English.
+function spellingLanguages() {
+  const available = session.defaultSession.availableSpellCheckerLanguages;
+  const saved = readConfig().spellCheckerLanguages;
+  const wanted = Array.isArray(saved) && saved.length ? saved : [app.getPreferredSystemLanguages()[0], defaultSpellingLanguage];
+  const languages = [...new Set(wanted.map((code) => matchLanguage(code, available)).filter(Boolean))];
+  return languages.length ? languages : [matchLanguage(defaultSpellingLanguage, available)].filter(Boolean);
+}
+
+function applySpellChecker() {
+  try {
+    // Languages first: setting them turns checking back on.
+    if (hasSpellingLanguages) session.defaultSession.setSpellCheckerLanguages(spellingLanguages());
+    session.defaultSession.setSpellCheckerEnabled(spellCheckEnabled());
+  } catch (err) {
+    console.error('spell checker:', err);
+  }
+}
+
+// setSpellingLanguage turns checking in one language on or off; the last one stays on.
+function setSpellingLanguage(code, on) {
+  const current = session.defaultSession.getSpellCheckerLanguages();
+  const next = on ? [...new Set([...current, code])] : current.filter((c) => c !== code);
+  if (next.length) {
+    writeConfig({ ...readConfig(), spellCheckerLanguages: next });
+    applySpellChecker();
+  }
+  buildMenu();
+}
+
+// spellingMenu switches spell checking on and off and, on Windows and Linux, picks its
+// languages: the chosen ones first, then all others.
+function spellingMenu() {
+  const items = [
+    {
+      label: 'Check Spelling',
+      type: 'checkbox',
+      checked: spellCheckEnabled(),
+      click: (item) => {
+        writeConfig({ ...readConfig(), spellcheck: item.checked });
+        applySpellChecker();
+        buildMenu();
+      },
+    },
+  ];
+  if (!hasSpellingLanguages) return items;
+  const chosen = session.defaultSession.getSpellCheckerLanguages();
+  const others = session.defaultSession.availableSpellCheckerLanguages
+    .filter((code) => !chosen.includes(code))
+    .sort((a, b) => languageName(a).localeCompare(languageName(b)));
+  const languageItem = (code) => ({
+    label: languageName(code),
+    type: 'checkbox',
+    checked: chosen.includes(code),
+    enabled: spellCheckEnabled(),
+    click: (item) => setSpellingLanguage(code, item.checked),
+  });
+  return [...items, { type: 'separator' }, ...chosen.map(languageItem), { type: 'separator' }, ...others.map(languageItem)];
+}
+
+// showContextMenu is the right-click menu: spelling suggestions for a misspelled word, and
+// editing in text fields; elsewhere copying the selection.
+function showContextMenu(params) {
+  if (!mainWindow) return;
+  const contents = mainWindow.webContents;
+  const flags = params.editFlags;
+  const items = [];
+  if (params.misspelledWord) {
+    const suggestions = params.dictionarySuggestions.slice(0, 6);
+    items.push(
+      ...suggestions.map((word) => ({ label: word, click: () => contents.replaceMisspelling(word) })),
+      ...(suggestions.length ? [] : [{ label: 'No Suggestions', enabled: false }]),
+      { type: 'separator' },
+      { label: 'Add to Dictionary', click: () => contents.session.addWordToSpellCheckerDictionary(params.misspelledWord) },
+      { type: 'separator' },
+    );
+  }
+  if (params.isEditable) {
+    items.push(
+      { role: 'undo', enabled: flags.canUndo },
+      { role: 'redo', enabled: flags.canRedo },
+      { type: 'separator' },
+      { role: 'cut', enabled: flags.canCut },
+      { role: 'copy', enabled: flags.canCopy },
+      { role: 'paste', enabled: flags.canPaste },
+      { type: 'separator' },
+      { role: 'selectAll', enabled: flags.canSelectAll },
+      { type: 'separator' },
+      { label: 'Spelling', submenu: spellingMenu() },
+    );
+  } else if (params.selectionText.trim()) {
+    items.push({ role: 'copy' });
+  }
+  if (items.length) Menu.buildFromTemplate(items).popup({ window: mainWindow });
 }
 
 function load() {
@@ -396,7 +525,22 @@ function buildMenu() {
           },
         ]
       : [{ label: 'File', submenu: [serverItem, { type: 'separator' }, { role: 'quit' }] }]),
-    { role: 'editMenu' },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        ...(isMac ? [{ role: 'pasteAndMatchStyle' }] : []),
+        { role: 'delete' },
+        { role: 'selectAll' },
+        { type: 'separator' },
+        { label: 'Spelling', submenu: spellingMenu() },
+      ],
+    },
     {
       label: 'View',
       submenu: [
@@ -461,6 +605,7 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(() => {
     app.setAboutPanelOptions({ applicationName: 'knowpod', applicationVersion: app.getVersion() });
+    applySpellChecker();
     buildMenu();
     createTray();
     createWindow();
