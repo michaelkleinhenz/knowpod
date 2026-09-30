@@ -59,6 +59,16 @@ let tray = null;
 let quitting = false;
 
 const iconPath = path.join(__dirname, '..', 'build', 'icon.png');
+const isMac = process.platform === 'darwin';
+
+// The window has no title bar: the web app's header takes its place, like in VS Code (see
+// titlebar.css, loaded into every page). The window's buttons stay: macOS draws its traffic
+// lights over the header's left end, Windows and Linux draw minimize, maximize and close over
+// its right end (the window controls overlay). The page reports its header's colors and
+// height (preload.js), which these start with (the header's, light theme).
+const titleBarCss = fs.readFileSync(path.join(__dirname, 'titlebar.css'), 'utf8');
+let titleBar = { height: 50, color: '#1e2a3a', symbolColor: '#e6ebf2' };
+const trafficLightPosition = (height) => ({ x: 18, y: Math.max(0, Math.round((height - 16) / 2)) });
 
 // runInBackground says whether closing the window keeps the app running in the tray (on by
 // default; switched in the tray menu).
@@ -97,10 +107,11 @@ function createWindow() {
     backgroundColor: '#eef1f5',
     icon: iconPath,
     show: false,
-    // No menu bar in the window on Windows and Linux: the web app has its own navigation.
-    // Alt shows it for a moment (e.g. for File → Change Server…); its shortcuts keep working.
+    // No title bar and so no menu bar in the window on Windows and Linux: the web app has its
+    // own navigation. Alt opens the menu (see popUpMenuOnAlt); its shortcuts keep working.
     // macOS keeps its menu at the top of the screen.
-    autoHideMenuBar: true,
+    titleBarStyle: 'hidden',
+    ...(isMac ? { trafficLightPosition: trafficLightPosition(titleBar.height) } : { titleBarOverlay: titleBar }),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -130,6 +141,13 @@ function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+  mainWindow.on('enter-full-screen', () => mainWindow.webContents.send('knowpod:fullscreen', true));
+  mainWindow.on('leave-full-screen', () => mainWindow.webContents.send('knowpod:fullscreen', false));
+  mainWindow.webContents.on('dom-ready', () => {
+    void mainWindow.webContents.insertCSS(titleBarCss);
+    if (mainWindow.isFullScreen()) mainWindow.webContents.send('knowpod:fullscreen', true);
+  });
+  if (!isMac) popUpMenuOnAlt(mainWindow);
 
   // Links to other sites open in the default browser; the app's own pages stay in the window.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -151,6 +169,46 @@ function createWindow() {
   });
 
   load();
+}
+
+// setTitleBar fits the window's buttons to the page's header: {height, color, symbolColor}.
+function setTitleBar(style) {
+  if (!mainWindow) return;
+  const color = (c) => (typeof c === 'string' && /^#[0-9a-f]{6}$/i.test(c) ? c : null);
+  const height = Number.isFinite(style.height) ? Math.min(100, Math.max(24, Math.round(style.height))) : titleBar.height;
+  titleBar = {
+    height,
+    color: color(style.color) || titleBar.color,
+    symbolColor: color(style.symbolColor) || titleBar.symbolColor,
+  };
+  if (isMac) mainWindow.setWindowButtonPosition(trafficLightPosition(height));
+  else mainWindow.setTitleBarOverlay(titleBar);
+}
+
+ipcMain.on('knowpod:titlebar', (event, style) => {
+  if (!mainWindow || event.sender !== mainWindow.webContents || !style || typeof style !== 'object') return;
+  setTitleBar(style);
+});
+
+// popUpMenuOnAlt opens the window's menu below the header when Alt is pressed and released
+// on its own (not as part of a shortcut like Alt+Left), as Alt shows a hidden menu bar.
+function popUpMenuOnAlt(window) {
+  let altAlone = false;
+  window.webContents.on('before-input-event', (_event, input) => {
+    if (input.key !== 'Alt') {
+      if (input.type === 'keyDown') altAlone = false;
+      return;
+    }
+    if (input.type === 'keyDown') {
+      if (!input.isAutoRepeat) altAlone = true;
+    } else if (input.type === 'keyUp' && altAlone) {
+      altAlone = false;
+      Menu.getApplicationMenu()?.popup({ window, x: 0, y: titleBar.height });
+    }
+  });
+  window.on('blur', () => {
+    altAlone = false;
+  });
 }
 
 function load() {
@@ -325,7 +383,6 @@ function updateTray() {
 }
 
 function buildMenu() {
-  const isMac = process.platform === 'darwin';
   const serverItem = {
     label: 'Change Server…',
     click: () => showSetup(),
@@ -357,7 +414,24 @@ function buildMenu() {
         { role: 'togglefullscreen' },
       ],
     },
-    { role: 'windowMenu' },
+    isMac
+      ? { role: 'windowMenu' }
+      : {
+          label: 'Window',
+          submenu: [
+            { role: 'minimize' },
+            {
+              label: 'Maximize / Restore',
+              click: () => {
+                if (!mainWindow) return;
+                if (mainWindow.isMaximized()) mainWindow.unmaximize();
+                else mainWindow.maximize();
+              },
+            },
+            { type: 'separator' },
+            { role: 'close' },
+          ],
+        },
     {
       role: 'help',
       submenu: [

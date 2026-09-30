@@ -406,7 +406,11 @@ CORS setting is needed. New server versions reach it like the web app, on the ne
 
 - On the first start it asks for the server's address (the one opened in the browser), unless
   one was set when it was built (`SERVER_URL`). **File → Change Server…** (on macOS in the
-  app menu) changes it; on Windows and Linux the window hides its menu bar, **Alt** shows it; `KNOWPOD_SERVER_URL` in the environment overrides it for one run.
+  app menu) changes it; on Windows and Linux the window has no menu bar, **Alt** opens the menu; `KNOWPOD_SERVER_URL` in the environment overrides it for one run.
+- The window has no title bar, like VS Code: the app's header takes its place. Drag it to move
+  the window, double-click it to maximize; the window's buttons (minimize, maximize, close) sit
+  at its right end (on macOS the traffic lights at its left end), in the header's colors. The
+  **Window** menu (Alt) also has them.
 - The address and the window size are kept in the app's data folder (`config.json` under
   `%APPDATA%\knowpod`, `~/Library/Application Support/knowpod` or `~/.config/knowpod`); the
   sign-in and offline copies too, like in a browser profile.
