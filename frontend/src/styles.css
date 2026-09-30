@@ -95,6 +95,40 @@ html {
   scrollbar-gutter: stable;
 }
 
+/* Classic scrollbars (see lib/scrollbar.ts): the page's scrollbar is drawn here, always
+   shown so it keeps its space, with the header's colors beside the header and the track
+   below it. */
+@supports selector(::-webkit-scrollbar) {
+  html[data-scrollbars='classic'] {
+    overflow-y: scroll;
+  }
+
+  html[data-scrollbars='classic']::-webkit-scrollbar {
+    width: 12px;
+    background: linear-gradient(
+      var(--color-header) calc(var(--header-height, 0px) - 3px),
+      var(--color-primary) 0 var(--header-height, 0px),
+      var(--color-bg) 0
+    );
+  }
+
+  html[data-scrollbars='classic']::-webkit-scrollbar-track {
+    margin-top: var(--header-height, 0px);
+    background: var(--color-bg);
+  }
+
+  html[data-scrollbars='classic']::-webkit-scrollbar-thumb {
+    min-height: 40px;
+    border: 3px solid transparent;
+    border-radius: 6px;
+    background: var(--color-border) padding-box;
+  }
+
+  html[data-scrollbars='classic']::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-muted);
+  }
+}
+
 html[data-font-size='xsmall'] {
   font-size: 87.5%;
 }

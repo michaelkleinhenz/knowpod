@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useState } from 'react';
+import { ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useOffline } from '../api/offline';
@@ -42,6 +42,23 @@ export function Layout({ children }: { children: ReactNode }) {
   // The desktop app shows notifications from the server's live stream (see lib/desktop.ts).
   useDesktopNotifications(!!account, navigate);
 
+  // The page's scrollbar paints the header's colors beside the header (see lib/scrollbar.ts);
+  // it needs the header's height, which changes as the header wraps.
+  const headerRef = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    const header = headerRef.current;
+    if (!header) return;
+    const root = document.documentElement;
+    const update = () => root.style.setProperty('--header-height', `${header.offsetHeight}px`);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(header);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty('--header-height');
+    };
+  }, []);
+
   async function handleLogout() {
     await logout();
     navigate('/login');
@@ -49,7 +66,7 @@ export function Layout({ children }: { children: ReactNode }) {
 
   return (
     <RecorderProvider>
-      <header className="header">
+      <header className="header" ref={headerRef}>
         <Link to="/" className="brand">
           <img src="/favicon.svg" alt="" width="26" height="26" />
           knowpod
