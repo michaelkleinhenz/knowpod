@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import './i18n';
 import './lib/appearance';
 import './lib/fontSize';
+import './lib/scrollbar';
 import './styles.css';
 import { AuthProvider } from './auth';
 import App from './App';
