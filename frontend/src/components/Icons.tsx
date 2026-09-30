@@ -98,6 +98,17 @@ export function FullscreenIcon({ exit = false }: { exit?: boolean }) {
   );
 }
 
+// SidebarIcon is a window with a panel on its left; with collapsed, an arrow points out of the
+// panel (to show it again), otherwise into it (to hide it).
+export function SidebarIcon({ collapsed = false }: { collapsed?: boolean }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d={collapsed ? 'M9 4v16M13 10l2 2-2 2' : 'M9 4v16M16 10l-2 2 2 2'} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 // HomeIcon is a house, for the home page with today's briefing.
 export function HomeIcon({ size = 16 }: { size?: number }) {
   return (

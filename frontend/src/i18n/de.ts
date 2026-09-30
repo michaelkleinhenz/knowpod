@@ -122,6 +122,8 @@ export const de: Translation = {
     dropHint: 'Audiodateien, Fotos, PDFs oder Markdown-Dateien hier ablegen zum Hochladen',
     markdownTooLong: '{{name}} ist zu lang für eine Notiz (höchstens 100.000 Zeichen).',
     resizeSidebar: 'Breite der Liste ändern (ziehen oder Pfeiltasten; Doppelklick setzt zurück)',
+    collapseSidebar: 'Liste ausblenden (Strg+\\)',
+    expandSidebar: 'Liste einblenden (Strg+\\)',
   },
   tasks: {
     reporter: 'Melder',

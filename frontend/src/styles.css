@@ -2632,6 +2632,50 @@ button.sync-state:focus-visible {
   outline: none;
 }
 
+/* The button that hides the sidebar, just right of its edge at the top of the open note; it
+   stays in place as the page scrolls, and at the window's left edge while the sidebar is hidden. */
+.sidebar-toggle {
+  position: fixed;
+  top: calc(3.5rem + env(safe-area-inset-top) + 0.6rem);
+  left: calc(var(--sidebar-width, 20rem) + 0.6rem);
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+
+.sidebar-toggle:hover,
+.sidebar-toggle:focus-visible {
+  color: var(--color-text);
+  background: var(--color-bg);
+  border-color: var(--color-border-soft);
+}
+
+.notes-layout.sidebar-collapsed {
+  grid-template-columns: 0 minmax(0, 1fr);
+}
+
+.notes-layout.sidebar-collapsed .notes-sidebar {
+  visibility: hidden;
+}
+
+.notes-layout.sidebar-collapsed .sidebar-resizer {
+  display: none;
+}
+
+.notes-layout.sidebar-collapsed .sidebar-toggle {
+  left: 0.6rem;
+}
+
 /* No text selection or hover effects while dragging. */
 .notes-layout.resizing {
   cursor: col-resize;
@@ -2778,8 +2822,14 @@ html:has(.notes-layout) {
     display: block;
   }
 
-  .sidebar-resizer {
+  .sidebar-resizer,
+  .sidebar-toggle {
     display: none;
+  }
+
+  /* Phones show one pane at a time, so the list is never collapsed there. */
+  .notes-layout.sidebar-collapsed .notes-sidebar {
+    visibility: visible;
   }
 
   .notes-sidebar {

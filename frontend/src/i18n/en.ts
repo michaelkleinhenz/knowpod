@@ -120,6 +120,8 @@ export const en = {
     dropHint: 'Drop audio files, photos, PDFs or Markdown files to upload',
     markdownTooLong: '{{name}} is too long for a note (at most 100,000 characters).',
     resizeSidebar: 'Resize the list (drag, or use the arrow keys; double-click to reset)',
+    collapseSidebar: 'Hide the list (Ctrl+\\)',
+    expandSidebar: 'Show the list (Ctrl+\\)',
   },
   tasks: {
     reporter: 'Reporter',
