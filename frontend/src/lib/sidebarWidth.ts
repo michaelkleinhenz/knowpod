@@ -36,3 +36,26 @@ export function useSidebarWidth(): [number, (width: number) => void] {
   }, []);
   return [width, set];
 }
+
+// Whether the notes sidebar is collapsed on desktop, remembered in the browser.
+const COLLAPSED_KEY = 'knowpod.sidebarCollapsed';
+
+// useSidebarCollapsed returns whether the sidebar is collapsed and a setter that remembers it.
+export function useSidebarCollapsed(): [boolean, (collapsed: boolean) => void] {
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(COLLAPSED_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const set = useCallback((next: boolean) => {
+    setCollapsed(next);
+    try {
+      localStorage.setItem(COLLAPSED_KEY, next ? '1' : '0');
+    } catch {
+      // Private mode or storage full: the sidebar just starts expanded next time.
+    }
+  }, []);
+  return [collapsed, set];
+}
