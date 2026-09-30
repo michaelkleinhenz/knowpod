@@ -312,7 +312,8 @@ make build
 `desktop/` holds an Electron app: a native window around the web UI. It contains no backend
 and no copy of the frontend; it loads the web app from a knowpod server and uses the API
 exactly as the browser does (same session cookie, same offline copies). On the first start
-it asks for the server's address (**File → Change Server…** changes it later).
+it asks for the server's address (**File → Change Server…** changes it later; the menu bar is hidden until
+**Alt** is pressed).
 
 ```bash
 make desktop-run SERVER_URL=http://localhost:8080   # start it from source against a server

@@ -97,6 +97,10 @@ function createWindow() {
     backgroundColor: '#eef1f5',
     icon: iconPath,
     show: false,
+    // No menu bar in the window on Windows and Linux: the web app has its own navigation.
+    // Alt shows it for a moment (e.g. for File → Change Server…); its shortcuts keep working.
+    // macOS keeps its menu at the top of the screen.
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
