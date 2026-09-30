@@ -1,0 +1,65 @@
+/* The window has no title bar (see main.js): the web app's header takes its place, like in
+   VS Code. main.js loads this into every page of the window; preload.js marks <html> with
+   data-titlebar (the platform) and adds the .knowpod-titlebar strip.
+
+   Dragging the header moves the window and double-clicking it maximizes it; its links and
+   buttons stay clickable. The window's own buttons (minimize, maximize, close) are drawn by
+   the system over the header's right end on Windows and Linux (env(titlebar-area-*) says
+   where they leave room), and at its left end on macOS, so the header makes room for them. */
+
+html[data-titlebar] .header {
+  -webkit-app-region: drag;
+  user-select: none;
+  --knowpod-controls-left: 0px;
+  --knowpod-controls-right: 0px;
+  padding-left: calc(1rem + var(--knowpod-controls-left));
+  padding-right: calc(1rem + var(--knowpod-controls-right));
+}
+
+html[data-titlebar] .header :is(a, button, input, select, textarea, label, summary, [role='button'], [tabindex]),
+html[data-titlebar] .header .nav.open {
+  -webkit-app-region: no-drag;
+}
+
+/* The buttons cover the window's right edge; without the overlay API they take about 140px. */
+html[data-titlebar='win32'] .header,
+html[data-titlebar='linux'] .header {
+  --knowpod-controls-right: max(0px, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, calc(100vw - 140px))));
+}
+
+/* The traffic lights (hidden in full screen). */
+html[data-titlebar='darwin']:not([data-fullscreen]) .header {
+  --knowpod-controls-left: 72px;
+}
+
+/* In full screen there are no window buttons (Windows and Linux hide them too). */
+html[data-titlebar][data-fullscreen] .header {
+  --knowpod-controls-right: 0px;
+}
+
+/* The narrow window's menu keeps the width it has without the room for the buttons (see
+   styles.css, .nav). */
+@media (max-width: 760px) {
+  html[data-titlebar] .header .nav {
+    flex-basis: calc(100% + var(--knowpod-controls-left) + var(--knowpod-controls-right));
+    margin-left: calc(-1rem - var(--knowpod-controls-left));
+    margin-right: calc(-1rem - var(--knowpod-controls-right));
+  }
+}
+
+/* Pages without the header (the setup page, a shared note) get a strip across the top to
+   move the window by. */
+.knowpod-titlebar {
+  display: none;
+}
+
+html[data-titlebar]:not(:has(.header)) .knowpod-titlebar {
+  display: block;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 36px;
+  z-index: 2147483647;
+  -webkit-app-region: drag;
+}
