@@ -415,6 +415,12 @@ CORS setting is needed. New server versions reach it like the web app, on the ne
   `%APPDATA%\knowpod`, `~/Library/Application Support/knowpod` or `~/.config/knowpod`); the
   sign-in and offline copies too, like in a browser profile.
 - Links to other sites open in the default browser; downloads ask where to save.
+- Spelling is checked as you type. Right-click a marked word for suggestions or **Add to
+  Dictionary**. On Windows and Linux, **Edit → Spelling** (Alt, or right-click in a text
+  field → **Spelling**) picks the languages; several can be on at once, by default the
+  system's language and English. The dictionaries are downloaded from Google on first use.
+  **Check Spelling** turns it off. On macOS the system's spell checker is used, which detects
+  the language itself.
 - The server should be served over HTTPS, as for the browser (the session cookie and
   offline support depend on it); `http://localhost` works for development.
 - It shows notifications while it runs (see [Notifications](#notifications)); clicking one
