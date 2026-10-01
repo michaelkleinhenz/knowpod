@@ -141,16 +141,38 @@ func inShared(byID map[string]*folder.Folder, f *folder.Folder, userID string) b
 	return false
 }
 
-// Create adds a folder for the account's user.
+// Create adds a folder for the account's user. A folder made in a folder shared with the
+// account (as an editor) belongs to that folder's owner and is shared like it, as notes
+// added there are.
 func (s *FolderService) Create(ctx context.Context, acc *Account, in FolderInput) (*folder.Folder, error) {
 	if acc.ID == "" {
 		return nil, errors.Join(ErrForbidden, errors.New("folders belong to a user; sign in"))
 	}
-	if err := s.validate(ctx, acc.ID, "", &in); err != nil {
+	owner, role := acc.ID, recording.RoleOwner
+	if parentID := strings.TrimSpace(in.ParentID); parentID != "" {
+		p, err := s.repo.Get(ctx, parentID)
+		if errors.Is(err, ErrNotFound) {
+			return nil, invalid("unknown folder %q", parentID)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if role, err = folderRole(ctx, s.repo, acc, p); err != nil {
+			return nil, err
+		}
+		switch {
+		case role == "":
+			return nil, invalid("unknown folder %q", parentID)
+		case !role.AtLeast(recording.RoleEditor):
+			return nil, errors.Join(ErrForbidden, errors.New("the folder is shared with you for viewing only"))
+		}
+		owner = p.OwnerID
+	}
+	if err := s.validate(ctx, owner, "", &in); err != nil {
 		return nil, err
 	}
 	now := s.clock().UTC()
-	f := &folder.Folder{ID: newID(), OwnerID: acc.ID, Name: in.Name, ParentID: in.ParentID, CreatedAt: now, UpdatedAt: now}
+	f := &folder.Folder{ID: newID(), OwnerID: owner, Name: in.Name, ParentID: in.ParentID, CreatedAt: now, UpdatedAt: now}
 	if err := s.repo.Create(ctx, f); err != nil {
 		return nil, err
 	}
@@ -160,6 +182,7 @@ func (s *FolderService) Create(ctx context.Context, acc *Account, in FolderInput
 		return nil, err
 	}
 	s.changed(f.OwnerID, members)
+	f.Access, f.Shared = role, len(members) > 0
 	return f, nil
 }
 

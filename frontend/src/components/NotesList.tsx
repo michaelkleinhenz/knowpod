@@ -153,10 +153,13 @@ export function NotesList({ activeId }: { activeId?: string }) {
   }, [notice]);
 
   // newNoteFolder is the folder new notes and boards go into: in the folder view the one last
-  // opened (if it still exists), otherwise the top level.
-  const newNoteFolder = (): string | undefined => {
+  // opened (if it still exists), otherwise the top level. Notes go into a folder shared with
+  // the user when they may add to it; boards only into the user's own folders.
+  const newNoteFolder = (board = false): string | undefined => {
     const id = view === 'folders' ? lastFolder() : '';
-    return id && folders?.some((f) => f.id === id) ? id : undefined;
+    const f = id ? folders?.find((x) => x.id === id) : undefined;
+    const access = f?.access ?? 'owner';
+    return f && (access === 'owner' || (!board && access === 'editor')) ? id : undefined;
   };
 
   // createText makes an empty text note (in folderId, or else the folder new notes go into)
@@ -209,7 +212,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
     setCreateError(null);
     try {
       const columns = (['todo', 'inProgress', 'done'] as const).map((k) => ({ id: '', name: t(`board.defaultColumns.${k}`) }));
-      const rec = await api.createBoard(t('board.untitled'), { scope: { kind: '', id: '' }, columns }, newNoteFolder());
+      const rec = await api.createBoard(t('board.untitled'), { scope: { kind: '', id: '' }, columns }, newNoteFolder(true));
       upsert(rec);
       navigate(`/conversations/${rec.id}`, { state: { created: true } });
     } catch (err) {
