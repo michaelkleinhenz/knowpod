@@ -1,6 +1,6 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api, ApiError, Folder, Label, NoteEvent, Recording, RECORDINGS_LIMIT, SavedFilter, TimeEntry } from '../api/client';
+import { api, ApiError, Folder, Label, NoteEvent, Person, Recording, RECORDINGS_LIMIT, SavedFilter, TimeEntry } from '../api/client';
 import { forgetNote, isOffline, syncNotes, useOffline, writeOffline } from '../api/offline';
 import { useAuth } from '../auth';
 import { errorText } from '../lib/errors';
@@ -25,7 +25,9 @@ interface NotesState {
   // filters are the user's saved filters, pinned in the list and shown by boards.
   filters: SavedFilter[] | null;
   reloadFilters: () => Promise<void>;
-  // filterContext resolves label and folder names in filter queries.
+  // people are the user (self) and those they share with, to show whose a note is.
+  people: Person[];
+  // filterContext resolves label, folder and people names in filter queries.
   filterContext: FilterContext;
   // timer is the running timer; starting one stops the one that was running.
   timer: TimeEntry | null;
@@ -69,12 +71,14 @@ export function NotesProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [trash, setTrash] = useState<Recording[] | null>(null);
+  const [people, setPeople] = useState<Person[]>([]);
 
   const reload = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [list, ai, trashed] = await Promise.all([api.recordings(), api.aiStatus(), api.trash().catch(() => null)]);
+      const [list, ai, trashed, ppl] = await Promise.all([api.recordings(), api.aiStatus(), api.trash().catch(() => null), api.people().catch(() => null)]);
       setRecordings(list);
+      if (ppl) setPeople(ppl);
       if (trashed) setTrash(byDeletion(trashed));
       setAIReady(ai.transcription && ai.summary);
       setError(null);
@@ -298,7 +302,22 @@ export function NotesProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(done);
   }, [timer, refreshNote, t]);
 
-  const filterContext = useMemo<FilterContext>(() => ({ labels: labels ?? [], folders: folders ?? [], notes: recordings ?? [], userId: account?.id }), [labels, folders, recordings, account?.id]);
+  // A note from someone not in people yet (newly shared) loads the people again, once for
+  // each such user (users that are gone stay unknown).
+  const askedPeople = useRef(new Set<string>());
+  useEffect(() => {
+    if (!recordings || !account?.id) return;
+    const known = new Set(people.map((p) => p.userId));
+    const missing = recordings.flatMap((r) => [r.ownerId, r.createdBy, r.assigneeId]).filter((id): id is string => !!id && !known.has(id) && !askedPeople.current.has(id));
+    if (missing.length === 0) return;
+    missing.forEach((id) => askedPeople.current.add(id));
+    api.people().then(setPeople, () => undefined);
+  }, [recordings, people, account?.id]);
+
+  const filterContext = useMemo<FilterContext>(
+    () => ({ labels: labels ?? [], folders: folders ?? [], notes: recordings ?? [], people, userId: account?.id }),
+    [labels, folders, recordings, people, account?.id],
+  );
 
   const emptyTrash = useCallback(async () => {
     const gone = trash ?? [];
@@ -317,6 +336,7 @@ export function NotesProvider({ children }: { children: ReactNode }) {
         reloadFolders,
         filters,
         reloadFilters,
+        people,
         filterContext,
         timer,
         startTimer,

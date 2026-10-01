@@ -17,6 +17,7 @@ import { formatDue, formatRepeat } from '../lib/tasks';
 import { isTask } from '../lib/labels';
 import { MoveToFolder } from '../components/MoveToFolder';
 import { ShareNote } from '../components/ShareNote';
+import { OriginBadge } from '../components/PersonBadge';
 import { SubNotes } from '../components/SubNotes';
 import { SummaryDetails } from '../components/SummaryDetails';
 import { useNotes } from '../context/NotesContext';
@@ -595,6 +596,7 @@ function NoteBody({ rec, aiReady, aiWriting, tab, setTab, setRec, reload, create
       )}
       {summary && !isBoard && <VersionHistory rec={rec} canRestore={!textReadOnly && !rec.deletedAt} onRestore={restoreVersion} />}
       <MoveToFolder rec={rec} setRec={setRec} />
+      <OriginBadge rec={rec} size={22} />
       {!rec.deletedAt && <ShareNote rec={rec} setRec={setRec} />}
       {!rec.deletedAt && !readOnly && (
         <button type="button" className="icon-button danger" disabled={busy} title={t('conversation.moveToTrash')} aria-label={t('conversation.moveToTrash')} onClick={handleDelete}>

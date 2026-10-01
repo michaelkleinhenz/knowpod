@@ -566,6 +566,13 @@ export interface ShareUser {
   inherited?: boolean;
 }
 
+// Person is the user or someone they share notes or folders with (GET /me/people).
+export interface Person {
+  userId: string;
+  email: string;
+  self?: boolean;
+}
+
 // Sharing says who a note is shared with.
 export interface Sharing {
   owner: ShareUser;
@@ -791,6 +798,7 @@ export const api = {
   // answer is empty.
   unshare: (id: string, userId: string) =>
     request<Sharing | null>('DELETE', `/recordings/${encodeURIComponent(id)}/shares/${encodeURIComponent(userId)}`),
+  people: () => request<Person[]>('GET', '/me/people'),
   folderSharing: (id: string) => request<Sharing>('GET', `/folders/${encodeURIComponent(id)}/shares`),
   shareFolder: (id: string, email: string, role: ShareRole) => request<Sharing>('POST', `/folders/${encodeURIComponent(id)}/shares`, { email, role }),
   setFolderShareRole: (id: string, userId: string, role: ShareRole) =>

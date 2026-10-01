@@ -137,3 +137,13 @@ func (s *Server) handleNoteEvents(w http.ResponseWriter, r *http.Request) {
 	defer stop()
 	streamEvents(w, r, msgs, func(e service.NoteEvent) string { return e.Type })
 }
+
+// handlePeople lists the signed-in user and the users they share notes and folders with.
+func (s *Server) handlePeople(w http.ResponseWriter, r *http.Request) {
+	out, err := s.actions.People(r.Context(), accountFrom(r.Context()))
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}

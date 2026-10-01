@@ -2737,6 +2737,31 @@ paths:
           content: { text/event-stream: { schema: { type: string } } }
         "403": { $ref: "#/components/responses/Error" }
 
+  /me/people:
+    get:
+      tags: ["Sharing"]
+      summary: List the people you share with
+      description: |
+        You and the users you share with: the owners, makers and assignees of the notes you
+        see, everyone those notes and your folders are shared with, and the owners of folders
+        shared with you. You come first, then by email. The web app uses it to show whose a
+        note is and to resolve names in filters such as `owner:bob` or `from:me`.
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: The people
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    userId: { type: string }
+                    email: { type: string }
+                    self: { type: boolean, description: Your own entry }
+        "401": { $ref: "#/components/responses/Error" }
+
   /admin/users:
     get:
       tags: ["Admin: users"]

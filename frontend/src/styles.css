@@ -3713,6 +3713,34 @@ select.share-role {
   min-width: 0;
 }
 
+/* A person's initials on a color of their own (see avatarHue). */
+.avatar {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #fff;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  user-select: none;
+}
+.avatar.hue-0 { background: #4f6bd8; }
+.avatar.hue-1 { background: #c2410c; }
+.avatar.hue-2 { background: #0f8a6a; }
+.avatar.hue-3 { background: #a23fb8; }
+.avatar.hue-4 { background: #b45309; }
+.avatar.hue-5 { background: #0e7490; }
+.avatar.hue-6 { background: #be185d; }
+.avatar.hue-7 { background: #4d7c0f; }
+
+.origin-badge {
+  display: inline-flex;
+  flex: none;
+  margin-left: 0.3rem;
+}
+
 .note-row-shared {
   display: inline-flex;
   flex: none;

@@ -1,6 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
-import { api, Folder, Label, SavedFilter, SavedFilterInput } from '../api/client';
+import { api, Folder, Label, Person, SavedFilter, SavedFilterInput } from '../api/client';
 import { useNotes } from '../context/NotesContext';
 import { errorText } from '../lib/errors';
 import { useAuth } from '../auth';
@@ -117,7 +117,9 @@ export function FilterHelp() {
     ['due<2026-10-01 · due>=today', 'dueCompare'],
     ['done · task · repeat · estimate · template', 'flags'],
     ['p1 · p2 · p3 · priority:none', 'priority'],
-    ['assignee:me · assignee:none · reporter:me', 'people'],
+    ['assignee:me · assignee:bob · assignee:none', 'people'],
+    ['owner:me · owner:bob · from:me · from:bob', 'owner'],
+    ['shared · shared:me · shared:bob · mine', 'shared'],
     ['type:text · type:audio · type:document · type:board', 'type'],
     ['a & b · a b · a | b · !a · (a | b) & c', 'combine'],
   ];
@@ -198,6 +200,7 @@ export function FilterSettings() {
   const [filters, setFilters] = useState<SavedFilter[] | null>(null);
   const [labels, setLabels] = useState<Label[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
+  const [people, setPeople] = useState<Person[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -208,8 +211,9 @@ export function FilterSettings() {
     load();
     api.labels().then(setLabels, () => undefined);
     api.folders().then(setFolders, () => undefined);
+    api.people().then(setPeople, () => undefined);
   }, [load]);
-  const ctx = useMemo<FilterContext>(() => ({ labels, folders, userId: account?.id }), [labels, folders, account?.id]);
+  const ctx = useMemo<FilterContext>(() => ({ labels, folders, people, userId: account?.id }), [labels, folders, people, account?.id]);
 
   async function act(fn: () => Promise<unknown>) {
     setError(null);

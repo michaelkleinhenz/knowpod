@@ -540,6 +540,12 @@ export const de: Translation = {
       mine: 'Meine behalten',
     },
   },
+  people: {
+    sharedBy: 'Geteilt von {{name}}',
+    madeBy: 'Erstellt von {{name}}',
+    someone: 'jemandem',
+    you: 'dir',
+  },
   sharing: {
     title: 'Teilen',
     sharedTitle: 'Geteilt – sehen, wer sie hat',
@@ -678,8 +684,8 @@ export const de: Translation = {
     deleteConfirm: 'Filter „{{name}}“ löschen? Boards, die ihn zeigen, zeigen nichts, bis du etwas anderes wählst.',
     pinned: 'Gespeicherte Filter',
     saveSearch: 'Als Filter speichern',
-    unknown_one: 'Es gibt kein Label und keinen Ordner {{names}}.',
-    unknown_other: 'Es gibt keine Labels oder Ordner {{names}}.',
+    unknown_one: 'Es gibt kein Label, keinen Ordner und keine Person {{names}}.',
+    unknown_other: 'Es gibt keine Labels, Ordner oder Personen {{names}}.',
     noMatch: 'Nichts passt zum Filter „{{name}}“.',
     errors: {
       unclosedQuote: 'Ein Anführungszeichen ist nicht geschlossen (bei {{at}}).',
@@ -689,7 +695,7 @@ export const de: Translation = {
       missingTerm: 'Nach einem Operator fehlt etwas (bei {{at}}).',
       badDate: 'Unbekanntes Datum bei {{at}}: today, tomorrow, week, month, overdue, none oder 2026-10-01.',
       badType: 'Unbekannte Art bei {{at}}: text, audio, document oder board.',
-      badPerson: 'Unbekannte Person bei {{at}}: me (bei assignee auch none).',
+      badPerson: 'Person fehlt bei {{at}}: me, eine E-Mail oder ihr Teil vor dem @ (bei assignee auch none).',
       badPriority: 'Unbekannte Priorität bei {{at}}: 1, 2, 3 oder none.',
     },
     help: {
@@ -703,7 +709,9 @@ export const de: Translation = {
       dueSome: 'Aufgaben ohne Datum, mit Datum oder an einem Tag',
       dueCompare: 'Aufgaben fällig vor oder nach einem Tag',
       flags: 'Abgehakt, Aufgaben, wiederkehrend, mit Schätzung, Vorlagen',
-      people: 'Aufgaben, die dir zugewiesen sind, nicht zugewiesen oder von dir erstellt',
+      people: 'Aufgaben, die dir, bob (E-Mail oder ihr Teil vor dem @) oder niemandem zugewiesen sind',
+      owner: 'Notizen, die dir oder bob gehören; die du oder bob erstellt hast (auch in einer geteilten Notiz)',
+      shared: 'Mit jemandem geteilt, mit dir geteilt, von bob mit dir geteilt; deine eigenen Notizen',
       priority: 'Aufgaben mit dieser Priorität oder ohne',
       type: 'Einträge dieser Art',
       combine: 'Und (& oder ein Leerzeichen), oder (|), nicht (!), gruppiert mit Klammern',
