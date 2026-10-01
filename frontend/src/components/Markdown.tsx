@@ -1,4 +1,5 @@
 import { Fragment, ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { imageWidth } from '../lib/imageWidth';
 import { NOTE_REF } from '../lib/noteRefs';
 import { NoteRef } from './NoteRef';
@@ -6,6 +7,12 @@ import { NoteRef } from './NoteRef';
 // safeHref allows only web and mail links, so Markdown can't smuggle in javascript: URLs.
 function safeHref(url: string): string | null {
   return /^(https?:\/\/|mailto:)/i.test(url.trim()) ? url.trim() : null;
+}
+
+// noteHref matches links to the user's notes in the app ("/conversations/…", "/n/12"),
+// as briefings write them.
+function noteHref(url: string): boolean {
+  return /^\/(conversations\/[\w-]+|n\/\d{1,9})$/.test(url);
 }
 
 // safeImage allows only the pictures stored with notes (also through a published note's
@@ -17,7 +24,8 @@ function safeImage(url: string): boolean {
 // Cite renders a citation such as "[2]" (see Markdown's cite).
 export type Cite = (n: number) => ReactNode;
 
-// inline renders ![pictures](/api/v1/recordings/…) of notes, `code`, **bold**, *italic* / _italic_, ~~strike~~ and [links](https://…);
+// inline renders ![pictures](/api/v1/recordings/…) of notes, `code`, **bold**, *italic* / _italic_, ~~strike~~, [links](https://…)
+// and [note links](/conversations/…);
 // with noteLinks, "#12" links to the user's note 12; with cite, "[2]" is rendered by it.
 export function inline(text: string, noteLinks = false, cite?: Cite): ReactNode[] {
   const parts = text.split(/(!\[[^\]]*\]\([^)\s]+\)|`[^`]+`|\*\*[^*]+\*\*|~~[^~]+~~|\[[^\]]+\]\([^)\s]+\)|\[\d{1,2}\](?!\()|\*[^*\s][^*]*\*|_[^_\s][^_]*_)/);
@@ -32,6 +40,13 @@ export function inline(text: string, noteLinks = false, cite?: Cite): ReactNode[
     if (image) return safeImage(image[2]) ? <img key={i} src={image[2]} alt={image[1]} width={imageWidth(image[2])} loading="lazy" /> : <Fragment key={i}>{image[1]}</Fragment>;
     const link = /^\[([^\]]+)\]\(([^)\s]+)\)$/.exec(part);
     if (link) {
+      // A note link's text has no "#12" links in it: links don't nest.
+      if (noteHref(link[2]))
+        return (
+          <Link key={i} to={link[2]}>
+            {inline(link[1], false, cite)}
+          </Link>
+        );
       const href = safeHref(link[2]);
       return href ? (
         <a key={i} href={href} target="_blank" rel="noreferrer noopener">

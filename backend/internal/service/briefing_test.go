@@ -12,6 +12,7 @@ import (
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/label"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/timelog"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/user"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/repository/memory"
 )
 
@@ -86,11 +87,11 @@ func TestDailyBriefing(t *testing.T) {
 	}
 	md := got.Markdown
 	for _, want := range []string{
-		"## Due today\n\n- [ ] Call Anna #2 — 15:00, P1",
-		"## Overdue\n\n- [ ] Pay the invoice #1 — Sep 25",
+		"## Due today\n\n- [ ] [Call Anna](/conversations/today) #2 — 15:00, P1",
+		"## Overdue\n\n- [ ] [Pay the invoice](/conversations/overdue) #1 — Sep 25",
 		"## New since yesterday\n\n- The budget was set at 40k (#5, 99)",
-		"## All new notes\n\n- Budget meeting #5 (recording)",
-		"## Open action items\n\n- Send the offer (Ben) — from Budget meeting #5",
+		"## All new notes\n\n- [Budget meeting](/conversations/meeting) #5 (recording)",
+		"## Open action items\n\n- Send the offer (Ben) — from [Budget meeting](/conversations/meeting) #5",
 	} {
 		if !strings.Contains(md, want) {
 			t.Errorf("briefing lacks %q:\n%s", want, md)
@@ -185,7 +186,7 @@ func TestDailyBriefingInGermanWithoutAI(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got.Title != "Briefing für So. 27. Sept." || !strings.Contains(got.Markdown, "## Heute fällig") ||
-		!strings.Contains(got.Markdown, "## Neu seit gestern\n\n- Budget meeting #5 (Aufnahme)") || strings.Contains(got.Markdown, "Alle neuen") {
+		!strings.Contains(got.Markdown, "## Neu seit gestern\n\n- [Budget meeting](/conversations/meeting) #5 (Aufnahme)") || strings.Contains(got.Markdown, "Alle neuen") {
 		t.Fatalf("briefing:\n%s\n%s", got.Title, got.Markdown)
 	}
 }
@@ -244,11 +245,11 @@ func TestWeeklyReview(t *testing.T) {
 	}
 	for _, want := range []string{
 		"## This week\n\nNew: 1 × recording\n\n- A week of budgets (#5)",
-		"## Done\n\n- [x] Write the report #3",
-		"## Time\n\nLogged: **1h 30m**\n\n- 1h 30m: Write the report #3 (estimate 1h)",
-		"## Overdue\n\n- [ ] Pay the invoice #1 — Sep 25",
-		"## Coming up\n\n- [ ] Call Anna #2 — Sep 27, 15:00, P1",
-		"## Waiting for a while\n\n- [ ] Clean the garage #4",
+		"## Done\n\n- [x] [Write the report](/conversations/done) #3",
+		"## Time\n\nLogged: **1h 30m**\n\n- 1h 30m: [Write the report](/conversations/done) #3 (estimate 1h)",
+		"## Overdue\n\n- [ ] [Pay the invoice](/conversations/overdue) #1 — Sep 25",
+		"## Coming up\n\n- [ ] [Call Anna](/conversations/today) #2 — Sep 27, 15:00, P1",
+		"## Waiting for a while\n\n- [ ] [Clean the garage](/conversations/stale) #4",
 	} {
 		if !strings.Contains(md, want) {
 			t.Errorf("review lacks %q:\n%s", want, md)
@@ -362,5 +363,23 @@ func TestBriefingSettingsAreChecked(t *testing.T) {
 	if got, _ := f.s.Settings(ctx, f.acc); got.Time != "07:00" || !got.Daily || got.Weekly || got.WeeklyDay != 1 || !got.Notify ||
 		strings.Join(got.Sections, ",") != "overdue,new,digest,actionItems" || got.ActionItemDays != 7 {
 		t.Errorf("default settings = %+v", got)
+	}
+}
+
+func TestBriefingRefLinksEveryNote(t *testing.T) {
+	d := &briefingData{u: &user.User{ID: "u1"}}
+	for _, c := range []struct {
+		r    *recording.Recording
+		want string
+	}{
+		{&recording.Recording{ID: "a", OwnerID: "u1", Number: 7, Title: "Plan"}, "[Plan](/conversations/a) #7"},
+		// Shared notes' numbers are their owner's; notes without a number have none.
+		{&recording.Recording{ID: "b", OwnerID: "u2", Number: 3, Title: "Shared plan"}, "[Shared plan](/conversations/b)"},
+		{&recording.Recording{ID: "c", OwnerID: "u1", Title: "No number"}, "[No number](/conversations/c)"},
+		{&recording.Recording{ID: "d", OwnerID: "u1", Title: "[Draft] Q3"}, "[(Draft) Q3](/conversations/d)"},
+	} {
+		if got := d.ref(c.r); got != c.want {
+			t.Errorf("ref(%s) = %q, want %q", c.r.ID, got, c.want)
+		}
 	}
 }

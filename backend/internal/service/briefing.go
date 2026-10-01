@@ -457,14 +457,18 @@ func (d *briefingData) tr(en, de string) string {
 	return en
 }
 
-// ref names a note in a briefing: "#12" links the user's own notes; shared ones, whose
-// numbers are their owner's, are named by title.
+// ref names a note in a briefing: its title, linking to the note, then "#12" for the user's
+// own notes (shared ones' numbers are their owner's, and notes may have none).
 func (d *briefingData) ref(r *recording.Recording) string {
+	link := fmt.Sprintf("[%s](/conversations/%s)", linkText.Replace(noteTitle(r)), r.ID)
 	if r.OwnerID == d.u.ID && r.Number > 0 {
-		return fmt.Sprintf("%s #%d", noteTitle(r), r.Number)
+		return fmt.Sprintf("%s #%d", link, r.Number)
 	}
-	return noteTitle(r)
+	return link
 }
+
+// linkText keeps brackets in a title from ending its link's text early.
+var linkText = strings.NewReplacer("[", "(", "]", ")")
 
 // openTasks returns the open tasks matching keep, by date, time and priority.
 func (d *briefingData) openTasks(keep func(r *recording.Recording) bool) []*recording.Recording {
