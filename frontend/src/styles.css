@@ -2630,7 +2630,7 @@ button.sync-state:focus-visible {
   grid-template-columns: var(--sidebar-width, 20rem) minmax(0, 1fr);
   position: relative;
   align-items: start;
-  min-height: calc(100vh - 3.5rem - env(safe-area-inset-top));
+  min-height: calc(100vh - var(--header-height, calc(3.5rem + env(safe-area-inset-top))));
 }
 
 /* The handle on the sidebar's right edge that drags it wider or narrower. */
@@ -2670,7 +2670,7 @@ button.sync-state:focus-visible {
    stays in place as the page scrolls, and at the window's left edge while the sidebar is hidden. */
 .sidebar-toggle {
   position: fixed;
-  top: calc(3.5rem + env(safe-area-inset-top) + 0.6rem);
+  top: calc(var(--header-height, calc(3.5rem + env(safe-area-inset-top))) + 0.6rem);
   left: calc(var(--sidebar-width, 20rem) + 0.6rem);
   z-index: 5;
   display: inline-flex;
@@ -2723,8 +2723,8 @@ button.sync-state:focus-visible {
 /* The sidebar's menu stays in place; only the items below it scroll. */
 .notes-sidebar {
   position: sticky;
-  top: calc(3.5rem + env(safe-area-inset-top));
-  height: calc(100vh - 3.5rem - env(safe-area-inset-top));
+  top: var(--header-height, calc(3.5rem + env(safe-area-inset-top)));
+  height: calc(100vh - var(--header-height, calc(3.5rem + env(safe-area-inset-top))));
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -2885,7 +2885,7 @@ html:has(.notes-layout) {
 
   .notes-sidebar .notes-list-top {
     position: sticky;
-    top: calc(3.5rem + env(safe-area-inset-top));
+    top: var(--header-height, calc(3.5rem + env(safe-area-inset-top)));
     z-index: 4;
     padding-right: 0;
     background: var(--color-bg);
@@ -2897,7 +2897,7 @@ html:has(.notes-layout) {
   }
 
   .notes-main {
-    min-height: calc(100vh - 3.5rem - env(safe-area-inset-top));
+    min-height: calc(100vh - var(--header-height, calc(3.5rem + env(safe-area-inset-top))));
     padding: 1rem 1rem 2rem;
   }
 
