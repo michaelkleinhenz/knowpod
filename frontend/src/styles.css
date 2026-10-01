@@ -4058,6 +4058,40 @@ a.note-ref:hover {
   background: var(--color-hover);
 }
 
+/* A due mark in a note's text ("[2026-10-01]", typed as "[today]"), colored by when it is due. */
+.due-mark {
+  font-weight: 600;
+  font-size: 0.9em;
+  white-space: nowrap;
+  color: var(--color-muted);
+  background: var(--color-hover);
+  border-radius: 4px;
+  padding: 0 0.25em;
+}
+
+.due-mark.soon {
+  color: var(--color-success);
+  background: color-mix(in srgb, var(--color-success) 12%, transparent);
+}
+
+.due-mark.today {
+  color: var(--color-orange);
+  background: color-mix(in srgb, var(--color-orange) 14%, transparent);
+}
+
+.due-mark.overdue {
+  color: var(--color-error);
+  background: color-mix(in srgb, var(--color-error) 14%, transparent);
+}
+
+/* Checked off, a mark no longer calls for attention. */
+.editor-content li[data-checked='true'] > div > p .due-mark,
+.prose li.done > .due-mark,
+.prose li.done > :not(ul, ol) .due-mark {
+  color: var(--color-muted);
+  background: var(--color-hover);
+}
+
 .note-menu {
   width: 20rem;
 }

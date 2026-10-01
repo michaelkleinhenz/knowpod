@@ -91,6 +91,12 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
 - Every note has a **number** of its own (#1, #2, … per user, never reused). Typing **#** in
   a note's text opens a list of your notes, filtered by number (or title) as you type; the
   chosen note is linked as "#12" (Ctrl/⌘+click opens it). Search also finds notes by number.
+- **Due marks** mark a paragraph or list item as due without making a task note of it: type a
+  date in brackets after it, such as **[today]**, **[fri]**, **[next monday]**, **[5.10.]** or
+  **[tomorrow 3pm]** (German works, too: **[heute]**, **[morgen]**). As the "]" is typed it
+  becomes the date ("[2026-10-01]"; Backspace right after undoes that), so it stays right on
+  the following days. Marks are colored by when they are due: red overdue, orange today,
+  green within a week; checked-off items' marks are grey.
 - **Boards** are kanban boards, listed like any other note: each shows the notes of a folder,
   with a label or found by a saved filter as cards, all starting in the first column. New boards have the columns Todo,
   In Progress and Done; columns can be renamed, added and deleted, and cards are dragged
@@ -337,7 +343,8 @@ while it runs; closing its window keeps it running in the tray (see
 
 The app version lives in the [`VERSION`](VERSION) file at the repository root, a single line
 such as `0.1.0`. Edit it there, or run `make set-version V=1.2.0`, which also keeps
-`frontend/package.json` and `desktop/package.json` in step. It is used by:
+`frontend/package.json`, `desktop/package.json`, the API spec (`backend/api/openapi.yaml`) and the
+Chrome extension's `manifest.json` in step. It is used by:
 
 - the web app, which shows it under **Settings → General → About knowpod** (in the desktop
   app, next to the desktop app's own version);
