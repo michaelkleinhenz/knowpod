@@ -59,6 +59,12 @@ export function Layout({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  // Opening the dialog also closes the mobile menu, which would otherwise stay open behind it.
+  function startNew(kind: 'note' | 'task') {
+    setOpen(false);
+    setNewKind(kind);
+  }
+
   async function handleLogout() {
     await logout();
     navigate('/login');
@@ -91,12 +97,14 @@ export function Layout({ children }: { children: ReactNode }) {
               <span />
             </button>
             <nav id="main-nav" className={`nav${open ? ' open' : ''}`}>
-              <button type="button" className="nav-new" onClick={() => setNewKind('note')}>
-                + {t('nav.newNote')}
-              </button>
-              <button type="button" className="nav-new" onClick={() => setNewKind('task')}>
-                + {t('nav.newTask')}
-              </button>
+              <div className="nav-new-group">
+                <button type="button" className="nav-new" onClick={() => startNew('note')}>
+                  + {t('nav.newNote')}
+                </button>
+                <button type="button" className="nav-new" onClick={() => startNew('task')}>
+                  + {t('nav.newTask')}
+                </button>
+              </div>
               <span className="nav-divider" aria-hidden="true" />
               <NavLink to="/" className={() => (onConversations ? 'active' : '')}>
                 {t('nav.conversations')}
