@@ -5,7 +5,7 @@ import { api, Recording } from '../api/client';
 import { purgeDate } from '../lib/trash';
 import { Board, boardLanes } from '../components/Board';
 import { CopyButton } from '../components/CopyButton';
-import { BackIcon, CalendarIcon, CopyIcon, DownloadIcon, FullscreenIcon, NewNoteIcon, RetranscribeIcon, TrashIcon } from '../components/Icons';
+import { BackIcon, CalendarIcon, CopyIcon, DownloadIcon, FullscreenIcon, NewNoteIcon, PrintIcon, RetranscribeIcon, TrashIcon } from '../components/Icons';
 import { inline, Markdown } from '../components/Markdown';
 import { NoteDone, NoteLabels } from '../components/Labels';
 import { Attachments } from '../components/Attachments';
@@ -28,6 +28,7 @@ import { noteRefPath } from '../lib/noteRefs';
 import { formatBytes, formatClock, formatDate, formatDuration, inkAttachment, isPhoto, noteType, onTablet, processing, statusLabel, title as titleOf, when } from '../lib/recordings';
 import { Speakers } from '../components/Speakers';
 import { PdfViewer } from '../components/PdfViewer';
+import { PrintDoc, PrintSheet } from '../components/PrintSheet';
 import { VersionHistory } from '../components/VersionHistory';
 import { builtInTemplates, ownTemplates, PLACEHOLDERS } from '../lib/templates';
 
@@ -403,6 +404,48 @@ function NoteBody({ rec, aiReady, aiWriting, tab, setTab, setRec, reload, create
       : tab === 'transcript' && rec.transcript?.text
         ? { text: rec.transcript.text, label: t(isDocument ? 'conversation.copyDocumentText' : 'conversation.copyTranscript') }
         : null;
+  // Printing, too, acts on the shown tab: the text as it is in the editor, or the transcript.
+  const printLabel =
+    tab === 'summary' && summary && !isBoard
+      ? t(isText ? 'conversation.printText' : 'conversation.printSummary')
+      : tab === 'transcript' && rec.transcript?.text
+        ? t(isDocument ? 'conversation.printDocumentText' : 'conversation.printTranscript')
+        : null;
+  const [printing, setPrinting] = useState<PrintDoc | null>(null);
+  const print = () => {
+    if (!printLabel) return;
+    const text = tab === 'summary' ? (autosave.markdown() ?? summary?.markdown ?? '') : (rec.transcript?.text ?? '');
+    setPrinting({
+      title: autosave.title.trim() || titleOf(rec),
+      meta: (
+        <>
+          {rec.number ? <span className="meta-item">#{rec.number}</span> : null}
+          <span className="meta-item">{whenText}</span>
+          {location && <span className="meta-item">{location}</span>}
+        </>
+      ),
+      body:
+        tab === 'transcript' && !isDocument ? (
+          <Transcript text={text} onSeek={() => undefined} />
+        ) : (
+          <div className="prose">
+            <Markdown text={text} />
+          </div>
+        ),
+    });
+  };
+  const printRef = useRef<(() => void) | null>(null);
+  printRef.current = printLabel ? print : null;
+  // Ctrl+P (⌘P) prints the note rather than the whole app.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 'p' || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || !printRef.current) return;
+      e.preventDefault();
+      printRef.current();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
   const titleDate = typedDate && (typedDate.due || typedDate.priority) && typedDate.title ? typedDate : null;
   async function applyTitleDate() {
@@ -511,6 +554,11 @@ function NoteBody({ rec, aiReady, aiWriting, tab, setTab, setRec, reload, create
         </a>
       )}
       {copy && <CopyButton className="icon-button" icon={<CopyIcon />} text={copy.text} label={copy.label} />}
+      {printLabel && (
+        <button type="button" className="icon-button" title={printLabel} aria-label={printLabel} onClick={print}>
+          <PrintIcon />
+        </button>
+      )}
       {!isBoard && <span className="tool-divider" aria-hidden="true" />}
       {!isText && !isBoard && isOwner && (
         <button
@@ -558,6 +606,7 @@ function NoteBody({ rec, aiReady, aiWriting, tab, setTab, setRec, reload, create
 
   return (
     <div className={withAside ? 'note-layout' : undefined}>
+      <PrintSheet doc={printing} onDone={() => setPrinting(null)} />
       <div className="note-main">
         {editable && !fromRemarkable && (
           <div className="note-sync">

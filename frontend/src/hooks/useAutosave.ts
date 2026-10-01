@@ -200,5 +200,8 @@ export function useAutosave(recordingId: string, savedTitle: string, savedRevisi
     [],
   );
 
-  return { title, setTitle, sync, error, changed, editorReady, save: () => save(), discard, dirty, settled, known, conflict, keepMine };
+  // markdown is the text as it is now, unsaved changes included (null before the editor is ready).
+  const markdown = useCallback(() => current().markdown, []);
+
+  return { title, setTitle, sync, error, changed, editorReady, save: () => save(), discard, dirty, settled, known, conflict, keepMine, markdown };
 }

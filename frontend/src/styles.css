@@ -6395,3 +6395,71 @@ a.state-pill.public-pill {
     padding: 1.25rem 1rem;
   }
 }
+
+/* Printing a note (PrintSheet): only its sheet is printed, black on white, whatever the
+   theme. Without body.printing (the browser's own print), the page prints as it is. */
+.print-sheet {
+  display: none;
+}
+
+@media print {
+  body.printing {
+    background: #fff !important;
+  }
+
+  body.printing > :not(.print-sheet) {
+    display: none !important;
+  }
+
+  body.printing .print-sheet {
+    display: block;
+    color: #000;
+    background: #fff;
+    font-size: 11pt;
+    line-height: 1.5;
+  }
+
+  .print-sheet h1 {
+    margin: 0 0 0.25rem;
+    font-size: 18pt;
+  }
+
+  .print-sheet .print-meta {
+    margin: 0 0 1.25rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #999;
+    color: #555;
+    font-size: 9pt;
+  }
+
+  .print-sheet a {
+    color: inherit;
+  }
+
+  .print-sheet img {
+    max-width: 100%;
+    height: auto;
+    break-inside: avoid;
+  }
+
+  .print-sheet pre,
+  .print-sheet table,
+  .print-sheet blockquote {
+    break-inside: avoid;
+  }
+
+  .print-sheet h2,
+  .print-sheet h3,
+  .print-sheet h4 {
+    break-after: avoid;
+  }
+
+  .print-sheet .time-link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #555;
+    font: inherit;
+    margin-right: 0.5em;
+  }
+}
