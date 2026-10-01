@@ -217,6 +217,11 @@ a {
   color: var(--color-header-text);
 }
 
+.nav-new-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
 .nav .nav-new {
   background: var(--color-primary);
   color: var(--color-on-primary);
@@ -1379,6 +1384,21 @@ a {
 
   .nav-divider {
     display: none;
+  }
+
+  /* The new note and task buttons sit side by side, inset from the menu's edges. */
+  .nav-new-group {
+    padding: 0.5rem 1.25rem 0.75rem;
+  }
+
+  .nav .nav-new {
+    flex: 1;
+    min-width: 0;
+    padding: 0.65rem 0.75rem;
+    font-size: 1rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .nav .nav-signout {
