@@ -13,6 +13,10 @@ const path = require('node:path');
 
 const pkg = require('../package.json');
 
+// Must match build.appId in package.json; electron-builder drops the build section from the
+// packaged package.json, so it can't be read from pkg at runtime.
+const APP_ID = 'net.kleinhenz.knowpod';
+
 const configFile = () => path.join(app.getPath('userData'), 'config.json');
 
 function readConfig() {
@@ -601,7 +605,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on('second-instance', showWindow);
 
   // Windows shows notifications only for an app with an ID (the installer's shortcut has it).
-  if (process.platform === 'win32') app.setAppUserModelId(pkg.build.appId);
+  if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
 
   app.whenReady().then(() => {
     app.setAboutPanelOptions({ applicationName: 'knowpod', applicationVersion: app.getVersion() });
