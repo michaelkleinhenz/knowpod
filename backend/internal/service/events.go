@@ -102,6 +102,9 @@ const (
 	NoteChanged = "note"
 	// NotesReload: many notes changed at once; the app loads its list again.
 	NotesReload = "reload"
+	// FoldersChanged: folders the user sees were made, renamed, moved, ordered or deleted;
+	// the app loads its folders again.
+	FoldersChanged = "folders"
 )
 
 // NoteEvent tells a user's open apps that notes they see changed, so that what someone

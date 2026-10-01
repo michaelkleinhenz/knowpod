@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -153,6 +154,12 @@ func (s *FolderService) Create(ctx context.Context, acc *Account, in FolderInput
 	if err := s.repo.Create(ctx, f); err != nil {
 		return nil, err
 	}
+	// Made in a shared folder, it shows up for the users it is shared with, too.
+	members, err := s.members(ctx, f.OwnerID, f.ID)
+	if err != nil {
+		return nil, err
+	}
+	s.changed(f.OwnerID, members)
 	return f, nil
 }
 
@@ -185,11 +192,14 @@ func (s *FolderService) Update(ctx context.Context, acc *Account, id string, in 
 	if err := s.repo.Update(ctx, f); err != nil {
 		return nil, err
 	}
+	after, err := s.members(ctx, f.OwnerID, id)
+	if err != nil {
+		return nil, err
+	}
+	s.changed(f.OwnerID, slices.Concat(before, after))
 	if moved {
 		// Moved into or out of a shared folder, the notes in it are shared differently.
-		if after, err := s.members(ctx, f.OwnerID, id); err != nil {
-			return nil, err
-		} else if s.Notes != nil && (len(before) > 0 || len(after) > 0) {
+		if s.Notes != nil && (len(before) > 0 || len(after) > 0) {
 			if err := s.Notes.folderChanged(ctx, f.OwnerID, id, before); err != nil {
 				return nil, err
 			}
@@ -247,6 +257,7 @@ func (s *FolderService) place(ctx context.Context, acc *Account, f *folder.Folde
 	if err := s.repo.Update(ctx, f); err != nil {
 		return nil, err
 	}
+	s.changed(acc.ID, nil)
 	return s.shownTo(ctx, acc, f.ID)
 }
 
@@ -262,6 +273,22 @@ func (s *FolderService) shownTo(ctx context.Context, acc *Account, id string) (*
 		}
 	}
 	return nil, ErrNotFound
+}
+
+// changed tells the open apps of the user and of the members that the folders they see
+// changed, so that they load them again: a note filed in a folder an app doesn't know yet
+// would otherwise show up at the top level.
+func (s *FolderService) changed(userID string, members []recording.Member) {
+	if s.Notes == nil || s.Notes.Events == nil {
+		return
+	}
+	users := []string{userID}
+	for _, m := range members {
+		if !slices.Contains(users, m.UserID) {
+			users = append(users, m.UserID)
+		}
+	}
+	s.Notes.Events.Publish(users, NoteEvent{Type: FoldersChanged})
 }
 
 // members returns everyone the folder is shared with (see folderMembers).
@@ -317,6 +344,7 @@ func (s *FolderService) Reorder(ctx context.Context, acc *Account, ids []string)
 		list = append(list, it)
 	}
 	now := s.clock().UTC()
+	var members []recording.Member
 	for i, it := range list {
 		f := it.f
 		if it.mine {
@@ -333,7 +361,15 @@ func (s *FolderService) Reorder(ctx context.Context, acc *Account, ids []string)
 		if err := s.repo.Update(ctx, f); err != nil {
 			return err
 		}
+		if it.mine {
+			m, err := s.members(ctx, f.OwnerID, f.ID)
+			if err != nil {
+				return err
+			}
+			members = append(members, m...)
+		}
 	}
+	s.changed(acc.ID, members)
 	return nil
 }
 
@@ -370,6 +406,7 @@ func (s *FolderService) Delete(ctx context.Context, acc *Account, id string) err
 	if err := s.repo.Delete(ctx, id); err != nil {
 		return err
 	}
+	s.changed(f.OwnerID, before)
 	if s.Notes != nil && len(before) > 0 {
 		// The notes and folders moved up are shared like the folder they moved to.
 		return s.Notes.folderChanged(ctx, f.OwnerID, f.ParentID, before)
