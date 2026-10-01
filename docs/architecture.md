@@ -489,7 +489,11 @@ user's labels, folders and notes, both for the workspace list (the search box ta
 language; plain words search the titles) and for boards that show a filter. The language
 has words, `#12`, `label:`/`@`, `folder:` (and the folders in it), `due:` (`today`,
 `tomorrow`, `overdue`, `week`, `month`, `none`, `any`, a date) and `due<`/`<=`/`>`/`>=`,
-`done`, `task`, `p1`–`p3`, `repeat`, `estimate`, `template` and `type:`, combined with `&` (or a
+`done`, `task`, `p1`–`p3`, `repeat`, `estimate`, `template`, `type:`, people (`owner:`,
+`from:`/`by:`/`author:`/`reporter:` for who made the note, `assignee:`, `shared:me` and
+`shared:<person>` for notes others shared with the user, `shared`, `mine`; a person is `me`,
+an email, its part before the @ or the start of one, resolved against `GET /me/people`, the
+user and everyone they share notes or folders with), combined with `&` (or a
 space), `|`, `!` and parentheses.
 
 **Version history** (`domain/noteversion`, `service/note_versions.go`). The
@@ -629,7 +633,8 @@ repeat like "every Monday at 9:00" stays at 9:00 across daylight saving changes.
 `PUT /recordings/{id}/due` and `/priority` label the note as a task; taking the label off
 clears `done`, `due` and `priority`. `POST /recordings/text` takes the same fields for quick
 add. `Repeat.Next` steps a date by day, weekday (Mon–Fri), week (optionally on listed
-weekdays), month (keeping `monthDay`, clamped to short months) or year; checking off a
+weekdays), month (keeping `monthDay`, clamped to short months, or with `nth` on the nth of one
+weekday in `weekdays`, -1 for the last: "every third Friday") or year; checking off a
 recurring task (`SetDone`) keeps it open and moves it to its first occurrence from today on
 (`Due.Advance`). The natural-language dates are parsed in the web app
 (`frontend/src/lib/dateParse.ts`); the API only takes the structured form.

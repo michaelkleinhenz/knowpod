@@ -113,7 +113,7 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
   defined on the spot or under **Settings → Labels**. The built-in **Task** label adds a
   check box to the note's icon in the list; the check mark is saved.
 - **Tasks** have a due date, an optional time, a repeat rule ("every weekday", "every 2
-  weeks"), a reminder and a priority (P1–P3), set from the **Date** button on the note's
+  weeks", "every third Friday"), a reminder and a priority (P1–P3), set from the **Date** button on the note's
   page. Dates can be typed in English or German ("tomorrow 3pm", "jeden Montag", "am
   5.10."), also in a note's title. The **Tasks** view lists the open tasks by due date and
   adds new ones from one line ("Call Anna tomorrow 3pm p1"); checking off a recurring task
@@ -145,7 +145,9 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
   insert below it, try again or discard. It uses the summary model.
 - **Saved filters**: the search box understands a filter language like Todoist's, e.g.
   `label:Task & due:week & !done`, `@Work | folder:"Side projects"` or `(p1 | p2) overdue`
-  (plain words still search the titles). A search can be saved as a filter and pinned below
+  (plain words still search the titles). In shared notes, `task & from:me` finds the tasks you
+  made and `shared:bob` the notes bob shared with you (`owner:`, `assignee:`, `shared:me`,
+  `mine`); notes from someone else show their initials in the list. A search can be saved as a filter and pinned below
   the search box, where one click narrows the list to it; **Settings → Filters** edits them
   and explains the language.
 - **Time tracking**: tasks get an estimate ("45", "1h30"), and a timer on the note (or a

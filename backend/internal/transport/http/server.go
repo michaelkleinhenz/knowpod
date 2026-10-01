@@ -220,6 +220,7 @@ func (s *Server) Router() http.Handler {
 			u.Post("/me/notifications/test", s.handleTestNotification)
 			u.Get("/me/notifications/stream", s.handleNotificationStream)
 			u.Get("/me/events", s.handleNoteEvents)
+			u.Get("/me/people", s.handlePeople)
 			u.With(httprate.LimitByIP(6, time.Hour)).Get("/me/backup", s.handlePersonalBackup)
 			u.With(httprate.LimitByIP(6, time.Hour)).Post("/me/restore", s.handlePersonalRestore)
 			u.Get("/me/calendar", s.handleGetCalendar)

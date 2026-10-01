@@ -55,6 +55,18 @@ export function formatDue(due: Due, now = new Date()): string {
   return due.time ? `${day} ${formatClockTime(due.time)}` : day;
 }
 
+// weekdayLong names a weekday (0 = Sunday) in full in the UI language.
+export function weekdayLong(wd: number): string {
+  return new Date(2026, 0, 4 + wd).toLocaleDateString(locale(), { weekday: 'long' });
+}
+
+// nthWeekdayRepeat is the monthly repeat on the date's weekday that falls on it, e.g. every
+// third Friday for Oct 16, 2026; a fifth one is the month's last.
+export function nthWeekdayRepeat(d: Date): Repeat {
+  const nth = Math.ceil(d.getDate() / 7);
+  return { every: 1, unit: 'month', nth: nth > 4 ? -1 : nth, weekdays: [d.getDay()] };
+}
+
 // weekdayShort names a weekday (0 = Sunday) briefly in the UI language.
 export function weekdayShort(wd: number): string {
   return new Date(2026, 0, 4 + wd).toLocaleDateString(locale(), { weekday: 'short' });
@@ -64,6 +76,10 @@ export function weekdayShort(wd: number): string {
 export function formatRepeat(r: Repeat): string {
   const t = i18n.t.bind(i18n);
   if (r.unit === 'weekday') return t('tasks.repeat.weekday');
+  if (r.unit === 'month' && r.nth && r.weekdays?.length === 1) {
+    const opts = { count: r.every, nth: t(`tasks.repeat.nth.${r.nth < 0 ? 'last' : r.nth}`), day: weekdayLong(r.weekdays[0]) };
+    return r.every > 1 ? t('tasks.repeat.everyNMonthsOnNth', opts) : t('tasks.repeat.monthlyOnNth', opts);
+  }
   if (r.unit === 'week' && r.weekdays?.length) {
     const days = r.weekdays.map(weekdayShort).join(', ');
     return r.every > 1 ? t('tasks.repeat.everyNWeeksOn', { count: r.every, days }) : t('tasks.repeat.weeklyOn', { days });

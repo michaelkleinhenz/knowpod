@@ -5,7 +5,9 @@ import { Recording } from '../api/client';
 import { isTask } from '../lib/labels';
 import { iconKind, statusLabel, title } from '../lib/recordings';
 import { ChevronIcon, NewNoteIcon, NoteIcon, ShareIcon, TrashIcon } from './Icons';
+import { noteOrigin, OriginBadge } from './PersonBadge';
 import { TaskMeta } from './TaskControls';
+import { useNotesIfAny } from '../context/NotesContext';
 
 interface Props {
   rec: Recording;
@@ -41,6 +43,9 @@ export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = t
   const { t } = useTranslation();
   const state = statusLabel(r, aiReady);
   const task = isTask(r);
+  const notes = useNotesIfAny();
+  // A note from someone else shows their avatar instead of the shared mark.
+  const fromOther = !!noteOrigin(r, notes?.filterContext.userId);
   return (
     <li className={task ? `task-item${r.done ? ' done' : ''}` : undefined}>
       <div {...lineProps} className={`note-line${drop === true ? ' drop' : drop ? ` drop-${drop}` : ''}`}>
@@ -70,7 +75,8 @@ export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = t
           <span className="conversation-title">
             <span className="note-title-line">
               <span className="note-title-text">{title(r)}</span>
-              {r.shared && !inSharedFolder && (
+              {fromOther && <OriginBadge rec={r} size={15} />}
+              {r.shared && !inSharedFolder && !fromOther && (
                 <span className="note-row-shared" title={t('sharing.badge')} aria-label={t('sharing.badge')}>
                   <ShareIcon size={12} />
                 </span>

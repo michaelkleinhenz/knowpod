@@ -289,12 +289,14 @@ export interface Board {
 export type RepeatUnit = 'day' | 'weekday' | 'week' | 'month' | 'year';
 
 // Repeat makes a task recurring: every `every` units, on the given weekdays (0 = Sunday)
-// for weekly ones, on monthDay for monthly ones.
+// for weekly ones, on monthDay for monthly ones, or with nth on the nth of one weekday in
+// the month (1-4, -1 = the last): every third Friday is { unit: 'month', nth: 3, weekdays: [5] }.
 export interface Repeat {
   every: number;
   unit: RepeatUnit;
   weekdays?: number[];
   monthDay?: number;
+  nth?: number;
 }
 
 // Due is when a task is due, in the user's time zone: a date (YYYY-MM-DD), optionally a
@@ -564,6 +566,13 @@ export interface ShareUser {
   inherited?: boolean;
 }
 
+// Person is the user or someone they share notes or folders with (GET /me/people).
+export interface Person {
+  userId: string;
+  email: string;
+  self?: boolean;
+}
+
 // Sharing says who a note is shared with.
 export interface Sharing {
   owner: ShareUser;
@@ -789,6 +798,7 @@ export const api = {
   // answer is empty.
   unshare: (id: string, userId: string) =>
     request<Sharing | null>('DELETE', `/recordings/${encodeURIComponent(id)}/shares/${encodeURIComponent(userId)}`),
+  people: () => request<Person[]>('GET', '/me/people'),
   folderSharing: (id: string) => request<Sharing>('GET', `/folders/${encodeURIComponent(id)}/shares`),
   shareFolder: (id: string, email: string, role: ShareRole) => request<Sharing>('POST', `/folders/${encodeURIComponent(id)}/shares`, { email, role }),
   setFolderShareRole: (id: string, userId: string, role: ShareRole) =>

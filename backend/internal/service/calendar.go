@@ -231,6 +231,9 @@ func rrule(rp *recording.Repeat, day time.Time) string {
 		}
 		return out
 	case recording.RepeatMonth:
+		if rp.Nth != 0 && len(rp.Weekdays) == 1 && rp.Weekdays[0] >= 0 && rp.Weekdays[0] <= 6 {
+			return fmt.Sprintf("FREQ=MONTHLY%s;BYDAY=%d%s", interval, rp.Nth, icsWeekdays[rp.Weekdays[0]])
+		}
 		md := rp.MonthDay
 		if md == 0 {
 			md = day.Day()

@@ -5,13 +5,16 @@
 // Terms: words (found in the title, "quoted" for phrases or keywords), #12 (note number),
 // label:Name or @Name, folder:Name (and the folders in it), due:today|tomorrow|overdue|week
 // |month|none|any|2026-10-01, due<2026-10-01 (also <=, >, >= with a date, today, tomorrow or
-// yesterday), assignee:me|none and reporter:me (tasks assigned to, or made by, the signed-in
-// user), done, task, p1-p3 (priority:none for none), repeat, estimate, template, type:text|audio|
+// yesterday), people (me, an email, or its part before the @: "bob"): owner:bob (whose note it
+// is), from:bob (who made it; also by:, author:, reporter:), assignee:bob (also none),
+// shared (shared with anyone), shared:me (shared with the user by someone else),
+// shared:bob (shared with the user by bob), mine (the user's own notes), done, task, p1-p3 (priority:none for none), repeat, estimate, template, type:text|audio|
 // document|board, and today, tomorrow, overdue on their own. They combine with & (or just a
 // space), | and !, grouped with parentheses; & binds tighter than |.
-import type { Folder, Label, Recording } from '../api/client';
+import type { Folder, Label, Person, Recording } from '../api/client';
 import { isoDate } from './dateParse';
 import { isTask, labelName } from './labels';
+import { findPeople, madeBy } from './people';
 import { noteType, title } from './recordings';
 import { overdue } from './tasks';
 
@@ -21,8 +24,10 @@ export interface FilterContext {
   folders: Folder[];
   // notes lets sub-notes count as in their parent's folder.
   notes?: Recording[];
-  // userId is the signed-in user, for assignee:me and reporter:me.
+  // userId is the signed-in user, for "me" in owner:, from:, assignee: and shared:.
   userId?: string;
+  // people are the users the signed-in user shares with, for names in those terms.
+  people?: Person[];
   now?: Date;
 }
 
@@ -232,11 +237,22 @@ class Compiler {
           return (r) => r.priority === Number(v);
         case 'assignee':
           if (v === 'none') return (r) => !r.assigneeId;
-          if (v !== 'me') throw new FilterSyntaxError('badPerson', at);
-          return (r) => !!this.ctx.userId && r.assigneeId === this.ctx.userId;
+          return this.person(key, value, at, (r) => r.assigneeId);
+        case 'owner':
+          return this.person(key, value, at, (r) => r.ownerId);
+        case 'from':
+        case 'by':
+        case 'author':
         case 'reporter':
-          if (v !== 'me') throw new FilterSyntaxError('badPerson', at);
-          return (r) => !!this.ctx.userId && (r.createdBy || r.ownerId) === this.ctx.userId;
+          return this.person(key, value, at, madeBy);
+        case 'shared': {
+          // Notes someone else owns are the ones shared with the user.
+          const me = this.ctx.userId;
+          const theirs = (r: Recording) => !!me && !!r.ownerId && r.ownerId !== me;
+          if (v === 'me') return theirs;
+          const by = this.person(key, value, at, (r) => r.ownerId);
+          return (r) => theirs(r) && by(r);
+        }
         case 'text':
         case 'title':
           return has(value);
@@ -254,6 +270,10 @@ class Compiler {
         return (r) => !!r.estimate;
       case 'template':
         return (r) => !!r.template;
+      case 'shared':
+        return (r) => !!r.shared;
+      case 'mine':
+        return (r) => !!this.ctx.userId && (!r.ownerId || r.ownerId === this.ctx.userId);
       case 'today':
       case 'tomorrow':
       case 'overdue':
@@ -273,6 +293,18 @@ class Compiler {
     const ids = new Set(this.ctx.labels.filter((l) => lower(labelName(l)) === n || lower(l.name) === n || l.id === n).map((l) => l.id));
     if (ids.size === 0) this.unknown.push(`@${name}`);
     return (r) => (r.labels ?? []).some((id) => ids.has(id));
+  }
+
+  // person matches the notes whose user (who of picks it: owner, maker, assignee) is one
+  // of the people value names. Names no one knows are listed in unknown and match nothing.
+  private person(key: string, value: string, at: number, who: (r: Recording) => string | undefined): Matcher {
+    if (!value.trim()) throw new FilterSyntaxError('badPerson', at);
+    const ids = findPeople(value, this.ctx.people ?? [], this.ctx.userId);
+    if (ids.size === 0) this.unknown.push(`${key}:${value}`);
+    return (r) => {
+      const id = who(r);
+      return !!id && ids.has(id);
+    };
   }
 
   // folder matches the notes in the named folders and the folders below them.
