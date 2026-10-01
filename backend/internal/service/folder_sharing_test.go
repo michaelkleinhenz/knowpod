@@ -340,3 +340,59 @@ func TestFilingASharedFolderInOwnFolders(t *testing.T) {
 		t.Fatal("ordered a folder inside a shared one")
 	}
 }
+
+func TestFolderChangesInASharedFolderReachItsUsers(t *testing.T) {
+	f := newFolderFixture(t)
+	ctx := context.Background()
+	f.shareFolder(t, f.work.ID, recording.RoleViewer)
+	msgs, stop, err := f.events.Listen(f.bob)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	gotFolders := func(what string, want bool) {
+		t.Helper()
+		got := false
+		for {
+			select {
+			case m := <-msgs:
+				got = got || m.Type == FoldersChanged
+				continue
+			default:
+			}
+			break
+		}
+		if got != want {
+			t.Errorf("%s: bob told the folders changed = %v, want %v", what, got, want)
+		}
+	}
+
+	// A folder made in the shared one (and a note in it) shows up for bob in that folder.
+	sub, err := f.folders.Create(ctx, f.acc, FolderInput{Name: "Sub", ParentID: f.work.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotFolders("made in the shared folder", true)
+	if fs := f.bobsFolders(t); fs[sub.ID] == nil || fs[sub.ID].ParentID != f.work.ID {
+		t.Errorf("bob's folders: %+v", fs[sub.ID])
+	}
+	n := f.note(t, TextNoteInput{SummaryEdit: SummaryEdit{Title: "In sub"}, FolderID: sub.ID})
+	if got, err := f.s.Get(ctx, f.bob, n.ID); err != nil || got.FolderID != sub.ID {
+		t.Fatalf("bob's note: %+v, %v", got, err)
+	}
+
+	if _, err := f.folders.Update(ctx, f.acc, sub.ID, FolderInput{Name: "Renamed", ParentID: f.work.ID}); err != nil {
+		t.Fatal(err)
+	}
+	gotFolders("renamed", true)
+	if err := f.folders.Delete(ctx, f.acc, sub.ID); err != nil {
+		t.Fatal(err)
+	}
+	gotFolders("deleted", true)
+
+	// Folders that aren't shared with bob are none of his business.
+	if _, err := f.folders.Create(ctx, f.acc, FolderInput{Name: "Private", ParentID: f.home.ID}); err != nil {
+		t.Fatal(err)
+	}
+	gotFolders("made in a folder not shared", false)
+}

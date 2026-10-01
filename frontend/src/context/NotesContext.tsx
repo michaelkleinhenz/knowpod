@@ -217,6 +217,10 @@ export function NotesProvider({ children }: { children: ReactNode }) {
       void reload();
       void reloadFolders();
     });
+    // Folders the user sees were made, renamed, moved or deleted, e.g. by the owner of a
+    // folder shared with the user: notes filed in a folder not loaded yet would otherwise
+    // show up at the top level.
+    source.addEventListener('folders', () => void reloadFolders());
     return () => source.close();
   }, [refetch, reload, reloadFolders]);
 

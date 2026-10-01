@@ -575,7 +575,7 @@ export interface Sharing {
 
 // NoteEvent is a change of a note the user sees, sent over GET /me/events.
 export interface NoteEvent {
-  type: 'note' | 'reload';
+  type: 'note' | 'reload' | 'folders';
   id?: string;
   version?: number;
 }
