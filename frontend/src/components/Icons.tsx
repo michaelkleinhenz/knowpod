@@ -183,6 +183,15 @@ export function DownloadIcon() {
   );
 }
 
+export function PrintIcon() {
+  return (
+    <ToolIcon>
+      <path d="M7 9V4h10v5M7 17H5a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-2" />
+      <rect x="7" y="14" width="10" height="6" />
+    </ToolIcon>
+  );
+}
+
 export function CopyIcon() {
   return (
     <ToolIcon>

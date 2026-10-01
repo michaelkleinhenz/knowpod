@@ -15,7 +15,7 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
 - **Notes of every kind.** Markdown text notes, transcribed and summarized recordings,
   imported documents, photos and kanban boards (paste or drop pictures right into a note's text), organized in folders, sub-notes and labels,
   linked to each other by number, searchable, and available offline. Notes hold tables,
-  start from templates, keep their earlier versions, and can be published on the web.
+  start from templates, keep their earlier versions, can be printed (Ctrl+P prints just the note) and can be published on the web.
 - **Write with AI.** Select text and have the AI improve, shorten, translate or reshape it
   (a table, a checklist of action items), or ask it to write or continue at the cursor.
 - **Ask your notes.** Questions in your own words ("What did Anna say about the Q3
