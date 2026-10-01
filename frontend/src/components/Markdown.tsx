@@ -236,6 +236,8 @@ function parse(lines: string[]): Block[] {
           if (/\d/.test(m[2]) !== ordered) break;
           items.push({ text: m[3], children: [] });
           contentIndent = base + m[2].length + 1;
+        } else if (indentOf(l) > base && items.length && !items[items.length - 1].children.length && !startsBlock(l)) {
+          items[items.length - 1].text += ' ' + l.trim(); // the item's text goes on
         } else if (indentOf(l) > base && items.length) {
           items[items.length - 1].children.push(l.slice(Math.min(indentOf(l), contentIndent)));
         } else if (!startsBlock(l) && items.length && lines[i - 1]?.trim()) {

@@ -20,6 +20,7 @@ import { errorText } from '../lib/errors';
 import { matchNotes, NOTE_REF, noteByNumber } from '../lib/noteRefs';
 import { iconKind, title } from '../lib/recordings';
 import { fillTemplate, loadTemplate, Template } from '../lib/templates';
+import { renderTaskItem, taskListTokenizer } from '../lib/taskListMarkdown';
 import { AiPanel, AiTargetExtension, aiTargetKey, insertMarkdown } from './AiWriter';
 import { NoteIcon, SparkleIcon } from './Icons';
 
@@ -588,6 +589,7 @@ function checklistItemText(item: PMNode): string {
 // it (shown on hover, see .task-convert in styles.css). It builds on the item's own view.
 function taskItemWithConvert(convert: (item: PMNode, getPos: () => number | undefined) => void, label: string) {
   return TaskItem.extend({
+    renderMarkdown: renderTaskItem,
     addNodeView() {
       const parent = this.parent?.();
       return (props) => {
@@ -625,6 +627,11 @@ function taskItemWithConvert(convert: (item: PMNode, getPos: () => number | unde
     },
   });
 }
+
+// MultilineTaskList is the checklist, read with items of several lines (see lib/taskListMarkdown).
+const MultilineTaskList = TaskList.extend({
+  markdownTokenizer: taskListTokenizer(TaskList.config.markdownTokenizer!),
+});
 
 // SummaryEditor shows a summary as an always-editable document: clicking into the text
 // places the cursor there, like in a word processor. There is no fixed toolbar: typing "/"
@@ -668,7 +675,7 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
         underline: false, // not representable in Markdown
         link: { openOnClick: false, autolink: true, protocols: ['http', 'https', 'mailto'] },
       }),
-      TaskList,
+      MultilineTaskList,
       taskItemWithConvert((item, getPos) => convertItemRef.current(item, getPos), t('editor.convertTask')).configure({ nested: true }),
       Placeholder.configure({ placeholder: t('editor.placeholder'), showOnlyCurrent: true }),
       ResizableImage.configure({ allowBase64: false }),
