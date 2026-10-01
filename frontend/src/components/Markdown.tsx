@@ -1,6 +1,6 @@
 import { Fragment, ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { DUE_MARK, dueLabel, dueState } from '../lib/dueMarks';
+import { DUE_MARK, dueLabel, dueLineState, dueState, dueText } from '../lib/dueMarks';
 import { imageWidth } from '../lib/imageWidth';
 import { NOTE_REF } from '../lib/noteRefs';
 import { NoteRef } from './NoteRef';
@@ -63,8 +63,8 @@ export function inline(text: string, noteLinks = false, cite?: Cite): ReactNode[
   });
 }
 
-// plain renders plain text: due marks ("[2026-10-01]") colored by when they are due, and with
-// noteLinks, "#12" as links to the notes.
+// plain renders plain text: due marks ("[2026-10-01 en]") relative to today ("[tomorrow]")
+// and colored by when they are due, and with noteLinks, "#12" as links to the notes.
 function plain(text: string, noteLinks: boolean): ReactNode {
   const rest = (t: string) => (noteLinks ? linkNotes(t) : t);
   const out: ReactNode[] = [];
@@ -74,8 +74,7 @@ function plain(text: string, noteLinks: boolean): ReactNode {
     out.push(<Fragment key={`t${m.index}`}>{rest(text.slice(last, m.index))}</Fragment>);
     out.push(
       <span key={m.index} className={`due-mark ${dueState(m[1], now)}`} title={dueLabel(m[1], m[2], now)}>
-        [{m[1]}
-        {m[2] ? ` ${m[2]}` : ''}]
+        [{dueText(m[1], m[2], m[3], now)}]
       </span>,
     );
     last = m.index! + m[0].length;
@@ -83,6 +82,12 @@ function plain(text: string, noteLinks: boolean): ReactNode {
   if (out.length === 0) return rest(text);
   out.push(<Fragment key="end">{rest(text.slice(last))}</Fragment>);
   return out;
+}
+
+// dueLine colors a list item's own text when it has due marks (see dueLineState).
+function dueLine(text: string, content: ReactNode): ReactNode {
+  const due = dueLineState(text);
+  return due ? <span className={`due-line ${due}`}>{content}</span> : content;
 }
 
 // linkNotes turns "#12" in plain text into links to the notes.
@@ -306,14 +311,14 @@ function render(blocks: Block[], noteLinks: boolean, cite?: Cite): ReactNode[] {
             return (
               <li key={j} className={done ? 'done' : undefined}>
                 <input type="checkbox" checked={done} disabled aria-label={task[2]} />
-                {inline(task[2], noteLinks, cite)}
+                {dueLine(task[2], inline(task[2], noteLinks, cite))}
                 {sub}
               </li>
             );
           }
           return (
             <li key={j}>
-              {inline(item.text, noteLinks, cite)}
+              {dueLine(item.text, inline(item.text, noteLinks, cite))}
               {sub}
             </li>
           );
@@ -328,8 +333,14 @@ function render(blocks: Block[], noteLinks: boolean, cite?: Cite): ReactNode[] {
           </ul>
         );
       }
-      default:
-        return <p key={i}>{inline(b.text, noteLinks, cite)}</p>;
+      default: {
+        const due = dueLineState(b.text);
+        return (
+          <p key={i} className={due ? `due-line ${due}` : undefined}>
+            {inline(b.text, noteLinks, cite)}
+          </p>
+        );
+      }
     }
   });
 }

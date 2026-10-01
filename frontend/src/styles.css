@@ -4084,6 +4084,45 @@ a.note-ref:hover {
   background: color-mix(in srgb, var(--color-error) 14%, transparent);
 }
 
+/* The stored mark ("[2026-10-02 en]") is shown relative to today ("[tomorrow]") by a widget
+   beside it, unless the cursor is in it. */
+.due-mark-source {
+  display: none;
+}
+
+/* A line with a due mark takes the color of its most pressing mark. */
+.due-line {
+  --due-color: var(--color-primary-text);
+  color: var(--due-color);
+  background: color-mix(in srgb, var(--due-color) 9%, transparent);
+  border-radius: 4px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+p.due-line {
+  margin-inline: -0.3em;
+  padding-inline: 0.3em;
+}
+
+.due-line.soon {
+  --due-color: var(--color-success);
+}
+
+.due-line.today {
+  --due-color: var(--color-orange);
+}
+
+.due-line.overdue {
+  --due-color: var(--color-error);
+}
+
+.editor-content li[data-checked='true'] > div > p.due-line,
+.prose li.done > .due-line {
+  color: inherit;
+  background: none;
+}
+
 /* Checked off, a mark no longer calls for attention. */
 .editor-content li[data-checked='true'] > div > p .due-mark,
 .prose li.done > .due-mark,
