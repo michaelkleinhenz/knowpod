@@ -1,6 +1,6 @@
 # KnowPod
 
-knowpod is a universal note taking and todo management app that brings everything you
+KnowPod is a universal note taking and todo management app that brings everything you
 capture into one place, and the service behind it. It integrates with your productivity
 tools and gadgets: conversations recorded on AI audio recorders arrive transcribed and
 summarized, handwritten reMarkable notebooks arrive as searchable text, and everything else
