@@ -343,7 +343,8 @@ while it runs; closing its window keeps it running in the tray (see
 
 The app version lives in the [`VERSION`](VERSION) file at the repository root, a single line
 such as `0.1.0`. Edit it there, or run `make set-version V=1.2.0`, which also keeps
-`frontend/package.json` and `desktop/package.json` in step. It is used by:
+`frontend/package.json`, `desktop/package.json`, the API spec (`backend/api/openapi.yaml`) and the
+Chrome extension's `manifest.json` in step. It is used by:
 
 - the web app, which shows it under **Settings → General → About knowpod** (in the desktop
   app, next to the desktop app's own version);

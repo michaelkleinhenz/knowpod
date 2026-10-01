@@ -16,12 +16,15 @@ VERSION := $(shell cat VERSION)
 version:
 	@echo $(VERSION)
 
-# Set the app version: writes VERSION and keeps the package.json files in step with it.
+# Set the app version: writes VERSION and keeps the package.json files, the API spec and the
+# Chrome extension's manifest in step with it.
 set-version:
 	@test -n "$(V)" || { echo 'usage: make set-version V=1.2.0'; exit 1; }
 	echo "$(V)" > VERSION
 	cd frontend && npm version "$(V)" --no-git-tag-version --allow-same-version
 	cd desktop && npm version "$(V)" --no-git-tag-version --allow-same-version
+	sed -i.bak -E 's/^(  version: ).*/\1$(V)/' backend/api/openapi.yaml && rm backend/api/openapi.yaml.bak
+	sed -i.bak -E 's/^(  "version": ")[^"]*(",)/\1$(V)\2/' chrome-extension/src/manifest.json && rm chrome-extension/src/manifest.json.bak
 
 # Build the single self-contained binary (frontend embedded in the backend).
 build: backend
