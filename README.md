@@ -1,4 +1,4 @@
-# knowpod-service
+# KnowPod
 
 knowpod is a universal note taking and todo management app that brings everything you
 capture into one place, and the service behind it. It integrates with your productivity
