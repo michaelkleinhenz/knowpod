@@ -223,6 +223,10 @@ export const de: Translation = {
     since: 'seit {{date}}',
     remove: 'Entfernen',
   },
+  dueMarks: {
+    due: 'Fällig: {{when}}',
+    overdue: 'Überfällig: {{when}}',
+  },
   noteRefs: {
     menu: 'Auf einen Eintrag verweisen',
     noMatches: 'Kein Eintrag mit dieser Nummer',

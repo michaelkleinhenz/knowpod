@@ -1,4 +1,4 @@
-import { Editor, Extension, isTextSelection, Range } from '@tiptap/core';
+import { Editor, Extension, InputRule, isTextSelection, Range } from '@tiptap/core';
 import { Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
@@ -14,6 +14,7 @@ import Suggestion, { SuggestionKeyDownProps, SuggestionProps } from '@tiptap/sug
 import { ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, Recording } from '../api/client';
+import { DUE_MARK, dueLabel, dueMarkFor, dueState } from '../lib/dueMarks';
 import { imageWidth, MIN_IMAGE_WIDTH, withImageWidth } from '../lib/imageWidth';
 import { errorText } from '../lib/errors';
 import { matchNotes, NOTE_REF, noteByNumber } from '../lib/noteRefs';
@@ -333,6 +334,58 @@ function noteLinks(bridge: MenuBridge<Recording>, opts: NoteLinkOptions, hint: s
   });
 }
 
+// --- Due marks ("[today]") ---------------------------------------------------------------
+
+// dueMarkDecorations colors the due marks in the text (not in code) by when they are due,
+// with the date spelled out as tooltip.
+function dueMarkDecorations(doc: PMNode): DecorationSet {
+  const decos: Decoration[] = [];
+  const now = new Date();
+  doc.descendants((node, pos, parent) => {
+    if (!node.isText || !node.text || parent?.type.spec.code || node.marks.some((m) => m.type.spec.code)) return;
+    for (const m of node.text.matchAll(new RegExp(DUE_MARK))) {
+      const from = pos + m.index!;
+      decos.push(Decoration.inline(from, from + m[0].length, { class: `due-mark ${dueState(m[1], now)}`, title: dueLabel(m[1], m[2], now) }));
+    }
+  });
+  return DecorationSet.create(doc, decos);
+}
+
+const dueMarksKey = new PluginKey<DecorationSet>('dueMarks');
+
+// DueMarks turns a date typed in brackets ("[today]", "[fri]", "[5.10.]") into a due mark
+// ("[2026-10-01]") as the "]" is typed, and colors the marks: overdue, today, this week. Other
+// words in brackets stay as they are; Backspace right after undoes the change.
+const DueMarks = Extension.create({
+  name: 'dueMarks',
+  addInputRules() {
+    return [
+      new InputRule({
+        find: /\[([^[\]\n]{1,30})\]$/,
+        handler: ({ state, range, match }) => {
+          const mark = dueMarkFor(match[1]);
+          if (!mark || mark === match[0]) return null;
+          state.tr.insertText(mark, range.from, range.to);
+        },
+      }),
+    ];
+  },
+  addProseMirrorPlugins() {
+    return [
+      new Plugin<DecorationSet>({
+        key: dueMarksKey,
+        state: {
+          init: (_, state) => dueMarkDecorations(state.doc),
+          apply: (tr, old) => (tr.docChanged ? dueMarkDecorations(tr.doc) : old),
+        },
+        props: {
+          decorations: (state) => dueMarksKey.getState(state),
+        },
+      }),
+    ];
+  },
+});
+
 // NoteMenu lists the notes offered after typing "#": their type, number and title.
 function NoteMenu({ state, onHover }: { state: MenuState<Recording>; onHover: (i: number) => void }) {
   const { t } = useTranslation();
@@ -592,6 +645,7 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
       Markdown,
       AiTargetExtension,
       slashCommands(slash.bridge, (id) => t(`editor.slash.${id}`), () => slashUI.current),
+      DueMarks,
       noteLinks(noteMenu.bridge, { notes: () => notesRef.current, noteId: () => noteIdRef.current }, t('noteRefs.openHint', { key: /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : t('noteRefs.ctrl') })),
     ],
     content: markdown,

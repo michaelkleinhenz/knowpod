@@ -221,6 +221,10 @@ export const en = {
     since: 'since {{date}}',
     remove: 'Remove',
   },
+  dueMarks: {
+    due: 'Due: {{when}}',
+    overdue: 'Overdue: {{when}}',
+  },
   noteRefs: {
     menu: 'Link to an item',
     noMatches: 'No item with this number',

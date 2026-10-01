@@ -1,5 +1,6 @@
 import { Fragment, ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { DUE_MARK, dueLabel, dueState } from '../lib/dueMarks';
 import { imageWidth } from '../lib/imageWidth';
 import { NOTE_REF } from '../lib/noteRefs';
 import { NoteRef } from './NoteRef';
@@ -58,8 +59,30 @@ export function inline(text: string, noteLinks = false, cite?: Cite): ReactNode[
     }
     if (part.length > 2 && ((part.startsWith('*') && part.endsWith('*')) || (part.startsWith('_') && part.endsWith('_'))))
       return <em key={i}>{inl(part.slice(1, -1))}</em>;
-    return <Fragment key={i}>{noteLinks ? linkNotes(part) : part}</Fragment>;
+    return <Fragment key={i}>{plain(part, noteLinks)}</Fragment>;
   });
+}
+
+// plain renders plain text: due marks ("[2026-10-01]") colored by when they are due, and with
+// noteLinks, "#12" as links to the notes.
+function plain(text: string, noteLinks: boolean): ReactNode {
+  const rest = (t: string) => (noteLinks ? linkNotes(t) : t);
+  const out: ReactNode[] = [];
+  let last = 0;
+  const now = new Date();
+  for (const m of text.matchAll(new RegExp(DUE_MARK))) {
+    out.push(<Fragment key={`t${m.index}`}>{rest(text.slice(last, m.index))}</Fragment>);
+    out.push(
+      <span key={m.index} className={`due-mark ${dueState(m[1], now)}`} title={dueLabel(m[1], m[2], now)}>
+        [{m[1]}
+        {m[2] ? ` ${m[2]}` : ''}]
+      </span>,
+    );
+    last = m.index! + m[0].length;
+  }
+  if (out.length === 0) return rest(text);
+  out.push(<Fragment key="end">{rest(text.slice(last))}</Fragment>);
+  return out;
 }
 
 // linkNotes turns "#12" in plain text into links to the notes.
