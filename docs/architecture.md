@@ -1008,9 +1008,12 @@ responsive down to phone width (the navigation collapses into a menu button belo
 form fields use 16 px text so iOS doesn't zoom) and installable as a PWA: `vite-plugin-pwa`
 generates the manifest and a Workbox service worker that precaches the app shell and falls
 back to `index.html` for client-side routes, but never for `/api/*` or `/healthz`, so data
-is always live. All texts are translated with `react-i18next` (`src/i18n/en.ts` and
+is always live. `src/lib/updates.ts` registers it and looks for a new version every half hour
+and when the app comes back to the front; a new version takes over at once in the first
+seconds after start, else when the app goes to the background (the desktop app's window
+lives on in the tray, so it would otherwise keep running the old version). All texts are translated with `react-i18next` (`src/i18n/en.ts` and
 `de.ts`; the German file is typed against the English one, so a missing key is a compile
 error). The language is the user's saved `language` (from `GET /auth/me`), else the one last
-used on the device, else the browser's; dates and numbers follow it. `internal/web` serves `sw.js`, `registerSW.js` and the manifest with
+used on the device, else the browser's; dates and numbers follow it. `internal/web` serves `sw.js` and the manifest with
 `Cache-Control: no-cache` (so updates reach installed apps) and hashed `/assets/*` as
 immutable.

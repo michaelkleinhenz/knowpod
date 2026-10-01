@@ -5,6 +5,7 @@ import './i18n';
 import './lib/appearance';
 import './lib/fontSize';
 import './lib/scrollbar';
+import './lib/updates';
 import './styles.css';
 import { AuthProvider } from './auth';
 import App from './App';

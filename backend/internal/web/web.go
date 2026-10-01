@@ -20,7 +20,7 @@ func init() {
 // noCache lists files that must be revalidated on every load: the service worker and its
 // registration (so app updates reach installed PWAs) and the manifest. Hashed assets under
 // /assets can be cached for good.
-var noCache = map[string]bool{"sw.js": true, "registerSW.js": true, "manifest.webmanifest": true}
+var noCache = map[string]bool{"sw.js": true, "manifest.webmanifest": true}
 
 // dist holds the compiled SPA assets. The all: prefix ensures dot-prefixed files are embedded
 // too. A placeholder index.html is committed so the backend builds even without a frontend
