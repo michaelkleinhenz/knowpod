@@ -289,12 +289,14 @@ export interface Board {
 export type RepeatUnit = 'day' | 'weekday' | 'week' | 'month' | 'year';
 
 // Repeat makes a task recurring: every `every` units, on the given weekdays (0 = Sunday)
-// for weekly ones, on monthDay for monthly ones.
+// for weekly ones, on monthDay for monthly ones, or with nth on the nth of one weekday in
+// the month (1-4, -1 = the last): every third Friday is { unit: 'month', nth: 3, weekdays: [5] }.
 export interface Repeat {
   every: number;
   unit: RepeatUnit;
   weekdays?: number[];
   monthDay?: number;
+  nth?: number;
 }
 
 // Due is when a task is due, in the user's time zone: a date (YYYY-MM-DD), optionally a

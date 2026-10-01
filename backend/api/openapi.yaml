@@ -3073,8 +3073,9 @@ components:
           properties:
             every: { type: integer, minimum: 1, maximum: 365 }
             unit: { type: string, enum: [day, weekday, week, month, year], description: '"weekday" is Monday to Friday (every must be 1)' }
-            weekdays: { type: array, items: { type: integer, minimum: 0, maximum: 6 }, description: 'Weekly: the days (0 = Sunday)' }
+            weekdays: { type: array, items: { type: integer, minimum: 0, maximum: 6 }, description: 'Weekly: the days (0 = Sunday). Monthly with nth: the one weekday' }
             monthDay: { type: integer, minimum: 1, maximum: 31, description: 'Monthly: the day of the month (defaults to the date''s); months without it use their last day' }
+            nth: { type: integer, enum: [1, 2, 3, 4, -1], description: 'Monthly: repeat on the nth of the weekday in weekdays instead of a day of the month (-1 = the last), e.g. every third Friday: nth 3, weekdays [5]' }
 
     Priority:
       type: integer

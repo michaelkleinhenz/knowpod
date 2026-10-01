@@ -76,6 +76,17 @@ const UNIT_WORDS: [RegExp, RepeatUnit][] = [
 const UNIT = 'days?|tagen|tage|tag|weeks?|wochen|woche|months?|monaten|monate|monat|years?|jahren|jahre|jahr';
 const unitOf = (s: string): RepeatUnit => UNIT_WORDS.find(([r]) => r.test(s))?.[1] ?? 'day';
 
+// Which of a weekday's days in the month: "third", "3rd", "dritten", "3."; -1 is the last.
+const ORDINALS: [RegExp, number][] = [
+  [/^(first|1st|erste[nmr]?|1\.)$/i, 1],
+  [/^(second|2nd|zweite[nmr]?|2\.)$/i, 2],
+  [/^(third|3rd|dritte[nmr]?|3\.)$/i, 3],
+  [/^(fourth|4th|vierte[nmr]?|4\.)$/i, 4],
+  [/^(last|letzte[nmr]?)$/i, -1],
+];
+const ORDINAL = 'first|1st|second|2nd|third|3rd|fourth|4th|last|erste[nmr]?|zweite[nmr]?|dritte[nmr]?|vierte[nmr]?|letzte[nmr]?|[1-4]\\.';
+const ordinalOf = (s: string) => ORDINALS.find(([r]) => r.test(s))?.[1];
+
 const weekdayOf = (s: string) => WEEKDAYS.find(([r]) => r.test(s.replace(/\.$/, '')))?.[1];
 const monthOf = (s: string) => MONTHS.find(([r]) => r.test(s.replace(/\.$/, '')))?.[1];
 
@@ -99,6 +110,15 @@ const addMonths = (d: Date, n: number) => {
   const first = new Date(d.getFullYear(), d.getMonth() + n, 1);
   const last = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
   return new Date(first.getFullYear(), first.getMonth(), Math.min(d.getDate(), last));
+};
+// nthWeekdayOf is the nth (1-4, -1 = the last) day with the weekday wd in d's month.
+const nthWeekdayOf = (d: Date, nth: number, wd: number) => {
+  if (nth < 0) {
+    const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    return addDays(last, -((last.getDay() - wd + 7) % 7));
+  }
+  const first = new Date(d.getFullYear(), d.getMonth(), 1);
+  return addDays(first, ((wd - first.getDay() + 7) % 7) + 7 * (nth - 1));
 };
 // dayOf makes a date from day and month; without a year, a day already past is next year's.
 function dayOf(today: Date, day: number, month: number, year?: number): Date | undefined {
@@ -139,6 +159,22 @@ const RULES: Rule[] = [
     apply: (_m, _t, f) => {
       if (f.repeat) return false;
       f.repeat = { every: 1, unit: 'weekday' };
+    },
+  },
+  // Repeat monthly on a weekday: "every third friday (of the month)", "every last mon",
+  // "jeden dritten Freitag (im Monat)", "jeden 1. Montag".
+  {
+    re: re(`(?:every|each|jeden|jede|jedem)\\s+(${ORDINAL})\\s*(${DAY_EVERY})(?:\\s+(?:of\\s+(?:the|each|every)\\s+month|in\\s+the\\s+month|a\\s+month|im\\s+monat|des\\s+monats|eines\\s+monats))?`),
+    apply: (m, today, f) => {
+      if (f.repeat) return false;
+      const nth = ordinalOf(m[1]);
+      const wd = weekdayOf(m[2]);
+      if (nth === undefined || wd === undefined) return false;
+      f.repeat = { every: 1, unit: 'month', nth, weekdays: [wd] };
+      if (!f.date) {
+        const d = nthWeekdayOf(today, nth, wd);
+        f.date = d < today ? nthWeekdayOf(new Date(today.getFullYear(), today.getMonth() + 1, 1), nth, wd) : d;
+      }
     },
   },
   // Repeat on weekdays: "every monday and friday", "every mon, wed", "jeden Montag", "montags".
@@ -367,7 +403,7 @@ export function parseTask(text: string, now: Date = new Date(), keep: Span[] = [
   if (f.date || f.time || f.repeat) {
     let date = f.date;
     const r = f.repeat;
-    if (!date && r?.weekdays) date = onOrAfter(today, r.weekdays);
+    if (!date && r?.weekdays && !r.nth) date = onOrAfter(today, r.weekdays);
     if (!date && r?.unit === 'weekday') date = onOrAfter(today, [1, 2, 3, 4, 5]);
     if (!date && f.time) {
       // A time alone is today's, or tomorrow's once it has passed.
@@ -377,7 +413,7 @@ export function parseTask(text: string, now: Date = new Date(), keep: Span[] = [
     date ??= today;
     due = { date: isoDate(date) };
     if (f.time) due.time = f.time;
-    if (r) due.repeat = r.unit === 'month' ? { ...r, monthDay: date.getDate() } : r;
+    if (r) due.repeat = r.unit === 'month' && !r.nth ? { ...r, monthDay: date.getDate() } : r;
   }
   const spans = found.sort((a, b) => a.at - b.at);
   return { title, due, priority: f.priority, found: spans.map((x) => text.slice(x.at, x.end)), spans };

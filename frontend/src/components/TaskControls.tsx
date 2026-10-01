@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { api, Due, Priority, Recording, Repeat, Sharing } from '../api/client';
 import { errorText } from '../lib/errors';
 import { isoDate, parseTask } from '../lib/dateParse';
-import { dueDate, formatDue, formatReminder, formatRepeat, overdue, REMINDERS } from '../lib/tasks';
+import { dueDate, formatDue, formatReminder, formatRepeat, nthWeekdayRepeat, overdue, REMINDERS } from '../lib/tasks';
 import { formatMinutes } from '../lib/timer';
 import { BellIcon, CalendarIcon, ClockIcon, FlagIcon, RepeatIcon } from './Icons';
 
@@ -77,15 +77,30 @@ const REPEATS: { key: string; repeat?: Repeat }[] = [
   { key: 'month', repeat: { every: 1, unit: 'month' } },
   { key: 'year', repeat: { every: 1, unit: 'year' } },
 ];
-const repeatKey = (r?: Repeat) =>
-  !r ? 'none' : (REPEATS.find((x) => x.repeat && x.repeat.unit === r.unit && x.repeat.every === r.every && !r.weekdays?.length)?.key ?? 'custom');
+
+// repeatsFor are the picker's rules for a date: with one, also monthly on its weekday
+// ("every third Friday"), after the plain monthly one.
+const repeatsFor = (due?: Due) => {
+  if (!due) return REPEATS;
+  const i = REPEATS.findIndex((x) => x.key === 'month') + 1;
+  return [...REPEATS.slice(0, i), { key: 'monthNth', repeat: nthWeekdayRepeat(dueDate(due)) }, ...REPEATS.slice(i)];
+};
+const repeatKey = (due?: Due) => {
+  const r = due?.repeat;
+  if (!r) return 'none';
+  if (r.nth) {
+    const m = nthWeekdayRepeat(dueDate(due!));
+    return r.every === 1 && r.nth === m.nth && r.weekdays?.[0] === m.weekdays?.[0] ? 'monthNth' : 'custom';
+  }
+  return REPEATS.find((x) => x.repeat && x.repeat.unit === r.unit && x.repeat.every === r.every && !r.weekdays?.length)?.key ?? 'custom';
+};
 
 // withRepeat sets a picked repeat rule; weekly ones repeat on the date's weekday.
 function withRepeat(due: Due, key: string): Due {
-  const picked = REPEATS.find((x) => x.key === key)?.repeat;
+  const picked = repeatsFor(due).find((x) => x.key === key)?.repeat;
   const next: Due = { ...due };
   if (!picked) delete next.repeat;
-  else next.repeat = picked.unit === 'month' ? { ...picked, monthDay: dueDate(due).getDate() } : { ...picked };
+  else next.repeat = picked.unit === 'month' && !picked.nth ? { ...picked, monthDay: dueDate(due).getDate() } : { ...picked };
   return next;
 }
 
@@ -204,13 +219,13 @@ function TaskPicker({ rec, save, onClose }: { rec: Recording; save: (fn: () => P
         <label title={t('tasks.repeatLabel')}>
           <RepeatIcon />
           <span className="sr-only">{t('tasks.repeatLabel')}</span>
-          <select value={repeatKey(due?.repeat)} disabled={!due} onChange={(e) => due && void setDue(withRepeat(due, e.target.value))}>
-            {REPEATS.map((r) => (
+          <select value={repeatKey(due)} disabled={!due} onChange={(e) => due && void setDue(withRepeat(due, e.target.value))}>
+            {repeatsFor(due).map((r) => (
               <option key={r.key} value={r.key}>
                 {r.repeat ? formatRepeat(r.repeat) : t('tasks.repeat.none')}
               </option>
             ))}
-            {repeatKey(due?.repeat) === 'custom' && due?.repeat && <option value="custom">{formatRepeat(due.repeat)}</option>}
+            {repeatKey(due) === 'custom' && due?.repeat && <option value="custom">{formatRepeat(due.repeat)}</option>}
           </select>
         </label>
         <label title={t('tasks.reminder')}>

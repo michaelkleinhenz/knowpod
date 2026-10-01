@@ -56,10 +56,10 @@ func cleanDue(d *recording.Due) (*recording.Due, error) {
 		}
 		if r.Unit == recording.RepeatWeek {
 			r.Weekdays = slices.Sorted(slices.Values(r.Weekdays))
-		} else {
+		} else if r.Nth == 0 {
 			r.Weekdays = nil
 		}
-		if r.Unit == recording.RepeatMonth && r.MonthDay == 0 {
+		if r.Unit == recording.RepeatMonth && r.MonthDay == 0 && r.Nth == 0 {
 			r.MonthDay = day.Day()
 		} else if r.Unit != recording.RepeatMonth {
 			r.MonthDay = 0

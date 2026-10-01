@@ -354,3 +354,26 @@ func TestCheckingOffRecordsWhen(t *testing.T) {
 		t.Fatalf("repeating: done %v at %v, due %+v", got.Done, got.DoneAt, got.Due)
 	}
 }
+
+func TestEveryThirdFridayOfTheMonth(t *testing.T) {
+	f := newTaskFixture(t)
+	ctx := context.Background()
+	rec := f.note(t, TextNoteInput{TaskFields: TaskFields{Due: &recording.Due{
+		Date: "2026-10-16", Repeat: &recording.Repeat{Every: 1, Unit: recording.RepeatMonth, Weekdays: []int{5}, Nth: 3},
+	}}})
+	if r := rec.Due.Repeat; r.Nth != 3 || !slices.Equal(r.Weekdays, []int{5}) || r.MonthDay != 0 {
+		t.Fatalf("stored repeat %+v", r)
+	}
+	f.now = time.Date(2026, 10, 16, 10, 0, 0, 0, time.UTC)
+	got, err := f.s.SetDone(ctx, f.acc, rec.ID, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Done || got.Due.Date != "2026-11-20" {
+		t.Errorf("after checking off: done %v, due %+v", got.Done, got.Due)
+	}
+	if _, err := f.s.SetDue(ctx, f.acc, rec.ID, &recording.Due{Date: "2026-10-16",
+		Repeat: &recording.Repeat{Every: 1, Unit: recording.RepeatMonth, Weekdays: []int{5}, Nth: 5}}); err == nil {
+		t.Error("a fifth Friday was accepted")
+	}
+}

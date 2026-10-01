@@ -629,7 +629,8 @@ repeat like "every Monday at 9:00" stays at 9:00 across daylight saving changes.
 `PUT /recordings/{id}/due` and `/priority` label the note as a task; taking the label off
 clears `done`, `due` and `priority`. `POST /recordings/text` takes the same fields for quick
 add. `Repeat.Next` steps a date by day, weekday (Mon–Fri), week (optionally on listed
-weekdays), month (keeping `monthDay`, clamped to short months) or year; checking off a
+weekdays), month (keeping `monthDay`, clamped to short months, or with `nth` on the nth of one
+weekday in `weekdays`, -1 for the last: "every third Friday") or year; checking off a
 recurring task (`SetDone`) keeps it open and moves it to its first occurrence from today on
 (`Due.Advance`). The natural-language dates are parsed in the web app
 (`frontend/src/lib/dateParse.ts`); the API only takes the structured form.

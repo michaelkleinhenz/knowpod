@@ -110,6 +110,8 @@ func TestICSHelpers(t *testing.T) {
 		{recording.Repeat{Every: 1, Unit: recording.RepeatWeek}, "FREQ=WEEKLY;WKST=SU"},
 		{recording.Repeat{Every: 1, Unit: recording.RepeatMonth}, "FREQ=MONTHLY;BYMONTHDAY=15"},
 		{recording.Repeat{Every: 1, Unit: recording.RepeatMonth, MonthDay: 30}, "FREQ=MONTHLY;BYMONTHDAY=28,29,30;BYSETPOS=-1"},
+		{recording.Repeat{Every: 1, Unit: recording.RepeatMonth, Weekdays: []int{5}, Nth: 3}, "FREQ=MONTHLY;BYDAY=3FR"},
+		{recording.Repeat{Every: 2, Unit: recording.RepeatMonth, Weekdays: []int{1}, Nth: recording.LastWeek}, "FREQ=MONTHLY;INTERVAL=2;BYDAY=-1MO"},
 		{recording.Repeat{Every: 2, Unit: recording.RepeatYear}, "FREQ=YEARLY;INTERVAL=2"},
 	} {
 		if got := rrule(&tc.rp, day); got != tc.want {

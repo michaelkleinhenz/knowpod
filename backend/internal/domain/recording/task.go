@@ -41,12 +41,29 @@ const (
 
 // Repeat says how a task recurs: every Every units; weekly repeats can name the weekdays
 // (0 = Sunday … 6 = Saturday), monthly ones keep their day of the month (clamped to the
-// month's last day, so the 31st stays the 31st where there is one).
+// month's last day, so the 31st stays the 31st where there is one) or, with Nth, fall on
+// the Nth of one weekday in the month ("every third Friday": Nth 3, Weekdays [5]).
 type Repeat struct {
 	Every    int        `bson:"every" json:"every"`
 	Unit     RepeatUnit `bson:"unit" json:"unit"`
 	Weekdays []int      `bson:"weekdays,omitempty" json:"weekdays,omitempty"`
 	MonthDay int        `bson:"monthDay,omitempty" json:"monthDay,omitempty"`
+	// Nth is which of the weekday's days in the month a monthly repeat falls on: 1 to 4, or
+	// LastWeek (-1) for the last one. 0 repeats on a day of the month instead.
+	Nth int `bson:"nth,omitempty" json:"nth,omitempty"`
+}
+
+// LastWeek is Repeat.Nth for the last of a weekday's days in the month.
+const LastWeek = -1
+
+// NthWeekday returns the nth (1-4, or LastWeek) day with the weekday wd in the month of d.
+func NthWeekday(d time.Time, nth int, wd time.Weekday) time.Time {
+	first := time.Date(d.Year(), d.Month(), 1, 0, 0, 0, 0, d.Location())
+	if nth == LastWeek {
+		last := first.AddDate(0, 1, -1)
+		return last.AddDate(0, 0, -((int(last.Weekday()) - int(wd) + 7) % 7))
+	}
+	return first.AddDate(0, 0, (int(wd)-int(first.Weekday())+7)%7+7*(nth-1))
 }
 
 // ParseDate reads a Due.Date.
@@ -78,6 +95,15 @@ func (r *Repeat) Next(d time.Time) time.Time {
 		weekStart := d.AddDate(0, 0, -wd)
 		return weekStart.AddDate(0, 0, 7*every+days[0])
 	case RepeatMonth:
+		if r.Nth != 0 && len(r.Weekdays) == 1 {
+			// This month's day if it is still ahead, else the one Every months on.
+			wd := time.Weekday(r.Weekdays[0])
+			if n := NthWeekday(d, r.Nth, wd); n.After(d) {
+				return n
+			}
+			first := time.Date(d.Year(), d.Month(), 1, 0, 0, 0, 0, d.Location()).AddDate(0, every, 0)
+			return NthWeekday(first, r.Nth, wd)
+		}
 		day := r.MonthDay
 		if day == 0 {
 			day = d.Day()
@@ -98,6 +124,11 @@ func (r *Repeat) Next(d time.Time) time.Time {
 func (r *Repeat) Valid() bool {
 	if r.Every < 1 || r.Every > 365 || r.MonthDay < 0 || r.MonthDay > 31 {
 		return false
+	}
+	if r.Nth != 0 {
+		// Only monthly, on one weekday, and not also on a day of the month.
+		return r.Unit == RepeatMonth && (r.Nth == LastWeek || r.Nth >= 1 && r.Nth <= 4) &&
+			r.MonthDay == 0 && len(r.Weekdays) == 1 && r.Weekdays[0] >= 0 && r.Weekdays[0] <= 6
 	}
 	switch r.Unit {
 	case RepeatDay, RepeatMonth, RepeatYear:

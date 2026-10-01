@@ -23,6 +23,14 @@ func TestRepeatNext(t *testing.T) {
 		{Repeat{Every: 1, Unit: RepeatMonth, MonthDay: 31}, "2026-02-28", "2026-03-31"},
 		{Repeat{Every: 3, Unit: RepeatMonth}, "2026-11-15", "2027-02-15"},
 		{Repeat{Every: 1, Unit: RepeatYear}, "2028-02-29", "2029-02-28"},
+		// Every third Friday: later this month, else next month's.
+		{Repeat{Every: 1, Unit: RepeatMonth, Weekdays: []int{5}, Nth: 3}, "2026-10-01", "2026-10-16"},
+		{Repeat{Every: 1, Unit: RepeatMonth, Weekdays: []int{5}, Nth: 3}, "2026-10-16", "2026-11-20"},
+		{Repeat{Every: 2, Unit: RepeatMonth, Weekdays: []int{5}, Nth: 3}, "2026-10-16", "2026-12-18"},
+		{Repeat{Every: 1, Unit: RepeatMonth, Weekdays: []int{1}, Nth: 1}, "2026-12-07", "2027-01-04"},
+		// Every last Monday.
+		{Repeat{Every: 1, Unit: RepeatMonth, Weekdays: []int{1}, Nth: LastWeek}, "2026-09-28", "2026-10-26"},
+		{Repeat{Every: 1, Unit: RepeatMonth, Weekdays: []int{1}, Nth: LastWeek}, "2026-11-30", "2026-12-28"},
 	} {
 		d, _ := ParseDate(c.from)
 		if got := c.r.Next(d).Format(DateLayout); got != c.want {
@@ -43,6 +51,14 @@ func TestRepeatValid(t *testing.T) {
 		{Repeat{Every: 1, Unit: RepeatWeek, Weekdays: []int{1, 1}}, false},
 		{Repeat{Every: 1, Unit: RepeatWeek, Weekdays: []int{7}}, false},
 		{Repeat{Every: 1, Unit: RepeatDay, Weekdays: []int{1}}, false},
+		{Repeat{Every: 1, Unit: RepeatMonth, Weekdays: []int{5}, Nth: 3}, true},
+		{Repeat{Every: 1, Unit: RepeatMonth, Weekdays: []int{5}, Nth: LastWeek}, true},
+		{Repeat{Every: 1, Unit: RepeatMonth, Weekdays: []int{5}, Nth: 5}, false},
+		{Repeat{Every: 1, Unit: RepeatMonth, Weekdays: []int{5}}, false},
+		{Repeat{Every: 1, Unit: RepeatMonth, Nth: 3}, false},
+		{Repeat{Every: 1, Unit: RepeatMonth, Weekdays: []int{1, 5}, Nth: 3}, false},
+		{Repeat{Every: 1, Unit: RepeatMonth, Weekdays: []int{5}, Nth: 3, MonthDay: 16}, false},
+		{Repeat{Every: 1, Unit: RepeatWeek, Weekdays: []int{5}, Nth: 3}, false},
 	} {
 		if c.r.Valid() != c.ok {
 			t.Errorf("%+v valid = %v", c.r, !c.ok)
