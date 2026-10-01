@@ -407,7 +407,8 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
       if (searching && !counts.get(f.id)) return null;
       const isOpen = searching || open.has(f.id);
       const renaming = editing?.id === f.id;
-      // A folder shared with the user is its owner's to change; editors add notes to it.
+      // A folder shared with the user is its owner's to change; editors add notes and
+      // folders to it.
       const own = (f.access ?? 'owner') === 'owner';
       const canAdd = own || f.access === 'editor';
       // Folders shared with the user can still be filed in the user's own tree.
@@ -477,20 +478,22 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
                   </button>
                 )}
                 <ShareFolder folder={f} />
+                {canAdd && (
+                  <button
+                    type="button"
+                    className="icon-button"
+                    title={t('folders.newInside')}
+                    aria-label={t('folders.newInsideLabel', { name: f.name })}
+                    onClick={() => {
+                      openFolder(f, true);
+                      setEditing({ parentId: f.id, name: '' });
+                    }}
+                  >
+                    <NewFolderIcon />
+                  </button>
+                )}
                 {own && (
                   <>
-                    <button
-                      type="button"
-                      className="icon-button"
-                      title={t('folders.newInside')}
-                      aria-label={t('folders.newInsideLabel', { name: f.name })}
-                      onClick={() => {
-                        openFolder(f, true);
-                        setEditing({ parentId: f.id, name: '' });
-                      }}
-                    >
-                      <NewFolderIcon />
-                    </button>
                     <button
                       type="button"
                       className="icon-button"

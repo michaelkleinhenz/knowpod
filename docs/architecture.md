@@ -77,8 +77,10 @@ the notes in the folder's tree up to date, and the users who had or have the fol
 folders shared with them (`ListSharedWith`) and the owner's folders in them, each with the
 member's `access`; a shared folder whose parent isn't shared with the member is at their top
 level. Editors add notes to a shared folder (they belong to its owner, with `createdBy`
-set) and move its notes between the owner's folders shared with them; the folders themselves
-stay the owner's to rename, move, order, delete and share. Deleting a user takes them off
+set), make folders in it (`FolderService.Create`; they belong to its owner, too) and move its
+notes between the owner's folders shared with them; the folders themselves stay the owner's
+to rename, move, order, delete and share. Boards stay their maker's, so new boards don't go
+into folders shared with the user. Deleting a user takes them off
 every folder too (`RemoveShares`).
 
 ### Concurrent changes

@@ -396,3 +396,50 @@ func TestFolderChangesInASharedFolderReachItsUsers(t *testing.T) {
 	}
 	gotFolders("made in a folder not shared", false)
 }
+
+func TestEditorsMakeFoldersInASharedFolder(t *testing.T) {
+	f := newFolderFixture(t)
+	ctx := context.Background()
+	f.shareFolder(t, f.work.ID, recording.RoleViewer)
+
+	// Viewers can't, and nobody can in a folder not shared with them.
+	if _, err := f.folders.Create(ctx, f.bob, FolderInput{Name: "Mine", ParentID: f.work.ID}); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("viewer makes a folder: %v", err)
+	}
+	if _, err := f.folders.Create(ctx, f.bob, FolderInput{Name: "Mine", ParentID: f.home.ID}); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("folder not shared: %v", err)
+	}
+
+	// Made an editor, bob makes a folder in a folder in the shared one; it is the owner's,
+	// shared like it, and he adds a note to it.
+	if _, err := f.s.SetFolderShareRole(ctx, f.acc, f.work.ID, "u2", recording.RoleEditor); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.folders.Create(ctx, f.bob, FolderInput{Name: "projects", ParentID: f.work.ID}); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("name taken: %v", err)
+	}
+	sub, err := f.folders.Create(ctx, f.bob, FolderInput{Name: "Bob's", ParentID: f.projects.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sub.OwnerID != "u1" || sub.ParentID != f.projects.ID || sub.Access != recording.RoleEditor || !sub.Shared {
+		t.Fatalf("made: %+v", sub)
+	}
+	if fs := f.bobsFolders(t); fs[sub.ID] == nil || fs[sub.ID].ParentID != f.projects.ID {
+		t.Errorf("bob's folders: %+v", fs[sub.ID])
+	}
+	owners, err := f.folders.List(ctx, f.acc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(owners, func(x *folder.Folder) bool { return x.ID == sub.ID && x.Access == recording.RoleOwner }) {
+		t.Errorf("owner's folders lack it: %+v", owners)
+	}
+	n, err := f.s.CreateText(ctx, f.bob, TextNoteInput{SummaryEdit: SummaryEdit{Title: "In it"}, FolderID: sub.ID})
+	if err != nil || n.OwnerID != "u1" || n.FolderID != sub.ID {
+		t.Fatalf("note in it: %+v, %v", n, err)
+	}
+	if !slices.Contains(f.bobSees(t), n.ID) {
+		t.Error("bob doesn't see the note")
+	}
+}
