@@ -94,9 +94,11 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
 - **Due marks** mark a paragraph or list item as due without making a task note of it: type a
   date in brackets after it, such as **[today]**, **[fri]**, **[next monday]**, **[5.10.]** or
   **[tomorrow 3pm]** (German works, too: **[heute]**, **[morgen]**). As the "]" is typed it
-  becomes the date ("[2026-10-01]"; Backspace right after undoes that), so it stays right on
-  the following days. Marks are colored by when they are due: red overdue, orange today,
-  green within a week; checked-off items' marks are grey.
+  becomes the date and the language it was typed in ("[2026-10-01 en]"; Backspace right after
+  undoes that), so it stays right on the following days. The mark is shown relative to today in
+  that language, such as "[tomorrow]", "[morgen]", "[Friday]" or "[vor 3 Tagen]" (put the cursor
+  in it to see and edit the date), and its whole line is colored by when it is due: red overdue,
+  orange today, green within a week, the accent color later; checked-off items aren't colored.
 - **Boards** are kanban boards, listed like any other note: each shows the notes of a folder,
   with a label or found by a saved filter as cards, all starting in the first column. New boards have the columns Todo,
   In Progress and Done; columns can be renamed, added and deleted, and cards are dragged

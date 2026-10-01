@@ -1,6 +1,6 @@
 import { Editor, Extension, InputRule, isTextSelection, Range } from '@tiptap/core';
 import { Node as PMNode } from '@tiptap/pm/model';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { EditorState, Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import Image from '@tiptap/extension-image';
 import { TaskItem, TaskList } from '@tiptap/extension-list';
@@ -14,7 +14,7 @@ import Suggestion, { SuggestionKeyDownProps, SuggestionProps } from '@tiptap/sug
 import { ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, Recording } from '../api/client';
-import { DUE_MARK, dueLabel, dueMarkFor, dueState } from '../lib/dueMarks';
+import { DUE_MARK, dueLabel, dueMarkFor, dueState, dueText } from '../lib/dueMarks';
 import { imageWidth, MIN_IMAGE_WIDTH, withImageWidth } from '../lib/imageWidth';
 import { errorText } from '../lib/errors';
 import { matchNotes, NOTE_REF, noteByNumber } from '../lib/noteRefs';
@@ -336,17 +336,48 @@ function noteLinks(bridge: MenuBridge<Recording>, opts: NoteLinkOptions, hint: s
 
 // --- Due marks ("[today]") ---------------------------------------------------------------
 
-// dueMarkDecorations colors the due marks in the text (not in code) by when they are due,
-// with the date spelled out as tooltip.
-function dueMarkDecorations(doc: PMNode): DecorationSet {
+// dueMarkDecorations colors the lines with due marks (not in code) by their most pressing
+// mark, and shows each mark relative to today ("[tomorrow]") with the date spelled out as
+// tooltip; the mark the cursor is in shows as typed, so it can be edited.
+function dueMarkDecorations(state: EditorState): DecorationSet {
+  const { doc, selection } = state;
   const decos: Decoration[] = [];
   const now = new Date();
-  doc.descendants((node, pos, parent) => {
-    if (!node.isText || !node.text || parent?.type.spec.code || node.marks.some((m) => m.type.spec.code)) return;
-    for (const m of node.text.matchAll(new RegExp(DUE_MARK))) {
-      const from = pos + m.index!;
-      decos.push(Decoration.inline(from, from + m[0].length, { class: `due-mark ${dueState(m[1], now)}`, title: dueLabel(m[1], m[2], now) }));
-    }
+  doc.descendants((block, blockPos) => {
+    if (!block.isTextblock) return true;
+    if (block.type.spec.code) return false;
+    let first: string | null = null;
+    block.forEach((node, offset) => {
+      if (!node.isText || !node.text || node.marks.some((m) => m.type.spec.code)) return;
+      for (const m of node.text.matchAll(new RegExp(DUE_MARK))) {
+        const from = blockPos + 1 + offset + m.index!;
+        const to = from + m[0].length;
+        const due = dueState(m[1], now);
+        if (!first || m[1] < first) first = m[1];
+        const editing = selection.from < to && selection.to > from;
+        if (editing) {
+          decos.push(Decoration.inline(from, to, { class: `due-mark ${due}`, title: dueLabel(m[1], m[2], now) }));
+          continue;
+        }
+        const label = `[${dueText(m[1], m[2], m[3], now)}]`;
+        decos.push(Decoration.inline(from, to, { class: 'due-mark-source' }));
+        decos.push(
+          Decoration.widget(
+            from,
+            () => {
+              const el = document.createElement('span');
+              el.className = `due-mark ${due}`;
+              el.title = dueLabel(m[1], m[2], now);
+              el.textContent = label;
+              return el;
+            },
+            { side: 1, key: `due:${label}:${due}`, ignoreSelection: true },
+          ),
+        );
+      }
+    });
+    if (first) decos.push(Decoration.node(blockPos, blockPos + block.nodeSize, { class: `due-line ${dueState(first, now)}` }));
+    return false;
   });
   return DecorationSet.create(doc, decos);
 }
@@ -354,8 +385,9 @@ function dueMarkDecorations(doc: PMNode): DecorationSet {
 const dueMarksKey = new PluginKey<DecorationSet>('dueMarks');
 
 // DueMarks turns a date typed in brackets ("[today]", "[fri]", "[5.10.]") into a due mark
-// ("[2026-10-01]") as the "]" is typed, and colors the marks: overdue, today, this week. Other
-// words in brackets stay as they are; Backspace right after undoes the change.
+// ("[2026-10-01 en]") as the "]" is typed, shows it relative to today in the language it was
+// typed in ("[tomorrow]", "[morgen]"), and colors its line: overdue, today, this week, later.
+// Other words in brackets stay as they are; Backspace right after undoes the change.
 const DueMarks = Extension.create({
   name: 'dueMarks',
   addInputRules() {
@@ -375,8 +407,8 @@ const DueMarks = Extension.create({
       new Plugin<DecorationSet>({
         key: dueMarksKey,
         state: {
-          init: (_, state) => dueMarkDecorations(state.doc),
-          apply: (tr, old) => (tr.docChanged ? dueMarkDecorations(tr.doc) : old),
+          init: (_, state) => dueMarkDecorations(state),
+          apply: (tr, old, _oldState, state) => (tr.docChanged || tr.selectionSet ? dueMarkDecorations(state) : old),
         },
         props: {
           decorations: (state) => dueMarksKey.getState(state),
