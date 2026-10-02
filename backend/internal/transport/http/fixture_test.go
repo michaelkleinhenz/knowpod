@@ -146,7 +146,7 @@ func newAPIFixture(t *testing.T) *apiFixture {
 		Users:   userSvc,
 		Devices: service.NewDeviceService(devs), Uploads: service.NewUploadService(recs, spool, 1<<30),
 		Manual: service.NewManualUploadService(recs, spool, 1<<30), Actions: actions, Objects: objects,
-		Pocket: service.NewPocketService(recs, users, nil, spool, 1<<20, log),
+		Pocket: service.NewPocketService(recs, users, folderRepo, nil, spool, 1<<20, log),
 		AI:     ai,
 		Themes: themes, Labels: labels, Folders: folders, Remarkable: rm, Notifications: notifications,
 		Filters: filters, Times: service.NewTimeService(timeRepo, recs, users), Calendar: service.NewCalendarService(users, recs),

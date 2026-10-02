@@ -242,6 +242,8 @@ type Pocket struct {
 	WebhookID     string `bson:"webhookId,omitempty"`
 	WebhookSecret string `bson:"webhookSecret,omitempty"`
 	APIKey        string `bson:"apiKey,omitempty"`
+	// FolderID is the folder imported recordings go into, made on first use.
+	FolderID string `bson:"folderId,omitempty"`
 }
 
 // Session is a signed-in browser. Only the SHA-256 of the session token is stored.

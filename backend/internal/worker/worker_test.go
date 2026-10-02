@@ -184,7 +184,7 @@ func runPocket(t *testing.T, data []byte) (*recording.Recording, *memstore.Store
 	users := memory.NewUsers()
 	owner := &user.User{ID: "user-1", Email: "a@example.com", Pocket: user.Pocket{WebhookID: "hook", WebhookSecret: "s", APIKey: "pk_owner"}}
 	_ = users.Create(ctx, owner)
-	svc := service.NewPocketService(f.recs, users, &fakePocket{data: data}, f.spool, 1<<30, quiet)
+	svc := service.NewPocketService(f.recs, users, memory.NewFolders(), &fakePocket{data: data}, f.spool, 1<<30, quiet)
 	archiver := service.NewArchiver(f.spool, f.objects, false, quiet)
 	w := worker.New(f.recs, []worker.Stage{
 		{Name: "pocket-fetch", From: recording.StatusRemote, To: recording.StatusReceived, Run: svc.Fetch},
