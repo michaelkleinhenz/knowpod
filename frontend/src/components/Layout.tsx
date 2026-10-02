@@ -3,9 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useOffline } from '../api/offline';
 import { useAuth } from '../auth';
-import { RecorderProvider } from '../context/Recorder';
+import { RecorderProvider, useRecorder } from '../context/Recorder';
 import { useDesktopNotifications } from '../lib/desktop';
-import { SignOutIcon } from './Icons';
+import { MicIcon, SignOutIcon } from './Icons';
 import { NewItemDialog } from './NewItemDialog';
 
 // Layout is the app frame: a header with the navigation, which collapses into a menu
@@ -84,6 +84,7 @@ export function Layout({ children }: { children: ReactNode }) {
         )}
         {account && (
           <>
+            <HeaderRecordButton />
             <button
               type="button"
               className="menu-button"
@@ -128,5 +129,24 @@ export function Layout({ children }: { children: ReactNode }) {
       <main className={`container${onConversations || onTime ? ' full' : ''}`}>{children}</main>
       {newKind && <NewItemDialog kind={newKind} onClose={() => setNewKind(null)} />}
     </RecorderProvider>
+  );
+}
+
+// HeaderRecordButton starts a voice memo from the phone's header, left of the menu button; while
+// one is recorded it opens the recording screen again. Wide screens record from the notes list.
+function HeaderRecordButton() {
+  const { t } = useTranslation();
+  const recorder = useRecorder();
+  return (
+    <button
+      type="button"
+      className={`header-record${recorder.recording ? ' recording' : ''}`}
+      onClick={recorder.recording ? recorder.expand : recorder.start}
+      disabled={recorder.active && !recorder.recording}
+      title={recorder.recording ? t('recorder.expand') : t('recorder.record')}
+      aria-label={recorder.recording ? t('recorder.expand') : t('recorder.record')}
+    >
+      <MicIcon size={22} />
+    </button>
   );
 }

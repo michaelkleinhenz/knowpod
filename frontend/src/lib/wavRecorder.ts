@@ -2,6 +2,11 @@
 // archives as FLAC and transcribes (speech needs no more). The audio is taken with an audio
 // worklet (public/recorder-worklet.js) and averaged down to 16 kHz as it comes in, so a long
 // memo takes about 2 MB of memory per minute.
+//
+// Phones may suspend the recording when the screen is locked: Android keeps capturing while
+// the microphone is in use, but iOS suspends the page (the audio context reports
+// "interrupted" and the microphone may be muted or ended). The recorder notes such an
+// interruption and revive() picks the recording up again when the page is back.
 
 export const SAMPLE_RATE = 16_000;
 
@@ -18,32 +23,77 @@ export class WavRecorder {
   private readonly ratio: number;
   // level is the loudness of the latest block, 0..1.
   level = 0;
+  // interrupted says the system suspended the recording at some point (e.g. while the phone
+  // was locked), so the memo misses that stretch.
+  interrupted = false;
+  private closed = false;
 
   private constructor(
     private ctx: AudioContext,
     private stream: MediaStream,
+    private source: MediaStreamAudioSourceNode,
     private node: AudioWorkletNode,
   ) {
     this.ratio = Math.max(1, ctx.sampleRate / SAMPLE_RATE);
     node.port.onmessage = (e: MessageEvent<Float32Array>) => this.take(e.data);
+    ctx.addEventListener('statechange', this.noteInterruption);
+    this.watch(stream);
   }
 
   // start asks for the microphone and starts recording.
   static async start(): Promise<WavRecorder> {
     if (!navigator.mediaDevices?.getUserMedia || typeof AudioWorkletNode === 'undefined') throw new RecorderUnsupportedError();
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    const stream = await microphone();
     const ctx = new AudioContext();
     try {
       await ctx.audioWorklet.addModule('/recorder-worklet.js');
       const node = new AudioWorkletNode(ctx, 'knowpod-recorder');
-      ctx.createMediaStreamSource(stream).connect(node);
+      const source = ctx.createMediaStreamSource(stream);
+      source.connect(node);
       node.connect(ctx.destination); // silent; keeps the worklet running everywhere
       if (ctx.state === 'suspended') await ctx.resume();
-      return new WavRecorder(ctx, stream, node);
+      return new WavRecorder(ctx, stream, source, node);
     } catch (err) {
       stream.getTracks().forEach((t) => t.stop());
       void ctx.close();
       throw err;
+    }
+  }
+
+  private noteInterruption = () => {
+    if (!this.closed && !this.paused && this.ctx.state !== 'running') this.interrupted = true;
+  };
+
+  private watch(stream: MediaStream) {
+    for (const track of stream.getAudioTracks()) {
+      track.addEventListener('mute', this.noteInterruption);
+      track.addEventListener('ended', () => {
+        if (!this.closed) this.interrupted = true;
+      });
+    }
+  }
+
+  // revive picks the recording up again after the system suspended it: it resumes the audio
+  // context and, if the microphone was taken away, asks for it again. Call it when the page
+  // is visible again.
+  async revive(): Promise<void> {
+    if (this.closed) return;
+    try {
+      if (this.stream.getAudioTracks().every((t) => t.readyState === 'ended')) {
+        const stream = await microphone();
+        if (this.closed) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        this.source.disconnect();
+        this.stream = stream;
+        this.source = this.ctx.createMediaStreamSource(stream);
+        this.source.connect(this.node);
+        this.watch(stream);
+      }
+      if (this.ctx.state !== 'running') await this.ctx.resume();
+    } catch {
+      // Tried again on the next return to the page.
     }
   }
 
@@ -87,6 +137,8 @@ export class WavRecorder {
   }
 
   private release() {
+    this.closed = true;
+    this.ctx.removeEventListener('statechange', this.noteInterruption);
     this.node.port.onmessage = null;
     this.node.disconnect();
     this.stream.getTracks().forEach((t) => t.stop());
@@ -105,6 +157,10 @@ export class WavRecorder {
     this.chunks = [];
     this.samples = 0;
   }
+}
+
+function microphone(): Promise<MediaStream> {
+  return navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
 }
 
 // wav builds a 16-bit mono PCM WAV file of the samples.
