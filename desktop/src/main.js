@@ -13,6 +13,7 @@ const path = require('node:path');
 
 const pkg = require('../package.json');
 const { startPocketSync } = require('./pocket');
+const { createPocketBluetooth } = require('./pocket-bluetooth');
 
 // Must match build.appId in package.json; electron-builder drops the build section from the
 // packaged package.json, so it can't be read from pkg at runtime.
@@ -62,6 +63,10 @@ let mainWindow = null;
 let tray = null;
 // pocket copies recordings from a Pocket recorder plugged in by USB (see pocket.js).
 let pocket = null;
+// pocketBluetooth switches the recorder's USB drive on over Bluetooth (see pocket-bluetooth.js).
+let pocketBluetooth = null;
+// usbStatus says how switching the USB drive on went, for the tray menu.
+let usbStatus = '';
 // quitting is set once the app is really quitting, so closing the window doesn't just hide it.
 let quitting = false;
 
@@ -426,6 +431,31 @@ ipcMain.on('knowpod:notify', (event, message) => {
   showNotification(message);
 });
 
+// The settings page of the server sets up the recorder's Bluetooth connection (see
+// frontend/src/components/PocketBluetooth.tsx). It never gets the session key back.
+const fromApp = (event) => !!event.senderFrame && isAppUrl(event.senderFrame.url);
+
+ipcMain.handle('knowpod:pocket-bluetooth', (event, request) => {
+  if (!fromApp(event) || !pocketBluetooth || !request || typeof request !== 'object') return { ok: false, error: 'failed' };
+  switch (request.action) {
+    case 'settings':
+      return { ok: true, ...pocketBluetooth.settings() };
+    case 'save': {
+      const update = {};
+      if (typeof request.address === 'string') update.address = request.address;
+      if (typeof request.sessionKey === 'string') update.sessionKey = request.sessionKey;
+      const result = pocketBluetooth.save(update);
+      return result.ok ? { ok: true, ...pocketBluetooth.settings() } : result;
+    }
+    case 'check':
+      return pocketBluetooth.check();
+    case 'usb-on':
+      return turnOnUsbDrive();
+    default:
+      return { ok: false, error: 'failed' };
+  }
+});
+
 ipcMain.handle('knowpod:set-server', (event, input) => {
   // Only the bundled setup page may change the server, never a page the server sent.
   if (!event.senderFrame?.url.startsWith('file:')) return { ok: false };
@@ -467,12 +497,55 @@ function setOpenAtLogin(on) {
 // source (it would start Electron without the app).
 const startAtLoginAvailable = () => app.isPackaged;
 
+// usbErrors explain why the recorder's USB drive couldn't be switched on.
+const usbErrors = {
+  'not-configured': 'Set up the Pocket under Settings → Account first.',
+  'not-found': 'The Pocket wasn’t found. Press its button to wake it and keep it close.',
+  auth: 'The Pocket refused the session key. Check it under Settings → Account.',
+  unsupported: 'Bluetooth isn’t available on this computer.',
+  'usb-refused': 'The Pocket didn’t switch its USB drive on.',
+  busy: 'The Pocket is busy, try again in a moment.',
+};
+
+// turnOnUsbDrive switches the recorder's USB drive on over Bluetooth, so that pocket.js finds
+// it once it's plugged in. From the tray menu, a failure is told in a notification; the
+// settings page shows it itself.
+async function turnOnUsbDrive({ fromTray = false } = {}) {
+  usbStatus = 'Pocket: turning on the USB drive…';
+  updateTray();
+  const result = await pocketBluetooth.usbOn();
+  if (result.ok) {
+    usbStatus = 'Pocket: USB drive on, plug it in';
+    pocket?.lookNow();
+  } else {
+    usbStatus = '';
+    if (fromTray)
+      showNotification({
+        title: 'Couldn’t turn on the Pocket’s USB drive',
+        body: usbErrors[result.error] || result.message || 'Bluetooth failed.',
+        tag: 'pocket-usb',
+      });
+  }
+  updateTray();
+  return result;
+}
+
 // pocketMenu shows whether a Pocket recorder is plugged in and what copying it does.
 function pocketMenu() {
   if (!pocket) return [];
   const state = pocket.state();
+  // Plugged in, the drive is there: nothing to switch on any more.
+  if (state.connected) usbStatus = '';
+  const usbItems =
+    !state.connected && pocketBluetooth?.configured()
+      ? [
+          ...(usbStatus ? [{ label: usbStatus, enabled: false }] : []),
+          { label: 'Turn On Pocket USB Drive', enabled: !pocketBluetooth.busy(), click: () => void turnOnUsbDrive({ fromTray: true }) },
+        ]
+      : [];
   return [
     ...(state.connected ? [{ label: state.status || 'Pocket connected', enabled: false }] : []),
+    ...usbItems,
     {
       label: 'Copy Recordings from Pocket',
       type: 'checkbox',
@@ -619,6 +692,9 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+// Web Bluetooth (for pocket-bluetooth.js) is still experimental in Chromium on Linux.
+if (process.platform === 'linux') app.commandLine.appendSwitch('enable-blink-features', 'WebBluetooth');
+
 // One window only: starting the app again brings the running one to the front.
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -635,6 +711,8 @@ if (!app.requestSingleInstanceLock()) {
     createTray();
     createWindow();
     pocket = startPocketSync({ serverUrl, readConfig, writeConfig, notify: showNotification, onChange: updateTray });
+    pocketBluetooth = createPocketBluetooth({ readConfig, writeConfig, onChange: updateTray });
+    updateTray();
     // macOS also activates the app when it launches; started at login, it stays in the tray.
     let skipActivate = startedHidden();
     app.on('activate', () => {

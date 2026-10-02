@@ -329,6 +329,9 @@ function startPocketSync({ serverUrl, readConfig, writeConfig, notify, onChange 
       onChange();
       if (on && mounted.length) void sync(mounted);
     },
+    // lookNow looks for plugged-in recorders right away, e.g. after their USB drive was
+    // switched on.
+    lookNow: () => void poll(),
     syncNow: () => {
       failureShown = false;
       if (mounted.length) void sync(mounted);
