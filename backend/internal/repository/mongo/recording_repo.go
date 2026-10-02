@@ -187,7 +187,8 @@ func (r *RecordingRepo) List(ctx context.Context, f recording.ListFilter) ([]*re
 	case recording.TrashOnly:
 		filter["deletedAt"] = bson.M{"$exists": true}
 	}
-	opts := options.Find().SetSort(bson.D{{Key: "createdAt", Value: -1}}).SetSkip(int64(f.Offset))
+	// _id breaks ties, so paging through the list neither skips nor repeats notes.
+	opts := options.Find().SetSort(bson.D{{Key: "createdAt", Value: -1}, {Key: "_id", Value: -1}}).SetSkip(int64(f.Offset))
 	if f.Brief {
 		opts.SetProjection(bson.M{"transcript": 0, "summary.markdown": 0, "summary.actionItems": 0})
 	}

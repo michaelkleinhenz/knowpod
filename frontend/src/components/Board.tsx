@@ -1,7 +1,7 @@
 import { DragEvent, PointerEvent as ReactPointerEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { api, Board as BoardSetup, BoardColumn, BoardScope, Folder, Recording, RECORDINGS_LIMIT, SavedFilter } from '../api/client';
+import { api, Board as BoardSetup, BoardColumn, BoardScope, Folder, Recording, SavedFilter } from '../api/client';
 import { useNotes } from '../context/NotesContext';
 import { errorText } from '../lib/errors';
 import { FilterContext, Matcher, parseFilter } from '../lib/filterQuery';
@@ -225,16 +225,14 @@ export function Board({ rec, setRec }: { rec: Recording; setRec: (r: Recording) 
   }
 
   // withCards stores the cards as shown, in columns, keeping the placements of notes that
-  // aren't shown (not loaded, or out of the scope for now). Notes that no longer exist are
-  // dropped when the list holds all notes.
+  // aren't shown (out of the scope for now). Notes that no longer exist are dropped.
   function withCards(shown: Recording[][], columns = board.columns): BoardSetup {
     const visible = new Set(shown.flat().map((r) => r.id));
-    const complete = notes.length < RECORDINGS_LIMIT;
     const exists = new Set(notes.map((r) => r.id));
     return {
       ...board,
       columns: columns.map((c, i) => {
-        const hidden = (c.notes ?? []).filter((id) => !visible.has(id) && (!complete || exists.has(id)));
+        const hidden = (c.notes ?? []).filter((id) => !visible.has(id) && exists.has(id));
         return { ...c, notes: [...(shown[i] ?? []).map((r) => r.id), ...hidden] };
       }),
     };

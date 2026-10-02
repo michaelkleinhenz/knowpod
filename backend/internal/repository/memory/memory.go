@@ -258,7 +258,12 @@ func (m *Recordings) List(_ context.Context, f recording.ListFilter) ([]*recordi
 			(f.ParentID == "" || r.ParentID == f.ParentID) && (f.DeviceID == "" || r.DeviceID == f.DeviceID) && (f.Status == "" || r.Status == f.Status) && (f.Number == 0 || r.Number == f.Number) &&
 			(f.Trash == recording.TrashAny || (f.Trash == recording.TrashOnly) == (r.DeletedAt != nil))
 	})
-	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].CreatedAt.Equal(out[j].CreatedAt) {
+			return out[i].CreatedAt.After(out[j].CreatedAt)
+		}
+		return out[i].ID > out[j].ID
+	})
 	if f.Offset >= len(out) {
 		return []*recording.Recording{}, nil
 	}

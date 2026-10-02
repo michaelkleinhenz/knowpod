@@ -1,7 +1,7 @@
 // Thin API client. All server communication goes through here. The web UI authenticates
 // with an HttpOnly session cookie, which the browser sends automatically (same origin).
 
-import { forgetNote, keepNote, kept, notePath, readOffline, setOffline, writeOffline } from './offline';
+import { forgetNote, isOffline, keepNote, kept, notePath, readOffline, setOffline, writeOffline } from './offline';
 import i18n from '../i18n';
 
 // ApiError is an error answer from the API. code is a stable identifier that the UI
@@ -391,8 +391,34 @@ export interface NotificationStatus {
   listening: number;
 }
 
-// RECORDINGS_LIMIT is how many notes the list loads.
+// RECORDINGS_LIMIT is how many notes one request of the list loads; the list is loaded
+// page by page until it holds every note (see allPages).
 export const RECORDINGS_LIMIT = 200;
+// MAX_PAGES bounds how many pages of the notes list are loaded.
+const MAX_PAGES = 100;
+
+// allPages loads every page of a notes list (query without limit and offset). The first
+// page is read at the path kept offline, which holds the whole list as last shown: offline
+// it is all there is.
+async function allPages(query: string): Promise<Recording[]> {
+  const path = (offset: number) => `/recordings?${query}${query ? '&' : ''}limit=${RECORDINGS_LIMIT}${offset ? `&offset=${offset}` : ''}`;
+  const first = await request<Recording[]>('GET', path(0));
+  if (isOffline() || first.length < RECORDINGS_LIMIT) return first;
+  const seen = new Set(first.map((r) => r.id));
+  const out = [...first];
+  for (let page = 1, offset = first.length; page < MAX_PAGES; page++) {
+    const next = await request<Recording[]>('GET', path(offset));
+    // A note made while paging shifts the list; it is listed once.
+    for (const r of next) {
+      if (seen.has(r.id)) continue;
+      seen.add(r.id);
+      out.push(r);
+    }
+    if (next.length < RECORDINGS_LIMIT) break;
+    offset += next.length;
+  }
+  return out;
+}
 
 // TRASH_DAYS is how long notes stay in the trash before they are deleted for good.
 export const TRASH_DAYS = 14;
@@ -749,7 +775,7 @@ export const api = {
   setRemarkableIgnoredNames: (ignoredNames: string[]) => request<RemarkableSettings>('PATCH', '/me/remarkable', { ignoredNames }),
   pullRemarkable: () => request<RemarkableSettings>('POST', '/me/remarkable/pull'),
   aiStatus: () => request<{ transcription: boolean; summary: boolean }>('GET', '/ai/status'),
-  recordings: () => request<Recording[]>('GET', `/recordings?limit=${RECORDINGS_LIMIT}`),
+  recordings: () => allPages(''),
   recordingByNumber: (n: number) => request<Recording[]>('GET', `/recordings?number=${n}`),
   recording: (id: string) => request<Recording>('GET', notePath(id)),
   // trashNote moves a note to the trash; deleteNote deletes it for good.
@@ -759,10 +785,10 @@ export const api = {
     await request<void>('DELETE', `/recordings/${encodeURIComponent(id)}?permanent=1`);
     await forgetNote(id);
   },
-  trash: () => request<Recording[]>('GET', `/recordings?trash=only&limit=${RECORDINGS_LIMIT}`),
+  trash: () => allPages('trash=only'),
   emptyTrash: () => request<void>('DELETE', '/recordings/trash'),
   // allRecordings loads the notes list with each note's text, for keeping them offline.
-  allRecordings: () => request<Recording[]>('GET', `/recordings?limit=${RECORDINGS_LIMIT}&full=1`),
+  allRecordings: () => allPages('full=1'),
   retranscribe: (id: string) => request<Recording>('POST', `/recordings/${encodeURIComponent(id)}/retranscribe`),
   resummarize: (id: string, opts?: SummaryOptions) =>
     request<Recording>('POST', `/recordings/${encodeURIComponent(id)}/resummarize`, opts),
