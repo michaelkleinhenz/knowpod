@@ -10,11 +10,15 @@ import (
 	"time"
 
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/audio"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/folder"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/user"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/pocket"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/ports"
 )
+
+// PocketFolder is the name of the knowpod folder that imported recordings are put into.
+const PocketFolder = "Pocket AI"
 
 // PocketAPI is the part of the Pocket API client the service needs.
 type PocketAPI interface {
@@ -23,10 +27,11 @@ type PocketAPI interface {
 }
 
 // PocketService connects users' Pocket accounts: it keeps each user's webhook secret and API
-// key, turns their webhooks into recordings, and fetches the audio.
+// key, turns their webhooks into recordings (in the folder "Pocket AI"), and fetches the audio.
 type PocketService struct {
 	recs    ports.RecordingRepository
 	users   ports.UserRepository
+	folders ports.FolderRepository
 	api     PocketAPI
 	spool   *Spool
 	maxSize int64
@@ -37,8 +42,8 @@ type PocketService struct {
 }
 
 // NewPocketService builds the service.
-func NewPocketService(recs ports.RecordingRepository, users ports.UserRepository, api PocketAPI, spool *Spool, maxSize int64, log *slog.Logger) *PocketService {
-	return &PocketService{recs: recs, users: users, api: api, spool: spool, maxSize: maxSize, log: log, clock: time.Now}
+func NewPocketService(recs ports.RecordingRepository, users ports.UserRepository, folders ports.FolderRepository, api PocketAPI, spool *Spool, maxSize int64, log *slog.Logger) *PocketService {
+	return &PocketService{recs: recs, users: users, folders: folders, api: api, spool: spool, maxSize: maxSize, log: log, clock: time.Now}
 }
 
 // --- per-user settings ---
@@ -147,12 +152,22 @@ func (s *PocketService) HandleWebhook(ctx context.Context, owner *user.User, ev 
 		return "", err
 	}
 
+	folderID, err := s.folder(ctx, owner)
+	if err != nil {
+		return "", err
+	}
 	now := s.clock().UTC()
 	rec := &recording.Recording{
 		ID: newID(), OwnerID: owner.ID, DeviceID: deviceID, ClientID: ev.Recording.ID,
 		Source: recording.SourcePocket, Title: ev.Recording.Title, Status: recording.StatusRemote,
-		NotBefore: now, CreatedAt: now, UpdatedAt: now,
+		FolderID: folderID, NotBefore: now, CreatedAt: now, UpdatedAt: now,
 	}
+	// A shared Pocket AI folder shares the note, too.
+	members, err := folderMembers(ctx, s.folders, owner.ID, folderID)
+	if err != nil {
+		return "", err
+	}
+	rec.Members = recording.ComputeMembers(members, nil, nil)
 	if t, err := time.Parse(time.RFC3339, ev.Recording.RecordingAt); err == nil {
 		t = t.UTC()
 		rec.RecordedAt = &t
@@ -168,6 +183,47 @@ func (s *PocketService) HandleWebhook(ctx context.Context, owner *user.User, ev 
 		s.OnQueued()
 	}
 	return WebhookQueued, nil
+}
+
+// folder returns the ID of the user's knowpod folder for imported recordings, creating it at
+// the top level when it's missing. The folder is remembered on the user, so it can be renamed
+// or moved; when it's deleted, a new one is made for the next new recording.
+func (s *PocketService) folder(ctx context.Context, u *user.User) (string, error) {
+	if id := u.Pocket.FolderID; id != "" {
+		f, err := s.folders.Get(ctx, id)
+		if err == nil && f.OwnerID == u.ID {
+			return id, nil
+		}
+		if err != nil && !errors.Is(err, ErrNotFound) {
+			return "", err
+		}
+	}
+	list, err := s.folders.List(ctx, u.ID)
+	if err != nil {
+		return "", err
+	}
+	id := ""
+	for _, f := range list {
+		if f.ParentID == "" && strings.EqualFold(f.Name, PocketFolder) {
+			id = f.ID
+			break
+		}
+	}
+	if id == "" {
+		now := s.clock().UTC()
+		f := &folder.Folder{ID: newID(), OwnerID: u.ID, Name: PocketFolder, CreatedAt: now, UpdatedAt: now}
+		if err := s.folders.Create(ctx, f); err != nil {
+			return "", err
+		}
+		id = f.ID
+	}
+	fresh, err := s.users.Get(ctx, u.ID)
+	if err != nil {
+		return "", err
+	}
+	fresh.Pocket.FolderID = id
+	u.Pocket.FolderID = id
+	return id, s.users.Update(ctx, fresh)
 }
 
 // Fetch is the processing stage remote → received: it downloads the recording's audio from

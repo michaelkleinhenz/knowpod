@@ -24,7 +24,7 @@ func newPocket(t *testing.T) (*PocketService, *memory.Recordings, *memory.Users)
 	t.Helper()
 	recs, users := memory.NewRecordings(), memory.NewUsers()
 	spool, _ := NewSpool(t.TempDir())
-	return NewPocketService(recs, users, nil, spool, 1<<20, slog.New(slog.NewTextHandler(io.Discard, nil))), recs, users
+	return NewPocketService(recs, users, memory.NewFolders(), nil, spool, 1<<20, slog.New(slog.NewTextHandler(io.Discard, nil))), recs, users
 }
 
 func TestPocketSettingsPerUser(t *testing.T) {
@@ -61,10 +61,12 @@ func TestPocketSettingsPerUser(t *testing.T) {
 
 func TestPocketWebhookQueuesOncePerUser(t *testing.T) {
 	ctx := context.Background()
-	s, recs, _ := newPocket(t)
+	s, recs, users := newPocket(t)
 	woken := 0
 	s.OnQueued = func() { woken++ }
 	alice, bob := &user.User{ID: "alice"}, &user.User{ID: "bob"}
+	_ = users.Create(ctx, &user.User{ID: "alice", Email: "alice@example.com"})
+	_ = users.Create(ctx, &user.User{ID: "bob", Email: "bob@example.com"})
 
 	if res, err := s.HandleWebhook(ctx, alice, pocketEvent("recording.created", "rec_1")); err != nil || res != WebhookQueued {
 		t.Fatalf("first: %v, %v", res, err)
@@ -75,8 +77,8 @@ func TestPocketWebhookQueuesOncePerUser(t *testing.T) {
 		}
 	}
 	// The same Pocket recording for another user is that user's own copy.
-	if res, _ := s.HandleWebhook(ctx, bob, pocketEvent("recording.created", "rec_1")); res != WebhookQueued {
-		t.Fatalf("bob: %v", res)
+	if res, err := s.HandleWebhook(ctx, bob, pocketEvent("recording.created", "rec_1")); err != nil || res != WebhookQueued {
+		t.Fatalf("bob: %v, %v", res, err)
 	}
 	for _, ev := range []*pocket.Event{pocketEvent("recording.deleted", "rec_2"), pocketEvent("summary.completed", "")} {
 		if res, _ := s.HandleWebhook(ctx, alice, ev); res != WebhookIgnored {
@@ -88,5 +90,43 @@ func TestPocketWebhookQueuesOncePerUser(t *testing.T) {
 	if err != nil || rec.OwnerID != "alice" || rec.Status != recording.StatusRemote || rec.Source != recording.SourcePocket ||
 		rec.Title != "Team Standup" || rec.RecordedAt == nil || woken != 2 {
 		t.Fatalf("recording = %+v, %v, woken=%d", rec, err, woken)
+	}
+}
+
+func TestPocketWebhookPutsNotesIntoPocketFolder(t *testing.T) {
+	ctx := context.Background()
+	s, recs, users := newPocket(t)
+	_ = users.Create(ctx, &user.User{ID: "alice", Email: "alice@example.com"})
+	alice := &user.User{ID: "alice"}
+
+	for _, id := range []string{"rec_1", "rec_2"} {
+		if res, err := s.HandleWebhook(ctx, alice, pocketEvent("recording.created", id)); err != nil || res != WebhookQueued {
+			t.Fatalf("%s: %v, %v", id, res, err)
+		}
+	}
+	list, _ := s.folders.List(ctx, "alice")
+	if len(list) != 1 || list[0].Name != PocketFolder || list[0].ParentID != "" {
+		t.Fatalf("folders = %+v", list)
+	}
+	stored, _ := users.Get(ctx, "alice")
+	if stored.Pocket.FolderID != list[0].ID {
+		t.Fatalf("remembered folder = %q, want %q", stored.Pocket.FolderID, list[0].ID)
+	}
+	for _, id := range []string{"rec_1", "rec_2"} {
+		rec, err := recs.GetByClientID(ctx, recording.PocketDeviceID("alice"), id)
+		if err != nil || rec.FolderID != list[0].ID {
+			t.Fatalf("%s: %+v, %v", id, rec, err)
+		}
+	}
+
+	// A deleted folder is made again for the next recording.
+	_ = s.folders.Delete(ctx, list[0].ID)
+	if _, err := s.HandleWebhook(ctx, stored, pocketEvent("recording.created", "rec_3")); err != nil {
+		t.Fatal(err)
+	}
+	list, _ = s.folders.List(ctx, "alice")
+	rec, _ := recs.GetByClientID(ctx, recording.PocketDeviceID("alice"), "rec_3")
+	if len(list) != 1 || list[0].Name != PocketFolder || rec.FolderID != list[0].ID {
+		t.Fatalf("after delete: folders = %+v, rec folder = %q", list, rec.FolderID)
 	}
 }

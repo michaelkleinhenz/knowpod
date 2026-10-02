@@ -114,7 +114,7 @@ func main() {
 	deviceSvc := service.NewDeviceService(devices)
 	uploadSvc := service.NewUploadService(recs, spool, cfg.MaxUploadBytes)
 	archiver := service.NewArchiver(spool, objects, cfg.KeepOriginalWAV, log)
-	pocketSvc := service.NewPocketService(recs, users, pocket.NewClient(cfg.PocketAPIURL), spool, cfg.MaxUploadBytes, log)
+	pocketSvc := service.NewPocketService(recs, users, folderRepo, pocket.NewClient(cfg.PocketAPIURL), spool, cfg.MaxUploadBytes, log)
 	manualSvc := service.NewManualUploadService(recs, spool, cfg.MaxUploadBytes)
 	remarkableSvc := service.NewRemarkableService(tabletRepo, recs, folderRepo, objects,
 		remarkable.NewClient(cfg.RemarkableAuthURL, cfg.RemarkableSyncURL), spool, cfg.MaxUploadBytes, log)
