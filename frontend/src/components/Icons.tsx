@@ -418,6 +418,15 @@ export function PlayIcon({ size = 14 }: { size?: number }) {
   );
 }
 
+// ChevronDownIcon minimizes the phone's recording screen.
+export function ChevronDownIcon({ size = 14 }: { size?: number }) {
+  return (
+    <InlineIcon size={size}>
+      <path d="M6 9l6 6 6-6" />
+    </InlineIcon>
+  );
+}
+
 export function StopIcon({ size = 14 }: { size?: number }) {
   return (
     <InlineIcon size={size}>

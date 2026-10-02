@@ -5825,6 +5825,250 @@ p.due-line {
   }
 }
 
+.recorder-expand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+/* The record button in the phone's header, left of the menu button. */
+.header-record {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: -6px 0 -6px auto;
+  padding: 0;
+  color: var(--color-header-text);
+  background: none;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.header-record:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.header-record.recording {
+  color: #fff;
+  background: var(--color-error);
+  animation: recorder-pulse 1.2s ease-in-out infinite;
+}
+
+/* The phone's recording screen: the clock, a few facts and big buttons. */
+.recorder-screen {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .header-record {
+    display: inline-flex;
+  }
+
+  .recorder-bar.expanded {
+    display: none;
+  }
+
+  .recorder-screen {
+    position: fixed;
+    z-index: 300;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    padding: calc(0.75rem + env(safe-area-inset-top)) 1rem calc(1.5rem + env(safe-area-inset-bottom));
+    color: var(--color-header-text);
+    background: var(--color-header);
+    overscroll-behavior: contain;
+    touch-action: manipulation;
+    user-select: none;
+  }
+}
+
+.recorder-screen-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.recorder-screen-title {
+  font-weight: 600;
+}
+
+.recorder-screen-small {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  color: inherit;
+  background: none;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.recorder-screen-small.danger {
+  color: #f07a6e;
+}
+
+.recorder-screen-small:disabled {
+  opacity: 0.4;
+}
+
+.recorder-screen-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  text-align: center;
+}
+
+.recorder-screen-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--color-header-muted);
+  font-size: 1rem;
+}
+
+.recorder-screen .recorder-dot {
+  background: #f07a6e;
+}
+
+.recorder-screen.paused .recorder-dot {
+  animation: none;
+  background: var(--color-header-muted);
+}
+
+.recorder-screen-time {
+  font-size: clamp(3.5rem, 18vw, 5.5rem);
+  font-weight: 300;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.recorder-screen.paused .recorder-screen-time {
+  opacity: 0.55;
+}
+
+.recorder-screen-level {
+  width: min(16rem, 70vw);
+  height: 0.5rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.recorder-screen-level span {
+  display: block;
+  height: 100%;
+  background: var(--color-success);
+  transform-origin: left;
+  transition: transform 0.1s linear;
+}
+
+.recorder-screen-facts {
+  display: flex;
+  gap: 2rem;
+  margin: 0.5rem 0 0;
+}
+
+.recorder-screen-facts dt {
+  color: var(--color-header-muted);
+  font-size: 0.8rem;
+}
+
+.recorder-screen-facts dd {
+  margin: 0.15rem 0 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.recorder-flash {
+  animation: recorder-flash 0.6s ease-out;
+}
+
+@keyframes recorder-flash {
+  0% {
+    color: var(--color-warning);
+    transform: scale(1.5);
+  }
+}
+
+.recorder-screen-note {
+  max-width: 22rem;
+  margin: 0;
+  color: var(--color-header-muted);
+  font-size: 0.85rem;
+}
+
+.recorder-screen-note.warning {
+  color: var(--color-warning);
+}
+
+.recorder-screen-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-evenly;
+  padding-bottom: 0.5rem;
+}
+
+.recorder-big {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  width: 5rem;
+  height: 5rem;
+  padding: 0;
+  font-size: 0.75rem;
+  color: var(--color-header-text);
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.recorder-big:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.recorder-big.stop {
+  width: 6.5rem;
+  height: 6.5rem;
+  color: #fff;
+  background: var(--color-error);
+}
+
+.recorder-big.stop:active:not(:disabled) {
+  filter: brightness(0.9);
+}
+
+.recorder-big:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .header-record.recording,
+  .recorder-flash {
+    animation: none;
+  }
+}
+
 /* --- Photos and shared items --- */
 
 .photo-link {
