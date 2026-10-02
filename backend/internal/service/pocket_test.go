@@ -2,9 +2,12 @@ package service
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/user"
@@ -128,5 +131,82 @@ func TestPocketWebhookPutsNotesIntoPocketFolder(t *testing.T) {
 	rec, _ := recs.GetByClientID(ctx, recording.PocketDeviceID("alice"), "rec_3")
 	if len(list) != 1 || list[0].Name != PocketFolder || rec.FolderID != list[0].ID {
 		t.Fatalf("after delete: folders = %+v, rec folder = %q", list, rec.FolderID)
+	}
+}
+
+func TestDeviceFileTime(t *testing.T) {
+	got, err := DeviceFileTime("20261002090356.mp3")
+	if want := time.Date(2026, 10, 2, 9, 3, 56, 0, time.UTC); err != nil || !got.Equal(want) {
+		t.Fatalf("got %v, %v; want %v", got, err, want)
+	}
+	if _, err := DeviceFileTime("20261002090356.MP3"); err != nil {
+		t.Fatalf("upper case extension: %v", err)
+	}
+	for _, name := range []string{"", "20261002090356", "20261002090356.wav", "2026100209035.mp3", "2026-10-02 0903.mp3", "20261332090356.mp3", "../20261002090356.mp3"} {
+		if _, err := DeviceFileTime(name); err == nil {
+			t.Errorf("%q: no error", name)
+		}
+	}
+}
+
+func TestPocketDeviceFilesImportedOnce(t *testing.T) {
+	ctx := context.Background()
+	s, recs, users := newPocket(t)
+	s.Uploads = NewManualUploadService(recs, s.spool, 1<<20)
+	_ = users.Create(ctx, &user.User{ID: "alice", Email: "alice@example.com"})
+	alice := &Account{ID: "alice"}
+	mp3 := func() io.Reader { return strings.NewReader("ID3\x04\x00\x00\x00\x00\x00\x00 audio") }
+
+	// A recording announced by the webhook (started 2026-02-17 15:02:00 UTC) is on the device, too.
+	if _, err := s.HandleWebhook(ctx, &user.User{ID: "alice"}, pocketEvent("recording.created", "rec_1")); err != nil {
+		t.Fatal(err)
+	}
+	files := []string{"20261002090356.mp3", "notes.txt", "20260217150210.mp3", "20261002100000.mp3"}
+	fresh, err := s.NewDeviceFiles(ctx, alice, files)
+	if err != nil || len(fresh) != 2 || fresh[0] != "20261002090356.mp3" || fresh[1] != "20261002100000.mp3" {
+		t.Fatalf("new files = %v, %v", fresh, err)
+	}
+
+	rec, err := s.ImportDeviceFile(ctx, alice, "20261002090356.mp3", mp3())
+	if err != nil {
+		t.Fatal(err)
+	}
+	folders, _ := s.folders.List(ctx, "alice")
+	if len(folders) != 1 || rec.FolderID != folders[0].ID || rec.Source != recording.SourcePocket ||
+		rec.DeviceID != recording.PocketDeviceID("alice") || rec.SourceContentType != "audio/mpeg" ||
+		rec.RecordedAt == nil || !rec.RecordedAt.Equal(time.Date(2026, 10, 2, 9, 3, 56, 0, time.UTC)) {
+		t.Fatalf("imported: %+v (folders %+v)", rec, folders)
+	}
+	if _, err := s.ImportDeviceFile(ctx, alice, "20261002090356.mp3", mp3()); !errors.Is(err, ErrDuplicateDeviceFile) {
+		t.Fatalf("second import: %v", err)
+	}
+	if _, err := s.ImportDeviceFile(ctx, alice, "20260217150210.mp3", mp3()); !errors.Is(err, ErrDuplicateDeviceFile) {
+		t.Fatalf("webhook recording imported: %v", err)
+	}
+	if _, err := s.ImportDeviceFile(ctx, alice, "20261002100000.mp3", strings.NewReader("%PDF-1.4")); !errors.Is(err, ErrUnsupportedMedia) {
+		t.Fatalf("PDF imported: %v", err)
+	}
+
+	// The webhook doesn't bring a copied recording again (started 2026-10-02 09:04:10 UTC).
+	ev := pocketEvent("recording.created", "rec_2")
+	ev.Recording.RecordingAt = "2026-10-02T09:04:10Z"
+	if res, err := s.HandleWebhook(ctx, &user.User{ID: "alice"}, ev); err != nil || res != WebhookDuplicate {
+		t.Fatalf("webhook for copied file: %v, %v", res, err)
+	}
+
+	// A note in the trash isn't copied again.
+	trashed, _ := recs.Get(ctx, rec.ID)
+	trashed.DeletedAt = &trashed.CreatedAt
+	if err := recs.Update(ctx, trashed); err != nil {
+		t.Fatal(err)
+	}
+	fresh, _ = s.NewDeviceFiles(ctx, alice, files)
+	if len(fresh) != 1 || fresh[0] != "20261002100000.mp3" {
+		t.Fatalf("after import: %v", fresh)
+	}
+	// Another user's notes don't count.
+	_ = users.Create(ctx, &user.User{ID: "bob", Email: "bob@example.com"})
+	if fresh, _ := s.NewDeviceFiles(ctx, &Account{ID: "bob"}, files); len(fresh) != 3 {
+		t.Fatalf("bob: %v", fresh)
 	}
 }

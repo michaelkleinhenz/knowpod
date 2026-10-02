@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
+	"path"
 	"strings"
 	"time"
 
@@ -16,6 +18,9 @@ import (
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/pocket"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/ports"
 )
+
+// ErrDuplicateDeviceFile is returned for a recorder's file that is already a note.
+var ErrDuplicateDeviceFile = errors.New("this recording is already a note")
 
 // PocketFolder is the name of the knowpod folder that imported recordings are put into.
 const PocketFolder = "Pocket AI"
@@ -39,6 +44,8 @@ type PocketService struct {
 	clock   func() time.Time
 	// OnQueued is called when a new recording waits to be fetched, e.g. to wake the worker.
 	OnQueued func()
+	// Uploads stores the files copied from a Pocket recorder (see ImportDeviceFile).
+	Uploads *ManualUploadService
 }
 
 // NewPocketService builds the service.
@@ -151,6 +158,19 @@ func (s *PocketService) HandleWebhook(ctx context.Context, owner *user.User, ev 
 	} else if !errors.Is(err, ErrNotFound) {
 		return "", err
 	}
+	var recordedAt *time.Time
+	if t, err := time.Parse(time.RFC3339, ev.Recording.RecordingAt); err == nil {
+		t = t.UTC()
+		recordedAt = &t
+		// Copied from the recorder already (desktop app)?
+		idx, err := s.deviceIndex(ctx, owner.ID)
+		if err != nil {
+			return "", err
+		}
+		if near(idx.copied, t) {
+			return WebhookDuplicate, nil
+		}
+	}
 
 	folderID, err := s.folder(ctx, owner)
 	if err != nil {
@@ -168,10 +188,7 @@ func (s *PocketService) HandleWebhook(ctx context.Context, owner *user.User, ev 
 		return "", err
 	}
 	rec.Members = recording.ComputeMembers(members, nil, nil)
-	if t, err := time.Parse(time.RFC3339, ev.Recording.RecordingAt); err == nil {
-		t = t.UTC()
-		rec.RecordedAt = &t
-	}
+	rec.RecordedAt = recordedAt
 	if err := s.recs.Create(ctx, rec); err != nil {
 		if errors.Is(err, errDuplicate) {
 			return WebhookDuplicate, nil // concurrent delivery of the same recording
@@ -224,6 +241,154 @@ func (s *PocketService) folder(ctx context.Context, u *user.User) (string, error
 	fresh.Pocket.FolderID = id
 	u.Pocket.FolderID = id
 	return id, s.users.Update(ctx, fresh)
+}
+
+// --- files copied from the Pocket recorder (desktop app) ---
+
+// A Pocket recorder plugged in by USB is a drive with its recordings as MP3 files in
+// RECORD/<date>/, named by when they started in UTC ("20261002090356.mp3"). The desktop app
+// asks which of them are new (NewDeviceFiles) and uploads those (ImportDeviceFile). They
+// become the user's Pocket recordings like the ones announced by webhook, in the same
+// folder. A file is known by its name (ClientID "file:<name>"), or when a recording from
+// the webhook started at about the same time: the device and the Pocket cloud have the same
+// recording then.
+
+// deviceFileLayout is the time in a recorder's file names.
+const deviceFileLayout = "20060102150405"
+
+// deviceMatchWindow is how far apart the start of a file and of a webhook recording may be
+// to be the same recording.
+const deviceMatchWindow = 30 * time.Second
+
+// DeviceFileTime returns when a recorder's file started, from its name.
+func DeviceFileTime(name string) (time.Time, error) {
+	ext := path.Ext(name)
+	base := strings.TrimSuffix(name, ext)
+	t, err := time.Parse(deviceFileLayout, base)
+	if !strings.EqualFold(ext, ".mp3") || len(base) != len(deviceFileLayout) || strings.Trim(base, "0123456789") != "" || err != nil {
+		return time.Time{}, invalid("%q is not a Pocket recording (YYYYMMDDhhmmss.mp3)", name)
+	}
+	return t.UTC(), nil
+}
+
+// deviceTitle is the title of a copied recording until the summary gives it one.
+const deviceTitle = "Pocket recording"
+
+// deviceClientID is the ClientID of a recording copied from the file that started at t.
+func deviceClientID(t time.Time) string { return "file:" + t.Format(deviceFileLayout) }
+
+// deviceIndex is what is known of a user's Pocket recordings: the files copied, and when the
+// webhook ones started.
+type deviceIndex struct {
+	files  map[string]bool
+	starts []time.Time // of the webhook recordings
+	copied []time.Time // of the copied files
+}
+
+func (s *PocketService) deviceIndex(ctx context.Context, ownerID string) (*deviceIndex, error) {
+	// Notes in the trash count, too: a deleted note isn't copied again.
+	list, err := s.recs.List(ctx, recording.ListFilter{OwnerID: ownerID, DeviceID: recording.PocketDeviceID(ownerID), Trash: recording.TrashAny, Brief: true})
+	if err != nil {
+		return nil, err
+	}
+	idx := &deviceIndex{files: map[string]bool{}}
+	for _, r := range list {
+		switch {
+		case strings.HasPrefix(r.ClientID, "file:"):
+			idx.files[r.ClientID] = true
+			if r.RecordedAt != nil {
+				idx.copied = append(idx.copied, *r.RecordedAt)
+			}
+		case r.RecordedAt != nil:
+			idx.starts = append(idx.starts, *r.RecordedAt)
+		}
+	}
+	return idx, nil
+}
+
+// has says whether the file that started at t is a note.
+func (idx *deviceIndex) has(t time.Time) bool {
+	return idx.files[deviceClientID(t)] || near(idx.starts, t)
+}
+
+// near says whether one of the times is within deviceMatchWindow of t.
+func near(times []time.Time, t time.Time) bool {
+	for _, start := range times {
+		if d := start.Sub(t); d <= deviceMatchWindow && d >= -deviceMatchWindow {
+			return true
+		}
+	}
+	return false
+}
+
+// NewDeviceFiles returns the names of the recorder's files that aren't the account's notes
+// yet, in the order given. Names that aren't recordings are left out.
+func (s *PocketService) NewDeviceFiles(ctx context.Context, acc *Account, names []string) ([]string, error) {
+	if acc.ID == "" {
+		return nil, errors.Join(ErrForbidden, errors.New("Pocket recordings belong to a user; sign in"))
+	}
+	idx, err := s.deviceIndex(ctx, acc.ID)
+	if err != nil {
+		return nil, err
+	}
+	fresh := []string{}
+	for _, name := range names {
+		if t, err := DeviceFileTime(name); err == nil && !idx.has(t) {
+			fresh = append(fresh, name)
+		}
+	}
+	return fresh, nil
+}
+
+// ImportDeviceFile stores a recorder's MP3 file as a note in the Pocket AI folder, unless it
+// is already one: then it returns the error ErrDuplicateDeviceFile.
+func (s *PocketService) ImportDeviceFile(ctx context.Context, acc *Account, name string, body io.Reader) (*recording.Recording, error) {
+	if acc.ID == "" {
+		return nil, errors.Join(ErrForbidden, errors.New("Pocket recordings belong to a user; sign in"))
+	}
+	if s.Uploads == nil {
+		return nil, errors.New("uploads are not set up")
+	}
+	started, err := DeviceFileTime(name)
+	if err != nil {
+		return nil, err
+	}
+	idx, err := s.deviceIndex(ctx, acc.ID)
+	if err != nil {
+		return nil, err
+	}
+	if idx.has(started) {
+		return nil, ErrDuplicateDeviceFile
+	}
+	owner, err := s.users.Get(ctx, acc.ID)
+	if err != nil {
+		return nil, err
+	}
+	folderID, err := s.folder(ctx, owner)
+	if err != nil {
+		return nil, err
+	}
+	// A shared Pocket AI folder shares the note, too.
+	members, err := folderMembers(ctx, s.folders, owner.ID, folderID)
+	if err != nil {
+		return nil, err
+	}
+	rec, err := s.Uploads.Upload(ctx, acc, ManualUpload{
+		Filename: name, RecordedAt: &started, Body: body, AudioOnly: true,
+		Prepare: func(rec *recording.Recording) {
+			rec.DeviceID, rec.ClientID = recording.PocketDeviceID(owner.ID), deviceClientID(started)
+			rec.Source, rec.Title, rec.FolderID = recording.SourcePocket, deviceTitle, folderID
+			rec.Members = recording.ComputeMembers(members, nil, nil)
+		},
+	})
+	if errors.Is(err, errDuplicate) {
+		return nil, ErrDuplicateDeviceFile // copied at the same time by another request
+	}
+	if err != nil {
+		return nil, err
+	}
+	s.log.Info("pocket file imported", "id", rec.ID, "owner", owner.ID, "file", name, "bytes", rec.Size)
+	return rec, nil
 }
 
 // Fetch is the processing stage remote → received: it downloads the recording's audio from

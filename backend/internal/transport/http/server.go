@@ -208,6 +208,8 @@ func (s *Server) Router() http.Handler {
 			u.Put("/auth/password", s.handleChangePassword)
 			u.Get("/me/pocket", s.handleGetPocketSettings)
 			u.Put("/me/pocket", s.handleUpdatePocketSettings)
+			u.Post("/me/pocket/device/check", s.handleNewPocketDeviceFiles)
+			u.Post("/me/pocket/device/files", s.handleImportPocketDeviceFile)
 			u.Get("/me/remarkable", s.handleGetRemarkable)
 			u.Patch("/me/remarkable", s.handleUpdateRemarkable)
 			u.Delete("/me/remarkable", s.handleUnpairRemarkable)

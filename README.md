@@ -340,7 +340,8 @@ workflow (`.github/workflows/desktop.yml`, run by hand or on a `desktop-v*` tag)
 three and keeps the installers as artifacts; a `desktop-v<version>` tag also publishes them as
 a GitHub release (see [Version](#version)). The builds are not code-signed, so macOS
 Gatekeeper and Windows SmartScreen warn on first open. The desktop app shows notifications
-while it runs; closing its window keeps it running in the tray (see
+while it runs; closing its window keeps it running in the tray, and it copies new
+recordings from a Pocket recorder plugged in by USB (see
 [Operations](docs/operations.md#desktop-app)).
 
 ## Version

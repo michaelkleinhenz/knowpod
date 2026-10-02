@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: knowpod-service API
-  version: 0.7.9
+  version: 0.8.0
   description: |
     Backend for the knowpod AI audio recorder.
 
@@ -20,7 +20,9 @@ info:
     **Pocket** — each user connects their own Pocket recorder (heypocketai.com): its webhook
     (`POST /webhooks/pocket/{webhookId}`, URL from `GET /me/pocket`) announces recordings,
     whose audio is then downloaded with the user's Pocket API key and archived like device
-    uploads. WAV and MP3 files can also be uploaded from the browser (`POST /recordings`).
+    uploads. The desktop app also copies new recordings straight from a Pocket recorder
+    plugged in by USB (`POST /me/pocket/device/check`, `POST /me/pocket/device/files`). WAV and
+    MP3 files can also be uploaded from the browser (`POST /recordings`).
 
     **reMarkable documents** — users pair their reMarkable cloud account with a one-time code
     (`POST /me/remarkable/pair`). All its documents (except those in the trash and those whose
@@ -390,6 +392,71 @@ paths:
         "200":
           description: Saved
           content: { application/json: { schema: { $ref: "#/components/schemas/PocketSettings" } } }
+
+  /me/pocket/device/check:
+    post:
+      tags: ["Your account"]
+      summary: Which files of a Pocket recorder are new
+      description: |
+        A Pocket recorder plugged in by USB keeps its recordings as MP3 files named by when they
+        started, in UTC (`RECORD/2026-10-2/20261002090356.mp3`). The desktop app sends the names
+        of the files it finds and gets back those that aren't notes yet: neither copied before
+        (also when the note is in the trash) nor announced by the Pocket webhook with a start
+        within 30 seconds. Names that aren't recordings are left out.
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [files]
+              properties:
+                files: { type: array, maxItems: 10000, items: { type: string, example: 20261002090356.mp3 } }
+      responses:
+        "200":
+          description: The new files, in the order sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  files: { type: array, items: { type: string } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /me/pocket/device/files:
+    post:
+      tags: ["Your account"]
+      summary: Copy a recording from a Pocket recorder
+      description: |
+        Stores an MP3 file of a Pocket recorder, sent as the raw request body, as a note in the
+        folder "Pocket AI" (`source: pocket`), recorded at the time in its name. It is
+        transcribed and summarized like other recordings.
+      security: [{ sessionCookie: [] }]
+      parameters:
+        - name: X-Filename
+          in: header
+          required: true
+          description: URL-encoded file name, e.g. "20261002090356.mp3"
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          audio/mpeg: { schema: { type: string, format: binary } }
+      responses:
+        "201":
+          description: Stored; processing starts
+          content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "409":
+          description: The recording already is a note
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "413": { $ref: "#/components/responses/Error" }
+        "415":
+          description: Not an MP3 file
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
   /me/remarkable:
     get:

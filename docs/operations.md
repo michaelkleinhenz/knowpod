@@ -187,6 +187,33 @@ Pocket's transcripts, summaries and action items in the webhook payload are not 
 **Log messages:** `pocket recording queued`, `pocket audio fetched`, and
 `pocket webhook rejected` (signature problems, with the reason and user).
 
+### Copying straight from the recorder (desktop app)
+
+The [desktop app](#desktop-app) can take the recordings straight off the Pocket recorder,
+so neither the Pocket app nor the webhook and API key are needed. Plugged in by USB, the
+recorder is a drive named **Pocket** that the system mounts by itself; its recordings are MP3
+files named by when they started, in UTC (`RECORD/2026-10-2/20261002090356.mp3`).
+
+- The app looks for such a drive every few seconds (on Linux among the mounts in
+  `/proc/mounts`, on macOS in `/Volumes`, on Windows a drive with a `RECORD` folder whose
+  label is "Pocket"). When one appears, it sends the file names to the server
+  (`POST /api/v1/me/pocket/device/check`) and uploads the new files one after another
+  (`POST /api/v1/me/pocket/device/files`), as the user signed in to the app. A notification
+  says how many were copied. Files on the recorder are only read, never changed or deleted.
+- They become notes in the folder **Pocket AI** like the webhook's recordings (`source`
+  `pocket`, `deviceId` `pocket:<userId>`, `recordingId` `file:<YYYYMMDDhhmmss>`), recorded at
+  the time in the file name, and are transcribed and summarized.
+- A file is copied **once**: it isn't when a note was copied from it before (also when that
+  note is in the trash), or when a webhook recording started within 30 seconds of it (the
+  same recording; the webhook likewise skips recordings already copied, so both ways can be
+  used side by side). The app also remembers the files it
+  copied (in its `config.json`), so notes deleted for good aren't copied again.
+- If copying fails (offline, signed out, server error), the app says so once and tries again
+  every two minutes while the recorder stays plugged in. The tray menu shows the state and
+  has **Copy Recordings from Pocket** (turns it off) and **Copy from Pocket Now**.
+
+**Log message:** `pocket file imported`.
+
 ## reMarkable
 
 Each user can pair their own reMarkable cloud account. knowpod then imports all documents
@@ -430,6 +457,8 @@ CORS setting is needed. New server versions reach it like the web app, on the ne
   the installed app, **Start at Login** (starts it in the tray; on Linux an entry in
   `~/.config/autostart`). Some Linux desktops (e.g. GNOME without an AppIndicator
   extension) show no tray icon; starting the app again opens its window.
+- It copies new recordings from a Pocket recorder plugged in by USB into the folder
+  **Pocket AI** (see [Copying straight from the recorder](#copying-straight-from-the-recorder-desktop-app)).
 - The installers are not code-signed: on macOS open the app with right-click → **Open** the
   first time, on Windows choose **More info → Run anyway**.
 
