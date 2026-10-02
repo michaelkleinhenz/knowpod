@@ -106,7 +106,7 @@ export const en = {
     upload: 'Upload',
     newNote: 'New note',
     newBoard: 'New board',
-    types: { audio: 'Audio note', text: 'Text note', document: 'reMarkable document', board: 'Board', photo: 'Photo', pdf: 'PDF document', remarkableText: 'Text note on the reMarkable' },
+    types: { audio: 'Audio note', text: 'Text note', document: 'reMarkable document', board: 'Board', photo: 'Photo', pdf: 'PDF document', remarkableText: 'Text note on the reMarkable', pocket: 'Pocket recording' },
     uploadAudio: 'Upload audio, photos, PDFs or Markdown files',
     searchLabel: 'Search the workspace',
     untitled: 'Untitled note',

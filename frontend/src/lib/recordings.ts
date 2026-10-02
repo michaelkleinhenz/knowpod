@@ -15,8 +15,9 @@ export function noteType(r: Recording): NoteType {
 
 // IconKind is what a note's icon shows: its type, or for a document uploaded in the app
 // whether it is a photo or a PDF (reMarkable documents show the reMarkable logo), or for a
-// text note that is on the reMarkable the logo with a pen, as it stays editable.
-export type IconKind = NoteType | 'photo' | 'pdf' | 'remarkableText';
+// text note that is on the reMarkable the logo with a pen, as it stays editable, or for a
+// note imported from Pocket AI the Pocket recorder.
+export type IconKind = NoteType | 'photo' | 'pdf' | 'remarkableText' | 'pocket';
 
 // onTablet reports whether a text note has a copy on the reMarkable.
 export function onTablet(r: Recording): boolean {
@@ -34,6 +35,7 @@ export function inkAttachment(r: Recording) {
 export function iconKind(r: Recording): IconKind {
   const type = noteType(r);
   if (onTablet(r)) return 'remarkableText';
+  if (r.source === 'pocket') return 'pocket';
   if (type !== 'document' || r.source === 'remarkable') return type;
   return (r.file?.contentType ?? r.sourceContentType ?? '').startsWith('image/') ? 'photo' : 'pdf';
 }

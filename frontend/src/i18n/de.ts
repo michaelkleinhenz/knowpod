@@ -108,7 +108,7 @@ export const de: Translation = {
     upload: 'Hochladen',
     newNote: 'Neue Notiz',
     newBoard: 'Neues Board',
-    types: { audio: 'Audionotiz', text: 'Textnotiz', document: 'reMarkable-Dokument', board: 'Board', photo: 'Foto', pdf: 'PDF-Dokument', remarkableText: 'Textnotiz auf dem reMarkable' },
+    types: { audio: 'Audionotiz', text: 'Textnotiz', document: 'reMarkable-Dokument', board: 'Board', photo: 'Foto', pdf: 'PDF-Dokument', remarkableText: 'Textnotiz auf dem reMarkable', pocket: 'Pocket-Aufnahme' },
     uploadAudio: 'Audio, Fotos, PDFs oder Markdown-Dateien hochladen',
     searchLabel: 'Workspace durchsuchen',
     untitled: 'Notiz ohne Titel',
