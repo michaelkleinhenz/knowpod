@@ -5,7 +5,8 @@ import type { IconKind } from '../lib/recordings';
 
 // NoteIcon shows a note as a page; its content says the note's type: a sound wave for audio
 // recordings, lines of text with a heading for text notes, the reMarkable logo for documents imported
-// from the reMarkable, a picture for photos, "PDF" for uploaded PDFs, columns of cards for boards.
+// from the reMarkable, the Pocket recorder for notes imported from Pocket AI, a picture for photos,
+// "PDF" for uploaded PDFs, columns of cards for boards.
 export function NoteIcon({ type, label }: { type: IconKind; label?: string }) {
   return (
     <svg
@@ -43,6 +44,16 @@ export function NoteIcon({ type, label }: { type: IconKind; label?: string }) {
           <g transform="rotate(-45 20 28)">
             <rect x="14" y="26.6" width="10" height="2.8" rx="0.6" fill="var(--color-primary)" />
             <path d="M24 26.6l2.6 1.4-2.6 1.4z" fill="var(--color-text)" />
+          </g>
+        </>
+      ) : type === 'pocket' ? (
+        // The Pocket recorder: a small rounded device with its recording light, above a sound wave.
+        <>
+          <rect x="9.5" y="6.5" width="11" height="16" rx="4" fill="none" stroke="var(--color-text)" strokeWidth="1.6" />
+          <circle cx="15" cy="11.5" r="1.7" fill="var(--color-error)" />
+          <rect x="12.5" y="16" width="5" height="2" rx="1" fill="var(--color-muted)" opacity="0.55" />
+          <g stroke="var(--color-primary)" strokeWidth="1.8" strokeLinecap="round" opacity="0.8">
+            <path d="M9 29v1M12 27.5v4M15 26.5v6M18 27.5v4M21 29v1" />
           </g>
         </>
       ) : type === 'board' ? (
