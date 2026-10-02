@@ -17,7 +17,37 @@ interface DesktopBridge {
   // notify and onOpen are missing in older desktop apps.
   notify?: (n: DesktopNotification) => void;
   onOpen?: (listener: (url: string) => void) => () => void;
+  // pocketBluetooth is missing in older desktop apps.
+  pocketBluetooth?: (request: PocketBluetoothRequest) => Promise<PocketBluetoothResult>;
 }
+
+// The desktop app's Bluetooth connection to a Pocket recorder (desktop/src/pocket-bluetooth.js),
+// which switches its USB drive on so the app can copy from it. Its settings stay in the
+// desktop app; the session key is never handed back.
+export type PocketBluetoothRequest =
+  | { action: 'settings' | 'check' | 'usb-on' }
+  | { action: 'save'; address?: string; sessionKey?: string };
+
+export interface PocketBluetoothResult {
+  ok: boolean;
+  // Why it failed: not-configured, not-found, auth, unsupported, usb-refused, busy, timeout,
+  // invalid-address, invalid-key, disconnected, no-answer or failed.
+  error?: string;
+  message?: string;
+  // settings and save
+  address?: string;
+  sessionKeySet?: boolean;
+  // check
+  battery?: number | null;
+  firmware?: string | null;
+  storage?: { usedKB: number; totalKB: number } | null;
+  // check and usb-on
+  usb?: boolean | null;
+}
+
+// pocketBluetooth returns the desktop app's Pocket Bluetooth call, or undefined outside the
+// desktop app (and in older ones).
+export const pocketBluetooth = () => bridge()?.pocketBluetooth;
 
 const bridge = (): DesktopBridge | undefined =>
   typeof window !== 'undefined' ? (window as { knowpodDesktop?: DesktopBridge }).knowpodDesktop : undefined;

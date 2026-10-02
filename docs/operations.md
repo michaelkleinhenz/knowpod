@@ -211,6 +211,19 @@ files named by when they started, in UTC (`RECORD/2026-10-2/20261002090356.mp3`)
 - If copying fails (offline, signed out, server error), the app says so once and tries again
   every two minutes while the recorder stays plugged in. The tray menu shows the state and
   has **Copy Recordings from Pocket** (turns it off) and **Copy from Pocket Now**.
+- The recorder is a USB drive only until it's unplugged once; after that it has to be
+  told over Bluetooth to be one again. The desktop app does this when given the recorder's
+  **Bluetooth address** and **session key** under **Settings → Account → Pocket integration**
+  (only shown in the desktop app; both stay in its `config.json`, the key encrypted with the
+  system's keychain where there is one, and are never sent to the server). The session key
+  (16 characters) comes from a Bluetooth capture of the Pocket app, see
+  [pocket-libre](https://github.com/shahcolate/pocket-libre). **Check connection** reads the
+  battery, firmware, storage and USB state; **Turn on USB drive** (also in the tray menu as
+  **Turn On Pocket USB Drive** while no recorder is plugged in) switches the drive on
+  (`APP&USB&1`), after which the plugged-in recorder mounts and is copied as above. The app
+  talks to the recorder with Web Bluetooth in a hidden window (`desktop/src/bluetooth.js`);
+  on Linux it needs BlueZ, on macOS (which hides Bluetooth addresses) it uses the one Pocket
+  nearby (`PKT01_…`).
 
 **Log message:** `pocket file imported`.
 

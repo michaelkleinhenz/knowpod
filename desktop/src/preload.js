@@ -1,6 +1,7 @@
 // Runs in every page of the window with no Node access (sandboxed). It tells the web app it
 // runs in the desktop app (window.knowpodDesktop), lets it show notifications and open the
-// page of a clicked one (see frontend/src/lib/desktop.ts), and gives the setup page its call.
+// page of a clicked one (see frontend/src/lib/desktop.ts), set up the Pocket recorder's
+// Bluetooth connection, and gives the setup page its call.
 // It also fits the window's title bar to the page (see titlebar.css).
 const { contextBridge, ipcRenderer, webFrame } = require('electron');
 
@@ -11,6 +12,10 @@ contextBridge.exposeInMainWorld('knowpodDesktop', {
   version: versionArg ? versionArg.slice('--knowpod-version='.length) : '',
   setServer: (url) => ipcRenderer.invoke('knowpod:set-server', url),
   notify: (message) => ipcRenderer.send('knowpod:notify', message),
+  // pocketBluetooth sets up the Pocket recorder's Bluetooth connection, which switches its
+  // USB drive on (see pocket-bluetooth.js): request is {action: 'settings' | 'save' |
+  // 'check' | 'usb-on', address?, sessionKey?}.
+  pocketBluetooth: (request) => ipcRenderer.invoke('knowpod:pocket-bluetooth', request),
   onOpen: (listener) => {
     const handler = (_event, url) => listener(url);
     ipcRenderer.on('knowpod:open', handler);
