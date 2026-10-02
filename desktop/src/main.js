@@ -12,6 +12,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const pkg = require('../package.json');
+const { startPocketSync } = require('./pocket');
 
 // Must match build.appId in package.json; electron-builder drops the build section from the
 // packaged package.json, so it can't be read from pkg at runtime.
@@ -59,6 +60,8 @@ function serverUrl() {
 
 let mainWindow = null;
 let tray = null;
+// pocket copies recordings from a Pocket recorder plugged in by USB (see pocket.js).
+let pocket = null;
 // quitting is set once the app is really quitting, so closing the window doesn't just hide it.
 let quitting = false;
 
@@ -464,10 +467,28 @@ function setOpenAtLogin(on) {
 // source (it would start Electron without the app).
 const startAtLoginAvailable = () => app.isPackaged;
 
+// pocketMenu shows whether a Pocket recorder is plugged in and what copying it does.
+function pocketMenu() {
+  if (!pocket) return [];
+  const state = pocket.state();
+  return [
+    ...(state.connected ? [{ label: state.status || 'Pocket connected', enabled: false }] : []),
+    {
+      label: 'Copy Recordings from Pocket',
+      type: 'checkbox',
+      checked: state.enabled,
+      click: (item) => pocket.setEnabled(item.checked),
+    },
+    ...(state.connected && state.enabled ? [{ label: 'Copy from Pocket Now', enabled: !state.syncing, click: () => pocket.syncNow() }] : []),
+    { type: 'separator' },
+  ];
+}
+
 function buildTrayMenu() {
   return Menu.buildFromTemplate([
     { label: 'Open knowpod', click: showWindow },
     { type: 'separator' },
+    ...pocketMenu(),
     {
       label: 'Keep Running When Closed',
       type: 'checkbox',
@@ -613,6 +634,7 @@ if (!app.requestSingleInstanceLock()) {
     buildMenu();
     createTray();
     createWindow();
+    pocket = startPocketSync({ serverUrl, readConfig, writeConfig, notify: showNotification, onChange: updateTray });
     // macOS also activates the app when it launches; started at login, it stays in the tray.
     let skipActivate = startedHidden();
     app.on('activate', () => {

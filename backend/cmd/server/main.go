@@ -140,6 +140,7 @@ func main() {
 	uploadSvc.OnReceived = pipeline.Wake
 	pocketSvc.OnQueued = pipeline.Wake
 	manualSvc.OnReceived = pipeline.Wake
+	pocketSvc.Uploads = manualSvc
 	remarkableSvc.OnQueued = pipeline.Wake
 	// Text notes in the reMarkable folder go to the tablet shortly after they change.
 	events.OwnerChanged = remarkableSvc.Nudge

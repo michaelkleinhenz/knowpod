@@ -140,13 +140,16 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	backup.TempDir = t.TempDir()
 	personal := service.NewPersonalBackupService(recs, folderRepo, labelRepo, themeRepo, filterRepo, timeRepo, objects, actions)
 	personal.TempDir = t.TempDir()
+	manual := service.NewManualUploadService(recs, spool, 1<<30)
+	pocketSvc := service.NewPocketService(recs, users, folderRepo, nil, spool, 1<<20, log)
+	pocketSvc.Uploads = manual
 	s := NewServer(Deps{
 		Backup: backup, PersonalBackup: personal,
 		Cfg: config.Config{AdminToken: adminToken}, Log: log, Auth: auth,
 		Users:   userSvc,
 		Devices: service.NewDeviceService(devs), Uploads: service.NewUploadService(recs, spool, 1<<30),
-		Manual: service.NewManualUploadService(recs, spool, 1<<30), Actions: actions, Objects: objects,
-		Pocket: service.NewPocketService(recs, users, folderRepo, nil, spool, 1<<20, log),
+		Manual: manual, Actions: actions, Objects: objects,
+		Pocket: pocketSvc,
 		AI:     ai,
 		Themes: themes, Labels: labels, Folders: folders, Remarkable: rm, Notifications: notifications,
 		Filters: filters, Times: service.NewTimeService(timeRepo, recs, users), Calendar: service.NewCalendarService(users, recs),

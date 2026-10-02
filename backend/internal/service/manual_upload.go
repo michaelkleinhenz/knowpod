@@ -51,6 +51,11 @@ type ManualUpload struct {
 	Recorded bool
 	// Highlights are the moments marked while recording (offsets in milliseconds).
 	Highlights []int64
+	// AudioOnly refuses photos and PDFs.
+	AudioOnly bool
+	// Prepare, if set, adjusts the new audio recording before it is saved (e.g. its source
+	// and folder). Saving fails with errDuplicate when its DeviceID and ClientID are taken.
+	Prepare func(rec *recording.Recording)
 }
 
 // sniffDocument identifies the photos and PDFs that can be uploaded, from their first bytes.
@@ -133,7 +138,7 @@ func (s *ManualUploadService) Upload(ctx context.Context, acc *Account, in Manua
 		switch {
 		case heic:
 			return nil, errors.Join(ErrUnsupportedMedia, errors.New("HEIC photos can't be read; share or save the photo as JPEG"))
-		case in.Recorded:
+		case in.Recorded, in.AudioOnly:
 			return nil, ErrUnsupportedMedia
 		case doc != "application/pdf" && n > maxUploadImage:
 			return nil, fmt.Errorf("%w: photos can be at most %d MB", ErrTooLarge, maxUploadImage>>20)
@@ -187,6 +192,9 @@ func (s *ManualUploadService) Upload(ctx context.Context, acc *Account, in Manua
 		Size: n, SHA256: hex.EncodeToString(h.Sum(nil)), SourceContentType: ctype, Format: format,
 		Highlights: highlights,
 		RecordedAt: in.RecordedAt, ReceivedAt: &now, NotBefore: now, CreatedAt: now, UpdatedAt: now,
+	}
+	if in.Prepare != nil {
+		in.Prepare(rec)
 	}
 	if err := s.recs.Create(ctx, rec); err != nil {
 		return nil, err

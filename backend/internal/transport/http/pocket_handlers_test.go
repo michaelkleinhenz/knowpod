@@ -79,3 +79,34 @@ func TestPocketPerUser(t *testing.T) {
 		t.Fatalf("recording: %+v, %v", rec, err)
 	}
 }
+
+func TestPocketDeviceFiles(t *testing.T) {
+	f := newAPIFixture(t)
+	admin := f.signedIn(adminEmail, adminPassword)
+	mp3 := []byte("ID3\x04\x00\x00\x00\x00\x00\x00 audio")
+	files := map[string][]string{"files": {"20261002090356.mp3", "readme.txt", "20261002100000.mp3"}}
+
+	if res := f.browser().do("POST", "/api/v1/me/pocket/device/check", files, nil, nil); res.StatusCode != 401 {
+		t.Fatalf("signed out: %d", res.StatusCode)
+	}
+	var fresh struct{ Files []string }
+	if res := admin.do("POST", "/api/v1/me/pocket/device/check", files, nil, &fresh); res.StatusCode != 200 || len(fresh.Files) != 2 {
+		t.Fatalf("check: %d %v", res.StatusCode, fresh.Files)
+	}
+
+	var rec recording.Recording
+	res := admin.do("POST", "/api/v1/me/pocket/device/files", mp3, map[string]string{"X-Filename": "20261002090356.mp3"}, &rec)
+	if res.StatusCode != 201 || rec.Source != recording.SourcePocket || rec.FolderID == "" || rec.RecordedAt == nil ||
+		!rec.RecordedAt.Equal(time.Date(2026, 10, 2, 9, 3, 56, 0, time.UTC)) {
+		t.Fatalf("import: %d %+v", res.StatusCode, rec)
+	}
+	if res := admin.do("POST", "/api/v1/me/pocket/device/files", mp3, map[string]string{"X-Filename": "20261002090356.mp3"}, nil); res.StatusCode != 409 {
+		t.Fatalf("second import: %d", res.StatusCode)
+	}
+	if res := admin.do("POST", "/api/v1/me/pocket/device/files", mp3, map[string]string{"X-Filename": "memo.mp3"}, nil); res.StatusCode != 400 {
+		t.Fatalf("bad name: %d", res.StatusCode)
+	}
+	if res := admin.do("POST", "/api/v1/me/pocket/device/check", files, nil, &fresh); res.StatusCode != 200 || len(fresh.Files) != 1 || fresh.Files[0] != "20261002100000.mp3" {
+		t.Fatalf("check after import: %d %v", res.StatusCode, fresh.Files)
+	}
+}
