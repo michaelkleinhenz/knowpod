@@ -2,6 +2,7 @@
 import asyncio
 import json
 import socket
+import struct
 
 from pocket_wifi_probe import session
 from pocket_wifi_probe.cli import parser
@@ -137,3 +138,44 @@ def test_refuses_other_firmware(tmp_path, monkeypatch):
     assert asyncio.run(session.probe(args)) == 1
     assert "WIFIO" not in FakePocket.sent and FakeWifi.calls == []
     assert "not 1.8" in out.read_text()
+
+
+def test_stream_connects_then_triggers(tmp_path, monkeypatch):
+    """stream connects before sending U&WIFI, and saves what the recorder sends after it."""
+    started = asyncio.Event()
+
+    class StreamingPocket(FakePocket):
+        async def send(self, command):
+            if command == "U&WIFI" and "WIFIO" in FakePocket.sent:
+                started.set()
+            return await super().send(command)
+
+    monkeypatch.setattr(session, "PocketLink", StreamingPocket)
+    monkeypatch.setattr(session, "backend", lambda kind, host, iface, log: FakeWifi(host, iface, log))
+    FakePocket.sent, FakeWifi.calls = [], []
+    port = free_port()
+    out = tmp_path / "r.json"
+    frame = struct.pack("<HI", 0xA55A, 6653128) + b"\xff\xf3\x48\xc4" + b"\0" * 20
+    args = parser().parse_args([
+        "AA:BB:CC:DD:EE:FF", KEY, "--host", "127.0.0.1", "--out", str(out), "-q",
+        "--checks", "stream", "--no-begin", "--stream-port", str(port), "--stream-idle", "0.5",
+        "--status-interval", "0",
+    ])
+
+    async def main():
+        async def serve(reader, writer):
+            await started.wait()  # silent until told over Bluetooth
+            writer.write(frame)
+            await writer.drain()
+            writer.close()
+        server = await asyncio.start_server(serve, "127.0.0.1", port)
+        async with server:
+            return await session.probe(args)
+
+    assert asyncio.run(main()) == 0
+    res = json.loads(out.read_text())["results"]["ready"]["stream"]["result"]
+    assert res["before_trigger"] == "idle" and res["bytes_before_trigger"] == 0
+    assert res["after_trigger"] == "closed"
+    assert res["data"]["length"] == len(frame) and res["data"]["mp3_sync_offsets"] == [6]
+    assert {"offset": 2, "type": "u32le", "value": 6653128, "equals": "staged file size"} in res["data"]["length_fields"]
+    assert (tmp_path / f"r.{port}.bin").read_bytes() == frame

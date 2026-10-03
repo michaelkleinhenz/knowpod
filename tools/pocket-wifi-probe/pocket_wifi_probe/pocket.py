@@ -63,6 +63,8 @@ class PocketLink:
         self._new = asyncio.Event()
         self._write_lock = asyncio.Lock()
         self._subscribed: list[str] = []
+        self._last: dict[str, tuple[float, str]] = {}
+        self.duplicates = 0
 
     async def __aenter__(self) -> "PocketLink":
         device = await BleakScanner.find_device_by_address(self.address, timeout=self.scan_timeout)
@@ -115,8 +117,16 @@ class PocketLink:
                 parts = [text]
             else:
                 parts = split_messages(text)
+            now = time.monotonic()
             for part in parts:
-                msg = Message(time.monotonic(), part, uuid)
+                # The recorder (or BlueZ) delivers each notification several times within a few
+                # milliseconds; keep one. Real repeats, like polled WIFIS, are seconds apart.
+                last = self._last.get(uuid)
+                if last and last[1] == part and now - last[0] < 0.05:
+                    self.duplicates += 1
+                    continue
+                self._last[uuid] = (now, part)
+                msg = Message(now, part, uuid)
                 self.messages.append(msg)
                 if self.on_message:
                     self.on_message(msg)
