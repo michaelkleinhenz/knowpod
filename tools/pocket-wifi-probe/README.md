@@ -13,34 +13,9 @@ can leave the recorder unreachable until it's power-cycled.
 
 ## Findings so far
 
-From a run on firmware 1.8, WiFi firmware V9:
-
-- Once `WIFIS` reaches 1, the recorder listens on **TCP 8475**. Nothing else is open on TCP or
-  UDP, not even DNS on 53. It doesn't answer mDNS, SSDP or broadcast, and nothing connects
-  back to us.
-- A connection to 8475 is accepted and stays silent, so the recorder waits for something.
-- After a connection sent a stray `\r\n`, the recorder reset it and every later connect was
-  refused. After `APP&U&WIFI`, 8475 was open again.
-- In a second run, 8475 **never opened**. The capture shows only resets from the recorder,
-  and it sent nothing on its own. In that run the first `nmcli` join timed out just as the link
-  came up (`WIFIS` was already 1), and the retry disconnected and reconnected. The likely
-  conclusion is that the recorder closes the socket once its first client leaves. Joining now
-  never re-issues a connect while one is in progress, and `stream` keeps trying (`--stream-wait`)
-  until the port opens.
-- The app's command strings name `APP&WIFI&SWITCH` / `MCU&WIFI&SWITCH`, with log lines like
-  "Switching file transfer to Wi-Fi", "Device rejected the Wi-Fi transfer switch" and "Device
-  did not stop the Bluetooth file transfer for Wi-Fi handoff". So a WiFi transfer appears to
-  start as a Bluetooth one (`APP&U&<date>&<ts>`) that is then switched over. The app also
-  keeps a Wi-Fi heartbeat going (`APP&WPING`, `--heartbeat`), and reuses one socket for
-  several files.
-- `MCU&OFF` comes right after staging (`MCU&U&<size>`), not after `WIFIO`. It most likely marks
-  the end of the Bluetooth transfer: the staged file was 2486 bytes, so it was already done.
-- Each Bluetooth notification arrived about 4 times within milliseconds. The probe now drops
-  the repeats and counts them in `meta.duplicate_notifications_dropped`.
-- The app's strings (it's Flutter) mention a "Pocket Wi-Fi framed stream", frame lengths and
-  frame types. The `RANGE …` strings belong to Bluetooth byte-range downloads ("Byte-range
-  downloads are Bluetooth-only"), not WiFi. The `stream` check tests the idea that the app
-  connects first and then starts the stream with `APP&U&WIFI`.
+Everything learned so far is in [RESEARCH.md](RESEARCH.md): the recorder's details, the AP
+sequence, port 8475, what the Android app's strings reveal, the working theory of the
+transfer, the next steps, and the plan for the desktop app. Keep it up to date after each run.
 
 ## What a run does
 
