@@ -1231,6 +1231,8 @@ export const en = {
       'wifi-setup': 'This computer’s WiFi couldn’t be prepared: {{detail}}',
       'wifi-join': 'This computer couldn’t join the Pocket’s WiFi. Keep the Pocket close and try again.',
       'wifi-ap': 'The Pocket’s WiFi didn’t come up properly. Try again; if it keeps happening, restart the Pocket.',
+      stuck: 'The Pocket stopped answering WiFi commands. Restart it (hold the button until it switches off, then turn it on) and copy again.',
+      refused: 'The Pocket wouldn’t send a recording: {{detail}}',
       transfer: 'A recording didn’t come over WiFi: {{detail}}',
       'no-server': 'The desktop app has no knowpod server set.',
       'signed-out': 'Sign in to knowpod to copy the recordings.',

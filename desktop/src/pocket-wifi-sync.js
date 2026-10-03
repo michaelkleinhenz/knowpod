@@ -158,8 +158,9 @@ function startPocketWifiSync({ serverUrl, readConfig, writeConfig, notify, pocke
           downloaded.push({ ...f, file });
         } catch (err) {
           if (err instanceof WifiError && err.code === 'cancelled') throw err;
-          // The Bluetooth connection is gone: nothing more can be transferred.
-          if (err && ['disconnected', 'timeout'].includes(err.code)) throw err;
+          // The Bluetooth connection is gone, or the recorder stopped answering WiFi commands:
+          // nothing more can be transferred.
+          if (err && ['disconnected', 'timeout', 'stuck'].includes(err.code)) throw err;
           failed++;
           lastFailure = err;
           console.error(`pocket wifi: ${f.name}:`, err);

@@ -1233,6 +1233,8 @@ export const de: Translation = {
       'wifi-setup': 'Das WLAN dieses Computers ließ sich nicht vorbereiten: {{detail}}',
       'wifi-join': 'Dieser Computer konnte sich nicht mit dem WLAN des Pocket verbinden. Halte den Pocket in der Nähe und versuch es noch einmal.',
       'wifi-ap': 'Das WLAN des Pocket kam nicht richtig hoch. Versuch es noch einmal; passiert das öfter, starte den Pocket neu.',
+      stuck: 'Der Pocket antwortet nicht mehr auf WLAN-Befehle. Starte ihn neu (Taste halten, bis er ausgeht, dann einschalten) und kopiere noch einmal.',
+      refused: 'Der Pocket wollte eine Aufnahme nicht senden: {{detail}}',
       transfer: 'Eine Aufnahme kam nicht über WLAN an: {{detail}}',
       'no-server': 'In der Desktop-App ist kein knowpod-Server eingestellt.',
       'signed-out': 'Melde dich bei knowpod an, um die Aufnahmen zu kopieren.',
