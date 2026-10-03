@@ -3807,7 +3807,17 @@ select.share-role {
 .origin-badge {
   display: inline-flex;
   flex: none;
+  /* Centred on the title, not on its baseline (the initials would sit it low). */
+  align-self: center;
   margin-left: 0.3rem;
+}
+
+/* Who a note comes from is a quiet hint, not a signal: neutral instead of the person's color. */
+.origin-badge .avatar {
+  background: transparent;
+  color: var(--color-muted);
+  box-shadow: inset 0 0 0 1px var(--color-border);
+  font-weight: 500;
 }
 
 .note-row-shared {
