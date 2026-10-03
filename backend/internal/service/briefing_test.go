@@ -70,7 +70,7 @@ func newBriefingFixture(t *testing.T, answers ...string) *briefingFixture {
 }
 
 func TestDailyBriefing(t *testing.T) {
-	f := newBriefingFixture(t, "- The budget was set at 40k (#5, #99)")
+	f := newBriefingFixture(t, "- The budget was set at 40k [1, 9]")
 	ctx := context.Background()
 	msgs, stop, err := f.notify.Listen(f.acc)
 	if err != nil {
@@ -89,8 +89,8 @@ func TestDailyBriefing(t *testing.T) {
 	for _, want := range []string{
 		"## Due today\n\n- [ ] [Call Anna](/conversations/today) #2 — 15:00, P1",
 		"## Overdue\n\n- [ ] [Pay the invoice](/conversations/overdue) #1 — Sep 25",
-		"## New since yesterday\n\n- The budget was set at 40k (#5, 99)",
-		"## All new notes\n\n- [Budget meeting](/conversations/meeting) #5 (recording)",
+		"## New since yesterday\n\n- The budget was set at 40k (#5)",
+		"## All new notes\n\n- [Budget meeting](/conversations/meeting) #5\n",
 		"## Open action items\n\n- Send the offer (Ben) — from [Budget meeting](/conversations/meeting) #5",
 	} {
 		if !strings.Contains(md, want) {
@@ -101,7 +101,7 @@ func TestDailyBriefing(t *testing.T) {
 		t.Errorf("briefing lists what it shouldn't:\n%s", md)
 	}
 	// The digest is made from the new notes' summaries.
-	if len(f.ai.requests) != 1 || !strings.Contains(f.ai.requests[0].Messages[1].Content.(string), "#5 Budget meeting") {
+	if len(f.ai.requests) != 1 || !strings.Contains(f.ai.requests[0].Messages[1].Content.(string), "### [1] Budget meeting") {
 		t.Errorf("digest requests = %+v", f.ai.requests)
 	}
 	// It is no note, and one made on demand isn't announced.
@@ -186,7 +186,7 @@ func TestDailyBriefingInGermanWithoutAI(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got.Title != "Briefing für So. 27. Sept." || !strings.Contains(got.Markdown, "## Heute fällig") ||
-		!strings.Contains(got.Markdown, "## Neu seit gestern\n\n- [Budget meeting](/conversations/meeting) #5 (Aufnahme)") || strings.Contains(got.Markdown, "Alle neuen") {
+		!strings.Contains(got.Markdown, "## Neu seit gestern\n\n- [Budget meeting](/conversations/meeting) #5\n") || strings.Contains(got.Markdown, "Alle neuen") {
 		t.Fatalf("briefing:\n%s\n%s", got.Title, got.Markdown)
 	}
 }
@@ -226,8 +226,69 @@ func TestDailyBriefingFollowsLanguage(t *testing.T) {
 	}
 }
 
+func TestDigestCitationsBecomeLinks(t *testing.T) {
+	d := &briefingData{u: &user.User{ID: "u1"}}
+	own := &recording.Recording{ID: "own", OwnerID: "u1", Number: 81, Summary: &recording.Summary{Title: "Pulse"}}
+	shared := &recording.Recording{ID: "shared", OwnerID: "u2", Number: 3, Summary: &recording.Summary{Title: "Shopping [Ikea]"}}
+	unnumbered := &recording.Recording{ID: "plain", OwnerID: "u1", Summary: &recording.Summary{Title: "Garden"}}
+	sources := map[string]*recording.Recording{"1": own, "2": shared, "3": unnumbered}
+	for in, want := range map[string]string{
+		"- Pulse ships [1]":              "- Pulse ships (#81)",
+		"- Both [1][2]":                  "- Both (#81, [Shopping (Ikea)](/conversations/shared))",
+		"- All ([1], [2], [3])":          "- All (#81, [Shopping (Ikea)](/conversations/shared), [Garden](/conversations/plain))",
+		"- Listed [3, 1, 3]":             "- Listed ([Garden](/conversations/plain), #81)",
+		"- Unknown [7]":                  "- Unknown",
+		"- Unknown ([7]) and more":       "- Unknown and more",
+		"- A [1](https://x.example) [1]": "- A [1](https://x.example) (#81)",
+	} {
+		if got := d.linkCitations(in, sources); got != want {
+			t.Errorf("linkCitations(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestSecretTitles(t *testing.T) {
+	for _, title := range []string{"API Token", "AWS keys", "Passwords", "Passwörter", "WLAN-Passwort", "Kennwort Router",
+		"Zugangsschlüssel", "API-Schlüssel", "Zugangsdaten Bank", "Anmeldedaten", "Credentials", "Secret", "Geheimnisse",
+		"PIN Kreditkarte", "Recovery codes", "Wiederherstellungscodes", "SSH key", "2FA Backup"} {
+		if !secretTitle(title) {
+			t.Errorf("%q isn't secret", title)
+		}
+	}
+	for _, title := range []string{"Keynote planning", "Shopping list", "Einkaufsliste Baumarkt", "Budget meeting", "Monkey island", "Pulse Features"} {
+		if secretTitle(title) {
+			t.Errorf("%q is secret", title)
+		}
+	}
+}
+
+func TestDigestLeavesOutSecretNotes(t *testing.T) {
+	f := newBriefingFixture(t, "- digest")
+	ctx := context.Background()
+	r := &recording.Recording{ID: "pw", OwnerID: "u1", DeviceID: "d", ClientID: "pw", Status: recording.StatusSummarized, CreatedAt: f.now.Add(-time.Hour),
+		UpdatedAt: f.now.Add(-time.Hour), Summary: &recording.Summary{Title: "WLAN-Passwort", Markdown: "hunter2"}}
+	if err := f.recs.Create(ctx, r); err != nil {
+		t.Fatal(err)
+	}
+	got, err := f.s.Today(ctx, f.acc, false, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f.ai.requests) != 1 {
+		t.Fatalf("requests = %d", len(f.ai.requests))
+	}
+	in := f.ai.requests[0].Messages[1].Content.(string)
+	if strings.Contains(in, "hunter2") || strings.Contains(in, "WLAN") || !strings.Contains(in, "Budget meeting") {
+		t.Errorf("digest input:\n%s", in)
+	}
+	// It is still listed.
+	if !strings.Contains(got.Markdown, "[WLAN-Passwort](/conversations/pw)") {
+		t.Errorf("briefing:\n%s", got.Markdown)
+	}
+}
+
 func TestWeeklyReview(t *testing.T) {
-	f := newBriefingFixture(t, "- A week of budgets (#5)")
+	f := newBriefingFixture(t, "- A week of budgets ([1])")
 	ctx := context.Background()
 	start := f.now.Add(-2 * time.Hour)
 	end := f.now.Add(-30 * time.Minute)

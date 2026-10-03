@@ -660,7 +660,7 @@ func (s *BriefingService) daily(ctx context.Context, d *briefingData) (title, ma
 		if b.Shows(user.SectionNew) {
 			lines = nil
 			for _, r := range incoming {
-				lines = append(lines, fmt.Sprintf("- %s (%s)", d.ref(r), d.kindName(r)))
+				lines = append(lines, "- "+d.ref(r))
 			}
 			list(&out, newHeading, lines, "")
 		}
@@ -844,8 +844,73 @@ func hoursMinutes(seconds int64) string {
 	return fmt.Sprintf("%dh %dm", m/60, m%60)
 }
 
-// noteRefPattern matches the note references ("#12") the model writes in a digest.
-var noteRefPattern = regexp.MustCompile(`#(\d+)`)
+// citeRun matches the sources the model cites in a digest: keys such as "[3]", "[3, 5]" or
+// "[3][5]" (see digest).
+var citeRun = regexp.MustCompile(`\[\d{1,3}(?:\s*[,;]\s*\d{1,3})*\](?:\s*[,;]?\s*\[\d{1,3}(?:\s*[,;]\s*\d{1,3})*\])*`)
+
+// citeKey matches one key in a citeRun.
+var citeKey = regexp.MustCompile(`\d{1,3}`)
+
+// secretWords matches titles of notes that likely hold secrets (passwords, keys, tokens…),
+// in English and German, which are never sent to the model. Short words must stand alone
+// ("PIN", not "Shopping"); the longer ones also match within compounds ("Zugangsschlüssel").
+var secretWords = regexp.MustCompile(`(?i)\b(keys?|tokens?|pins?|pin-?codes?|puk|tans?|otps?|totp|2fa|mfa|ssh|pgp|gpg|seed)\b|` +
+	`passw(o|ö)r(d|t)|kennw(o|ö)rt|passphrase|password|credential|secret|geheim|token|api.?key|private.?key|` +
+	`schl(ü|ue)ssel|zugangsdaten|anmeldedaten|login.?daten|logins?\b|zugangscode|sicherheitscode|` +
+	`recovery.?codes?|backup.?codes?|wiederherstellungs|seed.?phrase|tresor|vault|iban|kreditkarte|credit.?card`)
+
+// secretTitle says whether a note's title suggests it holds secrets.
+func secretTitle(title string) bool {
+	return secretWords.MatchString(title)
+}
+
+// digestRef names a note the digest draws on: "#12" for the user's own numbered notes, which
+// the app shows as links, otherwise its title linking to the note.
+func (d *briefingData) digestRef(r *recording.Recording) string {
+	if r.OwnerID == d.u.ID && r.Number > 0 {
+		return fmt.Sprintf("#%d", r.Number)
+	}
+	return fmt.Sprintf("[%s](/conversations/%s)", linkText.Replace(noteTitle(r)), r.ID)
+}
+
+// linkCitations turns the keys the model cited into links to the notes, as "(#12, [Title](…))";
+// keys of notes it wasn't given are dropped. A "[3]" that is a Markdown link's text stays.
+func (d *briefingData) linkCitations(text string, sources map[string]*recording.Recording) string {
+	var out strings.Builder
+	last := 0
+	for _, m := range citeRun.FindAllStringIndex(text, -1) {
+		start, end := m[0], m[1]
+		if end < len(text) && text[end] == '(' {
+			continue
+		}
+		// Parentheses the model put around the keys are replaced with ours.
+		if open := strings.TrimRight(text[:start], " "); strings.HasSuffix(open, "(") {
+			if rest := strings.TrimLeft(text[end:], " "); strings.HasPrefix(rest, ")") {
+				start = len(open) - 1
+				end = len(text) - len(rest) + 1
+			}
+		}
+		var refs []string
+		seen := map[string]bool{}
+		for _, k := range citeKey.FindAllString(text[m[0]:m[1]], -1) {
+			if r := sources[k]; r != nil && !seen[k] {
+				seen[k] = true
+				refs = append(refs, d.digestRef(r))
+			}
+		}
+		head := text[last:start]
+		if len(refs) == 0 {
+			head = strings.TrimRight(head, " ")
+		}
+		out.WriteString(head)
+		if len(refs) > 0 {
+			out.WriteString("(" + strings.Join(refs, ", ") + ")")
+		}
+		last = end
+	}
+	out.WriteString(text[last:])
+	return out.String()
+}
 
 // digest has the summary model sum up the notes that came in: what they were about, what was
 // decided, what is open. It is empty when the model isn't set up, fails or there is nothing
@@ -860,18 +925,16 @@ func (s *BriefingService) digest(ctx context.Context, d *briefingData, notes []*
 	}
 	var in strings.Builder
 	n := 0
-	own := map[string]bool{}
+	// Each note is given with a key ("[3]") the model cites it by; the keys become links.
+	sources := map[string]*recording.Recording{}
 	for i := len(notes) - 1; i >= 0 && n < maxDigestNotes; i-- {
 		r := notes[i]
-		if r.Summary == nil || strings.TrimSpace(r.Summary.Markdown) == "" {
+		if r.Summary == nil || strings.TrimSpace(r.Summary.Markdown) == "" || secretTitle(noteTitle(r)) {
 			continue
 		}
-		ref := ""
-		if r.OwnerID == d.u.ID && r.Number > 0 {
-			ref = fmt.Sprintf("#%d ", r.Number)
-			own[fmt.Sprint(r.Number)] = true
-		}
-		fmt.Fprintf(&in, "### %s%s (%s, %s)\n%s\n\n", ref, noteTitle(r), d.kindName(r),
+		key := fmt.Sprint(n + 1)
+		sources[key] = r
+		fmt.Fprintf(&in, "### [%s] %s (%s, %s)\n%s\n\n", key, noteTitle(r), d.kindName(r),
 			r.CreatedAt.In(d.loc).Format("Mon 2006-01-02 15:04"), truncateRunes(r.Summary.Markdown, digestChars))
 		n++
 	}
@@ -883,8 +946,8 @@ func (s *BriefingService) digest(ctx context.Context, d *briefingData, notes []*
 	if week {
 		period, length = "this week", "4 to 8"
 	}
-	system := `You write the digest part of the user's personal briefing: what came into their notes ` + period + `, given as the notes' summaries below (each headed by its note number such as #12 when it has one, its title, its kind and when it was made).
-Write ` + length + ` Markdown bullet points: the main topics, decisions, and things that need the user's attention, most important first. Be concrete (names, dates, numbers) and brief (one sentence each). End each bullet with the numbers of the notes it draws on, e.g. "(#12, #15)", where the notes have them.
+	system := `You write the digest part of the user's personal briefing: what came into their notes ` + period + `, given as the notes' summaries below (each headed by its key such as [3], its title, its kind and when it was made).
+Write ` + length + ` Markdown bullet points: the main topics, decisions, and things that need the user's attention, most important first. Be concrete (names, dates, numbers) and brief (one sentence each). End each bullet with the keys of the notes it draws on, exactly as given in square brackets, e.g. "[1][3]". Don't name notes by any other number.
 Write in ` + d.tr("English", "German") + `. Output only the bullet list.`
 	answer, err := s.ai.ai.Complete(ctx, st.APIKey, openrouter.Request{Model: st.SummaryModel, Messages: []openrouter.Message{
 		{Role: "system", Content: system},
@@ -894,12 +957,5 @@ Write in ` + d.tr("English", "German") + `. Output only the bullet list.`
 		s.log.Warn("briefing digest failed", "user", d.u.ID, "err", err)
 		return ""
 	}
-	// Only references to notes that were given stay links.
-	out := noteRefPattern.ReplaceAllStringFunc(strings.TrimSpace(stripFence(answer)), func(m string) string {
-		if own[m[1:]] {
-			return m
-		}
-		return strings.TrimPrefix(m, "#")
-	})
-	return out
+	return d.linkCitations(strings.TrimSpace(stripFence(answer)), sources)
 }
