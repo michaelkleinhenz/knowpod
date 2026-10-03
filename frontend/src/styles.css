@@ -315,6 +315,10 @@ a {
   margin-top: 0.4rem;
 }
 
+.pocket-usb-steps .primary-button {
+  padding: 0.45rem 0.9rem;
+}
+
 .nav-user {
   color: var(--color-header-muted);
   font-size: 0.9rem;
@@ -1559,6 +1563,16 @@ a {
   border-radius: 6px;
   padding: 0.6rem 1rem;
   cursor: pointer;
+}
+
+.secondary-button:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  background: var(--color-hover);
+}
+
+.secondary-button:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .secondary-button.danger {

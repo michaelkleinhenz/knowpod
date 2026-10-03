@@ -25,7 +25,7 @@ interface DesktopBridge {
 // which switches its USB drive on so the app can copy from it. Its settings stay in the
 // desktop app; the session key is never handed back.
 export type PocketBluetoothRequest =
-  | { action: 'settings' | 'check' | 'usb-on' | 'state' | 'sync' }
+  | { action: 'settings' | 'check' | 'usb-on' | 'state' | 'sync' | 'eject' }
   | { action: 'save'; address?: string; sessionKey?: string };
 
 export interface PocketBluetoothResult {

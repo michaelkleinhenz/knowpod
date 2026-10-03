@@ -295,14 +295,13 @@ export function NewFolderIcon() {
   );
 }
 
-// UsbIcon is the USB trident, for copying from a Pocket recorder by USB.
+// UsbIcon is a USB plug on its cable, for copying from a Pocket recorder by USB.
 export function UsbIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <circle cx="12" cy="19" r="2" />
-      <path d="M12 17V3M9 6l3-3 3 3M12 14l-5-3V8M12 12l5-3V7" />
-      <rect x="15.5" y="5" width="3" height="2" />
-      <circle cx="7" cy="7" r="1" />
+      <path d="M8 8V3h8v5M12 17v5" />
+      <rect x="6" y="8" width="12" height="9" rx="2" />
+      <path d="M10.5 5.5h.01M13.5 5.5h.01" />
     </svg>
   );
 }
