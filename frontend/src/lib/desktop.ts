@@ -61,6 +61,10 @@ export interface PocketWifiState {
   // done: copied into knowpod, failed to transfer
   copied: number;
   failed: number;
+  // the recordings listed on the Pocket; incomplete when its listing came back short (not
+  // reported by desktop apps before 0.9.2)
+  found?: number;
+  incomplete?: boolean;
   // failed (and done with failed > 0): why, see PocketUsbSync.tsx
   error: string;
   message: string;
