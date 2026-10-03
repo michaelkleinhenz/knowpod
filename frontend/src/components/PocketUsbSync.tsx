@@ -234,6 +234,8 @@ const wifiErrorKeys = [
   'wifi-setup',
   'wifi-join',
   'wifi-ap',
+  'stuck',
+  'refused',
   'transfer',
   'no-server',
   'signed-out',

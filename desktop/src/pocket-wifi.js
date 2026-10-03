@@ -34,7 +34,8 @@ const PROFILE = 'knowpod-pocket';
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // WifiError carries a code for the app to explain: wifi-unsupported, wifi-setup, wifi-join,
-// wifi-ap, transfer or cancelled.
+// wifi-ap, stuck (the Pocket stopped answering WiFi commands), refused (it wouldn't send a
+// recording), transfer or cancelled.
 class WifiError extends Error {
   constructor(code, message) {
     super(message || code);
@@ -280,7 +281,10 @@ function hostWifi(host, log) {
 }
 
 // openSocket connects to the transfer socket, retrying refusals for wait ms: after a
-// connection closes, the recorder refuses new ones for a few seconds.
+// connection closes, the recorder refuses new ones for a few seconds. The socket keeps an
+// error handler for its whole life: the recorder may reset a connection at any time (also
+// one it has just accepted), and an 'error' event without a handler would take the app down.
+// What happened is kept in socket.transferError; see alive().
 async function openSocket(host, port, wait) {
   const deadline = Date.now() + wait;
   let last = null;
@@ -292,15 +296,22 @@ async function openSocket(host, port, wait) {
           socket.destroy();
           reject(new Error('connect timed out'));
         }, 3_000);
-        socket.once('connect', () => {
-          clearTimeout(timer);
-          socket.removeAllListeners('error');
-          resolve(socket);
-        });
-        socket.once('error', (err) => {
+        const onConnectError = (err) => {
           clearTimeout(timer);
           reject(err);
+        };
+        socket.once('connect', () => {
+          clearTimeout(timer);
+          socket.removeListener('error', onConnectError);
+          socket.on('error', (err) => {
+            socket.transferError = err;
+          });
+          socket.on('close', () => {
+            socket.transferClosed = true;
+          });
+          resolve(socket);
         });
+        socket.once('error', onConnectError);
       });
     } catch (err) {
       last = err;
@@ -308,6 +319,27 @@ async function openSocket(host, port, wait) {
     if (Date.now() >= deadline) throw new WifiError('transfer', `The Pocket didn't accept a connection (${last?.message || last})`);
     await sleep(500);
   }
+}
+
+// alive says whether a transfer connection is still open: not reset, closed or ended by the
+// recorder.
+const alive = (socket) => !socket.destroyed && !socket.transferError && !socket.transferClosed && socket.readyState === 'open';
+
+// closeSocket ends a connection gracefully (FIN, as verified on the recorder) and resolves once
+// it's closed, destroying it after ms at the latest.
+function closeSocket(socket, ms = 2_000) {
+  if (socket.destroyed) return Promise.resolve();
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      socket.destroy();
+      resolve();
+    }, ms);
+    socket.once('close', () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    socket.end();
+  });
 }
 
 // receiveFile reads exactly size bytes of file from socket into file, then the end marker.
@@ -402,7 +434,21 @@ function createWifiSession(
   ble,
   { host = HOST, port = PORT, log = () => undefined, onRestart = () => undefined, wifi: hostBackend = null, timings = {} } = {},
 ) {
-  const t = { join: 90_000, restartPause: 2_000, switchDelay: 300, heartbeat: 5_000, poll: 1_000, ...timings };
+  // settle: how long a new connection must stay open before a file is requested on it (the
+  // recorder sometimes accepts a connection and resets it right away); reconnectPause: the
+  // pause between closing one connection and opening the next (the recorder refuses for a
+  // few seconds after a close; this is the timing verified on the recorder).
+  const t = {
+    join: 90_000,
+    restartPause: 2_000,
+    switchDelay: 300,
+    heartbeat: 5_000,
+    poll: 1_000,
+    settle: 500,
+    reconnectPause: 2_000,
+    offWait: 10_000,
+    ...timings,
+  };
   let wifi = hostBackend;
   let ssid = null;
   let raised = false;
@@ -411,6 +457,7 @@ function createWifiSession(
   let heartbeat = null;
   let socket = null;
   let cancelled = false;
+  let closedAt = 0; // when the last transfer connection was closed
 
   const check = () => {
     if (cancelled) throw new WifiError('cancelled');
@@ -422,7 +469,14 @@ function createWifiSession(
     const since = await ble.mark();
     raised = true;
     const started = Date.now();
-    await ble.command('WIFIO', 'WIFIO');
+    try {
+      await ble.command('WIFIO', 'WIFIO');
+    } catch (err) {
+      // No answer: the recorder hangs (e.g. after a switch it couldn't serve). Every later
+      // attempt would fail the same way, so the copy stops here.
+      if (err?.code === 'no-answer') throw new WifiError('stuck', 'The Pocket stopped answering WiFi commands');
+      throw err;
+    }
     if (!ssid) {
       const credentials = await ble.command('WIFI', 'WIFI', 5_000, 'pair');
       const [name, password] = [credentials.slice(0, credentials.indexOf('&')), credentials.slice(credentials.indexOf('&') + 1)];
@@ -469,6 +523,8 @@ function createWifiSession(
         check();
         await raise();
       }
+      const pause = closedAt + t.reconnectPause - Date.now();
+      if (pause > 0) await sleep(pause);
       // The connection must be open BEFORE the switch (U&WIFI).
       try {
         socket = await openSocket(host, port, 15_000);
@@ -477,13 +533,28 @@ function createWifiSession(
         throw err;
       }
       connections++;
+      const current = socket;
       try {
         check();
-        const size = parseInt(await ble.command(`U&${recording.date}&${recording.timestamp}`, 'U', 10_000, 'digits'), 10);
+        // An accepted connection the recorder resets shows up within moments; asking for the
+        // file on it would start a transfer nobody can receive.
+        await sleep(t.settle);
+        if (!alive(current)) {
+          throw new WifiError('transfer', `The Pocket dropped the connection (${current.transferError?.message || 'closed'})`);
+        }
+        const answer = await ble.command(`U&${recording.date}&${recording.timestamp}`, 'U', 10_000);
+        if (!/^\d+$/.test(answer.trim())) {
+          throw new WifiError('refused', `The Pocket wouldn't send ${recording.timestamp} (MCU&U&${answer})`);
+        }
+        const size = parseInt(answer, 10);
         await sleep(t.switchDelay);
+        // Never switch without an open connection: the recorder would hang (MCU&SHUT).
+        if (!alive(current)) {
+          throw new WifiError('transfer', `The connection was lost before the switch (${current.transferError?.message || 'closed'})`);
+        }
         const since = await ble.send('U&WIFI');
-        const markerOk = await receiveFile(socket, size, file, { onProgress });
-        if ((await ble.waitFor('OFF', since, 10_000)) === null) log('The Pocket did not report the end of the transfer');
+        const markerOk = await receiveFile(current, size, file, { onProgress });
+        if ((await ble.waitFor('OFF', since, t.offWait)) === null) log('The Pocket did not report the end of the transfer');
         return { size, markerOk };
       } catch (err) {
         // The recorder's state is unknown now: the next file starts on a fresh access point.
@@ -491,8 +562,9 @@ function createWifiSession(
         if (cancelled) throw new WifiError('cancelled');
         throw err;
       } finally {
-        socket.destroy();
-        socket = null;
+        await closeSocket(current);
+        closedAt = Date.now();
+        if (socket === current) socket = null;
       }
     },
 

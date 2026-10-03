@@ -37,8 +37,13 @@ const FILES = {
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'pocket-wifi-test-'));
 
 // fakeRecorder is the recorder behind a fake Bluetooth session (the shape of
-// pocket-bluetooth.js: session()).
-function fakeRecorder({ marker = true, files = FILES } = {}) {
+// pocket-bluetooth.js: session()). Failures seen on the real one can be switched on:
+//   resetAfterFile  reset the connection right after sending a file (ECONNRESET)
+//   resetAccepted   numbers of accepted connections (counting all) to reset right away
+//   answers         {timestamp: value} answers to U&<date>&<timestamp> other than the size
+//   wifioAnswers    how many APP&WIFIO it answers before it hangs
+function fakeRecorder({ marker = true, files = FILES, resetAfterFile = false, resetAccepted = [], answers = {}, wifioAnswers = Infinity } = {}) {
+  let acceptedTotal = 0;
   const messages = [];
   const listeners = new Set();
   const sent = [];
@@ -58,6 +63,14 @@ function fakeRecorder({ marker = true, files = FILES } = {}) {
     state.apStarts++;
     server = net.createServer((socket) => {
       accepted++;
+      acceptedTotal++;
+      if (resetAccepted.includes(acceptedTotal)) {
+        // Shortly after the handshake, as seen on the real recorder: the client is connected.
+        socket.on('error', () => undefined);
+        setTimeout(() => socket.resetAndDestroy(), 10);
+        if (accepted >= 2) server.close();
+        return;
+      }
       current = socket;
       socket.on('close', () => {
         if (current === socket) current = null;
@@ -71,6 +84,9 @@ function fakeRecorder({ marker = true, files = FILES } = {}) {
 
   async function handle(name) {
     sent.push(name);
+    if (name === 'WIFIO' && wifioAnswers-- <= 0) {
+      return; // hangs: no answer
+    }
     if (name === 'WIFIO') {
       state.status = 3;
       await startAp();
@@ -90,9 +106,18 @@ function fakeRecorder({ marker = true, files = FILES } = {}) {
       }
       say('MCU&U&WIFI');
       say(`MCU&U&${staged.length}`);
-      current.write(marker ? Buffer.concat([staged, END_MARKER]) : staged, () => say('MCU&OFF'));
+      const socket = current;
+      socket.write(marker ? Buffer.concat([staged, END_MARKER]) : staged, () => {
+        say('MCU&OFF');
+        if (resetAfterFile) setTimeout(() => socket.resetAndDestroy(), 5);
+      });
     } else if (name.startsWith('U&')) {
-      staged = files[name.split('&')[2]];
+      const timestamp = name.split('&')[2];
+      if (answers[timestamp] !== undefined) {
+        say(`MCU&U&${answers[timestamp]}`);
+        return;
+      }
+      staged = files[timestamp];
       say(`MCU&U&${staged.length}`);
     }
   }
@@ -155,7 +180,7 @@ function fakeRecorder({ marker = true, files = FILES } = {}) {
   return { ble, wifi, calls, sent, violations, state, stop: () => server?.close() };
 }
 
-const timings = { restartPause: 10, switchDelay: 5, heartbeat: 20, poll: 10, join: 5_000 };
+const timings = { restartPause: 10, switchDelay: 5, heartbeat: 20, poll: 10, join: 5_000, settle: 30, reconnectPause: 20, offWait: 500 };
 
 // freePort is a port nothing listens on, for the fake access point.
 async function freePort() {
@@ -206,6 +231,64 @@ test("the app's order: WIFIO, WIFI, the file request, then the switch", async ()
   recorder.stop();
   const commands = recorder.sent.filter((c) => c !== 'WIFIS' && c !== 'WPING');
   assert.deepEqual(commands, ['WIFIO', 'WIFI', 'U&2026-10-03&20261003160116', 'U&WIFI', 'WIFIC']);
+});
+
+// ── Failures seen on the real recorder ──
+
+test('a reset after the file neither crashes the app nor loses the file', async () => {
+  // An 'error' event without a handler would be an uncaught exception here.
+  const recorder = fakeRecorder({ resetAfterFile: true });
+  const dir = tmp();
+  const wifiSession = await startSession(recorder);
+  const names = Object.keys(FILES);
+  for (const ts of names) await wifiSession.download({ date: '2026-10-03', timestamp: ts }, path.join(dir, `${ts}.mp3`));
+  await wifiSession.close();
+  recorder.stop();
+  for (const ts of names) assert.ok(fs.readFileSync(path.join(dir, `${ts}.mp3`)).equals(FILES[ts]));
+});
+
+test('a connection reset right after it was accepted is never switched to', async () => {
+  const recorder = fakeRecorder({ resetAccepted: [2] });
+  const dir = tmp();
+  const wifiSession = await startSession(recorder);
+  const [first, second, third] = Object.keys(FILES);
+  await wifiSession.download({ date: '2026-10-03', timestamp: first }, path.join(dir, 'a.mp3'));
+  await assert.rejects(wifiSession.download({ date: '2026-10-03', timestamp: second }, path.join(dir, 'b.mp3')), { code: 'transfer' });
+  // The next file goes over a restarted access point.
+  await wifiSession.download({ date: '2026-10-03', timestamp: third }, path.join(dir, 'c.mp3'));
+  await wifiSession.close();
+  recorder.stop();
+  assert.deepEqual(recorder.violations, []);
+  assert.ok(!recorder.sent.includes(`U&2026-10-03&${second}`), 'no file requested on the dead connection');
+  assert.equal(recorder.state.apStarts, 2);
+  assert.ok(fs.readFileSync(path.join(dir, 'c.mp3')).equals(FILES[third]));
+});
+
+test('a recording the recorder refuses fails alone, with its answer', async () => {
+  const [first, second] = Object.keys(FILES);
+  const recorder = fakeRecorder({ answers: { [first]: 'ERR' } });
+  const dir = tmp();
+  const wifiSession = await startSession(recorder);
+  await assert.rejects(wifiSession.download({ date: '2026-10-03', timestamp: first }, path.join(dir, 'a.mp3')), {
+    code: 'refused',
+    message: /MCU&U&ERR/,
+  });
+  await wifiSession.download({ date: '2026-10-03', timestamp: second }, path.join(dir, 'b.mp3'));
+  await wifiSession.close();
+  recorder.stop();
+  assert.ok(!recorder.sent.slice(0, recorder.sent.indexOf(`U&2026-10-03&${second}`)).includes('U&WIFI'), 'no switch for the refused one');
+  assert.ok(fs.readFileSync(path.join(dir, 'b.mp3')).equals(FILES[second]));
+});
+
+test('a recorder that stops answering WIFIO stops the copy as stuck', async () => {
+  const recorder = fakeRecorder({ answers: { 20261003142550: 'ERR' }, wifioAnswers: 1 });
+  const dir = tmp();
+  const wifiSession = await startSession(recorder);
+  await assert.rejects(wifiSession.download({ date: '2026-10-03', timestamp: '20261003142550' }, path.join(dir, 'a.mp3')), { code: 'refused' });
+  // The failure forces a restart of the access point, which the recorder doesn't answer.
+  await assert.rejects(wifiSession.download({ date: '2026-10-03', timestamp: '20261003141332' }, path.join(dir, 'b.mp3')), { code: 'stuck' });
+  await wifiSession.close();
+  recorder.stop();
 });
 
 // ── receiveFile ──
