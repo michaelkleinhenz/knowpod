@@ -21,6 +21,12 @@ From a run on firmware 1.8, WiFi firmware V9:
 - A connection to 8475 is accepted and stays silent, so the recorder waits for something.
 - After a connection sent a stray `\r\n`, the recorder reset it and every later connect was
   refused. After `APP&U&WIFI`, 8475 was open again.
+- In a second run, 8475 **never opened**. The capture shows only resets from the recorder,
+  and it sent nothing on its own. In that run the first `nmcli` join timed out just as the link
+  came up (`WIFIS` was already 1), and the retry disconnected and reconnected. The likely
+  conclusion is that the recorder closes the socket once its first client leaves. Joining now
+  never re-issues a connect while one is in progress, and `stream` keeps trying (`--stream-wait`)
+  until the port opens.
 - `MCU&OFF` comes right after staging (`MCU&U&<size>`), not after `WIFIO`.
 - Each Bluetooth notification arrived about 4 times within milliseconds. The probe now drops
   the repeats and counts them in `meta.duplicate_notifications_dropped`.
@@ -82,7 +88,7 @@ replaced with `<redacted>`.
 
 | Name        | Runs in      | What it does |
 |-------------|--------------|--------------|
-| `stream`    | ready (first)| connects to the transfer socket (`--stream-port`, 8475), then sends `APP&U&WIFI` and saves whatever arrives to `<report>.8475.bin` |
+| `stream`    | ready (first)| keeps trying to connect to the transfer socket (`--stream-port`, 8475) until it opens, then sends `APP&U&WIFI` and saves whatever arrives to `<report>.8475.bin` |
 | `ble-info`  | ble          | battery, WiFi firmware, storage, state, USB mode |
 | `gatt`      | ble          | GATT table, with the value of every readable characteristic |
 | `ble-state` | ready, begin | `WIFIS`/`STE`, and the WIFIS history so far |

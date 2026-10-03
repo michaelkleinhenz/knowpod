@@ -105,19 +105,32 @@ class NetworkManager(HostWifi):
             raise HostWifiError(f"Could not create the WiFi profile: {r.text()}")
 
     async def join(self, ssid: str, deadline: float) -> bool:
+        # Never re-issue "connection up" while one is still in progress: that disconnects and
+        # reconnects, and the recorder seems to close its transfer socket when its client leaves.
         attempt = 0
         while time.monotonic() < deadline:
+            if await self._state() in ("activating", "activated"):
+                if await self.wait_for_address(1):
+                    self.log("wifi", f"joined {ssid} on attempt {attempt}")
+                    return True
+                continue
             attempt += 1
-            wait = max(3, min(15, int(deadline - time.monotonic())))
+            wait = max(3, int(deadline - time.monotonic()))
             r = await run("nmcli", "--wait", str(wait), "connection", "up", PROFILE, "ifname", self.iface,
                           timeout=wait + 5)
-            if r.ok and await self.wait_for_address(5):
+            if await self.wait_for_address(5 if r.ok else 0.5):
                 self.log("wifi", f"joined {ssid} on attempt {attempt}")
                 return True
             self.log("wifi", f"join attempt {attempt}: {r.text().splitlines()[-1] if r.text() else r.code}")
-            await run("nmcli", "device", "wifi", "rescan", "ifname", self.iface, "ssid", ssid, timeout=5)
-            await asyncio.sleep(1)
+            if await self._state() not in ("activating", "activated"):
+                await run("nmcli", "device", "wifi", "rescan", "ifname", self.iface, "ssid", ssid, timeout=5)
+                await asyncio.sleep(1)
         return False
+
+    async def _state(self) -> str:
+        """"activating", "activated", … for the temporary profile, or "" when it isn't active."""
+        r = await run("nmcli", "-t", "-f", "GENERAL.STATE", "connection", "show", PROFILE, timeout=5)
+        return r.out.strip().rpartition(":")[2] if r.ok else ""
 
     async def restore(self) -> None:
         if self.original:
@@ -189,18 +202,31 @@ class Netsh(HostWifi):
             raise HostWifiError(f"Could not add the WiFi profile: {r.text()}")
 
     async def join(self, ssid: str, deadline: float) -> bool:
+        # Only ask again once the interface is disconnected: a second connect while Windows is
+        # still associating restarts it, and the recorder seems to drop its socket on that.
         attempt = 0
         while time.monotonic() < deadline:
             attempt += 1
             r = await run("netsh", "wlan", "connect", f"name={PROFILE}", f"ssid={ssid}",
                           f"interface={self.iface}")
-            # netsh returns as soon as the request is queued; wait for DHCP to tell.
-            if r.ok and await self.wait_for_address(min(8, max(1, deadline - time.monotonic()))):
-                self.log("wifi", f"joined {ssid} on attempt {attempt}")
-                return True
-            self.log("wifi", f"join attempt {attempt}: {r.text().splitlines()[-1] if r.text() else r.code}")
-            await asyncio.sleep(1)
+            if not r.ok:
+                self.log("wifi", f"join attempt {attempt}: {r.text().splitlines()[-1] if r.text() else r.code}")
+                await asyncio.sleep(1)
+                continue
+            # netsh returns as soon as the request is queued; wait for DHCP while it's trying.
+            while time.monotonic() < deadline:
+                if await self.wait_for_address(1):
+                    self.log("wifi", f"joined {ssid} on attempt {attempt}")
+                    return True
+                if await self._disconnected():
+                    self.log("wifi", f"join attempt {attempt}: interface is disconnected again")
+                    break
         return False
+
+    async def _disconnected(self) -> bool:
+        r = await run("netsh", "wlan", "show", "interfaces", timeout=5)
+        me = next((i for i in parse_netsh_interfaces(r.out) if i.get("name") == self.iface), {})
+        return me.get("state", "").lower() in ("disconnected", "getrennt")
 
     async def restore(self) -> None:
         if self.original:
