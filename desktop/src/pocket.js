@@ -5,6 +5,8 @@
 // drives are looked at every few seconds. When a recorder appears, the server is asked which
 // of its files aren't notes yet, and those are uploaded; the server puts them into the folder
 // "Pocket AI" (see backend/internal/service/pocket.go). Files are only read, never changed.
+// When asked (the Pocket USB Sync dialog was closed), the drive is ejected so it can be
+// unplugged safely.
 const { net, session } = require('electron');
 const { execFile } = require('node:child_process');
 const fs = require('node:fs');
@@ -57,6 +59,9 @@ function windowsLabel(drive) {
 // while it stays plugged in.
 const labels = new Map();
 
+// Block devices of the mounted drives on Linux, by mount point ("/dev/sdb1"), for ejecting.
+const devices = new Map();
+
 // candidates lists the mounted drives that may be a recorder: [{root, name}], name being the
 // drive's label (null if it couldn't be read).
 async function candidates() {
@@ -86,10 +91,13 @@ async function candidates() {
     return fs
       .readFileSync('/proc/mounts', 'utf8')
       .split('\n')
-      .map((line) => line.split(' ')[1])
-      .filter((p) => p && p !== '/' && !/^\/(proc|sys|dev|run\/user)(\/|$)/.test(p))
-      .map((p) => decodeMountPath(p))
-      .map((root) => ({ root, name: path.basename(root) }));
+      .map((line) => line.split(' '))
+      .filter(([, p]) => p && p !== '/' && !/^\/(proc|sys|dev|run\/user)(\/|$)/.test(p))
+      .map(([device, p]) => {
+        const root = decodeMountPath(p);
+        if (device.startsWith('/dev/')) devices.set(root, decodeMountPath(device));
+        return { root, name: path.basename(root) };
+      });
   } catch {
     return [];
   }
@@ -105,6 +113,43 @@ async function findRecorders() {
     if (name === null ? recordings(root).length > 0 : /^pocket/i.test(name) && recordFolder(root)) roots.push(root);
   }
   return roots;
+}
+
+// run runs a program and resolves with whether it succeeded.
+function run(file, args) {
+  return new Promise((resolve) => {
+    execFile(file, args, { timeout: 30_000, windowsHide: true }, (err, _stdout, stderr) => {
+      if (err) console.error(`pocket eject: ${file} failed:`, String(stderr).trim() || err.message);
+      resolve(!err);
+    });
+  });
+}
+
+// ejectDrive unmounts a recorder's drive so it can be unplugged safely, and resolves with
+// whether that worked.
+async function ejectDrive(root) {
+  if (process.platform === 'win32') {
+    // Explorer's "Eject", which also tells Windows the drive may be removed.
+    const drive = root.slice(0, 2);
+    await run('powershell.exe', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      `(New-Object -ComObject Shell.Application).Namespace(17).ParseName('${drive}').InvokeVerb('Eject')`,
+    ]);
+    // InvokeVerb doesn't say whether it worked: the drive is gone when it did.
+    for (let i = 0; i < 10 && recordFolder(root); i++) await new Promise((r) => setTimeout(r, 500));
+    return !recordFolder(root);
+  }
+  if (process.platform === 'darwin') return run('diskutil', ['eject', root]);
+  // Linux: udisks unmounts the drive as the user (as the file manager does) and then powers
+  // it off; without udisks, umount works for drives the user may unmount.
+  const device = devices.get(root);
+  if (device && (await run('udisksctl', ['unmount', '--no-user-interaction', '-b', device]))) {
+    await run('udisksctl', ['power-off', '--no-user-interaction', '-b', device]);
+    return true;
+  }
+  return run('umount', [root]);
 }
 
 // recordings lists the recorder's MP3 files, oldest first: [{name, file, size}].
@@ -198,6 +243,8 @@ function startPocketSync({ serverUrl, readConfig, writeConfig, notify, onChange 
   let syncing = false;
   let failedAt = 0; // when the last copy failed, while the recorder stays plugged in
   let failureShown = false; // a failure is told once per plug-in, not on every retry
+  let ejectWhenDone = false; // eject the drive once the copy running now is done
+  let ejecting = false;
   let status = ''; // shown in the tray menu
   // progress is the state for the web app's Pocket USB Sync dialog: phase is '' (nothing
   // yet), 'checking', 'copying' (current of total), 'done' (copied this time), 'signed-out'
@@ -298,6 +345,37 @@ function startPocketSync({ serverUrl, readConfig, writeConfig, notify, onChange 
     } finally {
       syncing = false;
       onChange();
+      if (ejectWhenDone) void eject();
+    }
+  }
+
+  // eject unmounts the plugged-in recorders so they can be unplugged safely; while a copy
+  // runs, it waits for it to finish.
+  async function eject() {
+    if (syncing) {
+      ejectWhenDone = true;
+      return;
+    }
+    ejectWhenDone = false;
+    if (ejecting || !mounted.length) return;
+    ejecting = true;
+    try {
+      // Unplugged meanwhile: nothing to eject.
+      const roots = mounted.filter((root) => recordFolder(root));
+      if (!roots.length) return;
+      const results = await Promise.all(roots.map(ejectDrive));
+      if (results.every(Boolean)) {
+        notify({ title: 'Pocket ejected', body: 'You can unplug the Pocket now.', tag: 'pocket-eject' });
+      } else {
+        notify({
+          title: "Couldn't eject the Pocket",
+          body: 'It may still be in use. Eject it in your file manager before unplugging it.',
+          tag: 'pocket-eject',
+        });
+      }
+    } finally {
+      ejecting = false;
+      void poll();
     }
   }
 
@@ -310,6 +388,7 @@ function startPocketSync({ serverUrl, readConfig, writeConfig, notify, onChange 
       const added = roots.filter((r) => !mounted.includes(r));
       const changed = added.length || roots.length !== mounted.length;
       mounted = roots;
+      for (const root of devices.keys()) if (!roots.includes(root)) devices.delete(root);
       if (!roots.length) {
         failedAt = 0;
         failureShown = false;
@@ -317,7 +396,7 @@ function startPocketSync({ serverUrl, readConfig, writeConfig, notify, onChange 
         return;
       }
       if (changed) onChange();
-      if (!enabled()) return;
+      if (!enabled() || ejecting) return;
       if (added.length || (failedAt && Date.now() - failedAt >= retryInterval)) await sync(roots);
     } catch (err) {
       console.error('pocket watch:', err);
@@ -344,6 +423,7 @@ function startPocketSync({ serverUrl, readConfig, writeConfig, notify, onChange 
       failureShown = false;
       if (mounted.length) void sync(mounted);
     },
+    eject: () => void eject(),
   };
 }
 

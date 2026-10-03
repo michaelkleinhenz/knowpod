@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TFunction } from 'i18next';
 import { Trans, useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
@@ -16,7 +16,8 @@ export const pocketUsbSyncAvailable = () => !!pocketBluetooth();
 // Pocket starts as a USB drive only when its drive was switched on over Bluetooth *before*
 // the cable was plugged in, so the dialog has it unplugged, switched on, then plugged in. The
 // desktop app finds the drive and copies the new recordings by itself (desktop/src/pocket.js);
-// the dialog shows how that goes.
+// the dialog shows how that goes. Closing it ejects the drive, so the Pocket can be unplugged
+// safely (once a copy that still runs is done).
 export function PocketUsbSyncDialog({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const [call] = useState(() => pocketBluetooth()!);
@@ -24,6 +25,13 @@ export function PocketUsbSyncDialog({ onClose }: { onClose: () => void }) {
   const [turningOn, setTurningOn] = useState(false);
   const [usbOn, setUsbOn] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const connected = useRef(false);
+  connected.current = !!state?.connected;
+
+  const close = useCallback(() => {
+    if (connected.current) void call({ action: 'eject' }).catch(() => undefined);
+    onClose();
+  }, [call, onClose]);
 
   useEffect(() => {
     let stopped = false;
@@ -41,10 +49,10 @@ export function PocketUsbSyncDialog({ onClose }: { onClose: () => void }) {
   }, [call]);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [close]);
 
   async function turnOn() {
     setTurningOn(true);
@@ -74,9 +82,11 @@ export function PocketUsbSyncDialog({ onClose }: { onClose: () => void }) {
     body = (
       <>
         <p>{progressText(state, t)}</p>
-        {!state.syncing && (
+        {/* Copying again only does something when copying is off or the last copy didn't
+            finish: once it's done, every recording on the Pocket is in knowpod. */}
+        {!state.syncing && (!state.enabled || !['done', 'checking', 'copying'].includes(state.phase ?? '')) && (
           <div className="new-item-actions">
-            <button type="button" className="secondary-button" onClick={() => void call({ action: 'sync' })}>
+            <button type="button" className="primary-button" onClick={() => void call({ action: 'sync' })}>
               {t('pocketUsbSync.copyNow')}
             </button>
           </div>
@@ -95,7 +105,7 @@ export function PocketUsbSyncDialog({ onClose }: { onClose: () => void }) {
               {usbOn ? (
                 <span className="success">✓ {t('pocketUsbSync.usbIsOn')}</span>
               ) : (
-                <button type="button" disabled={turningOn || state.busy} onClick={() => void turnOn()}>
+                <button type="button" className="primary-button" disabled={turningOn || state.busy} onClick={() => void turnOn()}>
                   {turningOn ? t('pocketBluetooth.turningOn') : t('pocketBluetooth.turnOn')}
                 </button>
               )}
@@ -112,13 +122,13 @@ export function PocketUsbSyncDialog({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="new-item-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="new-item-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
       <div className="new-item-dialog" role="dialog" aria-modal="true" aria-label={heading}>
         <h2>{heading}</h2>
         {body}
         <div className="new-item-actions">
-          <button type="button" className="secondary-button" onClick={onClose}>
-            {t('pocketUsbSync.close')}
+          <button type="button" className="secondary-button" onClick={close}>
+            {state?.connected ? t('pocketUsbSync.closeEject') : t('pocketUsbSync.close')}
           </button>
         </div>
       </div>

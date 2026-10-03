@@ -451,13 +451,17 @@ ipcMain.handle('knowpod:pocket-bluetooth', (event, request) => {
       return pocketBluetooth.check();
     case 'usb-on':
       return turnOnUsbDrive();
-    // state and sync are for the Pocket USB Sync dialog (frontend/src/components/PocketUsbSync.tsx).
+    // state, sync and eject are for the Pocket USB Sync dialog (frontend/src/components/PocketUsbSync.tsx).
     case 'state':
       return { ok: true, configured: pocketBluetooth.configured(), busy: pocketBluetooth.busy(), ...(pocket?.state() || {}) };
     case 'sync':
       // Copying may have been turned off in the tray menu; asking for it turns it back on.
       if (pocket && !pocket.state().enabled) pocket.setEnabled(true);
       else pocket?.syncNow();
+      return { ok: true };
+    // eject unmounts the recorder's drive once the dialog is closed, so it can be unplugged.
+    case 'eject':
+      pocket?.eject();
       return { ok: true };
     default:
       return { ok: false, error: 'failed' };
