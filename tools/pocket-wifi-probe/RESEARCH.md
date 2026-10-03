@@ -120,7 +120,243 @@ sweep, payload probes, UDP, DNS, discovery.
   re-issue a connect while one is activating.
 - The other difference from run 1: no `ble-info` before WiFi, so no `APP&WF` query.
 
-**Run 3:** running with the join fix and the old `U&WIFI` trigger. Results pending.
+**Run 3 (15:35):** the join fix, `ble-info` first, the stream check with the default trigger
+(`U&<longest>` then `WIFI&SWITCH` 1 s later), heartbeat every 2 s, and a capture.
+
+- Joined **on the first attempt**, about 12 s after `WIFIO`. `WIFIS` went 0 → 3 → 2 → 1.
+- **8475 accepted on the first try**, 0.5 s after `WIFIS=1`. This supports the run 2 theory
+  that reconnecting mid-join is what closed it.
+- The connection stayed **silent for 14 s**, and the recorder sent no bytes at all. When we
+  closed it, it answered with a clean FIN (no RST). The recorder just waits.
+- `APP&U&2026-10-02&20261002084958` → `MCU&U&1114450`, then **`MCU&OFF` 0.16 s later**. 1.1 MB
+  can't go over Bluetooth in 0.16 s. So `MCU&OFF` doesn't mean "transfer finished". It means
+  the Bluetooth transfer **stopped or never started**. The probe was subscribed only to the
+  command characteristic, not to `001120a1` (the audio channel). The likely cause is that the
+  recorder won't stream without a subscriber.
+- `APP&WIFI&SWITCH` → **`MCU&WIFI&<ssid>&<password>`**, not `MCU&WIFI&SWITCH`. That's the
+  reply to plain `APP&WIFI`. The firmware either prefix-matched `APP&WIFI`, or this is how it
+  answers a switch when no Bluetooth transfer is running. The app expects one to be running
+  ("Device did not stop the Bluetooth file transfer for Wi-Fi handoff").
+- The capture had nothing else from the recorder. Most packets were the laptop's own DNS
+  queries to `192.168.200.1:53` (about 1,000, all refused). That's systemd-resolved using the
+  DHCP-supplied DNS, which is harmless but noisy.
+
+**Runs 4 and 5 (15:41, 15:43):** `--notify-all` before unlocking. Run 4 dropped within 4 s,
+before `SK` was sent. With subscriptions moved after `SK`, run 5 subscribed to `001120a1`,
+`e49a3003` and `2a05`. It hung on `ffd2` (vendor UART) and the recorder dropped the
+connection while that was pending. **Don't subscribe to `ffd2`.** Use `--notify 001120a1`.
+
+**Run 6 (15:44):** `--notify 001120a1 --stream-gap 0.3`. **Bluetooth download works; the
+switch doesn't.**
+
+- **Bluetooth download format:** after `APP&U&<date>&<ts>` → `MCU&U&<size>`, the recorder sends
+  the file's **raw bytes** as `001120a1` notifications of 244 bytes (some 192), with no header.
+  The last notification is short, then `MCU&OFF`. The staged file arrived as 10×244 + 46 = 2486
+  bytes, exactly `MCU&U`. So **`MCU&OFF` = end of the Bluetooth transfer**. In run 3 it came at
+  once only because nothing was subscribed.
+- **The files are MP3**, MPEG-2 Layer III, 16 kHz, 32 kbit/s (header `FF F3 48 C4`, 144-byte
+  frames). 1,114,450 bytes / 4000 B/s = 278 s, which is the duration `MCU&F` lists. So
+  `MCU&U` is the size in bytes and `MCU&F`'s last field is seconds.
+- **Bluetooth throughput:** about 26 KB/s (about 110 notifications/s), so 1.1 MB takes about
+  45 s. That's the speed WiFi has to beat.
+- **`APP&WIFI&SWITCH` sent 0.3 s into a running Bluetooth transfer** still got
+  `MCU&WIFI&<ssid>&<password>`. The Bluetooth transfer **kept going** and the 8475 socket stayed
+  silent (the pcap shows only the handshake and our FIN). The firmware treats `WIFI&SWITCH` as
+  `APP&WIFI`: **our firmware 1.8 / WiFi V9 doesn't implement the switch.**
+- `APP&U&WIFI` sent mid-transfer got `MCU&U&WIFI` and then `MCU&U&1114450` again. The audio
+  stopped 1.2 s later without an `MCU&OFF`, and the next `APP&STE` got no answer.
+- The probe drops repeats under 50 ms apart per characteristic. Audio chunks are all different
+  so far, but a download path must not dedup audio. Count bytes against `MCU&U` instead.
+
+**Capture 1 of the official app (16:02, `capture_quick_transfer.py`):** app 0.6.86+5929 on
+Android. The phone's live btsnoop socket worked, and the bug report had the same log. **The
+app never used WiFi:**
+
+- On connecting, it subscribes (CCCD writes to handles `0x0031` and `0x002e`; command
+  notifications come on `0x0030`, audio on `0x002d`, commands are written to `0x002b`). Then:
+  `SK` → `BAT`, `FW`, `GET&USB`, `MAC`, `SPACE`, `WF` (several times each) → `REC&SECEN`
+  (→ `MCU&REC&CON`) → `T&<yyyymmddhhmmss UTC>` (→ `MCU&T&OK`) → `STE` → `LIST&<date>` for each
+  of the last 7 days and the next 2 (it doesn't use `LIST_DIRS`).
+- 12 s after the app started, a background Flutter engine **auto-synced the new 23 s recording
+  over Bluetooth**: `APP&U&<date>&<ts>` → `MCU&U&92062` → 382 audio notifications → `MCU&OFF`.
+  That took 1.4 s, about 65 KB/s, 2.5× the laptop's rate. It then uploaded the file to the
+  cloud. Around this the app held a high-performance WiFi lock (16:03:28–16:03:34) but sent no
+  WiFi command, and the monitor never saw the AP.
+- So no recording was left un-imported for Quick Transfer. The next capture needs recordings
+  the app doesn't auto-sync first.
+- Each `MCU&` reply appears **once** in the phone's HCI log. The 4× copies on the laptop come
+  from BlueZ or the probe, not the recorder.
+- The app's own Flutter logging doesn't reach logcat (only Shorebird, BackgroundTransfer and
+  other plugin lines do), so logcat is of little use.
+
+**Capture 2 (16:16):** a 180 s recording made while the phone's Bluetooth was off, so it
+wasn't auto-synced. The app connected with the same startup sequence. When the user opened the
+import, it sent `APP&LIST_DIRS` and listed both days. 4.6 s later it fetched the recording
+**over Bluetooth**: `APP&U&2026-10-03&20261003141332` → `MCU&U&722348` → 2998 notifications in
+11 s (65 KB/s) → `MCU&OFF`. Again there was **no WiFi command** (`WIFI`, `WIFIO`, `WIFI&SWITCH`)
+and no AP. The only WiFi-side effect was the same WiFi lock plus "Wifi Latency mode" on the
+phone. So **with firmware 1.8 / WiFi V9, the official app doesn't use WiFi either**, at least
+in this flow.
+
+The user tapped **Quick Transfer (Wi-Fi)**. The app said to tap "Accept" when the phone asks to
+join the Pocket's WiFi, but that system prompt never appeared. After a while it fell back to
+Bluetooth. The app reports it's on the current firmware. In the 30 s between connecting and
+the fallback, the app sent **nothing over Bluetooth** and made **no WiFi network request**
+(no `WifiNetworkSpecifier` in logcat). It gave up before doing anything, so a guard in the app
+failed. The phone (Pixel, Android 17, app 0.6.86 targetSdk 36) shows:
+
+- `NEARBY_WIFI_DEVICES` **not granted** (never requested). Fine and coarse location, local
+  network and all Bluetooth permissions are granted.
+- OpenVPN is the phone's configured VPN app, but no VPN network was connected.
+- **Likely cause: recording size.** The app contains "Bluetooth is used for smaller
+  recordings", "`. Recordings will sync over Bluetooth instead.`", `belowThreshold` /
+  `below_threshold`, `thresholdSeconds`, `allowBluetoothFallback` and `wifi_transfer_bytes`.
+  So Quick Transfer silently uses Bluetooth below some threshold. The value is a compiled or
+  remote-config constant, not visible in the strings. Our captures used 23 s (92 KB) and 180 s
+  (722 KB). Next: a recording of 20+ minutes (about 5 MB at 4 KB/s).
+- The app queried `APP&WF` four times at connect, which suggests it checks the WiFi
+  firmware version. "BLE WiFi OTA requires MCU T22+ and WiFi V10+" shows it compares
+  versions, and ours is V9.
+
+**Capture 3 (17:17): the official app doing a real Quick Transfer.** A 44:36 recording
+(`20261003143216`, 2676 s, 10,705,002 bytes). The phone's HCI log has the whole sequence
+(times are seconds after the app opened the import, UTC 15:18:15):
+
+```
+0.0  >> APP&LIST_DIRS / << MCU&DIRS… / MCU&F…            the app lists the recordings
+0.7  >> APP&WIFIS          << MCU&WIFIS&0
+0.9  >> APP&WIFIO          << MCU&WIFIO                   no U&WIFI and no WIFI before it
+1.0  >> APP&WPING          << MCU&WPING                   heartbeat, then every 10 s
+3.5  >> APP&WIFI           << MCU&WIFI&<ssid>&<password>
+3.6  >> APP&WIFIS (every 1 s) << MCU&WIFIS&3 ×4, then &2 at 7.8
+7.8  the phone asks Android for the network (WifiNetworkSpecifier, SSID PKT01_…)
+52.1 the phone joins (2462 MHz = channel 11; 45 s of that is Android finding it),
+     DHCP gives 192.168.200.2
+55.1 >> APP&WIFIS          << MCU&WIFIS&1                 client on the AP
+55.3 >> APP&U&<date>&<ts>  << MCU&U&10705002              Bluetooth transfer starts (audio on 0x002d)
+55.5 >> APP&WIFIS          << MCU&WIFIS&1
+55.6 >> APP&U&WIFI                                         0.35 s after U: switch to WiFi
+56.9 (last Bluetooth audio)  << MCU&U&WIFI  << MCU&U&10705002
+70.8 << MCU&OFF                                            10.7 MB done: about 770 KB/s
+70.8 >> APP&WIFIC          << MCU&WIFIC
+```
+
+- **The switch is `APP&U&WIFI`, sent during a running Bluetooth transfer.** `WIFI&SWITCH`
+  isn't used on this firmware. `MCU&U&WIFI` is the acknowledgement, followed by the size again.
+  `MCU&OFF` marks the end of the file, over WiFi too. About 13 KB had already gone over
+  Bluetooth, so the WiFi stream either resumes or starts over; the socket data will show which.
+- **WIFIS meanings, corrected:** 0 = off, 3 = AP starting, 2 = AP up and waiting for a client,
+  1 = a client has joined.
+- The phone joined on a **second WiFi interface (`wlan1`)**, Android's local-only connection,
+  and stayed on its home WiFi on `wlan0`. That's why the user saw no WiFi switch.
+- Bluetooth stayed connected throughout, with `WPING` every 10 s.
+- **Run 6 of the probe did the switch without knowing it:** `APP&U&WIFI` mid-transfer got
+  `MCU&U&WIFI` and `MCU&U&1114450`, and the Bluetooth audio stopped. But the stream check had
+  already closed the 8475 socket 0.4 s earlier, so nothing was there to receive the file.
+- The laptop's monitor capture caught almost nothing (147 frames, none from the AP). We don't
+  need it now: the probe can be the WiFi client itself.
+
+**Run 7 (17:27): WiFi transfer works from the laptop.** `--no-begin`, stream check with the
+new defaults (`U&<longest>` then `U&WIFI` 0.3 s later, `001120a1` subscribed):
+
+```
+17.9  connected to 192.168.200.1:8475 (first try), silent
+19.9  >> APP&U&2026-10-03&20261003143216   << MCU&U&10705002   (Bluetooth audio starts)
+20.2  >> APP&U&WIFI
+21.4  << MCU&U&WIFI  << MCU&U&10705002    first bytes on 8475 at the same moment
+31.1  << MCU&OFF                          last bytes on 8475
+41.1  no more data for 10 s; socket still open
+```
+
+- **10,705,012 bytes in 9.7 s: about 1.1 MB/s**, 40× the laptop's Bluetooth rate.
+- **No framing.** The stream is the raw MP3 file from byte 0. It restarts rather than resuming
+  after the Bluetooth bytes: it begins `FF F3 48 C4 00 00 00 03 48 …`, like the Bluetooth
+  stream. MPEG-2 L3 frames (144 bytes) follow back to back to the end with no gap, so nothing
+  is inserted mid-stream. (The app's "Pocket Wi-Fi frame" code may be for newer firmware.)
+- **10 extra bytes at the end**, arriving as their own TCP segment just before `MCU&OFF`:
+  `ba 5a 02 8f 04 ba 5a 02 8f 04`. That's not CRC32, Adler-32, a byte sum or XOR of the file,
+  and not the size. For now: **take exactly `MCU&U` bytes and treat `MCU&OFF` as the end.**
+- The recorder didn't close the socket after the file. The app's "Multiple file download with
+  same wifi socket" suggests the next file reuses it.
+
+**Runs 8 and 9 (17:35, 17:36): integrity.** The same recording (`20261003142550`, 885,788
+bytes) over Bluetooth only (`U&…,wait:OFF`, 38 s) and over WiFi (`U&…,U&WIFI,wait:OFF`).
+
+- **The WiFi bytes match the Bluetooth file exactly**, all 885,788 of them.
+- The **10 bytes after the file are the same again: `ba 5a 02 8f 04 ba 5a 02 8f 04`**, for a
+  different file. So it's a fixed end marker, not a checksum. The WiFi stream is `<size bytes
+  of file><ba5a028f04 ×2>`, and `MCU&OFF` comes over Bluetooth just after it.
+- WiFi: `U&WIFI` → first byte 1.3 s, 885 KB in 1.4 s. Again the socket stayed open after
+  the file.
+- The laptop's Bluetooth stream had 3 extra 227-byte chunks that repeat earlier data (a BlueZ
+  artifact the 50 ms dedup doesn't catch). Without them it matches. That doesn't affect WiFi.
+- The first try at run 10 didn't start: the recorder dropped Bluetooth twice while connecting,
+  about 30 s after run 9. It worked after a pause.
+
+**Run 10 (17:39): three files, one socket.** `U&<f>,U&WIFI,wait:OFF` three times on the same
+connection. **Only the first file arrived** (885,788 bytes + marker, identical to run 9). For
+files 2 (722,348) and 3 (92,062) the recorder answered as usual (`MCU&U&WIFI`, then `MCU&OFF`
+after 1.2 s and 0.7 s, at WiFi speed), but **no byte came on the open connection**. Next: a new
+connection per file (`reconnect` step), with a capture to see where the data goes.
+
+**Run 11 (17:41): a new connection per file, old ones left open.** Connection 1 got file 1
+(+ marker). `reconnect` before files 2 and 3 was accepted, but **neither got a byte**. The third
+connection was **reset 3 ms after the handshake**, so it seems at most two connections at once.
+The pcap shows **no TCP data from the recorder at all after file 1**, while it still reported
+`MCU&U&WIFI` and `MCU&OFF` within about a second. Nobody closed connection 1. Next: close it
+before reconnecting (`close` step). If that fails: a full `WIFIC`/`WIFIO` cycle per file, or
+the client has to answer the end marker.
+
+**Run 12 (17:43): close, then reconnect.** `…,wait:OFF,sleep:1,close,sleep:2,reconnect,…`
+
+- **File 2 arrived on the new connection**: 722,348 bytes + the same marker. So the
+  rule so far is **one connection per file, closed by the client after the marker**. When we
+  close (FIN), the recorder closes its side at once.
+- After the first close, 8475 refused connections (RST to SYN, so no listener) for about
+  3.5 s, then accepted again.
+- After the **second** close it **never listened again** (30 s of refusals). Run 11 also
+  allowed only two connections. So **at most two connections per AP session** on this
+  firmware, at least as used here.
+- File 3 was then requested anyway: `U&` → `MCU&U&92062`, `U&WIFI` → `MCU&U&WIFI`, but with no
+  client there was no `MCU&OFF`. 14 s later the recorder sent **`MCU&SHUT`** (new). Bluetooth
+  stayed up, and `WIFIC` was answered normally at the end. **Never send `U&WIFI` without an
+  open connection.**
+
+**Run 13 (17:50): restarting the AP resets the limit. All three files arrived.**
+`file1, close, reconnect, file2, cycle, reconnect, file3`, where `cycle` = close, `WIFIC`,
+`nmcli connection down`, 2 s, `WIFIO`, rejoin, wait for `WIFIS=1`.
+
+- File 1 (885,788) and file 2 (722,348) are byte-identical to the copies from runs 9 and 12.
+  File 3 (92,062) is identical to the Bluetooth copy. Each is followed by the 10-byte marker.
+- `cycle` took **14.2 s**: `WIFIC` → `WIFIS&0` → `WIFIO` → `3` (2 s) → `2` (8 s) → laptop
+  joined → `1` (12 s). After it, 8475 accepted at once, and file 3 arrived 1.3 s after
+  `U&WIFI`.
+- `WIFIO` worked straight after `WIFIC`, with no `U&WIFI` and no staged `U&` first, as the app
+  does it.
+
+## The WiFi transfer protocol (firmware 1.8 / WiFi V9), as worked out
+
+1. **Bluetooth:** unlock with `SK`. Subscribe to `001120a1` (audio). The Bluetooth transfer that
+   gets switched ends at once without a subscriber.
+2. **Raise the AP:** `WIFIO` (→ `MCU&WIFIO`), `WIFI` (→ SSID and password; the password is the
+   first 8 characters of the session key), then poll `WIFIS` about once a second: 3 = starting,
+   2 = waiting for a client, 1 = client joined. Send `WPING` every few seconds (the app: 10 s).
+   The SSID is hidden; join it as a hidden WPA2-PSK network. DHCP gives 192.168.200.2, and the
+   recorder is 192.168.200.1.
+3. **Per file:**
+   1. Connect to `192.168.200.1:8475` and send nothing. If refused, retry every 0.5 s: after
+      a close it refuses for about 1.5–3.5 s.
+   2. `APP&U&<date>&<ts>` → `MCU&U&<size>` (the Bluetooth transfer starts).
+   3. About 0.3 s later `APP&U&WIFI` → `MCU&U&WIFI`, `MCU&U&<size>` (about 1.2–1.5 s later).
+   4. Read `<size>` bytes of raw MP3 from the socket, then a fixed 10-byte marker
+      `ba 5a 02 8f 04 ba 5a 02 8f 04`. `MCU&OFF` arrives over Bluetooth at the same time.
+      Speed: about 0.7–1.1 MB/s.
+   5. Close the connection (the recorder closes its side at once).
+4. **At most two connections per AP session.** After the second, 8475 stops listening. For more
+   files, restart the AP: `WIFIC`, disconnect, `WIFIO`, rejoin, `WIFIS=1` (about 14 s).
+   **Never send `U&WIFI` without an open connection**: the recorder hangs and later sends
+   `MCU&SHUT`.
+5. **End:** `WIFIC` (→ `MCU&WIFIC`), then rejoin the usual network.
 
 ## What the Android app reveals
 
@@ -202,8 +438,9 @@ for adding checks. What it does now:
 - **`stream`** (runs first):
   1. Retries connecting to 8475 for `--stream-wait` (30 s). A refusal is harmless.
   2. Listens 2 s before triggering anything.
-  3. Sends `--stream-trigger`. The default is `U&{date}&{ts},WIFI&SWITCH`, with the
-     **longest** recording, so a Bluetooth transfer is still running when the switch arrives.
+  3. Sends `--stream-trigger`. The default is `U&{date}&{ts},U&WIFI` with a 0.3 s gap, like
+     the app, for the **longest** recording. `--notify` defaults to `001120a1`; without a
+     subscriber the recorder ends the Bluetooth transfer at once.
   4. Reads until 10 s of silence, closing, or 120 s.
   5. Saves the bytes to `<report>.8475.bin`, and reports MP3 sync offsets and any header
      fields equal to a known size.
@@ -213,38 +450,18 @@ for adding checks. What it does now:
 - Reports go to `pocket-probe-<time>.json`, with the key and password redacted. They're
   gitignored.
 
-**Next run to do:**
-
-```sh
-pocket-wifi-probe F4:4C:26:17:17:FF --heartbeat 2 --checks stream,ble-info,ble-state,net-info,capture
-```
-
-Check for `joined … on attempt 1`, `MCU&WIFI&SWITCH`, and "first bytes arrived". Then:
-
-- **If bytes arrive:** decode the frame layout from the `.bin` (length field, type field,
-  checksum; MP3 frames start with `FF F3`). Then write a `download` path and check that the
-  joined payload matches the file.
-- **If the switch is rejected or nothing arrives**, try these in order:
-  - Different trigger orders, for example `WIFI&SWITCH` alone, or `U&…` sent before
-    connecting.
-  - Whether 8475 opens at all without `ble-info` beforehand, to rule `APP&WF` in or out.
-  - Decompiling `libapp.so` with [blutter](https://github.com/worawit/blutter) (needs
-    `libflutter.so` from the same split). Look at the code around "Invalid Pocket Wi-Fi frame
-    length:" and the `WIFI&SWITCH` sender to get the frame header, the port constant, and any
-    hello the app sends.
-  - Capturing the official app doing a Quick Transfer: put the laptop's Intel card in monitor
-    mode on the AP's channel. Wireshark can decrypt WPA2-PSK with the known password if it sees
-    the phone's 4-way handshake.
+**Next:** build a `download` command into the probe using the protocol above (several
+files, two per AP session, MD5 against `MCU&U` sizes and the marker), then the desktop app's
+"Transfer over WiFi" (see the plan below).
 
 ## Open questions
 
-- What makes 8475 open, how long it stays open, and whether it allows only one client.
-- Whether `WIFI&SWITCH` needs a Bluetooth transfer in progress, and whether audio
-  notifications must be subscribed (`001120a1`).
-- The frame format (header, type values, length width and byte order, checksum) and how a file
-  ends.
+- Why the AP stops listening after two connections, and whether reusing one connection works
+  if the client answers the end marker somehow (the app's "Multiple file download with same
+  wifi socket").
+- How the app's Quick Transfer works on firmware that has it. Our 1.8 / V9 answers
+  `WIFI&SWITCH` like `APP&WIFI`, even mid-transfer.
 - What `MCU&WIFIS&1&<x>` carries on firmware that sends it.
-- Whether the 4× notification copies come from the recorder or from BlueZ.
 
 ## Plan for the desktop app
 

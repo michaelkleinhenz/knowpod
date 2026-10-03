@@ -17,6 +17,24 @@ Everything learned so far is in [RESEARCH.md](RESEARCH.md): the recorder's detai
 sequence, port 8475, what the Android app's strings reveal, the working theory of the
 transfer, the next steps, and the plan for the desktop app. Keep it up to date after each run.
 
+
+## Capturing the official app (`capture_quick_transfer.py`)
+
+To see what the official Android app does during a Quick Transfer, run this on the laptop with
+the phone on adb (USB debugging on, the Pocket app installed and paired):
+
+```sh
+python3 capture_quick_transfer.py
+```
+
+It needs `adb`, `iw`, `tcpdump`, `nmcli` and sudo, and uses only the standard library. It
+streams the phone's Bluetooth HCI snoop log from its btsnoop socket (`adb forward` to 8872) and
+decodes the `APP&`/`MCU&` commands live. It also records `adb logcat`, and puts the laptop's
+WiFi card in monitor mode on the recorder's channel to capture the phone's traffic on the AP,
+including the WPA handshake needed to decrypt it. At the end it takes a bug report for the
+on-phone snoop log, in case the socket isn't available. The script tells you when to do what in
+the app. Output goes to `qt-capture-<time>/` (gitignored; it contains the session key).
+
 ## What a run does
 
 1. Connects over Bluetooth and unlocks with the session key (`APP&SK&…`). Reads the firmware
@@ -60,7 +78,10 @@ Useful options:
 - `--checks tcp-scan,tcp-probe` / `--skip capture`: choose what runs. `--list-checks` lists them.
 - `--tcp-ports 1-1024`: a shorter sweep. The default is every port.
 - `--recording 2026-09-03/20260903145856`: stage a specific recording instead of the newest.
-- `--notify-all`: also log notifications from the other Bluetooth characteristics.
+- `--notify 001120a1,…`: after unlocking, also subscribe to these characteristics (UUIDs or
+  prefixes) and log their notifications. `001120a1` carries Bluetooth audio.
+- `--notify-all`: the same for every notify characteristic. The recorder dropped the link while
+  `ffd2` was subscribing, so prefer `--notify`.
 
 The report (`pocket-probe-<time>.json`) holds the timeline, with every Bluetooth message
 in and out, the WIFIS history, and each check's result. The session key and WiFi password are
@@ -70,7 +91,7 @@ replaced with `<redacted>`.
 
 | Name        | Runs in      | What it does |
 |-------------|--------------|--------------|
-| `stream`    | ready (first)| keeps trying to connect to the transfer socket (`--stream-port`, 8475) until it opens, sends `--stream-trigger` over Bluetooth (default: `U&<date>&<ts>` for the longest recording, then `WIFI&SWITCH`), and saves whatever arrives to `<report>.8475.bin` |
+| `stream`    | ready (first)| keeps trying to connect to the transfer socket (`--stream-port`, 8475) until it opens, sends `--stream-trigger` over Bluetooth (default: `U&<date>&<ts>` for the longest recording, then `U&WIFI` 0.3 s later, as the official app does), and saves whatever arrives to `<report>.8475.bin` |
 | `ble-info`  | ble          | battery, WiFi firmware, storage, state, USB mode |
 | `gatt`      | ble          | GATT table, with the value of every readable characteristic |
 | `ble-state` | ready, begin | `WIFIS`/`STE`, and the WIFIS history so far |

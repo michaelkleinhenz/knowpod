@@ -37,7 +37,12 @@ def parser() -> argparse.ArgumentParser:
                    "so the 'begin' phase is skipped")
     g.add_argument("--begin-wait", type=float, default=3.0, help="seconds to wait after APP&U&WIFI (default 3)")
     g.add_argument("--notify-all", action="store_true",
-                   help="also log notifications of every other characteristic")
+                   help="after unlocking, also subscribe to and log every other notify characteristic "
+                        "(the recorder dropped the link while ffd2 was subscribing; prefer --notify)")
+    g.add_argument("--notify", type=_names, default=["001120a1"],
+                   help="after unlocking, also subscribe to these characteristics (comma-separated UUIDs "
+                        "or prefixes; default 001120a1, Bluetooth audio: without a subscriber the recorder "
+                        "ends a Bluetooth transfer at once, so there's nothing to switch to WiFi)")
     g.add_argument("--scan-timeout", type=float, default=20.0, help="seconds to look for the recorder")
     g.add_argument("--heartbeat", type=float, default=0,
                    help="send APP&WPING every N seconds while on the AP (the app's Wi-Fi heartbeat); 0 = off")
@@ -55,14 +60,16 @@ def parser() -> argparse.ArgumentParser:
     g.add_argument("--check-timeout", type=float, default=600.0, help="seconds one check may take (default 600)")
     g.add_argument("--stream-port", type=int, default=8475,
                    help="the recorder's transfer socket, for the stream check (default 8475)")
-    g.add_argument("--stream-trigger", default="U&{date}&{ts},WIFI&SWITCH",
+    g.add_argument("--stream-trigger", default="U&{date}&{ts},U&WIFI",
                    help="stream: Bluetooth commands sent once connected, comma-separated; {date} and "
-                        "{ts} are --stream-recording's (default: start a Bluetooth transfer, then switch "
-                        "it to WiFi, as the app's strings suggest)")
+                        "{ts} are --stream-recording's; wait:OFF waits for MCU&OFF (end of a file), "
+                        "sleep:N pauses, close closes the connections so far, reconnect opens another one, "
+                        "cycle closes them and restarts the AP (WIFIC, WIFIO, rejoin, WIFIS=1) (default: start a Bluetooth transfer, then switch it to WiFi with "
+                        "U&WIFI, as the official app does)")
     g.add_argument("--stream-recording",
                    help="stream: recording for {date}/{ts}, DATE/TIMESTAMP (default: the longest)")
-    g.add_argument("--stream-gap", type=float, default=1.0,
-                   help="stream: seconds between trigger commands (default 1)")
+    g.add_argument("--stream-gap", type=float, default=0.3,
+                   help="stream: seconds between trigger commands (default 0.3; the app waits 0.35)")
     g.add_argument("--stream-wait", type=float, default=30.0,
                    help="stream: keep trying to connect for N seconds (default 30)")
     g.add_argument("--stream-idle", type=float, default=10.0,

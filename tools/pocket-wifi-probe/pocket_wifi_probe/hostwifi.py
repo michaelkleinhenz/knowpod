@@ -47,6 +47,9 @@ class HostWifi:
     async def join(self, ssid: str, deadline: float) -> bool:
         raise NotImplementedError
 
+    async def leave(self) -> None:
+        """Disconnects from the recorder's network but keeps the profile, to join again later."""
+
     async def restore(self) -> None:
         """Rejoins the original network and removes the temporary profile."""
 
@@ -126,6 +129,9 @@ class NetworkManager(HostWifi):
                 await run("nmcli", "device", "wifi", "rescan", "ifname", self.iface, "ssid", ssid, timeout=5)
                 await asyncio.sleep(1)
         return False
+
+    async def leave(self) -> None:
+        await run("nmcli", "connection", "down", PROFILE, timeout=15)
 
     async def _state(self) -> str:
         """"activating", "activated", … for the temporary profile, or "" when it isn't active."""
@@ -223,6 +229,9 @@ class Netsh(HostWifi):
                     break
         return False
 
+    async def leave(self) -> None:
+        await run("netsh", "wlan", "disconnect", f"interface={self.iface}")
+
     async def _disconnected(self) -> bool:
         r = await run("netsh", "wlan", "show", "interfaces", timeout=5)
         me = next((i for i in parse_netsh_interfaces(r.out) if i.get("name") == self.iface), {})
@@ -310,6 +319,9 @@ class Manual(HostWifi):
 
     async def join(self, ssid: str, deadline: float) -> bool:
         return bool(await self.wait_for_address(max(0, deadline - time.monotonic())))
+
+    async def leave(self) -> None:
+        print("\n  >>> The recorder's WiFi is restarting; rejoin it when it's back <<<\n", flush=True)
 
     async def restore(self) -> None:
         print("\n  >>> Switch your WiFi back to your usual network now <<<\n", flush=True)
