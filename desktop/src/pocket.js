@@ -199,9 +199,14 @@ function startPocketSync({ serverUrl, readConfig, writeConfig, notify, onChange 
   let failedAt = 0; // when the last copy failed, while the recorder stays plugged in
   let failureShown = false; // a failure is told once per plug-in, not on every retry
   let status = ''; // shown in the tray menu
+  // progress is the state for the web app's Pocket USB Sync dialog: phase is '' (nothing
+  // yet), 'checking', 'copying' (current of total), 'done' (copied this time), 'signed-out'
+  // or 'failed'.
+  let progress = { phase: '', current: 0, total: 0, copied: 0 };
 
-  const setStatus = (text) => {
+  const setStatus = (text, next) => {
     status = text;
+    if (next) progress = { ...progress, ...next };
     onChange();
   };
 
@@ -227,10 +232,10 @@ function startPocketSync({ serverUrl, readConfig, writeConfig, notify, onChange 
       // Each file once, also when the recorder is mounted twice (Set.add returns the set).
       const files = roots.flatMap(recordings).filter((f) => !known.has(f.name) && known.add(f.name));
       if (!files.length) {
-        setStatus('Pocket: all recordings copied');
+        setStatus('Pocket: all recordings copied', { phase: 'done', copied: 0 });
         return;
       }
-      setStatus('Pocket: checking recordings…');
+      setStatus('Pocket: checking recordings…', { phase: 'checking' });
       const { files: fresh = [] } = await request('POST', `${server}/api/v1/me/pocket/device/check`, {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ files: files.map((f) => f.name) }),
@@ -239,7 +244,7 @@ function startPocketSync({ serverUrl, readConfig, writeConfig, notify, onChange 
       for (const f of files) if (!wanted.has(f.name)) remember(server, f.name);
       const todo = files.filter((f) => wanted.has(f.name));
       if (!todo.length) {
-        setStatus('Pocket: all recordings copied');
+        setStatus('Pocket: all recordings copied', { phase: 'done', copied: 0 });
         return;
       }
       notify({
@@ -248,7 +253,7 @@ function startPocketSync({ serverUrl, readConfig, writeConfig, notify, onChange 
         tag: 'pocket-sync',
       });
       for (const [i, f] of todo.entries()) {
-        setStatus(`Pocket: copying ${i + 1} of ${todo.length}…`);
+        setStatus(`Pocket: copying ${i + 1} of ${todo.length}…`, { phase: 'copying', current: i + 1, total: todo.length });
         try {
           const rec = await request('POST', `${server}/api/v1/me/pocket/device/files`, {
             headers: { 'Content-Type': 'audio/mpeg', 'X-Filename': encodeURIComponent(f.name) },
@@ -263,7 +268,7 @@ function startPocketSync({ serverUrl, readConfig, writeConfig, notify, onChange 
       }
       failedAt = 0;
       failureShown = false;
-      setStatus('Pocket: all recordings copied');
+      setStatus('Pocket: all recordings copied', { phase: 'done', copied });
       if (!copied) return; // all were notes by now
       notify({
         title: 'Copied from Pocket',
@@ -275,7 +280,10 @@ function startPocketSync({ serverUrl, readConfig, writeConfig, notify, onChange 
       failedAt = Date.now();
       const signedOut = err instanceof HttpError && err.status === 401;
       const reason = signedOut ? 'Sign in to knowpod to copy them.' : err.message;
-      setStatus(signedOut ? 'Pocket: sign in to copy recordings' : 'Pocket: copying failed, trying again soon');
+      setStatus(signedOut ? 'Pocket: sign in to copy recordings' : 'Pocket: copying failed, trying again soon', {
+        phase: signedOut ? 'signed-out' : 'failed',
+        copied,
+      });
       // Unplugged while copying: nothing to tell.
       if (!failureShown && roots.some((root) => recordFolder(root))) {
         failureShown = true;
@@ -305,7 +313,7 @@ function startPocketSync({ serverUrl, readConfig, writeConfig, notify, onChange 
       if (!roots.length) {
         failedAt = 0;
         failureShown = false;
-        if (changed) setStatus('');
+        if (changed) setStatus('', { phase: '', current: 0, total: 0, copied: 0 });
         return;
       }
       if (changed) onChange();
@@ -323,7 +331,7 @@ function startPocketSync({ serverUrl, readConfig, writeConfig, notify, onChange 
 
   return {
     // state is what the tray menu shows.
-    state: () => ({ enabled: enabled(), connected: mounted.length > 0, syncing, status }),
+    state: () => ({ enabled: enabled(), connected: mounted.length > 0, syncing, status, ...progress }),
     setEnabled: (on) => {
       writeConfig({ ...readConfig(), pocketSync: on });
       onChange();

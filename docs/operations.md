@@ -220,7 +220,11 @@ files named by when they started, in UTC (`RECORD/2026-10-2/20261002090356.mp3`)
   [pocket-libre](https://github.com/shahcolate/pocket-libre). **Check connection** reads the
   battery, firmware, storage and USB state; **Turn on USB drive** (also in the tray menu as
   **Turn On Pocket USB Drive** while no recorder is plugged in) switches the drive on
-  (`APP&USB&1`), after which the plugged-in recorder mounts and is copied as above. The app
+  (`APP&USB&1`), after which the plugged-in recorder mounts and is copied as above.
+  **The order matters:** the drive has to be switched on over Bluetooth *before* the cable
+  is plugged in; a recorder plugged in first doesn't start as a USB drive and has to be
+  unplugged and plugged in again. The **Pocket USB Sync** button (a USB icon at the right end of the
+  notes list's top row, desktop app only) walks through this: unplug, switch the drive on, plug in, then shows the copying. The app
   talks to the recorder with Web Bluetooth in a hidden window (`desktop/src/bluetooth.js`);
   on Linux it needs BlueZ, on macOS (which hides Bluetooth addresses) it uses the one Pocket
   nearby (`PKT01_…`).

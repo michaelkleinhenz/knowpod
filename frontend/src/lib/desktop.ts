@@ -25,7 +25,7 @@ interface DesktopBridge {
 // which switches its USB drive on so the app can copy from it. Its settings stay in the
 // desktop app; the session key is never handed back.
 export type PocketBluetoothRequest =
-  | { action: 'settings' | 'check' | 'usb-on' }
+  | { action: 'settings' | 'check' | 'usb-on' | 'state' | 'sync' }
   | { action: 'save'; address?: string; sessionKey?: string };
 
 export interface PocketBluetoothResult {
@@ -43,6 +43,19 @@ export interface PocketBluetoothResult {
   storage?: { usedKB: number; totalKB: number } | null;
   // check and usb-on
   usb?: boolean | null;
+  // state: whether the Bluetooth connection is set up (configured) or in use (busy), and the
+  // USB copying (desktop/src/pocket.js): turned on (enabled), a recorder mounted
+  // (connected), copying (syncing); phase is '', checking, copying (current of total), done
+  // (copied this time), signed-out or failed.
+  configured?: boolean;
+  busy?: boolean;
+  enabled?: boolean;
+  connected?: boolean;
+  syncing?: boolean;
+  phase?: '' | 'checking' | 'copying' | 'done' | 'signed-out' | 'failed';
+  current?: number;
+  total?: number;
+  copied?: number;
 }
 
 // pocketBluetooth returns the desktop app's Pocket Bluetooth call, or undefined outside the

@@ -117,7 +117,7 @@ export function Account() {
         <h2 className="card-title">{t('mcp.title')}</h2>
         <McpSetup />
       </section>
-      <section className="card">
+      <section className="card" id="pocket">
         <h2 className="card-title">{t('account.pocketTitle')}</h2>
         <PocketSetup />
         <PocketBluetooth />
