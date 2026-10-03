@@ -242,24 +242,39 @@ async function run(action, sessionKey) {
   }
 }
 
+// How long to let late repeats of a listing's answers come in before the next listing.
+const listSettle = 250;
+
 // listRecordings lists the recorder's recordings, oldest first: [{date, timestamp, seconds}].
-// Repeats are dropped: some systems deliver each notification several times.
+// Repeats are dropped: some systems (BlueZ) deliver each notification several times, a few
+// milliseconds apart. So a late repeat of one day's end ("MCU&LIST&<n>") can come in after
+// the next day was asked for; ending that day there would miss its recordings, the newest
+// ones. A listing ends only at an end whose count its rows reach, and the repeats are let in
+// before the next listing is asked for.
 async function listRecordings(pocket) {
-  const collect = async (name, answer, end) => {
+  // collect sends name and resolves to the rows (the distinct values of answer that keep
+  // takes) up to an end that counts them.
+  const collect = async (name, answer, end, keep) => {
     const since = await pocket.send(name);
-    if ((await pocket.waitFor(end, since, listTimeout)) === null) {
+    const rows = () => [...new Set(pocket.values(answer, since))].filter(keep);
+    const counted = (value) => rows().length >= (parseInt(value, 10) || 0);
+    if ((await pocket.waitFor(end, since, listTimeout, counted)) === null && !pocket.values(end, since).length) {
       throw new BluetoothError('no-answer', `No end of the answer to ${name}`);
     }
-    return [...new Set(pocket.values(answer, since))];
+    // (An end that came but counts more rows than came: go on with the rows there are.)
+    await new Promise((resolve) => setTimeout(resolve, listSettle));
+    return rows();
   };
   const recordings = new Map();
-  for (const day of await collect('LIST_DIRS', 'DIRS', 'DIRS_SUM')) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
-    for (const row of await collect(`LIST&${day}`, 'F', 'LIST')) {
+  const days = await collect('LIST_DIRS', 'DIRS', 'DIRS_SUM', (day) => /^\d{4}-\d{2}-\d{2}$/.test(day));
+  for (const day of days) {
+    const rows = await collect(`LIST&${day}`, 'F', 'LIST', (row) => {
+      const [date, timestamp] = row.split('&');
+      return date === day && /^\d{14}$/.test(timestamp || '');
+    });
+    for (const row of rows) {
       const [date, timestamp, seconds] = row.split('&');
-      if (date === day && /^\d{14}$/.test(timestamp || '')) {
-        recordings.set(timestamp, { date, timestamp, seconds: parseInt(seconds, 10) || 0 });
-      }
+      recordings.set(timestamp, { date, timestamp, seconds: parseInt(seconds, 10) || 0 });
     }
   }
   return [...recordings.values()].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
