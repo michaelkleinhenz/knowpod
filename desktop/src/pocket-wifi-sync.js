@@ -10,8 +10,9 @@
 //
 // state() is what the dialog shows: phase is '' (never run), connecting, listing, checking,
 // wifi-starting, downloading (file current of total, bytes of totalBytes at rate bytes/s),
-// wifi-restarting, reconnecting, uploading (current of total), done (copied, failed) or
-// failed (error, message).
+// wifi-restarting, reconnecting, uploading (current of total), done (copied, failed; found
+// recordings on the recorder, incomplete if its listing came back short) or failed (error,
+// message).
 'use strict';
 
 const { app } = require('electron');
@@ -41,7 +42,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 //   serverUrl(), readConfig(), writeConfig(config), notify({title, body, url, tag}),
 //   pocketBluetooth (pocket-bluetooth.js), onChange() (state() changed)
 function startPocketWifiSync({ serverUrl, readConfig, writeConfig, notify, pocketBluetooth, onChange }) {
-  const empty = { phase: '', current: 0, total: 0, bytes: 0, totalBytes: 0, rate: 0, copied: 0, failed: 0, error: '', message: '' };
+  const empty = { phase: '', current: 0, total: 0, bytes: 0, totalBytes: 0, rate: 0, copied: 0, failed: 0, found: 0, incomplete: false, error: '', message: '' };
   let progress = { ...empty };
   let running = false;
   let cancelled = false;
@@ -102,9 +103,14 @@ function startPocketWifiSync({ serverUrl, readConfig, writeConfig, notify, pocke
 
       set({ phase: 'listing' });
       const known = rememberedFiles(readConfig, server);
-      const files = (await ble.listRecordings())
-        .map((r) => ({ ...r, name: `${r.timestamp}.mp3` }))
-        .filter((f) => !known.has(f.name));
+      const listing = await ble.listRecordings();
+      const listed = listing.recordings.map((r) => ({ ...r, name: `${r.timestamp}.mp3` }));
+      const files = listed.filter((f) => !known.has(f.name));
+      set({ found: listed.length, incomplete: listing.incomplete });
+      log(
+        `${listed.length} recordings on ${listing.days} days${listing.incomplete ? ' (listing incomplete)' : ''}, ` +
+          `${listed.length - files.length} copied before: ${listed.map((f) => f.name).join(' ')}`,
+      );
       check();
 
       set({ phase: 'checking' });
@@ -123,6 +129,7 @@ function startPocketWifiSync({ serverUrl, readConfig, writeConfig, notify, pocke
       const wanted = new Set(fresh);
       for (const f of files) if (!wanted.has(f.name)) rememberFile(readConfig, writeConfig, server, f.name);
       const todo = files.filter((f) => wanted.has(f.name));
+      log(`${files.length - todo.length} already notes, ${todo.length} new`);
       if (!todo.length) {
         set({ phase: 'done', copied: 0, failed: 0 });
         return;

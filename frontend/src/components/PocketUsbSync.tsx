@@ -286,7 +286,16 @@ function WifiPane({ state, call }: { state: PocketBluetoothResult; call: Call })
   if (wifi?.phase === 'done') {
     return (
       <>
-        <p className="success">{wifi.copied ? t('pocketWifiSync.copied', { count: wifi.copied }) : t('pocketWifiSync.upToDate')}</p>
+        {wifi.copied ? (
+          <p className="success">{t('pocketWifiSync.copied', { count: wifi.copied })}</p>
+        ) : wifi.found === undefined ? (
+          <p className="success">{t('pocketWifiSync.upToDateLegacy')}</p>
+        ) : !wifi.found ? (
+          <p className="error">{t('pocketWifiSync.noneFound')}</p>
+        ) : (
+          !wifi.incomplete && <p className="success">{t('pocketWifiSync.upToDate', { count: wifi.found })}</p>
+        )}
+        {!!wifi.found && wifi.incomplete && <p className="error">{t('pocketWifiSync.incomplete', { count: wifi.found })}</p>}
         {wifi.failed > 0 && (
           <p className="error">
             {t('pocketWifiSync.someFailed', { count: wifi.failed })} {wifiErrorText(wifi.error, wifi.message, t)}

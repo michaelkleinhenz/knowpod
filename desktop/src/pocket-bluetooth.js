@@ -155,7 +155,7 @@ async function openSession(address, sessionKey) {
     waitFor: (answer, since, timeout, accept = 'any') => step('waitFor', [answer, since, timeout, accept], timeout),
     mark: () => step('mark'),
     subscribeAudio: () => step('subscribeAudio'),
-    listRecordings: () => step('listRecordings', [], 60_000),
+    listRecordings: () => step('listRecordings', [], 180_000),
     connected: () => step('connected'),
     close: async () => {
       if (closed) return;
