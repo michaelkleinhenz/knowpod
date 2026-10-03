@@ -236,6 +236,28 @@ a {
   background: var(--color-primary-hover);
 }
 
+/* A small, quiet icon button beside the new buttons, like the Pocket USB Sync. */
+.nav .nav-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.3rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-header-muted);
+  cursor: pointer;
+}
+
+.nav .nav-icon-button:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-header-text);
+}
+
+.nav-icon-button svg {
+  display: block;
+}
+
 .new-item-backdrop {
   position: fixed;
   inset: 0;
@@ -1421,6 +1443,11 @@ a {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .nav .nav-icon-button {
+    flex: none;
+    padding: 0 0.75rem;
   }
 
   .nav .nav-signout {

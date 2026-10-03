@@ -5,8 +5,9 @@ import { useOffline } from '../api/offline';
 import { useAuth } from '../auth';
 import { RecorderProvider, useRecorder } from '../context/Recorder';
 import { useDesktopNotifications } from '../lib/desktop';
-import { MicIcon, SignOutIcon } from './Icons';
+import { MicIcon, SignOutIcon, UsbIcon } from './Icons';
 import { NewItemDialog } from './NewItemDialog';
+import { PocketUsbSyncDialog, pocketUsbSyncAvailable } from './PocketUsbSync';
 
 // Layout is the app frame: a header with the navigation, which collapses into a menu
 // button on narrow screens.
@@ -17,6 +18,8 @@ export function Layout({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
   const [newKind, setNewKind] = useState<'note' | 'task' | null>(null);
+  // pocketSync shows the Pocket USB Sync dialog (desktop app only).
+  const [pocketSync, setPocketSync] = useState(false);
   const onConversations = pathname === '/' || pathname === '/briefing' || pathname.startsWith('/conversations/');
   // The time log, the done tasks, Ask and shared items are shown next to the notes list, like a note.
   const onTime = ['/time', '/done', '/ask', '/share'].includes(pathname);
@@ -105,6 +108,20 @@ export function Layout({ children }: { children: ReactNode }) {
                 <button type="button" className="nav-new" onClick={() => startNew('task')}>
                   + {t('nav.newTask')}
                 </button>
+                {pocketUsbSyncAvailable() && (
+                  <button
+                    type="button"
+                    className="nav-icon-button"
+                    title={t('pocketUsbSync.button')}
+                    aria-label={t('pocketUsbSync.button')}
+                    onClick={() => {
+                      setOpen(false);
+                      setPocketSync(true);
+                    }}
+                  >
+                    <UsbIcon />
+                  </button>
+                )}
               </div>
               <span className="nav-divider" aria-hidden="true" />
               <NavLink to="/" className={() => (onConversations ? 'active' : '')}>
@@ -128,6 +145,7 @@ export function Layout({ children }: { children: ReactNode }) {
       </header>
       <main className={`container${onConversations || onTime ? ' full' : ''}`}>{children}</main>
       {newKind && <NewItemDialog kind={newKind} onClose={() => setNewKind(null)} />}
+      {pocketSync && <PocketUsbSyncDialog onClose={() => setPocketSync(false)} />}
     </RecorderProvider>
   );
 }

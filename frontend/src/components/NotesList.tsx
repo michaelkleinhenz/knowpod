@@ -7,8 +7,7 @@ import { useAuth } from '../auth';
 import { FolderTree, NOTE_TYPE } from './FolderTree';
 import { FilterBar } from './SavedFilters';
 import { TimerBar } from './TimeControls';
-import { HomeIcon, MicIcon, NewBoardIcon, NewFolderIcon, NewNoteIcon, RefreshIcon, SearchIcon, SparkleIcon, TrashIcon, UploadIcon, UsbIcon } from './Icons';
-import { PocketUsbSyncDialog, pocketUsbSyncAvailable } from './PocketUsbSync';
+import { HomeIcon, MicIcon, NewBoardIcon, NewFolderIcon, NewNoteIcon, RefreshIcon, SearchIcon, SparkleIcon, TrashIcon, UploadIcon } from './Icons';
 import { useRecorder } from '../context/Recorder';
 import { NoteTreeRows, useNoteTree } from './NoteTree';
 import { DueView } from './DueView';
@@ -83,8 +82,6 @@ export function NotesList({ activeId }: { activeId?: string }) {
   const [activeFilterId, setActiveFilterState] = useState(loadFilter);
   // showTrash shows only the trash instead of the notes.
   const [showTrash, setShowTrash] = useState(false);
-  // pocketSync shows the Pocket USB Sync dialog (desktop app only).
-  const [pocketSync, setPocketSync] = useState(false);
   const [trashDrop, setTrashDrop] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const recorder = useRecorder();
@@ -347,17 +344,6 @@ export function NotesList({ activeId }: { activeId?: string }) {
               <TrashIcon /> <span>{t('trash.title')}</span>
               {!!trash?.length && <span className="trash-count">{trash.length}</span>}
             </button>
-            {pocketUsbSyncAvailable() && (
-              <button
-                type="button"
-                className="pill-button icon-only-mobile"
-                onClick={() => setPocketSync(true)}
-                title={t('pocketUsbSync.button')}
-                aria-label={t('pocketUsbSync.button')}
-              >
-                <UsbIcon /> <span>{t('pocketUsbSync.button')}</span>
-              </button>
-            )}
           </div>
           <input ref={fileInput} type="file" accept={ACCEPT} multiple hidden onChange={handleFiles} />
       </div>
@@ -524,7 +510,6 @@ export function NotesList({ activeId }: { activeId?: string }) {
       </div>
 
       {dragging && <div className="drop-overlay">{t('conversations.dropHint')}</div>}
-      {pocketSync && <PocketUsbSyncDialog onClose={() => setPocketSync(false)} />}
     </section>
   );
 }
