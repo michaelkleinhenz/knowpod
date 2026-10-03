@@ -105,21 +105,30 @@ async def unlock(ctx: Context) -> None:
 
 
 async def pick_recording(ctx: Context) -> tuple[str, str]:
-    """The recording to stage: --recording DATE/TIMESTAMP, or the newest on the recorder."""
-    if ctx.args.recording:
-        m = re.fullmatch(r"(\d{4}-\d{2}-\d{2})/(\d{14})", ctx.args.recording)
-        if not m:
-            raise ProbeError("--recording must look like 2026-09-03/20260903145856")
-        return m.group(1), m.group(2)
+    """The recording to stage: --recording DATE/TIMESTAMP, or the newest on the recorder.
+    Every recording found is kept in ctx.shared["recordings"] as (date, timestamp, seconds)."""
+    recordings = []
     pocket = ctx.pocket
     dirs = [m.value("DIRS") for m in await pocket.collect("LIST_DIRS", until="DIRS_SUM")]
-    dirs = sorted(d for d in dirs if d)
-    for day in reversed(dirs):
-        rows = [m.value("F") for m in await pocket.collect(f"LIST&{day}", until="LIST")]
-        files = sorted(r.split("&")[1] for r in rows if r and r.count("&") >= 2)
-        if files:
-            return day, files[-1]
-    raise ProbeError("No recordings on the recorder; the 1.8 sequence needs one to stage")
+    for day in sorted(d for d in dirs if d):
+        for row in (m.value("F") for m in await pocket.collect(f"LIST&{day}", until="LIST")):
+            parts = (row or "").split("&")
+            if len(parts) >= 3 and parts[2].isdigit():
+                recordings.append((parts[0], parts[1], int(parts[2])))
+    recordings.sort(key=lambda r: r[1])
+    ctx.shared["recordings"] = recordings
+    if ctx.args.recording:
+        return parse_recording(ctx.args.recording)
+    if not recordings:
+        raise ProbeError("No recordings on the recorder; the 1.8 sequence needs one to stage")
+    return recordings[-1][0], recordings[-1][1]
+
+
+def parse_recording(text: str) -> tuple[str, str]:
+    m = re.fullmatch(r"(\d{4}-\d{2}-\d{2})/(\d{14})", text)
+    if not m:
+        raise ProbeError(f"{text!r} doesn't look like 2026-09-03/20260903145856")
+    return m.group(1), m.group(2)
 
 
 async def wifi_session(ctx: Context, selected: list[checks.Check], status: WifiStatus) -> None:
@@ -161,6 +170,8 @@ async def wifi_session(ctx: Context, selected: list[checks.Check], status: WifiS
         await pocket.send("WIFIO")
         if args.status_interval > 0:
             background.append(asyncio.create_task(poll_status(ctx, args.status_interval, stop)))
+        if args.heartbeat > 0:
+            background.append(asyncio.create_task(heartbeat(ctx, args.heartbeat, stop)))
         joined = await wifi.join(ssid, raised_at + args.join_timeout)
         if not joined:
             raise ProbeError(f"Could not join {ssid} within {args.join_timeout:g}s")
@@ -193,6 +204,20 @@ async def wifi_session(ctx: Context, selected: list[checks.Check], status: WifiS
             await asyncio.to_thread(input, "\nOn the recorder's network. Press Enter to tear down... ")
     finally:
         await teardown(ctx, stop, background, raised=raised, prepared=prepared)
+
+
+async def heartbeat(ctx: Context, interval: float, stop: asyncio.Event) -> None:
+    """APP&WPING every interval: the app keeps a "device Wi-Fi heartbeat" going while on the AP."""
+    while not stop.is_set():
+        if ctx.pocket.connected:
+            try:
+                await ctx.pocket.send("WPING")
+            except Exception as e:
+                ctx.log("ble", f"heartbeat failed: {e}")
+        try:
+            await asyncio.wait_for(stop.wait(), interval)
+        except asyncio.TimeoutError:
+            pass
 
 
 async def poll_status(ctx: Context, interval: float, stop: asyncio.Event) -> None:

@@ -2,9 +2,10 @@
 
 The first probe run found the port open while the AP was ready, silent when connected to, and
 gone after one connection that sent bytes it didn't like. The app's strings speak of a "Pocket
-Wi-Fi framed stream", which suggests the recorder streams frames once it's told to start.
-So: connect first, without sending anything, then send APP&U&WIFI over Bluetooth and record
-whatever arrives. It runs before every other check so that nothing has touched the port yet.
+Wi-Fi framed stream" and of "switching file transfer to Wi-Fi" (APP&WIFI&SWITCH), stopping
+"the Bluetooth file transfer for Wi-Fi handoff". So: connect first, without sending anything,
+then start a Bluetooth transfer of a long recording and switch it to WiFi (--stream-trigger),
+and record whatever arrives. It runs before every other check so nothing has touched the port.
 """
 from __future__ import annotations
 
@@ -68,8 +69,22 @@ def describe(data: bytes, staged: int | None) -> dict:
     }
 
 
+def recording_for(ctx) -> tuple[str, str]:
+    """--stream-recording, or the longest recording, so a Bluetooth transfer of it is still
+    running when it gets switched to WiFi."""
+    from ..session import parse_recording
+    if ctx.args.stream_recording:
+        return parse_recording(ctx.args.stream_recording)
+    recordings = ctx.shared.get("recordings") or []
+    if recordings:
+        day, ts, _ = max(recordings, key=lambda r: r[2])
+        return day, ts
+    day, _, ts = ctx.report.meta.get("staged", "/").partition("/")
+    return day, ts
+
+
 @check("stream", phases=("ready",), priority=10,
-       help="connect to --stream-port, then send APP&U&WIFI and record what the recorder streams")
+       help="connect to --stream-port, send --stream-trigger over Bluetooth, record what the recorder streams")
 async def stream(ctx):
     port = ctx.args.stream_port
     # A refused connect costs nothing (the recorder answers with a reset), so keep trying until
@@ -95,7 +110,13 @@ async def stream(ctx):
         out["before_trigger"] = await _read(reader, chunks, ctx, idle=2, limit=2)
         out["bytes_before_trigger"] = sum(len(c) for _, c in chunks)
         if out["before_trigger"] in ("idle", "time limit"):
-            since = await ctx.pocket.send("U&WIFI")
+            day, ts = recording_for(ctx)
+            out["recording"] = f"{day}/{ts}"
+            since = ctx.pocket.mark()
+            for command in (c.strip() for c in ctx.args.stream_trigger.split(",")):
+                if command:
+                    await ctx.pocket.send(command.format(date=day, ts=ts))
+                    await asyncio.sleep(ctx.args.stream_gap)
             out["after_trigger"] = await _read(reader, chunks, ctx, idle=ctx.args.stream_idle,
                                                limit=ctx.args.stream_max)
             out["ble_after_trigger"] = [m.text for m in ctx.pocket.messages[since:]]
