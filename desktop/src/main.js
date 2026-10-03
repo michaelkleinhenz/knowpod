@@ -14,6 +14,7 @@ const path = require('node:path');
 const pkg = require('../package.json');
 const { startPocketSync } = require('./pocket');
 const { createPocketBluetooth } = require('./pocket-bluetooth');
+const { startPocketWifiSync } = require('./pocket-wifi-sync');
 
 // Must match build.appId in package.json; electron-builder drops the build section from the
 // packaged package.json, so it can't be read from pkg at runtime.
@@ -65,6 +66,8 @@ let tray = null;
 let pocket = null;
 // pocketBluetooth switches the recorder's USB drive on over Bluetooth (see pocket-bluetooth.js).
 let pocketBluetooth = null;
+// pocketWifi copies recordings from the recorder over its WiFi (see pocket-wifi-sync.js).
+let pocketWifi = null;
 // usbStatus says how switching the USB drive on went, for the tray menu.
 let usbStatus = '';
 // quitting is set once the app is really quitting, so closing the window doesn't just hide it.
@@ -451,9 +454,26 @@ ipcMain.handle('knowpod:pocket-bluetooth', (event, request) => {
       return pocketBluetooth.check();
     case 'usb-on':
       return turnOnUsbDrive();
-    // state, sync and eject are for the Pocket USB Sync dialog (frontend/src/components/PocketUsbSync.tsx).
+    // state, sync and eject are for the Pocket Sync dialog (frontend/src/components/PocketUsbSync.tsx);
+    // wifi-sync and wifi-cancel for its WiFi part.
     case 'state':
-      return { ok: true, configured: pocketBluetooth.configured(), busy: pocketBluetooth.busy(), ...(pocket?.state() || {}) };
+      return {
+        ok: true,
+        configured: pocketBluetooth.configured(),
+        busy: pocketBluetooth.busy(),
+        ...(pocket?.state() || {}),
+        wifiSupported: !!pocketWifi?.supported(),
+        wifi: pocketWifi?.state() || null,
+      };
+    case 'wifi-sync':
+      if (!pocketWifi) return { ok: false, error: 'failed' };
+      if (!pocketBluetooth.configured()) return { ok: false, error: 'not-configured' };
+      if (pocketBluetooth.busy() && !pocketWifi.state().running) return { ok: false, error: 'busy' };
+      pocketWifi.start();
+      return { ok: true };
+    case 'wifi-cancel':
+      pocketWifi?.cancel();
+      return { ok: true };
     case 'sync':
       // Copying may have been turned off in the tray menu; asking for it turns it back on.
       if (pocket && !pocket.state().enabled) pocket.setEnabled(true);
@@ -542,10 +562,29 @@ async function turnOnUsbDrive({ fromTray = false } = {}) {
   return result;
 }
 
+// wifiStatus says how the WiFi copy goes, for the tray menu.
+function wifiStatus(wifi) {
+  switch (wifi.phase) {
+    case 'downloading':
+      return `Pocket: copying ${wifi.current} of ${wifi.total} over WiFi…`;
+    case 'uploading':
+      return `Pocket: uploading ${wifi.current} of ${wifi.total}…`;
+    default:
+      return 'Pocket: copying over WiFi…';
+  }
+}
+
 // pocketMenu shows whether a Pocket recorder is plugged in and what copying it does.
 function pocketMenu() {
   if (!pocket) return [];
   const state = pocket.state();
+  const wifi = pocketWifi?.state();
+  const wifiItems =
+    pocketWifi?.supported() && pocketBluetooth?.configured()
+      ? wifi.running
+        ? [{ label: wifiStatus(wifi), enabled: false }]
+        : [{ label: 'Copy from Pocket over WiFi', enabled: !pocketBluetooth.busy(), click: () => pocketWifi.start() }]
+      : [];
   // Plugged in, the drive is there: nothing to switch on any more.
   if (state.connected) usbStatus = '';
   const usbItems =
@@ -565,6 +604,7 @@ function pocketMenu() {
       click: (item) => pocket.setEnabled(item.checked),
     },
     ...(state.connected && state.enabled ? [{ label: 'Copy from Pocket Now', enabled: !state.syncing, click: () => pocket.syncNow() }] : []),
+    ...wifiItems,
     { type: 'separator' },
   ];
 }
@@ -724,6 +764,7 @@ if (!app.requestSingleInstanceLock()) {
     createWindow();
     pocket = startPocketSync({ serverUrl, readConfig, writeConfig, notify: showNotification, onChange: updateTray });
     pocketBluetooth = createPocketBluetooth({ readConfig, writeConfig, onChange: updateTray });
+    pocketWifi = startPocketWifiSync({ serverUrl, readConfig, writeConfig, notify: showNotification, pocketBluetooth, onChange: updateTray });
     updateTray();
     // macOS also activates the app when it launches; started at login, it stays in the tray.
     let skipActivate = startedHidden();
@@ -738,8 +779,21 @@ if (!app.requestSingleInstanceLock()) {
     });
   });
 
-  app.on('before-quit', () => {
+  // A WiFi copy that runs is stopped first, so the recorder's access point is lowered and
+  // this machine's WiFi put back before the app goes.
+  let quitWhenStopped = false;
+  app.on('before-quit', (event) => {
     quitting = true;
+    if (!pocketWifi?.state().running || quitWhenStopped) return;
+    event.preventDefault();
+    quitWhenStopped = true;
+    pocketWifi.cancel();
+    const started = Date.now();
+    const timer = setInterval(() => {
+      if (pocketWifi.state().running && Date.now() - started < 60_000) return;
+      clearInterval(timer);
+      app.quit();
+    }, 500);
   });
 
   app.on('window-all-closed', () => {

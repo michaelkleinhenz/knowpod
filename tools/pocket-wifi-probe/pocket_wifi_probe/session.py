@@ -64,6 +64,7 @@ async def probe(args) -> int:
         status.update(m)
 
     pocket = PocketLink(args.address, scan_timeout=args.scan_timeout, notify_all=args.notify_all,
+                        notify=args.notify,
                         on_message=on_message, on_event=report.log)
     wifi = backend(args.wifi, args.host, args.iface, report.log)
     ctx = Context(args=args, report=report, pocket=pocket, wifi=wifi, host=args.host,
@@ -84,6 +85,10 @@ async def probe(args) -> int:
     finally:
         report.meta["wifi_status_history"] = [(report.elapsed(t), v) for t, v in status.history]
         report.meta["duplicate_notifications_dropped"] = pocket.duplicates
+        for uuid, data in pocket.data.items():  # Bluetooth file data, e.g. <report>.20a1.bin
+            path = out.with_suffix(f".{uuid[4:8]}.bin")
+            path.write_bytes(data)
+            report.meta.setdefault("bluetooth_data", {})[uuid] = {"bytes": len(data), "saved_to": str(path)}
         report.write(out)
         print(f"\nReport written to {out}")
     return code
@@ -93,6 +98,8 @@ async def unlock(ctx: Context) -> None:
     pocket = ctx.pocket
     if await pocket.request(f"SK&{ctx.args.key}", "SK") != "OK":
         raise ProbeError("The recorder refused the session key")
+    if pocket.notify_all or pocket.notify:
+        await pocket.subscribe_others()
     fw = (await pocket.request("FW", "FW") or "").strip()
     ctx.report.meta["firmware"] = fw
     ctx.log("device", f"firmware {fw or 'unknown'}")

@@ -13,8 +13,9 @@ contextBridge.exposeInMainWorld('knowpodDesktop', {
   setServer: (url) => ipcRenderer.invoke('knowpod:set-server', url),
   notify: (message) => ipcRenderer.send('knowpod:notify', message),
   // pocketBluetooth sets up the Pocket recorder's Bluetooth connection, which switches its
-  // USB drive on (see pocket-bluetooth.js): request is {action: 'settings' | 'save' |
-  // 'check' | 'usb-on' | 'state' | 'sync' | 'eject', address?, sessionKey?}.
+  // USB drive on (see pocket-bluetooth.js) and drives the copy over its WiFi
+  // (pocket-wifi-sync.js): request is {action: 'settings' | 'save' | 'check' | 'usb-on' |
+  // 'state' | 'sync' | 'eject' | 'wifi-sync' | 'wifi-cancel', address?, sessionKey?}.
   pocketBluetooth: (request) => ipcRenderer.invoke('knowpod:pocket-bluetooth', request),
   onOpen: (listener) => {
     const handler = (_event, url) => listener(url);

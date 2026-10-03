@@ -22,11 +22,49 @@ interface DesktopBridge {
 }
 
 // The desktop app's Bluetooth connection to a Pocket recorder (desktop/src/pocket-bluetooth.js),
-// which switches its USB drive on so the app can copy from it. Its settings stay in the
-// desktop app; the session key is never handed back.
+// which switches its USB drive on so the app can copy from it, and drives the copy over the
+// Pocket's WiFi (desktop/src/pocket-wifi-sync.js). Its settings stay in the desktop app; the
+// session key is never handed back.
 export type PocketBluetoothRequest =
-  | { action: 'settings' | 'check' | 'usb-on' | 'state' | 'sync' | 'eject' }
+  | { action: 'settings' | 'check' | 'usb-on' | 'state' | 'sync' | 'eject' | 'wifi-sync' | 'wifi-cancel' }
   | { action: 'save'; address?: string; sessionKey?: string };
+
+// PocketWifiPhase is how the copy over the Pocket's WiFi goes: '' (not run yet), connecting
+// (Bluetooth), listing (the Pocket's recordings), checking (which are new), wifi-starting
+// (raising the Pocket's WiFi and joining it), downloading, wifi-restarting (the Pocket serves
+// two files per WiFi session), reconnecting (back to the usual network), uploading, done or
+// failed.
+export type PocketWifiPhase =
+  | ''
+  | 'connecting'
+  | 'listing'
+  | 'checking'
+  | 'wifi-starting'
+  | 'downloading'
+  | 'wifi-restarting'
+  | 'reconnecting'
+  | 'uploading'
+  | 'done'
+  | 'failed';
+
+export interface PocketWifiState {
+  running: boolean;
+  cancelling: boolean;
+  phase: PocketWifiPhase;
+  // downloading and uploading: recording current of total
+  current: number;
+  total: number;
+  // downloading: bytes of totalBytes of the current recording, at rate bytes per second
+  bytes: number;
+  totalBytes: number;
+  rate: number;
+  // done: copied into knowpod, failed to transfer
+  copied: number;
+  failed: number;
+  // failed (and done with failed > 0): why, see PocketUsbSync.tsx
+  error: string;
+  message: string;
+}
 
 export interface PocketBluetoothResult {
   ok: boolean;
@@ -56,6 +94,10 @@ export interface PocketBluetoothResult {
   current?: number;
   total?: number;
   copied?: number;
+  // state: whether this computer can copy over the Pocket's WiFi, and how that goes (missing
+  // in older desktop apps)
+  wifiSupported?: boolean;
+  wifi?: PocketWifiState | null;
 }
 
 // pocketBluetooth returns the desktop app's Pocket Bluetooth call, or undefined outside the

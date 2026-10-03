@@ -22,6 +22,9 @@ class FakePocket(PocketLink):
     async def close(self):
         pass
 
+    async def subscribe_others(self):
+        pass
+
     @property
     def connected(self):
         return True
@@ -146,7 +149,7 @@ def test_stream_connects_then_triggers(tmp_path, monkeypatch):
 
     class StreamingPocket(FakePocket):
         async def send(self, command):
-            if command == "WIFI&SWITCH":
+            if command == "U&WIFI" and "WIFIO" in FakePocket.sent:  # the switch, not the early U&WIFI
                 started.set()
             return await super().send(command)
 
@@ -181,7 +184,7 @@ def test_stream_connects_then_triggers(tmp_path, monkeypatch):
     assert (tmp_path / f"r.{port}.bin").read_bytes() == frame
     # Connected first, then: start a Bluetooth transfer of the (longest) recording, switch it.
     after = FakePocket.sent[FakePocket.sent.index("WIFIO") + 1:]
-    assert [c for c in after if c not in ("WIFIS", "WPING")][:2] == ["U&2026-09-03&20260903145856", "WIFI&SWITCH"]
+    assert [c for c in after if c not in ("WIFIS", "WPING")][:2] == ["U&2026-09-03&20260903145856", "U&WIFI"]
     assert "WPING" in FakePocket.sent and res["recording"] == "2026-09-03/20260903145856"
 
 

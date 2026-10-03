@@ -319,6 +319,36 @@ a {
   padding: 0.45rem 0.9rem;
 }
 
+/* Pocket Sync dialog: USB or WiFi, and the WiFi copy's progress. */
+.pocket-sync-dialog .segmented {
+  align-self: flex-start;
+  margin-bottom: 0;
+}
+
+.pocket-sync-dialog p {
+  margin: 0;
+}
+
+.pocket-wifi-notes {
+  margin: 0;
+  padding-left: 1.2rem;
+  font-size: 0.9rem;
+}
+
+.pocket-wifi-notes li + li {
+  margin-top: 0.3rem;
+}
+
+.pocket-wifi-step {
+  font-size: 0.85rem;
+}
+
+.pocket-wifi-progress progress {
+  width: 100%;
+  height: 0.6rem;
+  accent-color: var(--color-primary);
+}
+
 .nav-user {
   color: var(--color-header-muted);
   font-size: 0.9rem;

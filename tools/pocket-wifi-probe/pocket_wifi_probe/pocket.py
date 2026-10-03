@@ -50,11 +50,13 @@ class PocketLink:
     """An open connection to the recorder. Use as `async with PocketLink(address) as pocket`."""
 
     def __init__(self, address: str, *, scan_timeout: float = 20.0, notify_all: bool = False,
+                 notify: list[str] | None = None,
                  on_message: Callable[[Message], None] | None = None,
                  on_event: Callable[[str, str], None] | None = None):
         self.address = address
         self.scan_timeout = scan_timeout
         self.notify_all = notify_all
+        self.notify = [n.lower() for n in notify or []]
         self.on_message = on_message
         self.on_event = on_event or (lambda kind, text: None)
         self.client: BleakClient | None = None
@@ -65,6 +67,8 @@ class PocketLink:
         self._subscribed: list[str] = []
         self._last: dict[str, tuple[float, str]] = {}
         self.duplicates = 0
+        # Binary notifications (Bluetooth file data on 001120a1), complete, per characteristic.
+        self.data: dict[str, bytearray] = {}
 
     async def __aenter__(self) -> "PocketLink":
         device = await BleakScanner.find_device_by_address(self.address, timeout=self.scan_timeout)
@@ -73,21 +77,36 @@ class PocketLink:
         self.client = BleakClient(device, disconnected_callback=self._on_disconnect)
         await self.client.connect()
         self.on_event("ble", f"connected to {device.name or '?'} ({device.address})")
-        chars = [COMMAND]
-        if self.notify_all:
-            chars = [
-                c.uuid for s in self.client.services for c in s.characteristics
-                if "notify" in c.properties or "indicate" in c.properties
-            ]
-        for uuid in chars:
-            try:
-                await self.client.start_notify(uuid, self._handler(uuid))
-                self._subscribed.append(uuid)
-            except Exception as e:  # one refusing characteristic shouldn't stop the probe
-                self.on_event("ble", f"could not subscribe to {uuid}: {e}")
+        # Only the command characteristic here: the recorder drops a connection that isn't
+        # unlocked within a few seconds, so the others wait for subscribe_others().
+        await self._subscribe(COMMAND)
         if COMMAND not in self._subscribed:
             raise PocketError("Could not subscribe to the command characteristic")
         return self
+
+    async def subscribe_others(self) -> None:
+        """Subscribes to the other notify/indicate characteristics, one by one, logging each:
+        all of them with notify_all, else those whose UUID starts with one in `notify`."""
+        for s in self.client.services:
+            for c in s.characteristics:
+                if c.uuid in self._subscribed or not {"notify", "indicate"} & set(c.properties):
+                    continue
+                if not self.notify_all and not any(c.uuid.startswith(n) for n in self.notify):
+                    continue
+                if not self.connected:
+                    raise PocketError("The recorder dropped the connection while subscribing")
+                if await self._subscribe(c.uuid):
+                    self.on_event("ble", f"subscribed to {c.uuid}")
+
+    async def _subscribe(self, uuid: str) -> bool:
+        try:
+            # BlueZ can hang here once the recorder has gone; don't wait forever.
+            await asyncio.wait_for(self.client.start_notify(uuid, self._handler(uuid)), 5)
+        except Exception as e:  # one refusing characteristic shouldn't stop the probe
+            self.on_event("ble", f"could not subscribe to {uuid}: {type(e).__name__} {e}")
+            return False
+        self._subscribed.append(uuid)
+        return True
 
     async def __aexit__(self, *exc) -> None:
         await self.close()
@@ -111,7 +130,8 @@ class PocketLink:
         def handle(_sender, data: bytearray) -> None:
             raw = bytes(data)
             text = raw.decode("ascii", errors="replace")
-            if uuid != COMMAND and not text.startswith("MCU&"):
+            binary = uuid != COMMAND and not text.startswith("MCU&")
+            if binary:
                 # Not the text protocol; keep it readable.
                 text = f"<{len(raw)} bytes> {raw[:64].hex()}"
                 parts = [text]
@@ -126,6 +146,8 @@ class PocketLink:
                     self.duplicates += 1
                     continue
                 self._last[uuid] = (now, part)
+                if binary:
+                    self.data.setdefault(uuid, bytearray()).extend(raw)
                 msg = Message(now, part, uuid)
                 self.messages.append(msg)
                 if self.on_message:

@@ -2,7 +2,7 @@
   "name": "knowpod-desktop",
   "productName": "knowpod",
   "private": true,
-  "version": "0.8.3",
+  "version": "0.9.0",
   "description": "Your recorded conversations, transcribed and summarized.",
   "author": "knowpod",
   "homepage": "https://github.com/michaelkleinhenz/knowpod-service",
@@ -14,6 +14,7 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
+    "test": "node --test \"test/*.test.js\"",
     "dist": "electron-builder --publish never",
     "dist:linux": "electron-builder --linux --publish never",
     "dist:win": "electron-builder --win --publish never",
