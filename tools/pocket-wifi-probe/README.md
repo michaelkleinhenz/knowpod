@@ -27,7 +27,14 @@ From a run on firmware 1.8, WiFi firmware V9:
   conclusion is that the recorder closes the socket once its first client leaves. Joining now
   never re-issues a connect while one is in progress, and `stream` keeps trying (`--stream-wait`)
   until the port opens.
-- `MCU&OFF` comes right after staging (`MCU&U&<size>`), not after `WIFIO`.
+- The app's command strings name `APP&WIFI&SWITCH` / `MCU&WIFI&SWITCH`, with log lines like
+  "Switching file transfer to Wi-Fi", "Device rejected the Wi-Fi transfer switch" and "Device
+  did not stop the Bluetooth file transfer for Wi-Fi handoff". So a WiFi transfer appears to
+  start as a Bluetooth one (`APP&U&<date>&<ts>`) that is then switched over. The app also
+  keeps a Wi-Fi heartbeat going (`APP&WPING`, `--heartbeat`), and reuses one socket for
+  several files.
+- `MCU&OFF` comes right after staging (`MCU&U&<size>`), not after `WIFIO`. It most likely marks
+  the end of the Bluetooth transfer: the staged file was 2486 bytes, so it was already done.
 - Each Bluetooth notification arrived about 4 times within milliseconds. The probe now drops
   the repeats and counts them in `meta.duplicate_notifications_dropped`.
 - The app's strings (it's Flutter) mention a "Pocket Wi-Fi framed stream", frame lengths and
@@ -88,7 +95,7 @@ replaced with `<redacted>`.
 
 | Name        | Runs in      | What it does |
 |-------------|--------------|--------------|
-| `stream`    | ready (first)| keeps trying to connect to the transfer socket (`--stream-port`, 8475) until it opens, then sends `APP&U&WIFI` and saves whatever arrives to `<report>.8475.bin` |
+| `stream`    | ready (first)| keeps trying to connect to the transfer socket (`--stream-port`, 8475) until it opens, sends `--stream-trigger` over Bluetooth (default: `U&<date>&<ts>` for the longest recording, then `WIFI&SWITCH`), and saves whatever arrives to `<report>.8475.bin` |
 | `ble-info`  | ble          | battery, WiFi firmware, storage, state, USB mode |
 | `gatt`      | ble          | GATT table, with the value of every readable characteristic |
 | `ble-state` | ready, begin | `WIFIS`/`STE`, and the WIFIS history so far |

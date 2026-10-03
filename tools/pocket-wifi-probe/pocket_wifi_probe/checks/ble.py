@@ -10,6 +10,7 @@ INFO = [  # (command, answer)
     ("SPACE", "SPA"),
     ("STE", "STE"),
     ("GET&USB", "USB"),
+    ("MAC", "MAC"),
 ]
 
 

@@ -146,7 +146,7 @@ def test_stream_connects_then_triggers(tmp_path, monkeypatch):
 
     class StreamingPocket(FakePocket):
         async def send(self, command):
-            if command == "U&WIFI" and "WIFIO" in FakePocket.sent:
+            if command == "WIFI&SWITCH":
                 started.set()
             return await super().send(command)
 
@@ -159,7 +159,7 @@ def test_stream_connects_then_triggers(tmp_path, monkeypatch):
     args = parser().parse_args([
         "AA:BB:CC:DD:EE:FF", KEY, "--host", "127.0.0.1", "--out", str(out), "-q",
         "--checks", "stream", "--no-begin", "--stream-port", str(port), "--stream-idle", "0.5",
-        "--status-interval", "0",
+        "--status-interval", "0", "--stream-gap", "0.1", "--heartbeat", "0.2",
     ])
 
     async def main():
@@ -179,6 +179,10 @@ def test_stream_connects_then_triggers(tmp_path, monkeypatch):
     assert res["data"]["length"] == len(frame) and res["data"]["mp3_sync_offsets"] == [6]
     assert {"offset": 2, "type": "u32le", "value": 6653128, "equals": "staged file size"} in res["data"]["length_fields"]
     assert (tmp_path / f"r.{port}.bin").read_bytes() == frame
+    # Connected first, then: start a Bluetooth transfer of the (longest) recording, switch it.
+    after = FakePocket.sent[FakePocket.sent.index("WIFIO") + 1:]
+    assert [c for c in after if c not in ("WIFIS", "WPING")][:2] == ["U&2026-09-03&20260903145856", "WIFI&SWITCH"]
+    assert "WPING" in FakePocket.sent and res["recording"] == "2026-09-03/20260903145856"
 
 
 def test_stream_waits_for_the_port(tmp_path, monkeypatch):

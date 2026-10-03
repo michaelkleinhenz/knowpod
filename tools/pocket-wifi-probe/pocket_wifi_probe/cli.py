@@ -39,6 +39,8 @@ def parser() -> argparse.ArgumentParser:
     g.add_argument("--notify-all", action="store_true",
                    help="also log notifications of every other characteristic")
     g.add_argument("--scan-timeout", type=float, default=20.0, help="seconds to look for the recorder")
+    g.add_argument("--heartbeat", type=float, default=0,
+                   help="send APP&WPING every N seconds while on the AP (the app's Wi-Fi heartbeat); 0 = off")
     g.add_argument("--status-interval", type=float, default=2.0,
                    help="ask WIFIS every N seconds while on the AP, 0 to never ask (default 2)")
 
@@ -53,6 +55,14 @@ def parser() -> argparse.ArgumentParser:
     g.add_argument("--check-timeout", type=float, default=600.0, help="seconds one check may take (default 600)")
     g.add_argument("--stream-port", type=int, default=8475,
                    help="the recorder's transfer socket, for the stream check (default 8475)")
+    g.add_argument("--stream-trigger", default="U&{date}&{ts},WIFI&SWITCH",
+                   help="stream: Bluetooth commands sent once connected, comma-separated; {date} and "
+                        "{ts} are --stream-recording's (default: start a Bluetooth transfer, then switch "
+                        "it to WiFi, as the app's strings suggest)")
+    g.add_argument("--stream-recording",
+                   help="stream: recording for {date}/{ts}, DATE/TIMESTAMP (default: the longest)")
+    g.add_argument("--stream-gap", type=float, default=1.0,
+                   help="stream: seconds between trigger commands (default 1)")
     g.add_argument("--stream-wait", type=float, default=30.0,
                    help="stream: keep trying to connect for N seconds (default 30)")
     g.add_argument("--stream-idle", type=float, default=10.0,
