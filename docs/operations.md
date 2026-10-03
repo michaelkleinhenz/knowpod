@@ -223,11 +223,31 @@ files named by when they started, in UTC (`RECORD/2026-10-2/20261002090356.mp3`)
   (`APP&USB&1`), after which the plugged-in recorder mounts and is copied as above.
   **The order matters:** the drive has to be switched on over Bluetooth *before* the cable
   is plugged in; a recorder plugged in first doesn't start as a USB drive and has to be
-  unplugged and plugged in again. The **Pocket USB Sync** button (a USB icon at the right end of the
-  notes list's top row, desktop app only) walks through this: unplug, switch the drive on, plug in, then shows the copying. The app
+  unplugged and plugged in again. The **Pocket Sync** button (a USB icon at the right end of the
+  notes list's top row, desktop app only) walks through this on its **USB** tab: unplug, switch the drive on, plug in, then shows the copying. The app
   talks to the recorder with Web Bluetooth in a hidden window (`desktop/src/bluetooth.js`);
   on Linux it needs BlueZ, on macOS (which hides Bluetooth addresses) it uses the one Pocket
   nearby (`PKT01_…`).
+- **Over the recorder's WiFi** (the **WiFi** tab of **Pocket Sync**, or **Copy from Pocket
+  over WiFi** in the tray menu), no cable is needed and it runs at about 1 MB/s. It needs
+  the same Bluetooth settings, Pocket firmware **1.8**, more than 10 % battery, and the
+  desktop app on **Linux with NetworkManager** or **Windows** (not macOS yet). The app
+  (`desktop/src/pocket-wifi-sync.js`, `pocket-wifi.js`):
+  1. connects over Bluetooth, lists the recorder's recordings and asks the server which are
+     new (`POST /api/v1/me/pocket/device/check`), while it's still online;
+  2. switches the recorder's WiFi access point on, moves this computer's WiFi onto it with a
+     temporary hidden-network profile (`knowpod-pocket`; on Linux it never takes the default
+     route, so a network cable keeps internet), and downloads the new recordings into a
+     temporary folder. The recorder serves two files per access point session, so for more
+     the app restarts it in between (about 15 s);
+  3. switches the access point off, rejoins the usual network, deletes the profile, and
+     uploads the recordings as the USB copy does. The temporary files are deleted.
+
+  The dialog shows each step, the transfer's megabytes and speed, and explains failures
+  (firmware, battery, recorder not found, WiFi join, …); **Cancel** stops and puts the WiFi
+  back. Closing the dialog keeps the copy running; a notification says when it's done.
+  Quitting the app during a copy stops it first, so the WiFi is put back. How the transfer
+  works on the wire is in `tools/pocket-wifi-probe/RESEARCH.md`.
 
 **Log message:** `pocket file imported`.
 
@@ -474,8 +494,8 @@ CORS setting is needed. New server versions reach it like the web app, on the ne
   the installed app, **Start at Login** (starts it in the tray; on Linux an entry in
   `~/.config/autostart`). Some Linux desktops (e.g. GNOME without an AppIndicator
   extension) show no tray icon; starting the app again opens its window.
-- It copies new recordings from a Pocket recorder plugged in by USB into the folder
-  **Pocket AI** (see [Copying straight from the recorder](#copying-straight-from-the-recorder-desktop-app)).
+- It copies new recordings from a Pocket recorder, plugged in by USB or over the recorder's
+  WiFi, into the folder **Pocket AI** (see [Copying straight from the recorder](#copying-straight-from-the-recorder-desktop-app)).
 - The installers are not code-signed: on macOS open the app with right-click → **Open** the
   first time, on Windows choose **More info → Run anyway**.
 

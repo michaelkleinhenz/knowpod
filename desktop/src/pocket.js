@@ -181,6 +181,18 @@ function recordings(root) {
   return found.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+// The files already copied to a server are remembered, so they aren't asked about again and a
+// note deleted for good isn't copied again either. Shared by the USB copy here and the WiFi
+// copy (pocket-wifi-sync.js).
+const rememberedKey = (server) => `pocketCopied:${server}`;
+const rememberedFiles = (readConfig, server) => new Set(readConfig()[rememberedKey(server)] || []);
+function rememberFile(readConfig, writeConfig, server, name) {
+  const config = readConfig();
+  const list = (config[rememberedKey(server)] || []).filter((n) => n !== name);
+  list.push(name);
+  writeConfig({ ...config, [rememberedKey(server)]: list.slice(-maxRemembered) });
+}
+
 class HttpError extends Error {
   constructor(status, body) {
     let message = `HTTP ${status}`;
@@ -257,16 +269,8 @@ function startPocketSync({ serverUrl, readConfig, writeConfig, notify, onChange 
     onChange();
   };
 
-  // remembered are the files already copied to the server: they aren't asked about again,
-  // so a note deleted for good isn't copied again either.
-  const rememberedKey = (server) => `pocketCopied:${server}`;
-  const remembered = (server) => new Set(readConfig()[rememberedKey(server)] || []);
-  const remember = (server, name) => {
-    const config = readConfig();
-    const list = (config[rememberedKey(server)] || []).filter((n) => n !== name);
-    list.push(name);
-    writeConfig({ ...config, [rememberedKey(server)]: list.slice(-maxRemembered) });
-  };
+  const remembered = (server) => rememberedFiles(readConfig, server);
+  const remember = (server, name) => rememberFile(readConfig, writeConfig, server, name);
 
   async function sync(roots) {
     const server = serverUrl();
@@ -427,4 +431,4 @@ function startPocketSync({ serverUrl, readConfig, writeConfig, notify, onChange 
   };
 }
 
-module.exports = { startPocketSync, findRecorders, recordings };
+module.exports = { startPocketSync, findRecorders, recordings, request, HttpError, rememberedFiles, rememberFile };

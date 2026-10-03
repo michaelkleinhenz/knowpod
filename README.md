@@ -341,8 +341,9 @@ three and keeps the installers as artifacts; a `desktop-v<version>` tag also pub
 a GitHub release (see [Version](#version)). The builds are not code-signed, so macOS
 Gatekeeper and Windows SmartScreen warn on first open. The desktop app shows notifications
 while it runs; closing its window keeps it running in the tray, and it copies new
-recordings from a Pocket recorder plugged in by USB, switching the recorder's USB drive on
-over Bluetooth first when needed (see [Operations](docs/operations.md#desktop-app)).
+recordings from a Pocket recorder, plugged in by USB (switching the recorder's USB drive on
+over Bluetooth first when needed) or over the recorder's own WiFi on Linux and Windows (see
+[Operations](docs/operations.md#desktop-app)).
 
 ## Version
 
