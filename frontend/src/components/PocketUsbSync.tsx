@@ -161,12 +161,11 @@ function UsbPane({ state, call }: { state: PocketBluetoothResult; call: Call }) 
     return (
       <>
         <p>{usbProgressText(state, t)}</p>
-        {/* Copying again only does something when copying is off or the last copy didn't
-            finish: once it's done, every recording on the Pocket is in knowpod. */}
-        {!state.syncing && (!state.enabled || !['done', 'checking', 'copying'].includes(state.phase ?? '')) && (
+        {/* Once a copy is done, checking again picks up what came since or was missed. */}
+        {!state.syncing && (!state.enabled || !['checking', 'copying'].includes(state.phase ?? '')) && (
           <div className="new-item-actions">
             <button type="button" className="primary-button" onClick={() => void call({ action: 'sync' })}>
-              {t('pocketUsbSync.copyNow')}
+              {state.enabled && state.phase === 'done' ? t('pocketUsbSync.checkAgain') : t('pocketUsbSync.copyNow')}
             </button>
           </div>
         )}
@@ -294,7 +293,8 @@ function WifiPane({ state, call }: { state: PocketBluetoothResult; call: Call })
           </p>
         )}
         {startError && <p className="error">{startError}</p>}
-        {startButton(t('pocketWifiSync.again'))}
+        {state.busy && <p className="muted">{t('pocketWifiSync.busy')}</p>}
+        {startButton(wifi.copied || wifi.failed ? t('pocketWifiSync.again') : t('pocketWifiSync.checkAgain'))}
       </>
     );
   }
@@ -310,6 +310,7 @@ function WifiPane({ state, call }: { state: PocketBluetoothResult; call: Call })
           </>
         )}
         {startError && <p className="error">{startError}</p>}
+        {state.busy && <p className="muted">{t('pocketWifiSync.busy')}</p>}
         {startButton(t('pocketWifiSync.retry'))}
       </>
     );
