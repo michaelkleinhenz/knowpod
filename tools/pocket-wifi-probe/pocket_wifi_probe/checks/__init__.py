@@ -18,8 +18,8 @@ is set. Register it with @monitor.
         ctx.log("my-check", "something worth seeing live")
         return {"answer": 42}
 
-Checks run in the order their modules sort, then in the order they are defined. Every module
-here is imported by load(), so nothing else has to be edited.
+Checks run by priority (default 100, lower first), then in the order their modules sort and
+they are defined. Every module here is imported by load(), so nothing else has to be edited.
 """
 from __future__ import annotations
 
@@ -39,6 +39,7 @@ class Check:
     help: str
     default: bool = True
     kind: str = "check"  # or "monitor"
+    priority: int = 100
     order: int = field(default=0)
 
 
@@ -55,9 +56,9 @@ def _register(item: Check) -> None:
     REGISTRY[item.name] = item
 
 
-def check(name: str, *, phases: tuple[str, ...], help: str, default: bool = True):
+def check(name: str, *, phases: tuple[str, ...], help: str, default: bool = True, priority: int = 100):
     def wrap(func):
-        _register(Check(name, func, tuple(phases), help, default))
+        _register(Check(name, func, tuple(phases), help, default, priority=priority))
         return func
     return wrap
 
@@ -77,7 +78,7 @@ def load() -> dict[str, Check]:
 
 def select(only: list[str] | None, skip: list[str]) -> list[Check]:
     """The checks to run: the named ones, or every default one, minus the skipped."""
-    items = sorted(load().values(), key=lambda c: c.order)
+    items = sorted(load().values(), key=lambda c: (c.priority, c.order))
     unknown = [n for n in (only or []) + skip if n not in REGISTRY]
     if unknown:
         raise ValueError(f"Unknown check(s): {', '.join(unknown)} (see --list-checks)")

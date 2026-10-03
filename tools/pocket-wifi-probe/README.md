@@ -11,6 +11,24 @@ after that are not decoded yet, and finding them is what this tool is for. The t
 to run on firmware other than 1.8 unless you pass `--force`, because the other command order
 can leave the recorder unreachable until it's power-cycled.
 
+## Findings so far
+
+From a run on firmware 1.8, WiFi firmware V9:
+
+- Once `WIFIS` reaches 1, the recorder listens on **TCP 8475**. Nothing else is open on TCP or
+  UDP, not even DNS on 53. It doesn't answer mDNS, SSDP or broadcast, and nothing connects
+  back to us.
+- A connection to 8475 is accepted and stays silent, so the recorder waits for something.
+- After a connection sent a stray `\r\n`, the recorder reset it and every later connect was
+  refused. After `APP&U&WIFI`, 8475 was open again.
+- `MCU&OFF` comes right after staging (`MCU&U&<size>`), not after `WIFIO`.
+- Each Bluetooth notification arrived about 4 times within milliseconds. The probe now drops
+  the repeats and counts them in `meta.duplicate_notifications_dropped`.
+- The app's strings (it's Flutter) mention a "Pocket Wi-Fi framed stream", frame lengths and
+  frame types. The `RANGE …` strings belong to Bluetooth byte-range downloads ("Byte-range
+  downloads are Bluetooth-only"), not WiFi. The `stream` check tests the idea that the app
+  connects first and then starts the stream with `APP&U&WIFI`.
+
 ## What a run does
 
 1. Connects over Bluetooth and unlocks with the session key (`APP&SK&…`). Reads the firmware
@@ -43,7 +61,7 @@ your shell history.
 
 | OS      | Joins with                          | Notes |
 |---------|-------------------------------------|-------|
-| Linux   | NetworkManager (`nmcli`)            | `sudo` adds a packet capture (`capture` monitor) and lets the listeners bind ports below 1024. |
+| Linux   | NetworkManager (`nmcli`)            | For the packet capture (`capture` monitor), allow tcpdump once: `sudo setcap cap_net_raw,cap_net_admin=eip $(which tcpdump)`. |
 | Windows | `netsh wlan`                        | Allow Python through the firewall when Windows asks, or the `inbound` monitor sees nothing. For packets, run Wireshark on the WiFi adapter alongside. |
 | other   | `--wifi manual`: you join by hand   | The probe prints the SSID and password and waits until it has an address on the AP. |
 
@@ -64,6 +82,7 @@ replaced with `<redacted>`.
 
 | Name        | Runs in      | What it does |
 |-------------|--------------|--------------|
+| `stream`    | ready (first)| connects to the transfer socket (`--stream-port`, 8475), then sends `APP&U&WIFI` and saves whatever arrives to `<report>.8475.bin` |
 | `ble-info`  | ble          | battery, WiFi firmware, storage, state, USB mode |
 | `gatt`      | ble          | GATT table, with the value of every readable characteristic |
 | `ble-state` | ready, begin | `WIFIS`/`STE`, and the WIFIS history so far |

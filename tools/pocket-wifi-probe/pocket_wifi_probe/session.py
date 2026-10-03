@@ -83,6 +83,7 @@ async def probe(args) -> int:
         code = 130
     finally:
         report.meta["wifi_status_history"] = [(report.elapsed(t), v) for t, v in status.history]
+        report.meta["duplicate_notifications_dropped"] = pocket.duplicates
         report.write(out)
         print(f"\nReport written to {out}")
     return code

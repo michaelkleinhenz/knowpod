@@ -75,3 +75,19 @@ def test_registry():
     assert "capture" not in names and names.index("tcp-scan") < names.index("tcp-probe")
     with pytest.raises(ValueError):
         checks.select(["nope"], [])
+
+
+def test_duplicate_notifications_dropped():
+    from pocket_wifi_probe.pocket import COMMAND, PocketLink
+    link = PocketLink("AA:BB:CC:DD:EE:FF")
+    handle = link._handler(COMMAND)
+    for _ in range(4):
+        handle(None, bytearray(b"MCU&WIFIS&1"))
+    handle(None, bytearray(b"MCU&WIFIS&2"))
+    assert [m.text for m in link.messages] == ["MCU&WIFIS&1", "MCU&WIFIS&2"]
+    assert link.duplicates == 3
+
+
+def test_stream_runs_first():
+    names = [c.name for c in checks.select(None, [])]
+    assert names.index("stream") < names.index("tcp-scan")

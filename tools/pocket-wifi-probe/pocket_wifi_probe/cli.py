@@ -51,6 +51,12 @@ def parser() -> argparse.ArgumentParser:
 
     g = p.add_argument_group("probing")
     g.add_argument("--check-timeout", type=float, default=600.0, help="seconds one check may take (default 600)")
+    g.add_argument("--stream-port", type=int, default=8475,
+                   help="the recorder's transfer socket, for the stream check (default 8475)")
+    g.add_argument("--stream-idle", type=float, default=10.0,
+                   help="stream: stop reading after N seconds without data (default 10)")
+    g.add_argument("--stream-max", type=float, default=120.0,
+                   help="stream: stop reading after N seconds in all (default 120)")
     g.add_argument("--tcp-ports", default="1-65535", help="ports tcp-scan sweeps (default 1-65535)")
     g.add_argument("--tcp-timeout", type=float, default=0.5, help="connect timeout per port (default 0.5)")
     g.add_argument("--tcp-concurrency", type=int, default=0, help="parallel connects (default 400; 200 on Windows)")
@@ -71,7 +77,7 @@ def _names(text: str) -> list[str]:
 
 
 def list_checks() -> None:
-    items = sorted(checks.load().values(), key=lambda c: c.order)
+    items = sorted(checks.load().values(), key=lambda c: (c.priority, c.order))
     for c in items:
         where = "monitor" if c.kind == "monitor" else ",".join(c.phases)
         flag = "" if c.default else "  (off by default)"
