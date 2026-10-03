@@ -90,7 +90,7 @@ func TestDailyBriefing(t *testing.T) {
 		"## Due today\n\n- [ ] [Call Anna](/conversations/today) #2 — 15:00, P1",
 		"## Overdue\n\n- [ ] [Pay the invoice](/conversations/overdue) #1 — Sep 25",
 		"## New since yesterday\n\n- The budget was set at 40k (#5)",
-		"## All new notes\n\n- [Budget meeting](/conversations/meeting) #5 (recording)",
+		"## All new notes\n\n- [Budget meeting](/conversations/meeting) #5\n",
 		"## Open action items\n\n- Send the offer (Ben) — from [Budget meeting](/conversations/meeting) #5",
 	} {
 		if !strings.Contains(md, want) {
@@ -186,7 +186,7 @@ func TestDailyBriefingInGermanWithoutAI(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got.Title != "Briefing für So. 27. Sept." || !strings.Contains(got.Markdown, "## Heute fällig") ||
-		!strings.Contains(got.Markdown, "## Neu seit gestern\n\n- [Budget meeting](/conversations/meeting) #5 (Aufnahme)") || strings.Contains(got.Markdown, "Alle neuen") {
+		!strings.Contains(got.Markdown, "## Neu seit gestern\n\n- [Budget meeting](/conversations/meeting) #5\n") || strings.Contains(got.Markdown, "Alle neuen") {
 		t.Fatalf("briefing:\n%s\n%s", got.Title, got.Markdown)
 	}
 }
@@ -244,6 +244,46 @@ func TestDigestCitationsBecomeLinks(t *testing.T) {
 		if got := d.linkCitations(in, sources); got != want {
 			t.Errorf("linkCitations(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestSecretTitles(t *testing.T) {
+	for _, title := range []string{"API Token", "AWS keys", "Passwords", "Passwörter", "WLAN-Passwort", "Kennwort Router",
+		"Zugangsschlüssel", "API-Schlüssel", "Zugangsdaten Bank", "Anmeldedaten", "Credentials", "Secret", "Geheimnisse",
+		"PIN Kreditkarte", "Recovery codes", "Wiederherstellungscodes", "SSH key", "2FA Backup"} {
+		if !secretTitle(title) {
+			t.Errorf("%q isn't secret", title)
+		}
+	}
+	for _, title := range []string{"Keynote planning", "Shopping list", "Einkaufsliste Baumarkt", "Budget meeting", "Monkey island", "Pulse Features"} {
+		if secretTitle(title) {
+			t.Errorf("%q is secret", title)
+		}
+	}
+}
+
+func TestDigestLeavesOutSecretNotes(t *testing.T) {
+	f := newBriefingFixture(t, "- digest")
+	ctx := context.Background()
+	r := &recording.Recording{ID: "pw", OwnerID: "u1", DeviceID: "d", ClientID: "pw", Status: recording.StatusSummarized, CreatedAt: f.now.Add(-time.Hour),
+		UpdatedAt: f.now.Add(-time.Hour), Summary: &recording.Summary{Title: "WLAN-Passwort", Markdown: "hunter2"}}
+	if err := f.recs.Create(ctx, r); err != nil {
+		t.Fatal(err)
+	}
+	got, err := f.s.Today(ctx, f.acc, false, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(f.ai.requests) != 1 {
+		t.Fatalf("requests = %d", len(f.ai.requests))
+	}
+	in := f.ai.requests[0].Messages[1].Content.(string)
+	if strings.Contains(in, "hunter2") || strings.Contains(in, "WLAN") || !strings.Contains(in, "Budget meeting") {
+		t.Errorf("digest input:\n%s", in)
+	}
+	// It is still listed.
+	if !strings.Contains(got.Markdown, "[WLAN-Passwort](/conversations/pw)") {
+		t.Errorf("briefing:\n%s", got.Markdown)
 	}
 }
 

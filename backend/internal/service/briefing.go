@@ -660,7 +660,7 @@ func (s *BriefingService) daily(ctx context.Context, d *briefingData) (title, ma
 		if b.Shows(user.SectionNew) {
 			lines = nil
 			for _, r := range incoming {
-				lines = append(lines, fmt.Sprintf("- %s (%s)", d.ref(r), d.kindName(r)))
+				lines = append(lines, "- "+d.ref(r))
 			}
 			list(&out, newHeading, lines, "")
 		}
@@ -851,6 +851,19 @@ var citeRun = regexp.MustCompile(`\[\d{1,3}(?:\s*[,;]\s*\d{1,3})*\](?:\s*[,;]?\s
 // citeKey matches one key in a citeRun.
 var citeKey = regexp.MustCompile(`\d{1,3}`)
 
+// secretWords matches titles of notes that likely hold secrets (passwords, keys, tokens…),
+// in English and German, which are never sent to the model. Short words must stand alone
+// ("PIN", not "Shopping"); the longer ones also match within compounds ("Zugangsschlüssel").
+var secretWords = regexp.MustCompile(`(?i)\b(keys?|tokens?|pins?|pin-?codes?|puk|tans?|otps?|totp|2fa|mfa|ssh|pgp|gpg|seed)\b|` +
+	`passw(o|ö)r(d|t)|kennw(o|ö)rt|passphrase|password|credential|secret|geheim|token|api.?key|private.?key|` +
+	`schl(ü|ue)ssel|zugangsdaten|anmeldedaten|login.?daten|logins?\b|zugangscode|sicherheitscode|` +
+	`recovery.?codes?|backup.?codes?|wiederherstellungs|seed.?phrase|tresor|vault|iban|kreditkarte|credit.?card`)
+
+// secretTitle says whether a note's title suggests it holds secrets.
+func secretTitle(title string) bool {
+	return secretWords.MatchString(title)
+}
+
 // digestRef names a note the digest draws on: "#12" for the user's own numbered notes, which
 // the app shows as links, otherwise its title linking to the note.
 func (d *briefingData) digestRef(r *recording.Recording) string {
@@ -916,7 +929,7 @@ func (s *BriefingService) digest(ctx context.Context, d *briefingData, notes []*
 	sources := map[string]*recording.Recording{}
 	for i := len(notes) - 1; i >= 0 && n < maxDigestNotes; i-- {
 		r := notes[i]
-		if r.Summary == nil || strings.TrimSpace(r.Summary.Markdown) == "" {
+		if r.Summary == nil || strings.TrimSpace(r.Summary.Markdown) == "" || secretTitle(noteTitle(r)) {
 			continue
 		}
 		key := fmt.Sprint(n + 1)
