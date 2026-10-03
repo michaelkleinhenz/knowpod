@@ -271,6 +271,28 @@ a {
   gap: 0.5rem;
 }
 
+/* Pocket USB Sync dialog (desktop app): the order of the steps matters, so it stands out. */
+.pocket-usb-order {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--color-info-border);
+  border-radius: 6px;
+  background: var(--color-info-bg);
+  font-weight: 600;
+}
+
+.pocket-usb-steps {
+  margin: 0;
+}
+
+.pocket-usb-steps li + li {
+  margin-top: 0.6rem;
+}
+
+.pocket-usb-steps li > div {
+  margin-top: 0.4rem;
+}
+
 .nav-user {
   color: var(--color-header-muted);
   font-size: 0.9rem;

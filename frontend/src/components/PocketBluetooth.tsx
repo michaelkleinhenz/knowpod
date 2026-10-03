@@ -1,9 +1,17 @@
 import { FormEvent, useEffect, useState } from 'react';
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { pocketBluetooth, PocketBluetoothResult } from '../lib/desktop';
 
 // errorKeys are the explained failures of the desktop app's Pocket Bluetooth call.
 const errorKeys = ['not-configured', 'not-found', 'auth', 'unsupported', 'usb-refused', 'busy', 'timeout', 'invalid-address', 'invalid-key'];
+
+// bluetoothErrorText explains a failed Pocket Bluetooth call.
+export function bluetoothErrorText(r: PocketBluetoothResult, t: TFunction): string {
+  return r.error && errorKeys.includes(r.error)
+    ? t(`pocketBluetooth.errors.${r.error}`)
+    : t('pocketBluetooth.errors.failed', { detail: r.message || r.error || '' });
+}
 
 // PocketBluetooth sets up the desktop app's Bluetooth connection to a Pocket recorder: the
 // recorder is a USB drive only until it's unplugged once, so the app switches the drive on
@@ -31,9 +39,6 @@ export function PocketBluetooth() {
   if (!call) return null;
   if (!settings) return <p className="muted">{t('common.loading')}</p>;
 
-  const errorText = (r: PocketBluetoothResult) =>
-    r.error && errorKeys.includes(r.error) ? t(`pocketBluetooth.errors.${r.error}`) : t('pocketBluetooth.errors.failed', { detail: r.message || r.error || '' });
-
   async function run(action: 'save' | 'check' | 'usb-on', update?: { address?: string; sessionKey?: string }) {
     setBusy(action);
     setError(null);
@@ -42,7 +47,7 @@ export function PocketBluetooth() {
     try {
       const r = await call!(action === 'save' ? { action, ...update } : { action });
       if (!r.ok) {
-        setError(errorText(r));
+        setError(bluetoothErrorText(r, t));
         return;
       }
       if (action === 'save') {

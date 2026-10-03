@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "knowpod Web Clipper",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Clip the text of the current page into a knowpod note in the \"Clipped\" folder, with a link to the source.",
   "action": {
     "default_title": "Clip this page to knowpod",
