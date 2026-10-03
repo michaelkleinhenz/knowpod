@@ -1,0 +1,7 @@
+# Probe reports describe a real recorder; keep them out of git.
+pocket-probe-*.json
+pocket-probe-*.pcap
+__pycache__/
+*.egg-info/
+.venv/
+.pytest_cache/

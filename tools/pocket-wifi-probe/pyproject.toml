@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pocket-wifi-probe"
+version = "0.1.0"
+description = "Probe a Pocket recorder's WiFi access point to work out how its file transfer works"
+requires-python = ">=3.11"
+dependencies = ["bleak>=0.22"]
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+
+[project.scripts]
+pocket-wifi-probe = "pocket_wifi_probe.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["pocket_wifi_probe*"]
