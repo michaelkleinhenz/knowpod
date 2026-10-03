@@ -72,13 +72,25 @@ def describe(data: bytes, staged: int | None) -> dict:
        help="connect to --stream-port, then send APP&U&WIFI and record what the recorder streams")
 async def stream(ctx):
     port = ctx.args.stream_port
-    try:
-        reader, writer = await asyncio.wait_for(asyncio.open_connection(ctx.host, port), 3)
-    except (OSError, asyncio.TimeoutError) as e:
-        return {"connected": False, "error": f"{type(e).__name__}: {e}"}
-    ctx.log("stream", f"connected to {port}; listening before triggering")
+    # A refused connect costs nothing (the recorder answers with a reset), so keep trying until
+    # the socket opens; a connection that gets in is never closed early or sent stray bytes.
+    started = time.monotonic()
+    attempts, last_error = 0, None
+    while True:
+        attempts += 1
+        try:
+            reader, writer = await asyncio.wait_for(asyncio.open_connection(ctx.host, port), 3)
+            break
+        except (OSError, asyncio.TimeoutError) as e:
+            last_error = f"{type(e).__name__}: {e}"
+        if time.monotonic() - started >= ctx.args.stream_wait:
+            ctx.log("stream", f"{port} never opened in {ctx.args.stream_wait:g}s ({attempts} tries)")
+            return {"connected": False, "attempts": attempts, "error": last_error}
+        await asyncio.sleep(0.5)
+    waited = round(time.monotonic() - started, 2)
+    ctx.log("stream", f"connected to {port} after {waited}s ({attempts} tries); listening before triggering")
     chunks: list[tuple[float, bytes]] = []
-    out: dict = {"connected": True}
+    out: dict = {"connected": True, "attempts": attempts, "waited": waited}
     try:
         out["before_trigger"] = await _read(reader, chunks, ctx, idle=2, limit=2)
         out["bytes_before_trigger"] = sum(len(c) for _, c in chunks)

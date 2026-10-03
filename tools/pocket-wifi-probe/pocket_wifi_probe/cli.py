@@ -53,6 +53,8 @@ def parser() -> argparse.ArgumentParser:
     g.add_argument("--check-timeout", type=float, default=600.0, help="seconds one check may take (default 600)")
     g.add_argument("--stream-port", type=int, default=8475,
                    help="the recorder's transfer socket, for the stream check (default 8475)")
+    g.add_argument("--stream-wait", type=float, default=30.0,
+                   help="stream: keep trying to connect for N seconds (default 30)")
     g.add_argument("--stream-idle", type=float, default=10.0,
                    help="stream: stop reading after N seconds without data (default 10)")
     g.add_argument("--stream-max", type=float, default=120.0,

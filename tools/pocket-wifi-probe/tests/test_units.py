@@ -91,3 +91,31 @@ def test_duplicate_notifications_dropped():
 def test_stream_runs_first():
     names = [c.name for c in checks.select(None, [])]
     assert names.index("stream") < names.index("tcp-scan")
+
+
+def test_networkmanager_join_does_not_reconnect_while_activating(monkeypatch):
+    """nmcli's --wait can run out while the link is still coming up (it did on a real run);
+    asking again would drop and redo the association, so join must just keep waiting."""
+    import asyncio
+    import time
+
+    from pocket_wifi_probe import hostwifi
+    from pocket_wifi_probe.util import Result
+
+    calls = []
+    joined_at = time.monotonic() + 1.5
+
+    async def fake_run(*args, timeout=30.0):
+        calls.append(args)
+        if "--wait" in args and "up" in args:
+            return Result(4, "", "Error: Timeout expired (15 seconds)")
+        if "GENERAL.STATE" in args:  # active only once "up" was asked for
+            up = any("up" in c for c in calls)
+            return Result(0, "GENERAL.STATE:activating\n", "") if up else Result(10, "", "no such connection")
+        return Result(0, "", "")
+
+    monkeypatch.setattr(hostwifi, "run", fake_run)
+    nm = hostwifi.NetworkManager("192.168.200.1", "wlan0", lambda *a: None)
+    monkeypatch.setattr(nm, "on_ap", lambda: "192.168.200.2" if time.monotonic() > joined_at else None)
+    assert asyncio.run(nm.join("PKT01", time.monotonic() + 10))
+    assert sum(1 for c in calls if "up" in c) == 1

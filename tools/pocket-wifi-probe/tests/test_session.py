@@ -179,3 +179,34 @@ def test_stream_connects_then_triggers(tmp_path, monkeypatch):
     assert res["data"]["length"] == len(frame) and res["data"]["mp3_sync_offsets"] == [6]
     assert {"offset": 2, "type": "u32le", "value": 6653128, "equals": "staged file size"} in res["data"]["length_fields"]
     assert (tmp_path / f"r.{port}.bin").read_bytes() == frame
+
+
+def test_stream_waits_for_the_port(tmp_path, monkeypatch):
+    """The socket may open a few seconds after WIFIS=1; refused connects are retried."""
+    monkeypatch.setattr(session, "PocketLink", FakePocket)
+    monkeypatch.setattr(session, "backend", lambda kind, host, iface, log: FakeWifi(host, iface, log))
+    FakePocket.sent, FakeWifi.calls = [], []
+    port = free_port()
+    out = tmp_path / "r.json"
+    args = parser().parse_args([
+        "AA:BB:CC:DD:EE:FF", KEY, "--host", "127.0.0.1", "--out", str(out), "-q",
+        "--checks", "stream", "--no-begin", "--stream-port", str(port), "--stream-idle", "0.3",
+        "--stream-wait", "10", "--status-interval", "0",
+    ])
+
+    async def main():
+        async def serve(reader, writer):
+            writer.close()
+
+        async def open_later():
+            await asyncio.sleep(4)  # well after the stream check starts trying
+            return await asyncio.start_server(serve, "127.0.0.1", port)
+
+        opener = asyncio.create_task(open_later())
+        code = await session.probe(args)
+        (await opener).close()
+        return code
+
+    assert asyncio.run(main()) == 0
+    res = json.loads(out.read_text())["results"]["ready"]["stream"]["result"]
+    assert res["connected"] and res["attempts"] > 1 and res["waited"] >= 1
