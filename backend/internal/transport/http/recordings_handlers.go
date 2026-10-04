@@ -383,6 +383,21 @@ func (s *Server) handleResummarize(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, rec)
 }
 
+// handleNameSpeakers gives several speakers of the transcript names, optionally making the
+// summary again with them.
+func (s *Server) handleNameSpeakers(w http.ResponseWriter, r *http.Request) {
+	var in service.SpeakerNames
+	if !decode(w, r, &in) {
+		return
+	}
+	rec, err := s.actions.NameSpeakers(r.Context(), accountFrom(r.Context()), chi.URLParam(r, "id"), in)
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, rec)
+}
+
 // handleRenameSpeaker gives a speaker of the transcript a name.
 func (s *Server) handleRenameSpeaker(w http.ResponseWriter, r *http.Request) {
 	var in service.SpeakerRename

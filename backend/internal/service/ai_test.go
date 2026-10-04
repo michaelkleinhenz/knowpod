@@ -125,6 +125,23 @@ func TestSummarize(t *testing.T) {
 	if err := s.Summarize(context.Background(), empty); err != nil || empty.Summary.Title != "No speech detected" || len(ai.requests) != 1 {
 		t.Fatalf("empty: %+v, %v", empty.Summary, err)
 	}
+	// ... and say so in the summary's language.
+	german := &recording.Recording{ID: "r3", Transcript: &recording.Transcript{Text: ""},
+		SummaryOptions: recording.SummaryOptions{Language: "de-DE"}}
+	if err := s.Summarize(context.Background(), german); err != nil || german.Summary.Title != "Keine Sprache erkannt" {
+		t.Fatalf("german empty: %+v, %v", german.Summary, err)
+	}
+}
+
+func TestSummarySystemPromptLanguage(t *testing.T) {
+	auto := summarySystemPrompt("Use \"## Key points\".", "auto", nil)
+	if !strings.Contains(auto, "language of the transcript") || !strings.Contains(auto, "translate the headings") {
+		t.Fatalf("auto prompt = %q", auto)
+	}
+	german := summarySystemPrompt("Use \"## Key points\".", "de-DE", nil)
+	if !strings.Contains(german, "in German, regardless") || !strings.Contains(german, "headings given above into German") {
+		t.Fatalf("German prompt = %q", german)
+	}
 }
 
 func TestParseSummary(t *testing.T) {
@@ -328,5 +345,36 @@ func TestSummaryKeepsTheSpeakerNames(t *testing.T) {
 	}
 	if prompt := ai.requests[0].Messages[0].Content.(string); !strings.Contains(prompt, `"speakers"`) {
 		t.Error("the prompt doesn't ask for the speakers")
+	}
+}
+
+func TestContinuationPrompt(t *testing.T) {
+	// Without speakers so far, only the part is named.
+	if got := continuationPrompt(2, []string{"[0:01] just words"}); strings.Contains(got, "<previous>") || !strings.Contains(got, "part 2") {
+		t.Fatalf("no speakers: %q", got)
+	}
+
+	prev := []string{"[0:01] Speaker 1: Hi, I'm Anna.\n[0:04] Speaker 2: Ben here.", "[5:02] Speaker 3: Late, sorry.\n[5:10] Speaker 1: No problem."}
+	got := continuationPrompt(3, prev)
+	for _, want := range []string{"part 3", "labeled Speaker 1, Speaker 2, Speaker 3", "from Speaker 4 on", "<previous>\n[0:01] Speaker 1: Hi, I'm Anna.", "[5:10] Speaker 1: No problem.\n</previous>"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("prompt lacks %q: %q", want, got)
+		}
+	}
+
+	// A long transcript is cut to its end, at a whole line.
+	long := strings.Repeat("[0:01] Speaker 1: "+strings.Repeat("blah ", 20)+"\n", 100) + "[4:59] Speaker 2: The end."
+	got = continuationPrompt(2, []string{long})
+	tail := got[strings.Index(got, "<previous>\n")+len("<previous>\n"):]
+	if len(tail) > continuationContext+len("\n</previous>") || !strings.HasPrefix(tail, "[0:01] Speaker 1:") || !strings.Contains(tail, "Speaker 2: The end.") {
+		t.Fatalf("tail = %q", tail)
+	}
+}
+
+func TestTranscriptionPromptLabelsSpeakers(t *testing.T) {
+	for _, want := range []string{"Tell the speakers apart", "every time the speaker changes", "Label every line"} {
+		if !strings.Contains(transcriptionPrompt, want) {
+			t.Fatalf("prompt lacks %q", want)
+		}
 	}
 }

@@ -57,39 +57,125 @@ type SpeakerRename struct {
 // speaker's lines in the transcript is replaced, and so is the label where the summary and
 // its action items mention it. Giving a speaker the name of another one merges the two.
 func (s *RecordingService) RenameSpeaker(ctx context.Context, acc *Account, id string, in SpeakerRename) (*recording.Recording, error) {
-	from, to := strings.TrimSpace(in.From), strings.Join(strings.Fields(in.To), " ")
-	if err := validSpeakerName(to); err != nil {
+	return s.NameSpeakers(ctx, acc, id, SpeakerNames{Names: []SpeakerRename{in}})
+}
+
+// SpeakerNames names several speakers of a note's transcript at once.
+type SpeakerNames struct {
+	Names []SpeakerRename `json:"names"`
+	// Resummarize makes the summary again from the renamed transcript, so it is written with
+	// the names; otherwise the labels are only replaced where the summary mentions them.
+	Resummarize bool `json:"resummarize"`
+}
+
+// maxSpeakerRenames bounds the speakers named at once.
+const maxSpeakerRenames = 50
+
+// clean normalizes the names and checks that they can be applied one after the other.
+func (in SpeakerNames) clean() ([]SpeakerRename, error) {
+	if len(in.Names) == 0 || len(in.Names) > maxSpeakerRenames {
+		return nil, invalid("name 1-%d speakers", maxSpeakerRenames)
+	}
+	names := make([]SpeakerRename, len(in.Names))
+	renamed := map[string]bool{}
+	for i, n := range in.Names {
+		from, to := strings.TrimSpace(n.From), strings.Join(strings.Fields(n.To), " ")
+		if err := validSpeakerName(to); err != nil {
+			return nil, err
+		}
+		if renamed[from] {
+			return nil, invalid("speaker %q is named twice", from)
+		}
+		names[i] = SpeakerRename{From: from, To: to}
+		if from != to {
+			renamed[from] = true
+		}
+	}
+	for _, n := range names {
+		if n.From != n.To && renamed[n.To] {
+			return nil, invalid("%q is renamed too; name the speakers one at a time", n.To)
+		}
+	}
+	return names, nil
+}
+
+// NameSpeakers gives speakers of the note's transcript names (see RenameSpeaker). With
+// Resummarize the summary is made again from the renamed transcript; the one it replaces is
+// kept as an earlier version.
+func (s *RecordingService) NameSpeakers(ctx context.Context, acc *Account, id string, in SpeakerNames) (*recording.Recording, error) {
+	names, err := in.clean()
+	if err != nil {
 		return nil, err
 	}
-	return s.change(ctx, acc, id, recording.RoleEditor, func(rec *recording.Recording, _ recording.Role) error {
-		if rec.Transcript == nil || rec.IsDocument() {
-			return errors.Join(ErrNotReady, errors.New("the note has no transcript with speakers"))
-		}
-		if !slices.Contains(SpeakerLabels(rec.Transcript.Text), from) {
-			return invalid("the transcript has no speaker %q", from)
-		}
-		if from == to {
-			return nil
-		}
-		transcript := *rec.Transcript
-		transcript.Text = renameSpeakerLines(transcript.Text, from, to)
-		rec.Transcript = &transcript
-		if rec.Summary != nil {
-			summary := *rec.Summary
-			summary.Markdown = replaceName(summary.Markdown, from, to)
-			summary.ActionItems = slices.Clone(summary.ActionItems)
-			for i := range summary.ActionItems {
-				it := &summary.ActionItems[i]
-				it.Text, it.Owner = replaceName(it.Text, from, to), replaceName(it.Owner, from, to)
+	if in.Resummarize {
+		return s.requeueAs(ctx, acc, id, recording.RoleEditor, func(rec *recording.Recording) (recording.Status, error) {
+			if _, err := renameSpeakers(rec, names, false); err != nil {
+				return "", err
 			}
-			// The suggestion for this speaker is taken care of.
-			summary.Speakers = slices.DeleteFunc(slices.Clone(summary.Speakers), func(n recording.SpeakerName) bool { return n.Label == from })
-			rec.Summary = &summary
+			rec.Summary = nil
+			return recording.StatusTranscribed, nil
+		})
+	}
+	return s.change(ctx, acc, id, recording.RoleEditor, func(rec *recording.Recording, _ recording.Role) error {
+		changed, err := renameSpeakers(rec, names, true)
+		if changed {
+			// The text changed: edits made on the old one must not undo this.
+			rec.Revision++
 		}
-		// The text changed: edits made on the old one must not undo this.
-		rec.Revision++
-		return nil
+		return err
 	})
+}
+
+// renameSpeakers applies names to the transcript and, with inSummary, to the summary and its
+// action items. It reports whether anything changed.
+func renameSpeakers(rec *recording.Recording, names []SpeakerRename, inSummary bool) (bool, error) {
+	if rec.Transcript == nil || rec.IsDocument() {
+		return false, errors.Join(ErrNotReady, errors.New("the note has no transcript with speakers"))
+	}
+	switch rec.Status {
+	case recording.StatusUploading, recording.StatusReceived, recording.StatusStored, recording.StatusTranscribed:
+		// The pipeline would save its result over the names.
+		return false, errors.Join(ErrNotReady, errors.New("the note is still being processed"))
+	}
+	labels := SpeakerLabels(rec.Transcript.Text)
+	for _, n := range names {
+		if !slices.Contains(labels, n.From) {
+			return false, invalid("the transcript has no speaker %q", n.From)
+		}
+	}
+	transcript := *rec.Transcript
+	var summary *recording.Summary
+	if inSummary && rec.Summary != nil {
+		sum := *rec.Summary
+		sum.ActionItems = slices.Clone(sum.ActionItems)
+		sum.Speakers = slices.Clone(sum.Speakers)
+		summary = &sum
+	}
+	changed := false
+	for _, n := range names {
+		if n.From == n.To {
+			continue
+		}
+		changed = true
+		transcript.Text = renameSpeakerLines(transcript.Text, n.From, n.To)
+		if summary == nil {
+			continue
+		}
+		summary.Markdown = replaceName(summary.Markdown, n.From, n.To)
+		for i := range summary.ActionItems {
+			it := &summary.ActionItems[i]
+			it.Text, it.Owner = replaceName(it.Text, n.From, n.To), replaceName(it.Owner, n.From, n.To)
+		}
+		// The suggestion for this speaker is taken care of.
+		summary.Speakers = slices.DeleteFunc(summary.Speakers, func(sn recording.SpeakerName) bool { return sn.Label == n.From })
+	}
+	if changed {
+		rec.Transcript = &transcript
+		if summary != nil {
+			rec.Summary = summary
+		}
+	}
+	return changed, nil
 }
 
 // renameSpeakerLines replaces the label from at the start of the transcript's lines.

@@ -40,8 +40,45 @@ const (
 )
 
 const transcriptionPrompt = `Transcribe this audio recording verbatim in its original language. Do not translate, summarize or comment.
-Start each speaker's turn on a new line with its start time in the form [m:ss] (minutes and seconds from the start of this audio), followed by a speaker label such as "Speaker 1:" when more than one person speaks, e.g. "[1:05] Speaker 2: …". In long turns, start a new line with a new time stamp at least every 30 seconds.
+Tell the speakers apart by their voices (pitch, timbre, accent, speaking style) and by the conversation (questions and answers, people addressing or answering each other), and number them in the order they first speak. Do not merge different people into one speaker.
+Start a new line every time the speaker changes, even for a short interjection, with its start time in the form [m:ss] (minutes and seconds from the start of this audio) and the speaker's label, e.g. "[1:05] Speaker 2: …". Label every line, also "Speaker 1" when only one person speaks, and keep the same label for the same voice throughout. In long turns, start a new line with a new time stamp at least every 30 seconds.
 Output only the transcript. If there is no speech, output nothing.`
+
+// continuationContext is how much of the end of the previous part's transcript is shown when
+// transcribing the next part of a long recording, so speakers keep their labels.
+const continuationContext = 2000
+
+// continuationPrompt tells the model transcribing a later part of a long recording how the
+// previous part ended, so the same people keep the labels they had and new ones are numbered
+// on. It can't hear the earlier audio: matching voices relies on the conversation.
+func continuationPrompt(part int, previous []string) string {
+	p := fmt.Sprintf("\nThis is part %d of a longer recording; the previous part ended just before it.", part)
+	text := strings.Join(previous, "\n\n")
+	labels := SpeakerLabels(text)
+	if len(labels) == 0 {
+		return p
+	}
+	tail := text
+	if len(tail) > continuationContext {
+		tail = tail[len(tail)-continuationContext:]
+		if i := strings.IndexByte(tail, '\n'); i >= 0 {
+			tail = tail[i+1:] // start at a whole line
+		}
+	}
+	highest := 0
+	for _, l := range labels {
+		if n, err := strconv.Atoi(strings.TrimPrefix(l, "Speaker ")); err == nil && strings.HasPrefix(l, "Speaker ") {
+			highest = max(highest, n)
+		}
+	}
+	p += "\nSo far the speakers were labeled " + strings.Join(labels, ", ") + "."
+	p += " Continue the conversation: give people who already spoke the label they had (most likely the ones speaking at the end of the previous part)"
+	if highest > 0 {
+		p += fmt.Sprintf(", and number new speakers from Speaker %d on", highest+1)
+	}
+	p += ". Time stamps still count from the start of this audio. The previous part ended with:\n<previous>\n" + tail + "\n</previous>"
+	return p
+}
 
 // accountLanguage is how an app language a user can choose (user.Languages) applies to their
 // recordings: Name is the language transcripts are written in, Summary the key of
@@ -101,15 +138,35 @@ const summaryPrompt = summaryIntro + `Reply with a JSON object with exactly thes
 - "speakers": when the transcript's lines carry speaker labels such as "Speaker 1:", the speakers whose names are clear from the conversation (they introduce themselves, are addressed by name or are named by others), as objects with "label" (the label exactly as in the transcript, e.g. "Speaker 1") and "name" (the person's name as used in the conversation, e.g. "Anna"). Leave out speakers whose names aren't clear; an empty array if there are none.
 %s Write the action items' text in the same language as the summary. Reply with the JSON object only.`
 
+// emptySummary is the title and text of the summary of a recording without speech (or a
+// document without text), in German for a German summary language and in English otherwise.
+func emptySummary(language string, document bool) (title, text string) {
+	german := strings.HasPrefix(language, "de-")
+	switch {
+	case document && german:
+		return "Kein Text gefunden", "_In diesem Dokument wurde kein Text gefunden._"
+	case document:
+		return "No text found", "_No text was found in this document._"
+	case german:
+		return "Keine Sprache erkannt", "_In dieser Aufnahme wurde keine Sprache erkannt._"
+	}
+	return "No speech detected", "_No speech was detected in this recording._"
+}
+
 // maxActionItems bounds the action items kept from one summary.
 const maxActionItems = 30
 
 // summarySystemPrompt builds the instructions for a theme, a language ("auto" or a key of
 // SummaryLanguages) and the highlights the user marked.
 func summarySystemPrompt(instructions, language string, highlights []recording.Highlight) string {
-	lang := "Write the title and the summary in the language of the transcript."
+	// These instructions are in English; without a firm rule the model tends to answer in
+	// English too, even for a transcript in another language.
+	lang := "Write the title and the summary in the language of the transcript (the language most of it is spoken in), " +
+		"even though these instructions are in English: translate the headings given above into that language. " +
+		"Only write in English if the transcript is in English."
 	if name, ok := SummaryLanguages[language]; ok {
-		lang = "Write the title and the summary in " + name + ", regardless of the transcript's language."
+		lang = "Write the title and the summary in " + name + ", regardless of the transcript's language, " +
+			"translating the headings given above into " + name + "."
 	}
 	if len(highlights) > 0 {
 		times := make([]string, len(highlights))
@@ -343,7 +400,7 @@ func (s *AIService) Transcribe(ctx context.Context, rec *recording.Recording) er
 	transcribe := func(data []byte, format string, part int) error {
 		prompt := inLanguage(transcriptionPrompt, language)
 		if part > 1 {
-			prompt += fmt.Sprintf("\nThis is part %d of a longer recording; the previous part ended just before it.", part)
+			prompt += continuationPrompt(part, parts)
 		}
 		text, err := s.ai.Complete(ctx, st.APIKey, openrouter.Request{
 			Model: st.TranscriptionModel,
@@ -420,12 +477,9 @@ func (s *AIService) Summarize(ctx context.Context, rec *recording.Recording) err
 	}
 	th := s.themes.Resolve(ctx, rec.OwnerID, opts.ThemeID)
 	if strings.TrimSpace(rec.Transcript.Text) == "" {
-		title, text := "No speech detected", "_No speech was detected in this recording._"
-		if rec.IsDocument() {
-			title, text = "No text found", "_No text was found in this document._"
-			if rec.Title != "" {
-				title = rec.Title
-			}
+		title, text := emptySummary(language, rec.IsDocument())
+		if rec.IsDocument() && rec.Title != "" {
+			title = rec.Title
 		}
 		rec.Summary = &recording.Summary{Title: title, Markdown: text,
 			Language: language, ThemeID: th.ID, ThemeName: th.Name, CreatedAt: s.clock().UTC()}

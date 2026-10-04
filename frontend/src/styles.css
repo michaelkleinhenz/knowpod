@@ -4883,6 +4883,7 @@ p.due-line {
   }
 
   /* The sidebar shows these; the header keeps only a processing state. */
+  .note-layout .transcript-speakers,
   .note-layout .header-labels,
   .note-layout .header-tools,
   .note-layout .meta-extra,
@@ -5775,9 +5776,10 @@ p.due-line {
   outline-offset: -1px;
 }
 
-/* --- Speakers of a transcript --- */
+/* --- Speakers of a transcript, named in the note's sidebar (or above the transcript
+   on narrow screens, where the sidebar is hidden) --- */
 
-.speakers {
+.transcript-speakers {
   margin: 0 0 1rem;
   padding: 0.6rem 0.85rem;
   border: 1px solid var(--color-border-soft);
@@ -5785,39 +5787,49 @@ p.due-line {
   background: var(--color-surface);
 }
 
-.speakers summary {
-  cursor: pointer;
-  font-weight: 600;
+.transcript-speakers h2 {
+  margin: 0;
+  font-size: 1rem;
 }
 
-.speakers-hint {
-  font-weight: 400;
-  color: var(--color-success);
+.speakers fieldset {
+  margin-top: 0.6rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.6rem;
+  justify-items: start;
+}
+
+.speakers button[type='submit'] {
+  max-width: 100%;
+  white-space: normal;
+  text-align: left;
 }
 
 .speaker-list {
   list-style: none;
-  margin: 0.5rem 0 0;
+  margin: 0;
   padding: 0;
   display: grid;
-  gap: 0.45rem;
+  gap: 0.5rem;
+  width: 100%;
 }
 
 .speaker-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.25rem 0.5rem;
 }
 
 .speaker-row .speaker {
-  min-width: 6.5rem;
+  flex: 1 0 100%;
+  font-size: 0.85em;
 }
 
 .speaker-row input {
   flex: 1 1 8rem;
   min-width: 0;
-  max-width: 14rem;
   font: inherit;
   font-size: var(--input-font-size);
   padding: 0.35rem 0.6rem;

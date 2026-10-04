@@ -679,13 +679,20 @@ hides it (the page, and so the stream, keeps running) and a tray icon offers Ope
 the tray).
 
 **Speakers.** Transcripts start each turn with a speaker label ("Speaker 1:", after the time
-stamp). The summary prompt also asks for `speakers`: the names the conversation makes clear
+stamp); the transcription prompt asks the model to tell voices apart and to label every line.
+Each later 5-minute piece is sent with the labels used so far and the end of the previous
+piece's transcript (`continuationPrompt`), so the same people keep their labels. The summary prompt also asks for `speakers`: the names the conversation makes clear
 for those labels, kept in `summary.speakers` when the label is in the transcript
 (`parseSpeakers`). `POST /recordings/{id}/speakers/rename` (`service/speakers.go`) replaces a
 label where it starts lines of the transcript and where the summary and the action items
 mention it as a whole word (a mention already followed by the rest of the new name stays),
 drops the suggestion for it and counts up the note's `revision`, since the text changed.
-Naming a speaker like another merges them.
+Naming a speaker like another merges them. `PUT /recordings/{id}/speakers` (`NameSpeakers`,
+used by the note's sidebar) names several at once; with `resummarize` it renames only the
+transcript and requeues the note at `transcribed` (via `requeueAs`, for editors too), so the
+summary is made again from the named transcript, and the summary it replaces is kept as a
+version. Names can't change while the note is in the pipeline, since the stage would save
+its result over them.
 
 **Ask** (`service/ask.go`). `POST /ask` answers a question from the notes the account sees,
 without an index, in two calls to the summary model:

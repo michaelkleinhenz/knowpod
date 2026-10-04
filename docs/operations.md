@@ -767,8 +767,9 @@ Both calls are limited to 6 per hour per IP.
 - Admins see only their own notes in the UI; `ADMIN_TOKEN` scripts see everyone's.
 - Pocket or other compressed audio above 20 MB can't be transcribed (it is sent in one
   piece; splitting it would need an MP3/AAC decoder).
-- Speaker labels ("Speaker 1") are assigned per 5-minute piece and may not match across
-  pieces of long recordings.
+- Speakers are told apart by the transcription model, so how well depends on that model
+  (an audio-capable model such as Gemini). In long recordings, each 5-minute piece only sees
+  the previous one's text, not its audio, so a label can still change between pieces.
 - The workspace list loads the newest 200 recordings, so the Tasks view only shows tasks among
   them.
 - A user's time zone follows the browser last used, so a phone and a laptop in different

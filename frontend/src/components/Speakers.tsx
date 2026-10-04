@@ -17,21 +17,46 @@ export function speakerLabels(text: string): string[] {
   return out;
 }
 
-// SpeakerRow names one speaker: a name typed in, or the one the AI recognized.
-function SpeakerRow({ rec, label, suggestion, setRec }: { rec: Recording; label: string; suggestion?: string; setRec: (r: Recording) => void }) {
+// Speakers names the speakers of a recording's transcript in the note's sidebar: "Speaker 1"
+// becomes "Anna" in the transcript. Then the summary is made again from the renamed
+// transcript, so it uses the names throughout; without that, the labels are replaced where
+// the summary and its action items mention them. Names the AI recognized in the conversation
+// are offered with one click. Naming two speakers the same merges them.
+export function Speakers({
+  rec,
+  setRec,
+  onRegenerate,
+}: {
+  rec: Recording;
+  setRec: (r: Recording) => void;
+  // onRegenerate runs a request that makes the summary again (asking first, as for regenerating it).
+  onRegenerate: (request: () => Promise<unknown>) => Promise<void>;
+}) {
   const { t } = useTranslation();
-  const [name, setName] = useState('');
+  const labels = useMemo(() => speakerLabels(rec.transcript?.text ?? ''), [rec.transcript?.text]);
+  const suggestions = new Map((rec.summary?.speakers ?? []).map((s) => [s.label, s.name]));
+  const [names, setNames] = useState<Record<string, string>>({});
+  const [resummarize, setResummarize] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  if (labels.length === 0) return null;
 
-  async function rename(to: string) {
-    to = to.trim();
-    if (!to || to === label) return;
+  const processing = rec.status !== 'summarized' && rec.status !== 'failed';
+  const changes = labels.map((label) => ({ from: label, to: (names[label] ?? '').trim() })).filter((n) => n.to && n.to !== n.from);
+  const canResummarize = !!rec.summary;
+
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    if (changes.length === 0) return;
     setBusy(true);
     setError(null);
     try {
-      setRec(await api.renameSpeaker(rec.id, label, to));
-      setName('');
+      if (resummarize && canResummarize) {
+        await onRegenerate(() => api.nameSpeakers(rec.id, changes, true));
+      } else {
+        setRec(await api.nameSpeakers(rec.id, changes, false));
+      }
+      setNames({});
     } catch (err) {
       setError(errorText(err, t));
     } finally {
@@ -40,58 +65,51 @@ function SpeakerRow({ rec, label, suggestion, setRec }: { rec: Recording; label:
   }
 
   return (
-    <li>
-      <form
-        className="speaker-row"
-        onSubmit={(e: FormEvent) => {
-          e.preventDefault();
-          void rename(name);
-        }}
-      >
-        <span className="speaker">{label}</span>
-        <input
-          value={name}
-          maxLength={40}
-          placeholder={t('speakers.namePlaceholder')}
-          aria-label={t('speakers.nameLabel', { label })}
-          onChange={(e) => setName(e.target.value)}
-          disabled={busy}
-        />
-        <button type="submit" className="pill-button" disabled={busy || !name.trim()}>
-          {t('speakers.rename')}
-        </button>
-        {suggestion && (
-          <button type="button" className="pill-button speaker-suggestion" disabled={busy} title={t('speakers.suggestionTitle')} onClick={() => void rename(suggestion)}>
-            {t('speakers.useSuggestion', { name: suggestion })}
-          </button>
-        )}
-      </form>
-      {error && <p className="error">{error}</p>}
-    </li>
-  );
-}
-
-// Speakers names the speakers of a recording's transcript ("Speaker 1" becomes "Anna" in the
-// transcript, the summary and its action items). Names the AI recognized in the conversation
-// are offered with one click. It opens by itself while there are such suggestions.
-export function Speakers({ rec, setRec }: { rec: Recording; setRec: (r: Recording) => void }) {
-  const { t } = useTranslation();
-  const labels = useMemo(() => speakerLabels(rec.transcript?.text ?? ''), [rec.transcript?.text]);
-  const suggestions = new Map((rec.summary?.speakers ?? []).map((s) => [s.label, s.name]));
-  const suggested = labels.some((l) => suggestions.has(l));
-  if (labels.length === 0) return null;
-  return (
-    <details className="speakers" open={suggested || undefined}>
-      <summary>
-        {t('speakers.title', { count: labels.length })}
-        {suggested && <span className="speakers-hint"> · {t('speakers.suggested')}</span>}
-      </summary>
+    <section className="speakers">
+      <h2>{t('speakers.title')}</h2>
       <p className="muted field-note">{t('speakers.hint')}</p>
-      <ul className="speaker-list">
-        {labels.map((label) => (
-          <SpeakerRow key={label} rec={rec} label={label} suggestion={suggestions.get(label)} setRec={setRec} />
-        ))}
-      </ul>
-    </details>
+      <form onSubmit={(e) => void save(e)}>
+        <fieldset className="view-only-fieldset" disabled={busy || processing}>
+          <ul className="speaker-list">
+            {labels.map((label) => {
+              const suggestion = suggestions.get(label);
+              return (
+                <li key={label} className="speaker-row">
+                  <span className="speaker">{label}</span>
+                  <input
+                    value={names[label] ?? ''}
+                    maxLength={40}
+                    placeholder={t('speakers.namePlaceholder')}
+                    aria-label={t('speakers.nameLabel', { label })}
+                    onChange={(e) => setNames({ ...names, [label]: e.target.value })}
+                  />
+                  {suggestion && names[label] !== suggestion && (
+                    <button
+                      type="button"
+                      className="pill-button speaker-suggestion"
+                      title={t('speakers.suggestionTitle')}
+                      onClick={() => setNames({ ...names, [label]: suggestion })}
+                    >
+                      {t('speakers.useSuggestion', { name: suggestion })}
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+          {canResummarize && (
+            <label className="check-row">
+              <input type="checkbox" checked={resummarize} onChange={(e) => setResummarize(e.target.checked)} />
+              {t('speakers.resummarize')}
+            </label>
+          )}
+          <button type="submit" className="pill-button" disabled={changes.length === 0}>
+            {resummarize && canResummarize ? t('speakers.saveAndResummarize') : t('speakers.save')}
+          </button>
+        </fieldset>
+      </form>
+      {processing && <p className="muted field-note">{t('speakers.processing')}</p>}
+      {error && <p className="error">{error}</p>}
+    </section>
   );
 }

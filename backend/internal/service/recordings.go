@@ -753,9 +753,14 @@ func (s *RecordingService) validOptions(ctx context.Context, acc *Account, o *re
 // requeue sends the owner's note back into processing: prepare clears what is made again
 // and returns the status processing starts from.
 func (s *RecordingService) requeue(ctx context.Context, acc *Account, id string, prepare func(rec *recording.Recording) (recording.Status, error)) (*recording.Recording, error) {
+	return s.requeueAs(ctx, acc, id, recording.RoleOwner, prepare)
+}
+
+// requeueAs is requeue for someone with at least the role need on the note.
+func (s *RecordingService) requeueAs(ctx context.Context, acc *Account, id string, need recording.Role, prepare func(rec *recording.Recording) (recording.Status, error)) (*recording.Recording, error) {
 	var before *recording.Summary
 	var rev int64
-	rec, err := s.change(ctx, acc, id, recording.RoleOwner, func(rec *recording.Recording, _ recording.Role) error {
+	rec, err := s.change(ctx, acc, id, need, func(rec *recording.Recording, _ recording.Role) error {
 		before, rev = rec.Summary, rec.Revision
 		status, err := prepare(rec)
 		if err != nil {

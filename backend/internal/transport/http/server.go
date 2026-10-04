@@ -321,6 +321,7 @@ func (s *Server) Router() http.Handler {
 			u.Get("/recordings/{id}/summary", s.handleDownloadSummary)
 			u.Get("/recordings/{id}/transcript", s.handleDownloadTranscript)
 			u.Post("/recordings/{id}/speakers/rename", s.handleRenameSpeaker)
+			u.Put("/recordings/{id}/speakers", s.handleNameSpeakers)
 			u.Get("/recordings/{id}/versions", s.handleListVersions)
 			u.Get("/recordings/{id}/versions/{versionId}", s.handleGetVersion)
 			u.Post("/recordings/{id}/versions/{versionId}/restore", s.handleRestoreVersion)
