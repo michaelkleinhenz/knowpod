@@ -1,7 +1,7 @@
-// The knowpod desktop app (Electron, see desktop/) and Android app (Capacitor, see mobile/):
-// what they offer the web app (desktop/src/preload.js as window.knowpodDesktop,
-// mobile/android/…/AppBridge.java as window.knowpodAndroid), and the live notifications they
-// show.
+// The knowpod desktop app (Electron, see desktop/) and Android and iOS apps (Capacitor, see
+// mobile/): what they offer the web app (desktop/src/preload.js as window.knowpodDesktop,
+// mobile/android/…/AppBridge.java as window.knowpodAndroid, mobile/ios/App/App/AppBridge.swift
+// as window.knowpodIOS), and the live notifications they show.
 import { useEffect, useRef } from 'react';
 
 // DesktopNotification is a notification as the server sends it (see
@@ -14,15 +14,15 @@ export interface DesktopNotification {
 }
 
 interface DesktopBridge {
-  // the OS: 'android' in the Android app, process.platform in the desktop app
+  // the OS: 'android' and 'ios' in the mobile apps, process.platform in the desktop app
   platform: string;
   version: string;
   // notify and onOpen are missing in older desktop apps.
   notify?: (n: DesktopNotification) => void;
   onOpen?: (listener: (url: string) => void) => () => void;
-  // pocketBluetooth is missing in older desktop apps.
+  // pocketBluetooth is missing in older desktop apps and in the iOS app.
   pocketBluetooth?: (request: PocketBluetoothRequest) => Promise<PocketBluetoothResult>;
-  // showSetup shows the Android app's page for the server's address (Android app only).
+  // showSetup shows the mobile app's page for the server's address (mobile apps only).
   showSetup?: () => void;
 }
 
@@ -116,19 +116,27 @@ export interface PocketBluetoothResult {
 // and Android apps (and in older desktop apps).
 export const pocketBluetooth = () => bridge()?.pocketBluetooth;
 
-type AppWindow = { knowpodDesktop?: DesktopBridge; knowpodAndroid?: DesktopBridge };
+type AppWindow = { knowpodDesktop?: DesktopBridge; knowpodAndroid?: DesktopBridge; knowpodIOS?: DesktopBridge };
 
 const bridge = (): DesktopBridge | undefined =>
-  typeof window !== 'undefined' ? ((window as AppWindow).knowpodDesktop ?? (window as AppWindow).knowpodAndroid) : undefined;
+  typeof window !== 'undefined'
+    ? ((window as AppWindow).knowpodDesktop ?? (window as AppWindow).knowpodAndroid ?? (window as AppWindow).knowpodIOS)
+    : undefined;
 
-// isAndroidApp says whether this is the knowpod Android app (see mobile/).
+// isAndroidApp says whether this is the knowpod Android app (see mobile/android/).
 export const isAndroidApp = () => typeof window !== 'undefined' && !!(window as AppWindow).knowpodAndroid;
 
-// appContext is the i18next context of texts that differ in the Android app ('phone': "this
-// phone" rather than "this computer"); see the *_phone keys in i18n/en.ts.
-export const appContext = (): 'phone' | undefined => (isAndroidApp() ? 'phone' : undefined);
+// isIOSApp says whether this is the knowpod iOS app (see mobile/ios/).
+export const isIOSApp = () => typeof window !== 'undefined' && !!(window as AppWindow).knowpodIOS;
 
-// showAppSetup shows the Android app's page for the server's address; false outside it.
+// isMobileApp says whether this is the knowpod Android or iOS app.
+export const isMobileApp = () => isAndroidApp() || isIOSApp();
+
+// appContext is the i18next context of texts that differ in the mobile apps ('phone': "this
+// phone" rather than "this computer"); see the *_phone keys in i18n/en.ts.
+export const appContext = (): 'phone' | undefined => (isMobileApp() ? 'phone' : undefined);
+
+// showAppSetup shows the mobile app's page for the server's address; false outside it.
 export function showAppSetup(): boolean {
   const show = bridge()?.showSetup;
   if (!show) return false;
@@ -136,7 +144,7 @@ export function showAppSetup(): boolean {
   return true;
 }
 
-// desktopNotifications says whether this is a desktop or Android app that shows
+// desktopNotifications says whether this is a desktop or mobile app that shows
 // notifications itself (older desktop apps can't).
 export const desktopNotifications = () => typeof bridge()?.notify === 'function';
 

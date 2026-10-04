@@ -1,11 +1,11 @@
-# Builds the desktop app (desktop/) on each OS it ships for and the Android app (mobile/), and
-# keeps the installers and the APK as workflow artifacts. Runs by hand (Actions → Desktop and
-# Android apps → Run workflow) and for tags desktop-v*. The desktop builds are unsigned; the
-# APK is signed with the keystore in the repository secrets ANDROID_KEYSTORE_BASE64,
+# Builds the desktop app (desktop/) on each OS it ships for and the Android and iOS apps
+# (mobile/), and keeps the installers, the APK and the IPA as workflow artifacts. Runs by hand
+# (Actions → Desktop and mobile apps → Run workflow) and for tags desktop-v*. The desktop builds
+# and the IPA are unsigned; the APK is signed with the keystore in the repository secrets ANDROID_KEYSTORE_BASE64,
 # ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD (see README.md#android-app),
 # else with a throwaway debug key. The version comes from the VERSION file; a tag
-# desktop-v<VERSION> also publishes the installers and the APK as a GitHub release.
-name: Desktop and Android apps
+# desktop-v<VERSION> also publishes the installers, the APK and the IPA as a GitHub release.
+name: Desktop and mobile apps
 
 on:
   workflow_dispatch:
@@ -124,9 +124,47 @@ jobs:
           path: mobile/dist/*.apk
           if-no-files-found: error
 
+  ios:
+    needs: version
+    # Capacitor 8 needs Xcode 26.
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      # Same as `make ios SERVER_URL=…`: an unsigned build for devices, packed as an IPA.
+      - name: Build
+        working-directory: mobile
+        shell: bash
+        env:
+          SERVER_URL: ${{ inputs.server_url }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          npm ci
+          npx cap sync ios
+          code="$(echo "$VERSION" | awk -F'[.-]' '{ print $1 * 10000 + $2 * 100 + $3 }')"
+          xcodebuild -version
+          cd ios/App
+          xcodebuild -project App.xcodeproj -scheme App -configuration Release -destination generic/platform=iOS \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO \
+            MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$code" ${SERVER_URL:+KNOWPOD_DEFAULT_SERVER_URL="$SERVER_URL"} build
+          mkdir -p ../../dist/Payload
+          cp -R build/Build/Products/Release-iphoneos/App.app ../../dist/Payload/
+          cd ../../dist
+          zip -qr "knowpod-$VERSION-ios-unsigned.ipa" Payload
+          rm -rf Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: knowpod-ios-${{ needs.version.outputs.version }}
+          path: mobile/dist/*.ipa
+          if-no-files-found: error
+
   release:
     if: github.ref_type == 'tag'
-    needs: [version, build, android]
+    needs: [version, build, android, ios]
     runs-on: ubuntu-latest
     permissions:
       contents: write

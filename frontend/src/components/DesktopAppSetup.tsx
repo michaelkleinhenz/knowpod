@@ -1,5 +1,5 @@
 import { Trans, useTranslation } from 'react-i18next';
-import { isAndroidApp, showAppSetup } from '../lib/desktop';
+import { isIOSApp, isMobileApp, showAppSetup } from '../lib/desktop';
 import { isDesktopApp } from '../lib/push';
 import { CopyButton } from './CopyButton';
 
@@ -7,8 +7,8 @@ import { CopyButton } from './CopyButton';
 // README.md#version).
 const RELEASES = 'https://github.com/michaelkleinhenz/knowpod-service/releases';
 
-// DesktopAppSetup explains how to connect the desktop app (desktop/) and the Android app
-// (mobile/) to this server: they ask for the server's address on their first start, which is
+// DesktopAppSetup explains how to connect the desktop app (desktop/) and the Android and iOS
+// apps (mobile/) to this server: they ask for the server's address on their first start, which is
 // the address of this page.
 export function DesktopAppSetup() {
   const { t } = useTranslation();
@@ -17,10 +17,10 @@ export function DesktopAppSetup() {
   return (
     <>
       <h2 className="card-title">{t('desktopApp.title')}</h2>
-      {isAndroidApp() ? (
+      {isMobileApp() ? (
         <>
           <p className="muted">
-            <Trans i18nKey="desktopApp.connectedAndroid" values={{ server }} components={{ 1: <code /> }} />
+            <Trans i18nKey={isIOSApp() ? 'desktopApp.connectedIOS' : 'desktopApp.connectedAndroid'} values={{ server }} components={{ 1: <code /> }} />
           </p>
           <div className="button-row">
             <button type="button" className="secondary-button" onClick={() => showAppSetup()}>

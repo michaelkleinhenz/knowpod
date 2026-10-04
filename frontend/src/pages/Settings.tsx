@@ -14,7 +14,7 @@ import { Devices } from './Devices';
 import { APPEARANCES, applyAppearance, currentAppearance } from '../lib/appearance';
 import { errorText } from '../lib/errors';
 import { FONT_SIZES, applyFontSize, currentFontSize } from '../lib/fontSize';
-import { appContext } from '../lib/desktop';
+import { appContext, isIOSApp } from '../lib/desktop';
 import { APP_VERSION, desktopVersion } from '../lib/version';
 
 const TABS = ['general', 'account', 'devices', 'themes', 'labels', 'filters', 'backup'] as const;
@@ -146,7 +146,7 @@ function About() {
         <dd>{APP_VERSION}</dd>
         {desktop && (
           <>
-            <dt>{t('settings.about.desktopVersion', { context: appContext() })}</dt>
+            <dt>{t('settings.about.desktopVersion', { context: isIOSApp() ? 'ios' : appContext() })}</dt>
             <dd>{desktop}</dd>
           </>
         )}

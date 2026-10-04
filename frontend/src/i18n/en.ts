@@ -764,7 +764,7 @@ export const en = {
     add: 'Add',
   },
   desktopApp: {
-    title: 'Desktop and Android app',
+    title: 'Desktop and mobile apps',
     intro: 'knowpod is also available as an app for Windows, macOS and Linux. It opens this server in its own window, with your workspace, tasks and offline copies just like here.',
     server: 'Server address',
     stepInstall: 'Download the installer for your system from the <1>releases page</1> and install it.',
@@ -773,6 +773,7 @@ export const en = {
     notifications: 'To connect to another server later, use File → Change Server… in the app. The app shows notifications while it runs; closing its window keeps it running in the tray.',
     connected: 'You are using the desktop app, connected to <1>{{server}}</1>. To connect to another server, use File → Change Server….',
     connectedAndroid: 'You are using the Android app, connected to <1>{{server}}</1>.',
+    connectedIOS: 'You are using the iOS app, connected to <1>{{server}}</1>.',
     changeServer: 'Change server',
     android: 'For Android there is an app, too: install knowpod-…-android.apk from the <1>releases page</1>. It asks for the same server address and also copies from the Pocket over its WiFi.',
   },
@@ -1009,6 +1010,7 @@ export const en = {
       version: 'Version',
       desktopVersion: 'Desktop app',
       desktopVersion_phone: 'Android app',
+      desktopVersion_ios: 'iOS app',
     },
     themes: {
       title: 'Summary themes',

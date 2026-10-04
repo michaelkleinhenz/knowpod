@@ -525,7 +525,7 @@ desktop app it is a window around the web UI: it loads the web app from your ser
 calls the API exactly like the browser, so nothing changes on the server.
 
 - On the first start it asks for the server's address, unless one was set when it was built
-  (`SERVER_URL`). **Settings → General → Desktop and Android app → Change server** changes it;
+  (`SERVER_URL`). **Settings → General → Desktop and mobile apps → Change server** changes it;
   a server that can't be reached shows that page with the error.
 - Links to other sites open in the browser; downloads go to **Downloads**. Voice memos and
   photos ask for the microphone and camera the first time.
@@ -536,6 +536,22 @@ calls the API exactly like the browser, so nothing changes on the server.
 - Installing the APK needs **Install unknown apps** allowed for the browser or file manager
   that opens it. An update installs over the app only when both are signed with the same
   key (see the README's **Signing**).
+
+## iOS app
+
+knowpod also runs as an iOS app on iPhone and iPad (iOS 15 or newer; built with `make ios`,
+see the [README](../README.md#ios-app)). It works like the Android app, without the Pocket
+copy:
+
+- On the first start it asks for the server's address, unless one was set when it was built
+  (`SERVER_URL`). **Settings → General → Desktop and mobile apps → Change server** changes it;
+  a server that can't be reached shows that page with the error.
+- Links to other sites open in Safari. Voice memos and photos ask for the microphone and
+  camera the first time.
+- It shows notifications while it is open (iOS pauses it soon after it goes to the
+  background); clicking one opens its note.
+- The IPA from a release is unsigned: sign it with your own Apple developer account before
+  installing (see the README's **Signing** under iOS app).
 
 ## AI processing (OpenRouter)
 

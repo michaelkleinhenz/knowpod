@@ -1,5 +1,5 @@
-// The setup page of the Android app: asks for the knowpod server's address and hands it to
-// the app (SetupPlugin.java), like the desktop app's (desktop/src/setup.js).
+// The setup page of the Android and iOS apps: asks for the knowpod server's address and hands it to
+// the app (SetupPlugin.java, SetupPlugin.swift), like the desktop app's (desktop/src/setup.js).
 const form = document.getElementById('form');
 const input = document.getElementById('url');
 const error = document.getElementById('error');
