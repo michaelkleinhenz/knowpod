@@ -249,7 +249,7 @@ func (s *RecordingService) Retranscribe(ctx context.Context, acc *Account, id st
 		case !rec.IsDocument() && rec.Audio == nil:
 			return "", errors.Join(ErrNotReady, errors.New("the audio has not been archived yet"))
 		}
-		rec.Transcript, rec.Summary = nil, nil
+		rec.Transcript, rec.Summary, rec.NextSummary = nil, nil, nil
 		return recording.StatusStored, nil
 	})
 }
@@ -272,7 +272,7 @@ func (s *RecordingService) Resummarize(ctx context.Context, acc *Account, id str
 		if opts != nil {
 			rec.SummaryOptions = *opts
 		}
-		rec.Summary = nil
+		rec.Summary, rec.NextSummary = nil, nil
 		return recording.StatusTranscribed, nil
 	})
 }

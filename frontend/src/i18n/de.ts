@@ -594,6 +594,10 @@ export const de: Translation = {
     searchModels: 'Modelle durchsuchen',
     searchLanguages: 'Sprachen durchsuchen',
     trigger: 'Details der Zusammenfassung',
+    redoTitle: 'Zusammenfassung neu erstellen',
+    redoHint: 'Zusammenfassung aus dem vorhandenen Transkript neu erstellen, mit einer Vorlage deiner Wahl',
+    redoNote: 'Fasst das vorhandene Transkript neu zusammen; es wird nicht neu transkribiert.',
+    defaultTheme: 'Standard',
   },
   devices: {
     title: 'Geräte',
@@ -1017,7 +1021,7 @@ export const de: Translation = {
     },
     themes: {
       title: 'Vorlagen für Zusammenfassungen',
-      intro: 'Eine Vorlage legt fest, wie eine Zusammenfassung aufgebaut ist. Du wählst sie pro Eintrag unter „Details der Zusammenfassung“. Die vordefinierten Vorlagen kannst du nach deinen Wünschen anpassen (nur für dich) und eigene hinzufügen.',
+      intro: 'Eine Vorlage legt fest, wie eine Zusammenfassung aufgebaut ist. Du wählst sie, wenn du eine Zusammenfassung neu erstellst (Schaltfläche ✦ einer Notiz), oder unter „Details der Zusammenfassung“; neue Notizen nutzen „Auto“. Die vordefinierten Vorlagen kannst du nach deinen Wünschen anpassen (nur für dich) und eigene hinzufügen.',
       builtIn: 'Vordefinierte Vorlagen',
       yours: 'Deine Vorlagen',
       none: 'Du hast noch keine eigenen Vorlagen angelegt.',

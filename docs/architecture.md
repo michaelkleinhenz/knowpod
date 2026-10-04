@@ -691,7 +691,9 @@ Naming a speaker like another merges them. `PUT /recordings/{id}/speakers` (`Nam
 used by the note's sidebar) names several at once; with `resummarize` it renames only the
 transcript and requeues the note at `transcribed` (via `requeueAs`, for editors too), so the
 summary is made again from the named transcript, and the summary it replaces is kept as a
-version. Names can't change while the note is in the pipeline, since the stage would save
+version. The new summary is made with the language, model and theme of the one it replaces:
+they go into the note's `nextSummary`, which overrides `summaryOptions` for the next summary
+only and is cleared once it is made (and by resummarizing or retranscribing). Names can't change while the note is in the pipeline, since the stage would save
 its result over them.
 
 **Ask** (`service/ask.go`). `POST /ask` answers a question from the notes the account sees,

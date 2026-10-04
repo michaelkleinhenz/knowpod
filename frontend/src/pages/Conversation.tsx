@@ -550,6 +550,7 @@ function NoteBody({ rec, aiReady, aiWriting, tab, setTab, setRec, reload, create
   const tools = (
     <div className="note-tools">
       {tab === 'summary' && rec.transcript && isOwner && <SummaryDetails rec={rec} onRegenerate={(fn) => regenerate(fn)} />}
+      {rec.transcript && isOwner && !isText && !isBoard && <SummaryDetails redo rec={rec} onRegenerate={(fn) => regenerate(fn)} />}
       {download && (
         <a className="icon-button" href={download.href} download title={download.label} aria-label={download.label}>
           <DownloadIcon />

@@ -592,6 +592,10 @@ export const en = {
     searchModels: 'Search models',
     searchLanguages: 'Search languages',
     trigger: 'Summary details',
+    redoTitle: 'Redo summary',
+    redoHint: 'Redo the summary from the existing transcript, with a theme of your choice',
+    redoNote: 'Summarizes the existing transcript again; it is not transcribed again.',
+    defaultTheme: 'default',
   },
   devices: {
     title: 'Devices',
@@ -1015,7 +1019,7 @@ export const en = {
     },
     themes: {
       title: 'Summary themes',
-      intro: 'A theme defines how a summary is structured. Pick one per item under “Summary details”. You can adjust the built-in themes to your liking (only for you) and add your own.',
+      intro: 'A theme defines how a summary is structured. Pick one when you redo a summary (the ✦ button of a note) or under “Summary details”; new notes use Auto. You can adjust the built-in themes to your liking (only for you) and add your own.',
       builtIn: 'Built-in themes',
       yours: 'Your themes',
       none: "You haven't created any themes yet.",

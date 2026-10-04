@@ -233,7 +233,8 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
 - The web UI's **Workspace** page (a note per recording) lists your recordings by the title of
   their summary; on desktop the list stays in a sidebar next to the open note;
   each note shows its summary, transcript and audio, and can be re-transcribed,
-  re-summarized (via Summary details) or deleted from icon buttons next to the view switcher. Summaries are always editable in place, like a document
+  re-summarized (the ✦ **Redo summary** button: summarizes the existing transcript again
+  with a theme of your choice, the default Auto preselected) or deleted from icon buttons next to the view switcher. Summaries are always editable in place, like a document
   (type **/** for headings, lists and tasks; select text to format it), and save
   automatically (stored as Markdown). Under **Summary details** each summary's language, model and
   **theme** (its structure, e.g. meeting or call notes) can be changed and regenerated.
