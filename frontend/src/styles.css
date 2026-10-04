@@ -5968,6 +5968,23 @@ p.due-line {
   cursor: pointer;
 }
 
+/* The Pocket Sync button in the phone's header, right of the record button (the menu has it on
+   wide screens). */
+.header-pocket-sync {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: -6px 0;
+  padding: 0;
+  color: var(--color-header-text);
+  background: none;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
 .header-record:disabled {
   opacity: 0.5;
   cursor: default;
@@ -5985,8 +6002,13 @@ p.due-line {
 }
 
 @media (max-width: 760px) {
-  .header-record {
+  .header-record,
+  .header-pocket-sync {
     display: inline-flex;
+  }
+
+  .nav .nav-pocket-sync {
+    display: none;
   }
 
   .recorder-bar.expanded {

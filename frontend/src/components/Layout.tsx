@@ -4,7 +4,7 @@ import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useOffline } from '../api/offline';
 import { useAuth } from '../auth';
 import { RecorderProvider, useRecorder } from '../context/Recorder';
-import { isAndroidApp, useDesktopNotifications } from '../lib/desktop';
+import { appContext, isAndroidApp, useDesktopNotifications } from '../lib/desktop';
 import { MicIcon, SignOutIcon, UsbIcon, WifiIcon } from './Icons';
 import { NewItemDialog } from './NewItemDialog';
 import { PocketUsbSyncDialog, pocketUsbSyncAvailable } from './PocketUsbSync';
@@ -88,6 +88,21 @@ export function Layout({ children }: { children: ReactNode }) {
         {account && (
           <>
             <HeaderRecordButton />
+            {/* On phones, Pocket Sync sits in the header right of the record button, not in the menu. */}
+            {pocketUsbSyncAvailable() && (
+              <button
+                type="button"
+                className="header-pocket-sync"
+                title={t('pocketUsbSync.button', { context: appContext() })}
+                aria-label={t('pocketUsbSync.button', { context: appContext() })}
+                onClick={() => {
+                  setOpen(false);
+                  setPocketSync(true);
+                }}
+              >
+                <PocketSyncIcon size={22} />
+              </button>
+            )}
             <button
               type="button"
               className="menu-button"
@@ -111,15 +126,15 @@ export function Layout({ children }: { children: ReactNode }) {
                 {pocketUsbSyncAvailable() && (
                   <button
                     type="button"
-                    className="nav-icon-button"
-                    title={t('pocketUsbSync.button')}
-                    aria-label={t('pocketUsbSync.button')}
+                    className="nav-icon-button nav-pocket-sync"
+                    title={t('pocketUsbSync.button', { context: appContext() })}
+                    aria-label={t('pocketUsbSync.button', { context: appContext() })}
                     onClick={() => {
                       setOpen(false);
                       setPocketSync(true);
                     }}
                   >
-                    {isAndroidApp() ? <WifiIcon /> : <UsbIcon />}
+                    <PocketSyncIcon />
                   </button>
                 )}
               </div>
@@ -148,6 +163,11 @@ export function Layout({ children }: { children: ReactNode }) {
       {pocketSync && <PocketUsbSyncDialog onClose={() => setPocketSync(false)} />}
     </RecorderProvider>
   );
+}
+
+// PocketSyncIcon is the Pocket Sync button's icon: WiFi in the Android app, USB in the desktop app.
+function PocketSyncIcon({ size }: { size?: number }) {
+  return isAndroidApp() ? <WifiIcon size={size} /> : <UsbIcon size={size} />;
 }
 
 // HeaderRecordButton starts a voice memo from the phone's header, left of the menu button; while

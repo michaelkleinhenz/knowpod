@@ -91,7 +91,7 @@ export function PocketUsbSyncDialog({ onClose }: { onClose: () => void }) {
     storeMethod(m);
   };
 
-  const heading = t('pocketUsbSync.title');
+  const heading = t('pocketUsbSync.title', { context: appContext() });
   const ready = !!state && (state.configured || state.connected);
   let body;
   if (!state) {
