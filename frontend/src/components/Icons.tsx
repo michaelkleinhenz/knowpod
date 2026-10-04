@@ -296,9 +296,9 @@ export function NewFolderIcon() {
 }
 
 // UsbIcon is a USB plug on its cable, for copying from a Pocket recorder by USB.
-export function UsbIcon() {
+export function UsbIcon({ size = 16 }: { size?: number }) {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M8 8V3h8v5M12 17v5" />
       <rect x="6" y="8" width="12" height="9" rx="2" />
       <path d="M10.5 5.5h.01M13.5 5.5h.01" />
@@ -307,9 +307,9 @@ export function UsbIcon() {
 }
 
 // WifiIcon is the WiFi waves, for copying from the Pocket over its WiFi (the Android app).
-export function WifiIcon() {
+export function WifiIcon({ size = 16 }: { size?: number }) {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M2 8.5a15 15 0 0 1 20 0M5 12a10 10 0 0 1 14 0M8.5 15.5a5 5 0 0 1 7 0" />
       <path d="M12 19h.01" />
     </svg>
