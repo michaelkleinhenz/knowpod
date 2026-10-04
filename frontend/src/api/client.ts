@@ -615,14 +615,30 @@ export interface NoteEvent {
   version?: number;
 }
 
+export type TranscriptionProvider = 'openrouter' | 'elevenlabs';
+
 export interface OpenRouterSettings {
   apiKeyConfigured: boolean;
   apiKeyHint?: string;
+  // Transcribes audio; documents are always read through OpenRouter.
+  transcriptionProvider: TranscriptionProvider;
+  elevenLabsApiKeyConfigured: boolean;
+  elevenLabsApiKeyHint?: string;
   transcriptionModel: string;
   summaryModel: string;
   // Reads document pages; empty uses the transcription model.
   documentModel: string;
   updatedAt?: string;
+}
+
+// OpenRouterUpdate changes AI settings; fields left out stay unchanged, an empty key removes it.
+export interface OpenRouterUpdate {
+  apiKey?: string;
+  transcriptionProvider?: TranscriptionProvider;
+  elevenLabsApiKey?: string;
+  transcriptionModel?: string;
+  summaryModel?: string;
+  documentModel?: string;
 }
 
 // RemarkableSettings is the user's link to the reMarkable cloud.
@@ -915,8 +931,9 @@ export const api = {
   personalBackupURL: '/api/v1/me/backup',
   restorePersonalBackup,
   openRouterSettings: () => request<OpenRouterSettings>('GET', '/admin/settings/openrouter'),
-  saveOpenRouterSettings: (u: { apiKey?: string; transcriptionModel?: string; summaryModel?: string; documentModel?: string }) =>
-    request<OpenRouterSettings>('PUT', '/admin/settings/openrouter', u),
+  saveOpenRouterSettings: (u: OpenRouterUpdate) => request<OpenRouterSettings>('PUT', '/admin/settings/openrouter', u),
+  // Tests an ElevenLabs API key (the stored one when apiKey is empty).
+  testElevenLabs: (apiKey?: string) => request<{ ok: boolean }>('POST', '/admin/settings/elevenlabs/test', { apiKey: apiKey ?? '' }),
   aiModels: () => request<{ transcription: ModelOption[]; summary: ModelOption[]; document: ModelOption[] }>('GET', '/ai/models'),
   aiLanguages: () => request<string[]>('GET', '/ai/languages'),
   themes: () => request<Theme[]>('GET', '/themes'),

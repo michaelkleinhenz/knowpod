@@ -18,6 +18,7 @@ import (
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/config"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/settings"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/elevenlabs"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/openrouter"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/pocket"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/ports"
@@ -156,6 +157,7 @@ func main() {
 			Run: aiSvc.Summarize, Enabled: aiSvc.CanSummarize},
 	}, worker.Options{PollInterval: cfg.WorkerPollInterval, MaxAttempts: cfg.WorkerMaxAttempts}, log)
 	aiSvc.OnSettingsChanged = aiPipeline.Wake
+	aiSvc.Speech = elevenlabs.NewClient(cfg.ElevenLabsAPIURL)
 	aiSvc.Users = users
 	actions := service.NewRecordingService(recs, objects, spool, themeSvc)
 	userSvc := service.NewUserService(users, sessions, devices, recs, themeRepo, authSvc, actions)

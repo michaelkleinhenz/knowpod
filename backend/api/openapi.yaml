@@ -82,7 +82,8 @@ info:
 
     **AI processing** — every archived recording is transcribed and then summarized through
     OpenRouter, with the API key and models set by an administrator
-    (`PUT /admin/settings/openrouter`). Recordings wait in `stored` until that is configured.
+    (`PUT /admin/settings/openrouter`); audio can instead be transcribed by ElevenLabs, which
+    tells speakers apart by their voices. Recordings wait in `stored` until that is configured.
 
     **Users** — people sign in with email and password (HttpOnly session cookie). Every
     recording and device belongs to a user, who only sees their own. Administrators manage
@@ -164,7 +165,7 @@ tags:
   - name: "Admin: users"
     description: Create, change and delete users. Administrators only.
   - name: "Admin: AI settings"
-    description: OpenRouter API key and the models used to transcribe and summarize recordings. Administrators only.
+    description: OpenRouter API key and the models used to transcribe and summarize recordings, and the optional ElevenLabs transcription. Administrators only.
   - name: "Admin: backup"
     description: |
       A full backup of everything in the system, and a full restore from one. Administrators
@@ -2992,7 +2993,9 @@ paths:
               type: object
               properties:
                 apiKey: { type: string, example: sk-or-v1-… }
-                transcriptionModel: { type: string, example: google/gemini-2.5-flash }
+                transcriptionProvider: { type: string, enum: [openrouter, elevenlabs], description: Transcribes audio. Documents are always read through OpenRouter. }
+                elevenLabsApiKey: { type: string, description: Used when ElevenLabs transcribes; empty removes the key }
+                transcriptionModel: { type: string, example: google/gemini-2.5-flash, description: The OpenRouter model that transcribes }
                 summaryModel: { type: string, example: google/gemini-2.5-flash }
                 documentModel: { type: string, example: google/gemini-2.5-flash, description: Empty uses the transcription model }
       responses:
@@ -3000,6 +3003,28 @@ paths:
           description: Saved
           content: { application/json: { schema: { $ref: "#/components/schemas/OpenRouterSettings" } } }
         "400": { $ref: "#/components/responses/Error" }
+
+  /admin/settings/elevenlabs/test:
+    post:
+      tags: ["Admin: AI settings"]
+      summary: Test an ElevenLabs API key
+      description: |
+        Transcribes a second of silence to check that the key may use speech-to-text. Tests
+        the `apiKey` given, or the stored key when it is left out.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                apiKey: { type: string }
+      responses:
+        "200":
+          description: The key works
+          content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } }
+        "400": { description: "No key, or ElevenLabs rejected it (`elevenlabs_unauthorized`)", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+        "502": { description: "ElevenLabs answered with another error (`elevenlabs_failed`)", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
   /admin/backup:
     get:
@@ -3593,6 +3618,9 @@ components:
       properties:
         apiKeyConfigured: { type: boolean }
         apiKeyHint: { type: string, example: …a1b2 }
+        transcriptionProvider: { type: string, enum: [openrouter, elevenlabs] }
+        elevenLabsApiKeyConfigured: { type: boolean }
+        elevenLabsApiKeyHint: { type: string, example: …c3d4 }
         transcriptionModel: { type: string }
         summaryModel: { type: string }
         documentModel: { type: string, description: Reads document pages; empty uses the transcription model }

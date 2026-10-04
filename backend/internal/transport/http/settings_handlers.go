@@ -1,8 +1,11 @@
 package http
 
 import (
+	"errors"
 	"net/http"
+	"strings"
 
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/elevenlabs"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/service"
 )
 
@@ -26,6 +29,31 @@ func (s *Server) handleUpdateOpenRouterSettings(w http.ResponseWriter, r *http.R
 		return
 	}
 	writeJSON(w, http.StatusOK, v)
+}
+
+// handleTestElevenLabs checks that an ElevenLabs API key may transcribe: the one in the
+// body, or the stored one when the body has none.
+func (s *Server) handleTestElevenLabs(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		APIKey string `json:"apiKey"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	err := s.ai.TestElevenLabs(r.Context(), in.APIKey)
+	switch {
+	case err == nil:
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	case errors.Is(err, elevenlabs.ErrUnauthorized):
+		writeCode(w, http.StatusBadRequest, "elevenlabs_unauthorized", err.Error())
+	case errors.Is(err, service.ErrSpeechUnavailable):
+		writeCode(w, http.StatusServiceUnavailable, "elevenlabs_unavailable", err.Error())
+	case errors.Is(err, service.ErrInvalidInput):
+		s.writeErr(w, err)
+	default:
+		s.log.Warn("ElevenLabs test failed", "err", err)
+		writeCode(w, http.StatusBadGateway, "elevenlabs_failed", "ElevenLabs test failed: "+strings.TrimPrefix(err.Error(), "elevenlabs: "))
+	}
 }
 
 func (s *Server) handleOpenRouterModels(w http.ResponseWriter, r *http.Request) {

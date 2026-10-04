@@ -421,6 +421,16 @@ model calls.
   prompt; the texts are joined. When the owner chose an app language (`user.Language`), the
   prompt asks for the transcript in that language (translating other speech); documents are
   read the same way.
+  When an administrator picks **ElevenLabs** as the transcription service
+  (`settings.TranscriptionProvider`), the archived audio is instead streamed in one piece to
+  ElevenLabs' speech-to-text (`elevenlabs` package, model `scribe_v2`, with diarization and
+  word time stamps; files of several hours are accepted). `elevenLabsTranscript`
+  (`service/ai_speech.go`) turns the words into the same `[m:ss] Speaker N: …` lines,
+  numbering speakers in the order they first speak and starting a new line on every speaker
+  change and, in long turns, at a sentence end after 30 s (at the latest after a minute).
+  These transcripts stay in the spoken language. Documents are always read through
+  OpenRouter. `POST /admin/settings/elevenlabs/test` checks a key by transcribing a second
+  of silence.
 - **summarize** (`transcribed → summarized`): sends the transcript with a prompt that asks
   for a JSON object with `title`, a Markdown `summary` in the chosen summary language (auto: the owner's app language, else
   the transcript's language) and
@@ -429,7 +439,7 @@ model calls.
   `YYYY-MM-DD` and gives each an ID. Empty transcripts get "No speech detected" without a
   model call.
 
-The OpenRouter settings (key and models) live in the `settings` collection and are read on
+The AI settings (OpenRouter key and models, transcription service, ElevenLabs key) live in the `settings` collection and are read on
 every stage run, so changes apply immediately.
 
 ### Time stamps and highlights
