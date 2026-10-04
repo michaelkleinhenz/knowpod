@@ -2,14 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TFunction } from 'i18next';
 import { Trans, useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { pocketBluetooth, PocketBluetoothRequest, PocketBluetoothResult, PocketWifiState } from '../lib/desktop';
+import { appContext, pocketBluetooth, PocketBluetoothRequest, PocketBluetoothResult, PocketWifiState } from '../lib/desktop';
 import { bluetoothErrorText } from './PocketBluetooth';
 
 // How often the dialog asks the desktop app how copying goes.
 const pollInterval = 1_000;
 
 // pocketUsbSyncAvailable says whether the Pocket Sync button is shown: only in the desktop
-// app, and only in one that can talk to the Pocket over Bluetooth.
+// app (in one that can talk to the Pocket over Bluetooth) and the Android app.
 export const pocketUsbSyncAvailable = () => !!pocketBluetooth();
 
 type Method = 'usb' | 'wifi';
@@ -36,9 +36,10 @@ function storeMethod(method: Method) {
 
 type Call = (request: PocketBluetoothRequest) => Promise<PocketBluetoothResult>;
 
-// PocketUsbSyncDialog copies new recordings from the Pocket, by USB or over the Pocket's WiFi.
-// The desktop app does the copying (desktop/src/pocket.js, desktop/src/pocket-wifi-sync.js);
-// the dialog starts it and shows how it goes. Closing the dialog ejects a plugged-in Pocket
+// PocketUsbSyncDialog copies new recordings from the Pocket, by USB or over the Pocket's WiFi
+// (the Android app: over its WiFi only). The app does the copying (desktop/src/pocket.js,
+// desktop/src/pocket-wifi-sync.js; mobile/android/…/pocket/WifiSync.java); the dialog starts it
+// and shows how it goes. Closing the dialog ejects a plugged-in Pocket
 // (once a copy that still runs is done); a WiFi copy keeps running and reports by a
 // notification when it's done.
 export function PocketUsbSyncDialog({ onClose }: { onClose: () => void }) {
@@ -76,11 +77,15 @@ export function PocketUsbSyncDialog({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [close]);
 
-  // Older desktop apps can't copy over WiFi: they don't report wifiSupported at all.
+  // Older desktop apps can't copy over WiFi: they don't report wifiSupported at all. The
+  // Android app copies over WiFi only.
   const wifiKnown = state?.wifiSupported !== undefined;
+  const usbSupported = state?.usbSupported !== false;
   const method: Method = !wifiKnown
     ? 'usb'
-    : (picked ?? (state?.wifi?.running ? 'wifi' : state?.connected ? 'usb' : (storedMethod() ?? 'usb')));
+    : !usbSupported
+      ? 'wifi'
+      : (picked ?? (state?.wifi?.running ? 'wifi' : state?.connected ? 'usb' : (storedMethod() ?? 'usb')));
   const pick = (m: Method) => {
     setPicked(m);
     storeMethod(m);
@@ -107,7 +112,7 @@ export function PocketUsbSyncDialog({ onClose }: { onClose: () => void }) {
     <div className="new-item-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
       <div className="new-item-dialog pocket-sync-dialog" role="dialog" aria-modal="true" aria-label={heading}>
         <h2>{heading}</h2>
-        {ready && wifiKnown && (
+        {ready && wifiKnown && usbSupported && (
           <div className="segmented" role="tablist" aria-label={t('pocketUsbSync.method')}>
             {methods.map((m) => (
               <button
@@ -218,9 +223,11 @@ function usbProgressText(s: PocketBluetoothResult, t: TFunction): string {
   }
 }
 
-// wifiErrorKeys are the explained failures of the WiFi copy (desktop/src/pocket-wifi-sync.js).
+// wifiErrorKeys are the explained failures of the WiFi copy (desktop/src/pocket-wifi-sync.js,
+// mobile/android/…/pocket/PocketException.java).
 const wifiErrorKeys = [
   'not-configured',
+  'permission',
   'not-found',
   'auth',
   'unsupported',
@@ -231,6 +238,7 @@ const wifiErrorKeys = [
   'firmware',
   'battery',
   'wifi-unsupported',
+  'wifi-off',
   'wifi-setup',
   'wifi-join',
   'wifi-ap',
@@ -244,16 +252,17 @@ const wifiErrorKeys = [
 ];
 
 // wifiErrorText explains why the WiFi copy (or one of its recordings) failed; message is the
-// desktop app's detail, shown where it helps.
+// app's detail, shown where it helps.
 function wifiErrorText(error: string, message: string, t: TFunction): string {
-  if (wifiErrorKeys.includes(error)) return t(`pocketWifiSync.errors.${error}`, { detail: message });
+  if (wifiErrorKeys.includes(error)) return t(`pocketWifiSync.errors.${error}`, { detail: message, context: appContext() });
   return t('pocketWifiSync.errors.failed', { detail: message || error });
 }
 
 const megabytes = (bytes: number) => (bytes / 1_000_000).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
-// WifiPane copies over the Pocket's WiFi: the desktop app raises it, moves this computer onto
-// it for the transfer and back, and uploads the new recordings afterwards.
+// WifiPane copies over the Pocket's WiFi: the app raises it, moves this computer onto it for
+// the transfer and back (the phone joins it next to its usual network), and uploads the new
+// recordings afterwards.
 function WifiPane({ state, call }: { state: PocketBluetoothResult; call: Call }) {
   const { t } = useTranslation();
   const [startError, setStartError] = useState<string | null>(null);
@@ -273,7 +282,8 @@ function WifiPane({ state, call }: { state: PocketBluetoothResult; call: Call })
     }
   }
 
-  if (!state.wifiSupported) return <p>{t('pocketWifiSync.unsupported')}</p>;
+  const context = appContext();
+  if (!state.wifiSupported) return <p>{t('pocketWifiSync.unsupported', { context })}</p>;
   if (wifi?.running) return <WifiProgress wifi={wifi} call={call} />;
 
   const startButton = (label: string) => (
@@ -328,11 +338,11 @@ function WifiPane({ state, call }: { state: PocketBluetoothResult; call: Call })
   }
   return (
     <>
-      <p>{t('pocketWifiSync.intro')}</p>
+      <p>{t('pocketWifiSync.intro', { context })}</p>
       <ul className="pocket-wifi-notes">
         <li>{t('pocketWifiSync.noteFirmware')}</li>
-        <li>{t('pocketWifiSync.noteNetwork')}</li>
-        <li>{t('pocketWifiSync.noteApp')}</li>
+        <li>{t('pocketWifiSync.noteNetwork', { context })}</li>
+        <li>{t('pocketWifiSync.noteApp', { context })}</li>
       </ul>
       {startError && <p className="error">{startError}</p>}
       {state.busy && <p className="muted">{t('pocketWifiSync.busy')}</p>}
@@ -373,7 +383,7 @@ function WifiProgress({ wifi, call }: { wifi: PocketWifiState; call: Call }) {
       <p>{wifiPhaseText(wifi, t)}</p>
       <div className="pocket-wifi-progress">{bar}</div>
       {detail && <p className="muted">{detail}</p>}
-      <p className="muted">{offline ? t('pocketWifiSync.offlineNote') : t('pocketWifiSync.closeNote')}</p>
+      <p className="muted">{offline ? t('pocketWifiSync.offlineNote', { context: appContext() }) : t('pocketWifiSync.closeNote', { context: appContext() })}</p>
       <div className="new-item-actions">
         <button type="button" className="secondary-button" disabled={wifi.cancelling} onClick={() => void call({ action: 'wifi-cancel' })}>
           {wifi.cancelling ? t('pocketWifiSync.cancelling') : t('pocketWifiSync.cancel')}
@@ -397,7 +407,7 @@ function wifiPhaseText(w: PocketWifiState, t: TFunction): string {
     case 'wifi-restarting':
       return t('pocketWifiSync.phases.wifiRestarting');
     case 'reconnecting':
-      return t('pocketWifiSync.phases.reconnecting');
+      return t('pocketWifiSync.phases.reconnecting', { context: appContext() });
     case 'uploading':
       return t('pocketWifiSync.phases.uploading', { current: w.current, total: w.total });
     default:

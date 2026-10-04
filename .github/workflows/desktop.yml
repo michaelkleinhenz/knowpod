@@ -1,8 +1,11 @@
-# Builds the desktop app (desktop/) on each OS it ships for and keeps the installers as
-# workflow artifacts. Runs by hand (Actions → Desktop app → Run workflow) and for tags
-# desktop-v*. The builds are unsigned. The version comes from the VERSION file; a tag
-# desktop-v<VERSION> also publishes the installers as a GitHub release.
-name: Desktop app
+# Builds the desktop app (desktop/) on each OS it ships for and the Android app (mobile/), and
+# keeps the installers and the APK as workflow artifacts. Runs by hand (Actions → Desktop and
+# Android apps → Run workflow) and for tags desktop-v*. The desktop builds are unsigned; the
+# APK is signed with the keystore in the repository secrets ANDROID_KEYSTORE_BASE64,
+# ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD (see README.md#android-app),
+# else with a throwaway debug key. The version comes from the VERSION file; a tag
+# desktop-v<VERSION> also publishes the installers and the APK as a GitHub release.
+name: Desktop and Android apps
 
 on:
   workflow_dispatch:
@@ -76,9 +79,54 @@ jobs:
             desktop/dist/*.dmg
           if-no-files-found: error
 
+  android:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+      # Same as `make android SERVER_URL=…`, plus the unit tests (`make android-test`).
+      - name: Build
+        working-directory: mobile
+        shell: bash
+        env:
+          SERVER_URL: ${{ inputs.server_url }}
+          VERSION: ${{ needs.version.outputs.version }}
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KNOWPOD_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KNOWPOD_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KNOWPOD_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          npm ci
+          npx cap sync android
+          if [[ -n "$KEYSTORE_BASE64" ]]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/knowpod.jks"
+            export KNOWPOD_KEYSTORE="$RUNNER_TEMP/knowpod.jks"
+          else
+            echo "::warning::No ANDROID_KEYSTORE_BASE64 secret: the APK is signed with a debug key, so it can't update an installed one."
+          fi
+          cd android
+          ./gradlew --no-daemon testReleaseUnitTest assembleRelease -PappVersion="$VERSION" ${SERVER_URL:+-PdefaultServerUrl="$SERVER_URL"}
+          mkdir -p ../dist
+          cp app/build/outputs/apk/release/app-release.apk "../dist/knowpod-$VERSION-android.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: knowpod-android-${{ needs.version.outputs.version }}
+          path: mobile/dist/*.apk
+          if-no-files-found: error
+
   release:
     if: github.ref_type == 'tag'
-    needs: [version, build]
+    needs: [version, build, android]
     runs-on: ubuntu-latest
     permissions:
       contents: write

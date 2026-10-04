@@ -1,0 +1,81 @@
+apply plugin: 'com.android.application'
+
+// The app version comes from the VERSION file at the repository root (see README.md#version),
+// like the desktop app's; the version code is derived from it (1.2.3 → 10203).
+def appVersion = (project.findProperty('appVersion') ?: rootProject.file('../../VERSION').text).toString().trim()
+def versionParts = (appVersion.split('-')[0].split('\\.') as List).collect { it.isInteger() ? it.toInteger() : 0 }
+while (versionParts.size() < 3) versionParts << 0
+def appVersionCode = (project.findProperty('appVersionCode') ?: (versionParts[0] * 10000 + versionParts[1] * 100 + versionParts[2])).toString().toInteger()
+
+// The server the app connects to on its first start: -PdefaultServerUrl=https://… (optional;
+// without it the app asks for one).
+def defaultServerUrl = (project.findProperty('defaultServerUrl') ?: '').toString()
+
+// Release signing: a keystore from the environment (KNOWPOD_KEYSTORE, its password, the key's
+// alias and password; see README.md#android-app). Without one, the release build is signed
+// with the debug key, so it installs, but updates need the same key.
+def keystorePath = System.getenv('KNOWPOD_KEYSTORE')
+def releaseKeystore = keystorePath ? file(keystorePath) : null
+
+android {
+    namespace = "net.kleinhenz.knowpod"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "net.kleinhenz.knowpod"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode appVersionCode
+        versionName appVersion
+        resValue "string", "default_server_url", defaultServerUrl
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    signingConfigs {
+        if (releaseKeystore != null) {
+            release {
+                storeFile releaseKeystore
+                storePassword System.getenv('KNOWPOD_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('KNOWPOD_KEY_ALIAS')
+                keyPassword System.getenv('KNOWPOD_KEY_PASSWORD') ?: System.getenv('KNOWPOD_KEYSTORE_PASSWORD')
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig releaseKeystore != null ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+    lint {
+        // The release build shouldn't stop on lint findings; `gradlew lint` reports them.
+        checkReleaseBuilds false
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation "androidx.webkit:webkit:$androidxWebkitVersion"
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:$junitVersion"
+    // The Pocket code uses org.json, which unit tests (no Android) get from here.
+    testImplementation "org.json:json:20250517"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'

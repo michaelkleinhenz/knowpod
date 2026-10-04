@@ -4,8 +4,8 @@ import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useOffline } from '../api/offline';
 import { useAuth } from '../auth';
 import { RecorderProvider, useRecorder } from '../context/Recorder';
-import { useDesktopNotifications } from '../lib/desktop';
-import { MicIcon, SignOutIcon, UsbIcon } from './Icons';
+import { isAndroidApp, useDesktopNotifications } from '../lib/desktop';
+import { MicIcon, SignOutIcon, UsbIcon, WifiIcon } from './Icons';
 import { NewItemDialog } from './NewItemDialog';
 import { PocketUsbSyncDialog, pocketUsbSyncAvailable } from './PocketUsbSync';
 
@@ -18,7 +18,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
   const [newKind, setNewKind] = useState<'note' | 'task' | null>(null);
-  // pocketSync shows the Pocket USB Sync dialog (desktop app only).
+  // pocketSync shows the Pocket Sync dialog (desktop and Android apps only).
   const [pocketSync, setPocketSync] = useState(false);
   const onConversations = pathname === '/' || pathname === '/briefing' || pathname.startsWith('/conversations/');
   // The time log, the done tasks, Ask and shared items are shown next to the notes list, like a note.
@@ -119,7 +119,7 @@ export function Layout({ children }: { children: ReactNode }) {
                       setPocketSync(true);
                     }}
                   >
-                    <UsbIcon />
+                    {isAndroidApp() ? <WifiIcon /> : <UsbIcon />}
                   </button>
                 )}
               </div>

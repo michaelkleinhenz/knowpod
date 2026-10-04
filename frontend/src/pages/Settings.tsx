@@ -14,6 +14,7 @@ import { Devices } from './Devices';
 import { APPEARANCES, applyAppearance, currentAppearance } from '../lib/appearance';
 import { errorText } from '../lib/errors';
 import { FONT_SIZES, applyFontSize, currentFontSize } from '../lib/fontSize';
+import { appContext } from '../lib/desktop';
 import { APP_VERSION, desktopVersion } from '../lib/version';
 
 const TABS = ['general', 'account', 'devices', 'themes', 'labels', 'filters', 'backup'] as const;
@@ -132,7 +133,7 @@ function FontSizeSettings() {
   );
 }
 
-// About shows the app version (and the desktop app's, when running in it).
+// About shows the app version (and the desktop or Android app's, when running in it).
 function About() {
   const { t } = useTranslation();
   const desktop = desktopVersion();
@@ -145,7 +146,7 @@ function About() {
         <dd>{APP_VERSION}</dd>
         {desktop && (
           <>
-            <dt>{t('settings.about.desktopVersion')}</dt>
+            <dt>{t('settings.about.desktopVersion', { context: appContext() })}</dt>
             <dd>{desktop}</dd>
           </>
         )}

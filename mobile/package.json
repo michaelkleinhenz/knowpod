@@ -1,0 +1,16 @@
+{
+  "name": "knowpod-mobile",
+  "private": true,
+  "version": "0.9.3",
+  "description": "knowpod for Android: a native shell around the knowpod web app, with Pocket sync over WiFi.",
+  "scripts": {
+    "sync": "cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/core": "^8.5.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.2"
+  }
+}

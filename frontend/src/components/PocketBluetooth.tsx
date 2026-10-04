@@ -1,22 +1,23 @@
 import { FormEvent, useEffect, useState } from 'react';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
-import { pocketBluetooth, PocketBluetoothResult } from '../lib/desktop';
+import { appContext, pocketBluetooth, PocketBluetoothResult } from '../lib/desktop';
 
-// errorKeys are the explained failures of the desktop app's Pocket Bluetooth call.
-const errorKeys = ['not-configured', 'not-found', 'auth', 'unsupported', 'usb-refused', 'busy', 'timeout', 'invalid-address', 'invalid-key'];
+// errorKeys are the explained failures of the app's Pocket Bluetooth call.
+const errorKeys = ['not-configured', 'not-found', 'auth', 'unsupported', 'permission', 'usb-refused', 'busy', 'timeout', 'invalid-address', 'invalid-key'];
 
 // bluetoothErrorText explains a failed Pocket Bluetooth call.
 export function bluetoothErrorText(r: PocketBluetoothResult, t: TFunction): string {
   return r.error && errorKeys.includes(r.error)
-    ? t(`pocketBluetooth.errors.${r.error}`)
+    ? t(`pocketBluetooth.errors.${r.error}`, { context: appContext() })
     : t('pocketBluetooth.errors.failed', { detail: r.message || r.error || '' });
 }
 
-// PocketBluetooth sets up the desktop app's Bluetooth connection to a Pocket recorder: the
-// recorder is a USB drive only until it's unplugged once, so the app switches the drive on
-// again over Bluetooth before copying from it. Only in the desktop app; the address and
-// session key stay there.
+// PocketBluetooth sets up the app's Bluetooth connection to a Pocket recorder: the recorder is
+// a USB drive only until it's unplugged once, so the desktop app switches the drive on again
+// over Bluetooth before copying from it; over Bluetooth, the desktop and Android apps also
+// raise the Pocket's WiFi to copy over it. Only in the apps; the address and session key stay
+// there.
 export function PocketBluetooth() {
   const { t } = useTranslation();
   // Looked up once: the effect below must not run again on every render.
@@ -76,13 +77,15 @@ export function PocketBluetooth() {
   }
 
   const configured = !!settings.address && !!settings.sessionKeySet;
+  const usbSupported = settings.usbSupported !== false;
+  const context = appContext();
   const changed = address.trim() !== (settings.address ?? '') || !!sessionKey.trim();
   const mb = (kb: number) => (kb / 1024).toLocaleString(undefined, { maximumFractionDigits: 0 });
 
   return (
     <>
-      <h3 className="subheading">{t('pocketBluetooth.title')}</h3>
-      <p className="muted">{t('pocketBluetooth.intro')}</p>
+      <h3 className="subheading">{t('pocketBluetooth.title', { context })}</h3>
+      <p className="muted">{t('pocketBluetooth.intro', { context })}</p>
       <form onSubmit={handleSubmit} className="form">
         <label>
           {t('pocketBluetooth.address')}
@@ -104,7 +107,7 @@ export function PocketBluetooth() {
             onChange={(e) => setSessionKey(e.target.value)}
           />
         </label>
-        <p className="muted">{t('pocketBluetooth.hint')}</p>
+        <p className="muted">{t('pocketBluetooth.hint', { context })}</p>
         {error && <p className="error">{error}</p>}
         {notice && <p className="success">{notice}</p>}
         {info && (
@@ -115,8 +118,12 @@ export function PocketBluetooth() {
             <dd>{info.firmware || '–'}</dd>
             <dt>{t('pocketBluetooth.storage')}</dt>
             <dd>{info.storage ? t('pocketBluetooth.storageValue', { used: mb(info.storage.usedKB), total: mb(info.storage.totalKB) }) : '–'}</dd>
-            <dt>{t('pocketBluetooth.usbDrive')}</dt>
-            <dd>{info.usb == null ? '–' : info.usb ? t('pocketBluetooth.on') : t('pocketBluetooth.off')}</dd>
+            {usbSupported && (
+              <>
+                <dt>{t('pocketBluetooth.usbDrive')}</dt>
+                <dd>{info.usb == null ? '–' : info.usb ? t('pocketBluetooth.on') : t('pocketBluetooth.off')}</dd>
+              </>
+            )}
           </dl>
         )}
         <div className="button-row">
@@ -126,15 +133,17 @@ export function PocketBluetooth() {
           <button type="button" className="secondary-button" disabled={!!busy || !configured || changed} onClick={() => void run('check')}>
             {busy === 'check' ? t('pocketBluetooth.checking') : t('pocketBluetooth.check')}
           </button>
-          <button type="button" className="secondary-button" disabled={!!busy || !configured || changed} onClick={() => void run('usb-on')}>
-            {busy === 'usb-on' ? t('pocketBluetooth.turningOn') : t('pocketBluetooth.turnOn')}
-          </button>
+          {usbSupported && (
+            <button type="button" className="secondary-button" disabled={!!busy || !configured || changed} onClick={() => void run('usb-on')}>
+              {busy === 'usb-on' ? t('pocketBluetooth.turningOn') : t('pocketBluetooth.turnOn')}
+            </button>
+          )}
           {(settings.address || settings.sessionKeySet) && (
             <button
               type="button"
               className="secondary-button danger"
               disabled={!!busy}
-              onClick={() => window.confirm(t('pocketBluetooth.removeConfirm')) && void run('save', { address: '', sessionKey: '' })}
+              onClick={() => window.confirm(t('pocketBluetooth.removeConfirm', { context })) && void run('save', { address: '', sessionKey: '' })}
             >
               {t('pocketBluetooth.remove')}
             </button>

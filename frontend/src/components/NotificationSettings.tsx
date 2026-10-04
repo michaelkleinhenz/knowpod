@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api, NotificationStatus } from '../api/client';
-import { desktopNotifications } from '../lib/desktop';
+import { appContext, desktopNotifications } from '../lib/desktop';
 import { errorText } from '../lib/errors';
 import { currentSubscription, deviceId, isDesktopApp, isInstalled, isIOS, pushSupported, subscribe, unsubscribe } from '../lib/push';
 import { formatDate } from '../lib/recordings';
@@ -84,11 +84,11 @@ export function NotificationSettings() {
     <div className="notification-settings">
       <p className="muted">{t('notifications.intro')}</p>
       {desktopNotifications() ? (
-        // The desktop app gets them over a live connection (lib/desktop.ts), not Web Push.
+        // The desktop and Android apps get them over a live connection (lib/desktop.ts), not Web Push.
         <>
           <p className="notification-state">
             <span className={`status-dot${listening > 0 ? ' ok' : ''}`} aria-hidden="true" />
-            {status && listening === 0 ? t('notifications.desktopConnecting') : t('notifications.desktopOn')}
+            {status && listening === 0 ? t('notifications.desktopConnecting') : t('notifications.desktopOn', { context: appContext() })}
           </p>
           {canTest && <div className="button-row">{testButton}</div>}
         </>

@@ -1,0 +1,25 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="channel_reminders">Erinnerungen</string>
+    <string name="channel_pocket">Pocket</string>
+    <string name="channel_pocket_progress">Kopieren vom Pocket</string>
+
+    <string name="download_started">Lade %1$s herunter …</string>
+    <string name="download_unsupported">Diese Datei lässt sich in der App nicht herunterladen. Öffne knowpod im Browser, um sie herunterzuladen.</string>
+
+    <string name="pocket_progress_title">Kopiere vom Pocket</string>
+    <string name="pocket_progress_connecting">Verbinde mit dem Pocket per Bluetooth …</string>
+    <string name="pocket_progress_wifi">Verbinde mit dem WLAN des Pocket …</string>
+    <string name="pocket_progress_downloading">Kopiere Aufnahme %1$d von %2$d über WLAN …</string>
+    <string name="pocket_progress_uploading">Lade Aufnahme %1$d von %2$d zu knowpod hoch …</string>
+    <string name="pocket_copied_title">Vom Pocket kopiert</string>
+    <plurals name="pocket_copied_body">
+        <item quantity="one">%d neue Aufnahme liegt im Ordner „Pocket AI“ und wird transkribiert und zusammengefasst.</item>
+        <item quantity="other">%d neue Aufnahmen liegen im Ordner „Pocket AI“ und werden transkribiert und zusammengefasst.</item>
+    </plurals>
+    <plurals name="pocket_copied_some">
+        <item quantity="one">%d kopiert.</item>
+        <item quantity="other">%d kopiert.</item>
+    </plurals>
+    <string name="pocket_failed_title">Kopieren vom Pocket über WLAN fehlgeschlagen</string>
+</resources>
