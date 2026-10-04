@@ -1,12 +1,15 @@
 import { Trans, useTranslation } from 'react-i18next';
+import { isAndroidApp, showAppSetup } from '../lib/desktop';
 import { isDesktopApp } from '../lib/push';
 import { CopyButton } from './CopyButton';
 
-// RELEASES is where the desktop app's installers are published (see README.md#version).
+// RELEASES is where the desktop app's installers and the Android app are published (see
+// README.md#version).
 const RELEASES = 'https://github.com/michaelkleinhenz/knowpod-service/releases';
 
-// DesktopAppSetup explains how to connect the desktop app (desktop/) to this server: it asks
-// for the server's address on its first start, which is the address of this page.
+// DesktopAppSetup explains how to connect the desktop app (desktop/) and the Android app
+// (mobile/) to this server: they ask for the server's address on their first start, which is
+// the address of this page.
 export function DesktopAppSetup() {
   const { t } = useTranslation();
   const server = window.location.origin;
@@ -14,7 +17,18 @@ export function DesktopAppSetup() {
   return (
     <>
       <h2 className="card-title">{t('desktopApp.title')}</h2>
-      {isDesktopApp() ? (
+      {isAndroidApp() ? (
+        <>
+          <p className="muted">
+            <Trans i18nKey="desktopApp.connectedAndroid" values={{ server }} components={{ 1: <code /> }} />
+          </p>
+          <div className="button-row">
+            <button type="button" className="secondary-button" onClick={() => showAppSetup()}>
+              {t('desktopApp.changeServer')}
+            </button>
+          </div>
+        </>
+      ) : isDesktopApp() ? (
         <p className="muted">
           <Trans i18nKey="desktopApp.connected" values={{ server }} components={{ 1: <code /> }} />
         </p>
@@ -35,6 +49,9 @@ export function DesktopAppSetup() {
             <li>{t('desktopApp.stepSignIn')}</li>
           </ol>
           <p className="muted">{t('desktopApp.notifications')}</p>
+          <p className="muted">
+            <Trans i18nKey="desktopApp.android" components={{ 1: <a href={RELEASES} target="_blank" rel="noreferrer" /> }} />
+          </p>
         </>
       )}
     </>

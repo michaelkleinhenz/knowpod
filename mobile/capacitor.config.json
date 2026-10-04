@@ -1,0 +1,8 @@
+{
+  "appId": "net.kleinhenz.knowpod",
+  "appName": "knowpod",
+  "webDir": "www",
+  "android": {
+    "path": "android"
+  }
+}

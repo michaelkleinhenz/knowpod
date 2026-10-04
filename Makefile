@@ -1,12 +1,13 @@
 # knowpod-service build. The frontend is built separately and embedded into the backend binary so a
 # single artifact serves both the web UI and the API.
 
-.PHONY: build frontend backend test clean version set-version desktop-deps desktop-run desktop desktop-linux desktop-windows desktop-mac desktop-all
+.PHONY: build frontend backend test clean version set-version desktop-deps desktop-run desktop desktop-linux desktop-windows desktop-mac desktop-all android-deps android android-test
 
-# Server the desktop app connects to on its first start, e.g.
+# Server the desktop and Android apps connect to on their first start, e.g.
 # `make desktop SERVER_URL=https://knowpod.example.com`. Without it the app asks for one.
 SERVER_URL ?=
 DESKTOP_FLAGS = --publish never -c.extraMetadata.version=$(VERSION) $(if $(SERVER_URL),-c.extraMetadata.defaultServerUrl=$(SERVER_URL))
+ANDROID_FLAGS = -PappVersion=$(VERSION) $(if $(SERVER_URL),-PdefaultServerUrl=$(SERVER_URL))
 
 # The app version, shown in the app's settings and used for the builds and release names. It is
 # kept in the VERSION file; change it there or with `make set-version V=1.2.0`.
@@ -17,12 +18,13 @@ version:
 	@echo $(VERSION)
 
 # Set the app version: writes VERSION and keeps the package.json files, the API spec and the
-# Chrome extension's manifest in step with it.
+# Chrome extension's manifest in step with it (the Android app reads VERSION itself).
 set-version:
 	@test -n "$(V)" || { echo 'usage: make set-version V=1.2.0'; exit 1; }
 	echo "$(V)" > VERSION
 	cd frontend && npm version "$(V)" --no-git-tag-version --allow-same-version
 	cd desktop && npm version "$(V)" --no-git-tag-version --allow-same-version
+	cd mobile && npm version "$(V)" --no-git-tag-version --allow-same-version
 	sed -i.bak -E 's/^(  version: ).*/\1$(V)/' backend/api/openapi.yaml && rm backend/api/openapi.yaml.bak
 	sed -i.bak -E 's/^(  "version": ")[^"]*(",)/\1$(V)\2/' chrome-extension/src/manifest.json && rm chrome-extension/src/manifest.json.bak
 
@@ -69,10 +71,27 @@ desktop-mac: desktop-deps
 desktop-all: desktop-deps
 	cd desktop && npx electron-builder --linux --win --mac $(DESKTOP_FLAGS)
 
+# Android app (Capacitor, in mobile/): a WebView around the web UI of a knowpod server, plus
+# copying from the Pocket over its WiFi. Needs Node.js 22, JDK 21 and the Android SDK
+# (ANDROID_HOME, or sdk.dir in mobile/android/local.properties). The APK lands in mobile/dist;
+# it is signed with the keystore in KNOWPOD_KEYSTORE (see README.md#android-app), else with the
+# debug key.
+android-deps:
+	cd mobile && npm ci && npx cap sync android
+
+android: android-deps
+	cd mobile/android && ./gradlew assembleRelease $(ANDROID_FLAGS)
+	mkdir -p mobile/dist
+	cp mobile/android/app/build/outputs/apk/release/app-release.apk mobile/dist/knowpod-$(VERSION)-android.apk
+
+# The Android app's unit tests: the Pocket protocol and WiFi transfer against a fake recorder.
+android-test: android-deps
+	cd mobile/android && ./gradlew testReleaseUnitTest $(ANDROID_FLAGS)
+
 test:
 	cd backend && go test ./...
 
 clean:
-	rm -rf backend/bin frontend/dist desktop/dist
+	rm -rf backend/bin frontend/dist desktop/dist mobile/dist mobile/android/app/build
 	find backend/internal/web/dist -mindepth 1 ! -name index.html -delete
 	git checkout -- backend/internal/web/dist/index.html 2>/dev/null || true

@@ -1,5 +1,7 @@
-// The knowpod desktop app (Electron, see desktop/): what its preload script
-// (desktop/src/preload.js) offers the web app, and the live notifications it shows.
+// The knowpod desktop app (Electron, see desktop/) and Android app (Capacitor, see mobile/):
+// what they offer the web app (desktop/src/preload.js as window.knowpodDesktop,
+// mobile/android/…/AppBridge.java as window.knowpodAndroid), and the live notifications they
+// show.
 import { useEffect, useRef } from 'react';
 
 // DesktopNotification is a notification as the server sends it (see
@@ -12,6 +14,7 @@ export interface DesktopNotification {
 }
 
 interface DesktopBridge {
+  // the OS: 'android' in the Android app, process.platform in the desktop app
   platform: string;
   version: string;
   // notify and onOpen are missing in older desktop apps.
@@ -19,12 +22,15 @@ interface DesktopBridge {
   onOpen?: (listener: (url: string) => void) => () => void;
   // pocketBluetooth is missing in older desktop apps.
   pocketBluetooth?: (request: PocketBluetoothRequest) => Promise<PocketBluetoothResult>;
+  // showSetup shows the Android app's page for the server's address (Android app only).
+  showSetup?: () => void;
 }
 
 // The desktop app's Bluetooth connection to a Pocket recorder (desktop/src/pocket-bluetooth.js),
 // which switches its USB drive on so the app can copy from it, and drives the copy over the
-// Pocket's WiFi (desktop/src/pocket-wifi-sync.js). Its settings stay in the desktop app; the
-// session key is never handed back.
+// Pocket's WiFi (desktop/src/pocket-wifi-sync.js). The Android app answers the same calls
+// (mobile/android/…/pocket/PocketController.java), copying over the WiFi only. Its settings
+// stay in the app; the session key is never handed back.
 export type PocketBluetoothRequest =
   | { action: 'settings' | 'check' | 'usb-on' | 'state' | 'sync' | 'eject' | 'wifi-sync' | 'wifi-cancel' }
   | { action: 'save'; address?: string; sessionKey?: string };
@@ -85,6 +91,8 @@ export interface PocketBluetoothResult {
   storage?: { usedKB: number; totalKB: number } | null;
   // check and usb-on
   usb?: boolean | null;
+  // settings and state: false where there is no copying by USB (the Android app)
+  usbSupported?: boolean;
   // state: whether the Bluetooth connection is set up (configured) or in use (busy), and the
   // USB copying (desktop/src/pocket.js): turned on (enabled), a recorder mounted
   // (connected), copying (syncing); phase is '', checking, copying (current of total), done
@@ -104,15 +112,32 @@ export interface PocketBluetoothResult {
   wifi?: PocketWifiState | null;
 }
 
-// pocketBluetooth returns the desktop app's Pocket Bluetooth call, or undefined outside the
-// desktop app (and in older ones).
+// pocketBluetooth returns the app's Pocket Bluetooth call, or undefined outside the desktop
+// and Android apps (and in older desktop apps).
 export const pocketBluetooth = () => bridge()?.pocketBluetooth;
 
-const bridge = (): DesktopBridge | undefined =>
-  typeof window !== 'undefined' ? (window as { knowpodDesktop?: DesktopBridge }).knowpodDesktop : undefined;
+type AppWindow = { knowpodDesktop?: DesktopBridge; knowpodAndroid?: DesktopBridge };
 
-// desktopNotifications says whether this is a desktop app that shows notifications (older
-// ones can't).
+const bridge = (): DesktopBridge | undefined =>
+  typeof window !== 'undefined' ? ((window as AppWindow).knowpodDesktop ?? (window as AppWindow).knowpodAndroid) : undefined;
+
+// isAndroidApp says whether this is the knowpod Android app (see mobile/).
+export const isAndroidApp = () => typeof window !== 'undefined' && !!(window as AppWindow).knowpodAndroid;
+
+// appContext is the i18next context of texts that differ in the Android app ('phone': "this
+// phone" rather than "this computer"); see the *_phone keys in i18n/en.ts.
+export const appContext = (): 'phone' | undefined => (isAndroidApp() ? 'phone' : undefined);
+
+// showAppSetup shows the Android app's page for the server's address; false outside it.
+export function showAppSetup(): boolean {
+  const show = bridge()?.showSetup;
+  if (!show) return false;
+  show();
+  return true;
+}
+
+// desktopNotifications says whether this is a desktop or Android app that shows
+// notifications itself (older desktop apps can't).
 export const desktopNotifications = () => typeof bridge()?.notify === 'function';
 
 // retryAfter is how long to wait before listening again when the server refused the stream
