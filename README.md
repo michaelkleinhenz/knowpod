@@ -41,7 +41,8 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
   | AI assistants (Claude, ChatGPT) | Your notes and tasks through an MCP server |
 
 - **Everywhere you work.** A responsive web app, installable on phones and desktops (PWA),
-  a native [desktop app](#desktop-app) and an [Android app](#android-app); English and
+  a native [desktop app](#desktop-app), an [Android app](#android-app) and an
+  [iOS app](#ios-app); English and
   German, light and dark.
 
 ## Tech stack
@@ -56,6 +57,7 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
 | Deploy | One binary (frontend embedded in the backend), Docker / docker-compose |
 | Desktop app | Electron + electron-builder (Windows, macOS, Linux), optional |
 | Android app | Capacitor 8 (WebView shell, native Java for the Pocket), optional |
+| iOS app | Capacitor 8 (WKWebView shell, Swift), optional |
 
 ## Features
 
@@ -244,6 +246,8 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
   (see [Desktop app](#desktop-app)).
 - An **Android app** does the same on phones, and copies recordings from a Pocket recorder
   over the recorder's WiFi (see [Android app](#android-app)).
+- An **iOS app** does the same on iPhone and iPad, without the Pocket copy (see
+  [iOS app](#ios-app)).
 
 ## How recordings flow
 
@@ -339,7 +343,7 @@ make desktop-mac                                    # .dmg, .zip (needs macOS)
 make desktop SERVER_URL=https://knowpod.example.com # preset the server, no question on first start
 ```
 
-Requires Node.js 22. Build each platform on its own OS; the **Desktop and Android apps** GitHub Actions
+Requires Node.js 22. Build each platform on its own OS; the **Desktop and mobile apps** GitHub Actions
 workflow (`.github/workflows/desktop.yml`, run by hand or on a `desktop-v*` tag) builds all
 three and keeps the installers as artifacts; a `desktop-v<version>` tag also publishes them as
 a GitHub release (see [Version](#version)). The builds are not code-signed, so macOS
@@ -354,7 +358,7 @@ over Bluetooth first when needed) or over the recorder's own WiFi on Linux and W
 `mobile/` holds a [Capacitor](https://capacitorjs.com) app for Android (`mobile/android/`): like
 the desktop app, a WebView around the web UI of a knowpod server, with no backend or frontend
 of its own. On the first start a bundled page (`mobile/www/`) asks for the server's address;
-**Settings → General → Desktop and Android app → Change server** changes it later. Beyond the web
+**Settings → General → Desktop and mobile apps → Change server** changes it later. Beyond the web
 app it copies new recordings from a Pocket recorder over the recorder's WiFi, which a browser
 can't (it needs Bluetooth, joining the recorder's network and a plain TCP connection): the
 same **Pocket Sync** dialog as the desktop app, WiFi only. The Pocket protocol is a Java port
@@ -369,7 +373,7 @@ make android-test                                   # unit tests: the Pocket pro
 Requires Node.js 22, JDK 21 and the Android SDK (`ANDROID_HOME`, or `sdk.dir` in
 `mobile/android/local.properties`); Android Studio opens `mobile/android/` after
 `make android-deps`. The app needs Android 7 or newer, the WiFi copy Android 10 or newer. The
-**Desktop and Android apps** workflow builds and tests the APK next to the desktop installers
+**Desktop and mobile apps** workflow builds and tests the APK next to the desktop installers
 and attaches it to the `desktop-v<version>` release.
 
 **Signing.** Android installs an update only when it is signed with the same key as the
@@ -385,12 +389,36 @@ For local builds, point `KNOWPOD_KEYSTORE` at it and set `KNOWPOD_KEYSTORE_PASSW
 `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`. Without a keystore the APK is signed with a
 debug key: it installs, but the next build can't update it (uninstall first).
 
+## iOS app
+
+`mobile/ios/` holds the iOS side of the same Capacitor app, for iPhone and iPad (iOS 15 or
+newer): the web UI of a knowpod server in a WKWebView, with the same setup page
+(`mobile/www/`) on the first start and **Settings → General → Desktop and mobile apps →
+Change server** later. It shows the server's notifications while it is open, and opens a
+clicked one's note. It doesn't copy from a Pocket recorder: the Pocket Sync button stays
+hidden. The native code is in Swift (`mobile/ios/App/App/`).
+
+```bash
+make ios                                        # mobile/dist/knowpod-<version>-ios-unsigned.ipa
+make ios SERVER_URL=https://knowpod.example.com # preset the server, no question on first start
+```
+
+Requires macOS with Xcode 26 and Node.js 22; Xcode opens `mobile/ios/App/App.xcodeproj`
+after `make ios-deps` (the Capacitor library comes in as a Swift package, no CocoaPods). The
+**Desktop and mobile apps** workflow builds the IPA next to the APK and the desktop
+installers and attaches it to the `desktop-v<version>` release.
+
+**Signing.** iOS installs only signed apps, and the IPA is unsigned. To put it on a device,
+run it from Xcode with your Apple ID as the team (**Signing & Capabilities**), or re-sign the
+IPA with your own certificate and provisioning profile (e.g. with Sideloadly, AltStore or
+`codesign`); the bundle ID is `net.kleinhenz.knowpod`.
+
 ## Version
 
 The app version lives in the [`VERSION`](VERSION) file at the repository root, a single line
 such as `0.1.0`. Edit it there, or run `make set-version V=1.2.0`, which also keeps
-`frontend/package.json`, `desktop/package.json`, `mobile/package.json`, the API spec (`backend/api/openapi.yaml`) and the
-Chrome extension's `manifest.json` in step. It is used by:
+`frontend/package.json`, `desktop/package.json`, `mobile/package.json`, the API spec (`backend/api/openapi.yaml`), the
+Chrome extension's `manifest.json` and the iOS project in step. It is used by:
 
 - the web app, which shows it under **Settings → General → About knowpod** (in the desktop
   app, next to the desktop app's own version);
@@ -398,9 +426,11 @@ Chrome extension's `manifest.json` in step. It is used by:
 - the desktop installers, whose file names and app metadata carry it
   (`knowpod-<version>-<os>-<arch>.<ext>`);
 - the Android app (`knowpod-<version>-android.apk`), whose version name it is; the version
-  code is derived from it (1.2.3 → 10203).
+  code is derived from it (1.2.3 → 10203);
+- the iOS app (`knowpod-<version>-ios-unsigned.ipa`), whose version it is; the build number
+  is derived from it the same way.
 
-To release the desktop and Android apps, bump `VERSION`, commit, and push a tag `desktop-v<version>`
+To release the desktop and mobile apps, bump `VERSION`, commit, and push a tag `desktop-v<version>`
 (e.g. `git tag desktop-v1.2.0 && git push origin desktop-v1.2.0`). The workflow refuses a
 tag that doesn't match `VERSION`.
 
@@ -477,7 +507,7 @@ backend/
     web/               embedded frontend (dist/) + SPA handler
     worker/            background pipeline: claim, run stages, retry/backoff
 desktop/               Electron desktop app (main process, server setup page, packaging config)
-mobile/                Capacitor Android app (android/: native project and Pocket sync; www/: setup page)
+mobile/                Capacitor apps (android/: native project and Pocket sync; ios/: Xcode project; www/: setup page)
 docs/                  device protocol, architecture, operations
 frontend/
   public/              app icons (favicon.svg, PWA and Apple touch icons)

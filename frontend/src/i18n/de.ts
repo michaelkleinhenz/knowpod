@@ -766,7 +766,7 @@ export const de: Translation = {
     add: 'Hinzufügen',
   },
   desktopApp: {
-    title: 'Desktop- und Android-App',
+    title: 'Desktop- und Mobil-Apps',
     intro: 'knowpod gibt es auch als App für Windows, macOS und Linux. Sie öffnet diesen Server in einem eigenen Fenster, mit deinem Workspace, deinen Aufgaben und Offline-Kopien wie hier.',
     server: 'Server-Adresse',
     stepInstall: 'Lade das Installationsprogramm für dein System von der <1>Release-Seite</1> herunter und installiere es.',
@@ -775,6 +775,7 @@ export const de: Translation = {
     notifications: 'Um dich später mit einem anderen Server zu verbinden, nutze in der App File → Change Server…. Die App zeigt Benachrichtigungen an, solange sie läuft; wenn du ihr Fenster schließt, läuft sie im Tray weiter.',
     connected: 'Du nutzt die Desktop-App, verbunden mit <1>{{server}}</1>. Um dich mit einem anderen Server zu verbinden, nutze File → Change Server….',
     connectedAndroid: 'Du nutzt die Android-App, verbunden mit <1>{{server}}</1>.',
+    connectedIOS: 'Du nutzt die iOS-App, verbunden mit <1>{{server}}</1>.',
     changeServer: 'Server ändern',
     android: 'Für Android gibt es auch eine App: Installiere knowpod-…-android.apk von der <1>Release-Seite</1>. Sie fragt nach derselben Server-Adresse und kopiert auch über das WLAN des Pocket.',
   },
@@ -1011,6 +1012,7 @@ export const de: Translation = {
       version: 'Version',
       desktopVersion: 'Desktop-App',
       desktopVersion_phone: 'Android-App',
+      desktopVersion_ios: 'iOS-App',
     },
     themes: {
       title: 'Vorlagen für Zusammenfassungen',
