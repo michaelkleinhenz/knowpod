@@ -11,6 +11,7 @@
     <string name="pocket_progress_connecting">Verbinde mit dem Pocket per Bluetooth …</string>
     <string name="pocket_progress_wifi">Verbinde mit dem WLAN des Pocket …</string>
     <string name="pocket_progress_downloading">Kopiere Aufnahme %1$d von %2$d über WLAN …</string>
+    <string name="pocket_progress_downloading_bluetooth">Kopiere Aufnahme %1$d von %2$d per Bluetooth …</string>
     <string name="pocket_progress_uploading">Lade Aufnahme %1$d von %2$d zu knowpod hoch …</string>
     <string name="pocket_copied_title">Vom Pocket kopiert</string>
     <plurals name="pocket_copied_body">
@@ -21,5 +22,5 @@
         <item quantity="one">%d kopiert.</item>
         <item quantity="other">%d kopiert.</item>
     </plurals>
-    <string name="pocket_failed_title">Kopieren vom Pocket über WLAN fehlgeschlagen</string>
+    <string name="pocket_failed_title">Kopieren vom Pocket fehlgeschlagen</string>
 </resources>

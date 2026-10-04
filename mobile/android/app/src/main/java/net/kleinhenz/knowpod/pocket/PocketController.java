@@ -22,8 +22,8 @@ import org.json.JSONObject;
 // PocketController answers the web app's Pocket calls (window.knowpodAndroid.pocketBluetooth,
 // see frontend/src/lib/desktop.ts), the same requests the desktop app answers
 // (desktop/src/main.js: knowpod:pocket-bluetooth): {action: 'settings' | 'save' | 'check' |
-// 'state' | 'wifi-sync' | 'wifi-cancel', address?, sessionKey?}. The phone copies over the
-// Pocket's WiFi only; there is no USB drive to switch on.
+// 'state' | 'wifi-sync' | 'wifi-cancel', address?, sessionKey?}. The phone copies over
+// Bluetooth and the Pocket's WiFi (WifiSync); there is no USB drive to switch on.
 public final class PocketController {
     private static final String TAG = "knowpod";
     private static PocketController instance;
@@ -129,7 +129,9 @@ public final class PocketController {
         // Copying by USB is the desktop app's: the dialog shows only the WiFi copy.
         put(r, "usbSupported", false);
         put(r, "connected", false);
-        put(r, "wifiSupported", AndroidWifi.supported());
+        // The copy works on every phone: without WiFi to join the recorder's (before Android
+        // 10), all recordings come over Bluetooth.
+        put(r, "wifiSupported", true);
         put(r, "wifi", new JSONObject(sync.state()));
         return r;
     }
@@ -195,10 +197,6 @@ public final class PocketController {
     }
 
     private void startSync(MainActivity activity, Reply reply) {
-        if (!AndroidWifi.supported()) {
-            reply.send(failure("wifi-unsupported", null));
-            return;
-        }
         if (!settings.configured()) {
             reply.send(failure("not-configured", null));
             return;
@@ -257,7 +255,7 @@ public final class PocketController {
 
         @Override
         public HostWifi wifi() {
-            return new AndroidWifi(context, settings);
+            return AndroidWifi.supported() ? new AndroidWifi(context, settings) : null;
         }
 
         @Override

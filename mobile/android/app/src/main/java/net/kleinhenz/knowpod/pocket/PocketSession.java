@@ -9,6 +9,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 // PocketSession talks to a Pocket recorder (heypocketai.com) over a Bluetooth connection: the
@@ -22,8 +23,8 @@ import java.util.function.Predicate;
 //   GET&USB     → MCU&USB&1               whether the recorder is a USB drive when plugged in
 //   LIST_DIRS   → MCU&DIRS&<date>… MCU&DIRS_SUM&<n>                 days with recordings
 //   LIST&<date> → MCU&F&<date>&<timestamp>&<seconds>… MCU&LIST&<n>   a day's recordings
-// and for the WiFi transfer WIFIO, WIFI, WIFIS, WPING, U&<date>&<timestamp>, U&WIFI and WIFIC
-// (see WifiSession). A port of desktop/src/bluetooth.js; the Bluetooth connection itself is
+//   U&<date>&<timestamp> → MCU&U&<size>, then the file over Bluetooth (BluetoothTransfer) … MCU&OFF
+// and for the WiFi transfer WIFIO, WIFI, WIFIS, WPING, U&WIFI and WIFIC (see WifiSession). A port of desktop/src/bluetooth.js; the Bluetooth connection itself is
 // a Link (AndroidBle on the phone, a fake recorder in the tests).
 public class PocketSession {
     // Link is the Bluetooth connection: writes go to the command characteristic, in order,
@@ -31,10 +32,11 @@ public class PocketSession {
     public interface Link {
         void write(byte[] bytes) throws IOException;
 
-        // subscribeAudio subscribes to the recording data of a Bluetooth transfer, and throws
-        // it away. A transfer only runs while it's subscribed to, and the WiFi transfer
-        // switches a running Bluetooth transfer over.
-        void subscribeAudio() throws IOException;
+        // subscribeAudio subscribes to the recording data of a Bluetooth transfer: the raw
+        // bytes of the file, in notifications that go to listener in order. A transfer only
+        // runs while it's subscribed to, and the WiFi transfer switches a running Bluetooth
+        // transfer over.
+        void subscribeAudio(Consumer<byte[]> listener) throws IOException;
 
         void close();
     }
@@ -55,6 +57,8 @@ public class PocketSession {
     private final Link link;
     private final MessageLog log;
     private boolean audio;
+    // Where the recording data goes; null throws it away (a transfer switched to WiFi).
+    private volatile Consumer<byte[]> audioSink;
 
     public PocketSession(Link link, MessageLog log) {
         this.link = link;
@@ -107,11 +111,19 @@ public class PocketSession {
     public synchronized void subscribeAudio() throws PocketException {
         if (audio) return;
         try {
-            link.subscribeAudio();
+            link.subscribeAudio(bytes -> {
+                Consumer<byte[]> sink = audioSink;
+                if (sink != null) sink.accept(bytes);
+            });
         } catch (IOException e) {
             throw new PocketException("failed", e.getMessage(), e);
         }
         audio = true;
+    }
+
+    // receiveAudio sends the recording data of Bluetooth transfers to sink; null throws it away.
+    public void receiveAudio(Consumer<byte[]> sink) {
+        audioSink = sink;
     }
 
     public void close() {

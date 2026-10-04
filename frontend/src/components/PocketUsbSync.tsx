@@ -255,7 +255,7 @@ const wifiErrorKeys = [
 // app's detail, shown where it helps.
 function wifiErrorText(error: string, message: string, t: TFunction): string {
   if (wifiErrorKeys.includes(error)) return t(`pocketWifiSync.errors.${error}`, { detail: message, context: appContext() });
-  return t('pocketWifiSync.errors.failed', { detail: message || error });
+  return t('pocketWifiSync.errors.failed', { detail: message || error, context: appContext() });
 }
 
 const megabytes = (bytes: number) => (bytes / 1_000_000).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -267,16 +267,24 @@ function WifiPane({ state, call }: { state: PocketBluetoothResult; call: Call })
   const { t } = useTranslation();
   const [startError, setStartError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  // seen: this dialog saw the copy run (or started it). The outcome of a copy that ended
+  // before the dialog opened was already told by a notification: the dialog offers a new one.
+  const [seen, setSeen] = useState(false);
   const wifi = state.wifi;
+  const running = !!wifi?.running;
+  useEffect(() => {
+    if (running) setSeen(true);
+  }, [running]);
 
   async function start() {
     setStarting(true);
     setStartError(null);
     try {
       const r = await call({ action: 'wifi-sync' });
-      if (!r.ok) setStartError(wifiErrorText(r.error ?? 'failed', r.message ?? '', t));
+      if (r.ok) setSeen(true);
+      else setStartError(wifiErrorText(r.error ?? 'failed', r.message ?? '', t));
     } catch (err) {
-      setStartError(t('pocketWifiSync.errors.failed', { detail: err instanceof Error ? err.message : String(err) }));
+      setStartError(t('pocketWifiSync.errors.failed', { detail: err instanceof Error ? err.message : String(err), context: appContext() }));
     } finally {
       setStarting(false);
     }
@@ -285,6 +293,7 @@ function WifiPane({ state, call }: { state: PocketBluetoothResult; call: Call })
   const context = appContext();
   if (!state.wifiSupported) return <p>{t('pocketWifiSync.unsupported', { context })}</p>;
   if (wifi?.running) return <WifiProgress wifi={wifi} call={call} />;
+  const finished = seen ? wifi?.phase : undefined;
 
   const startButton = (label: string) => (
     <div className="new-item-actions">
@@ -294,8 +303,8 @@ function WifiPane({ state, call }: { state: PocketBluetoothResult; call: Call })
     </div>
   );
 
-  // The outcome of the last copy, while the desktop app runs.
-  if (wifi?.phase === 'done') {
+  // The outcome of the copy this dialog saw.
+  if (wifi && finished === 'done') {
     return (
       <>
         {wifi.copied ? (
@@ -319,7 +328,7 @@ function WifiPane({ state, call }: { state: PocketBluetoothResult; call: Call })
       </>
     );
   }
-  if (wifi?.phase === 'failed') {
+  if (wifi && finished === 'failed') {
     return (
       <>
         {wifi.error === 'cancelled' ? (
@@ -346,23 +355,29 @@ function WifiPane({ state, call }: { state: PocketBluetoothResult; call: Call })
       </ul>
       {startError && <p className="error">{startError}</p>}
       {state.busy && <p className="muted">{t('pocketWifiSync.busy')}</p>}
-      {startButton(t('pocketWifiSync.start'))}
+      {startButton(t('pocketWifiSync.start', { context }))}
     </>
   );
 }
 
 // wifiSteps are the phases in order, for the step counter; restarting the Pocket's WiFi is
-// part of downloading.
+// part of downloading. Where the copy reports how a recording comes (via, the Android app),
+// short recordings come over Bluetooth before the WiFi is turned on: that is part of
+// downloading, too.
 const wifiSteps = ['connecting', 'listing', 'checking', 'wifi-starting', 'downloading', 'reconnecting', 'uploading'];
+const mixedSteps = wifiSteps.filter((s) => s !== 'wifi-starting');
 
 // WifiProgress shows a WiFi copy that runs: the step, a progress bar, and for the transfer
 // itself the megabytes and the speed.
 function WifiProgress({ wifi, call }: { wifi: PocketWifiState; call: Call }) {
   const { t } = useTranslation();
-  const phase = wifi.phase === 'wifi-restarting' ? 'downloading' : wifi.phase;
-  const step = Math.max(0, wifiSteps.indexOf(phase)) + 1;
+  const mixed = wifi.via !== undefined;
+  const steps = mixed ? mixedSteps : wifiSteps;
+  const phase = wifi.phase === 'wifi-restarting' || (mixed && wifi.phase === 'wifi-starting') ? 'downloading' : wifi.phase;
+  const step = Math.max(0, steps.indexOf(phase)) + 1;
   // Off the usual network: no internet until the transfer is done.
-  const offline = ['wifi-starting', 'downloading', 'wifi-restarting'].includes(wifi.phase);
+  const offline =
+    ['wifi-starting', 'wifi-restarting'].includes(wifi.phase) || (wifi.phase === 'downloading' && wifi.via !== 'bluetooth');
   let bar;
   let detail: string | null = null;
   if (wifi.phase === 'downloading' && wifi.totalBytes > 0) {
@@ -379,7 +394,7 @@ function WifiProgress({ wifi, call }: { wifi: PocketWifiState; call: Call }) {
   }
   return (
     <>
-      <p className="muted pocket-wifi-step">{t('pocketWifiSync.step', { step, steps: wifiSteps.length })}</p>
+      <p className="muted pocket-wifi-step">{t('pocketWifiSync.step', { step, steps: steps.length })}</p>
       <p>{wifiPhaseText(wifi, t)}</p>
       <div className="pocket-wifi-progress">{bar}</div>
       {detail && <p className="muted">{detail}</p>}
@@ -403,7 +418,9 @@ function wifiPhaseText(w: PocketWifiState, t: TFunction): string {
     case 'wifi-starting':
       return t('pocketWifiSync.phases.wifiStarting', { count: w.total });
     case 'downloading':
-      return t('pocketWifiSync.phases.downloading', { current: w.current, total: w.total });
+      return w.via === 'bluetooth'
+        ? t('pocketWifiSync.phases.downloadingBluetooth', { current: w.current, total: w.total })
+        : t('pocketWifiSync.phases.downloading', { current: w.current, total: w.total });
     case 'wifi-restarting':
       return t('pocketWifiSync.phases.wifiRestarting');
     case 'reconnecting':

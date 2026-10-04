@@ -16,6 +16,7 @@
     <string name="pocket_progress_connecting">Talking to the Pocket over Bluetooth…</string>
     <string name="pocket_progress_wifi">Joining the Pocket’s WiFi…</string>
     <string name="pocket_progress_downloading">Copying recording %1$d of %2$d over WiFi…</string>
+    <string name="pocket_progress_downloading_bluetooth">Copying recording %1$d of %2$d over Bluetooth…</string>
     <string name="pocket_progress_uploading">Uploading recording %1$d of %2$d to knowpod…</string>
     <string name="pocket_copied_title">Copied from Pocket</string>
     <plurals name="pocket_copied_body">
@@ -26,5 +27,5 @@
         <item quantity="one">%d copied.</item>
         <item quantity="other">%d copied.</item>
     </plurals>
-    <string name="pocket_failed_title">Couldn’t copy from Pocket over WiFi</string>
+    <string name="pocket_failed_title">Couldn’t copy from Pocket</string>
 </resources>
