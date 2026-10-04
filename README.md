@@ -41,7 +41,8 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
   | AI assistants (Claude, ChatGPT) | Your notes and tasks through an MCP server |
 
 - **Everywhere you work.** A responsive web app, installable on phones and desktops (PWA),
-  and a native [desktop app](#desktop-app); English and German, light and dark.
+  a native [desktop app](#desktop-app) and an [Android app](#android-app); English and
+  German, light and dark.
 
 ## Tech stack
 
@@ -54,6 +55,7 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
 | Frontend | React 18 + TypeScript, Vite, react-router |
 | Deploy | One binary (frontend embedded in the backend), Docker / docker-compose |
 | Desktop app | Electron + electron-builder (Windows, macOS, Linux), optional |
+| Android app | Capacitor 8 (WebView shell, native Java for the Pocket), optional |
 
 ## Features
 
@@ -240,6 +242,8 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
 - A **desktop app** for Windows, macOS and Linux is an alternative to the browser: the same
   web UI in a native window, signed in to and talking to the server exactly like the web app
   (see [Desktop app](#desktop-app)).
+- An **Android app** does the same on phones, and copies recordings from a Pocket recorder
+  over the recorder's WiFi (see [Android app](#android-app)).
 
 ## How recordings flow
 
@@ -335,7 +339,7 @@ make desktop-mac                                    # .dmg, .zip (needs macOS)
 make desktop SERVER_URL=https://knowpod.example.com # preset the server, no question on first start
 ```
 
-Requires Node.js 22. Build each platform on its own OS; the **Desktop app** GitHub Actions
+Requires Node.js 22. Build each platform on its own OS; the **Desktop and Android apps** GitHub Actions
 workflow (`.github/workflows/desktop.yml`, run by hand or on a `desktop-v*` tag) builds all
 three and keeps the installers as artifacts; a `desktop-v<version>` tag also publishes them as
 a GitHub release (see [Version](#version)). The builds are not code-signed, so macOS
@@ -345,20 +349,58 @@ recordings from a Pocket recorder, plugged in by USB (switching the recorder's U
 over Bluetooth first when needed) or over the recorder's own WiFi on Linux and Windows (see
 [Operations](docs/operations.md#desktop-app)).
 
+## Android app
+
+`mobile/` holds a [Capacitor](https://capacitorjs.com) app for Android (`mobile/android/`): like
+the desktop app, a WebView around the web UI of a knowpod server, with no backend or frontend
+of its own. On the first start a bundled page (`mobile/www/`) asks for the server's address;
+**Settings → General → Desktop and Android app → Change server** changes it later. Beyond the web
+app it copies new recordings from a Pocket recorder over the recorder's WiFi, which a browser
+can't (it needs Bluetooth, joining the recorder's network and a plain TCP connection): the
+same **Pocket Sync** dialog as the desktop app, WiFi only. The Pocket protocol is a Java port
+of the desktop app's (`mobile/android/app/src/main/java/net/kleinhenz/knowpod/pocket/`).
+
+```bash
+make android                                        # mobile/dist/knowpod-<version>-android.apk
+make android SERVER_URL=https://knowpod.example.com # preset the server, no question on first start
+make android-test                                   # unit tests: the Pocket protocol against a fake recorder
+```
+
+Requires Node.js 22, JDK 21 and the Android SDK (`ANDROID_HOME`, or `sdk.dir` in
+`mobile/android/local.properties`); Android Studio opens `mobile/android/` after
+`make android-deps`. The app needs Android 7 or newer, the WiFi copy Android 10 or newer. The
+**Desktop and Android apps** workflow builds and tests the APK next to the desktop installers
+and attaches it to the `desktop-v<version>` release.
+
+**Signing.** Android installs an update only when it is signed with the same key as the
+installed app. Create a keystore once and keep it safe:
+
+```bash
+keytool -genkeypair -v -keystore knowpod.jks -alias knowpod -keyalg RSA -keysize 4096 -validity 10000
+```
+
+For local builds, point `KNOWPOD_KEYSTORE` at it and set `KNOWPOD_KEYSTORE_PASSWORD`,
+`KNOWPOD_KEY_ALIAS` and `KNOWPOD_KEY_PASSWORD`. For the workflow, add the repository secrets
+`ANDROID_KEYSTORE_BASE64` (`base64 -w0 knowpod.jks`), `ANDROID_KEYSTORE_PASSWORD`,
+`ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`. Without a keystore the APK is signed with a
+debug key: it installs, but the next build can't update it (uninstall first).
+
 ## Version
 
 The app version lives in the [`VERSION`](VERSION) file at the repository root, a single line
 such as `0.1.0`. Edit it there, or run `make set-version V=1.2.0`, which also keeps
-`frontend/package.json`, `desktop/package.json`, the API spec (`backend/api/openapi.yaml`) and the
+`frontend/package.json`, `desktop/package.json`, `mobile/package.json`, the API spec (`backend/api/openapi.yaml`) and the
 Chrome extension's `manifest.json` in step. It is used by:
 
 - the web app, which shows it under **Settings → General → About knowpod** (in the desktop
   app, next to the desktop app's own version);
 - the server binary (`make build` and the Docker image), which logs it on start;
 - the desktop installers, whose file names and app metadata carry it
-  (`knowpod-<version>-<os>-<arch>.<ext>`).
+  (`knowpod-<version>-<os>-<arch>.<ext>`);
+- the Android app (`knowpod-<version>-android.apk`), whose version name it is; the version
+  code is derived from it (1.2.3 → 10203).
 
-To release the desktop app, bump `VERSION`, commit, and push a tag `desktop-v<version>`
+To release the desktop and Android apps, bump `VERSION`, commit, and push a tag `desktop-v<version>`
 (e.g. `git tag desktop-v1.2.0 && git push origin desktop-v1.2.0`). The workflow refuses a
 tag that doesn't match `VERSION`.
 
@@ -435,6 +477,7 @@ backend/
     web/               embedded frontend (dist/) + SPA handler
     worker/            background pipeline: claim, run stages, retry/backoff
 desktop/               Electron desktop app (main process, server setup page, packaging config)
+mobile/                Capacitor Android app (android/: native project and Pocket sync; www/: setup page)
 docs/                  device protocol, architecture, operations
 frontend/
   public/              app icons (favicon.svg, PWA and Apple touch icons)

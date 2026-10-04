@@ -248,6 +248,20 @@ files named by when they started, in UTC (`RECORD/2026-10-2/20261002090356.mp3`)
   back. Closing the dialog keeps the copy running; a notification says when it's done.
   Quitting the app during a copy stops it first, so the WiFi is put back. How the transfer
   works on the wire is in `tools/pocket-wifi-probe/RESEARCH.md`.
+- **From the [Android app](#android-app)**, over the recorder's WiFi only (the same
+  **Pocket Sync** dialog, with the same Bluetooth settings under **Settings → Account**, kept
+  in the app, the key encrypted with the Android Keystore). It needs Android 10 or newer and
+  works like the desktop app's copy, with these differences:
+  - Android asks for **Nearby devices** (Bluetooth) the first time, on Android 11 and older
+    for the location instead. It also asks for the location (optional) and for
+    notifications.
+  - The phone joins the recorder's network as a local-only network (as the Pocket app does)
+    and stays on its usual network meanwhile, so it keeps internet. **Android asks each time
+    whether it may join** the recorder's network; choose the Pocket there. Once the location
+    permission is allowed, the app remembers the network's BSSID, and Android then joins
+    again without asking (the recorder's WiFi is restarted after every two recordings).
+  - The copy runs in a foreground service, with its progress in a notification, so it goes
+    on with the screen off or the app in the background.
 
 **Log message:** `pocket file imported`.
 
@@ -427,6 +441,10 @@ contact about the sender.
   then turn notifications on.
 - **Android, desktop Chrome, Edge, Firefox, Safari**: works in the browser and in the
   installed app.
+- **Android app**: a WebView has no push service either. Like the desktop app, it listens to
+  the live connection below and shows notifications while it's open or was used a moment
+  ago (Android stops apps in the background soon). For reminders at any time, turn
+  notifications on in Chrome on the same phone (or in the installed web app).
 - **Desktop app**: Electron has no push service, so Web Push can't reach it. Instead it
   listens to the server over a live connection and shows notifications while it runs (also
   from the tray, see [Desktop app](#desktop-app)); there is nothing to turn on. A proxy in
@@ -498,6 +516,26 @@ CORS setting is needed. New server versions reach it like the web app, on the ne
   WiFi, into the folder **Pocket AI** (see [Copying straight from the recorder](#copying-straight-from-the-recorder-desktop-app)).
 - The installers are not code-signed: on macOS open the app with right-click → **Open** the
   first time, on Windows choose **More info → Run anyway**.
+
+## Android app
+
+knowpod also runs as an Android app (Android 7 or newer; the APK is attached to each
+release, built with `make android`, see the [README](../README.md#android-app)). Like the
+desktop app it is a window around the web UI: it loads the web app from your server and
+calls the API exactly like the browser, so nothing changes on the server.
+
+- On the first start it asks for the server's address, unless one was set when it was built
+  (`SERVER_URL`). **Settings → General → Desktop and Android app → Change server** changes it;
+  a server that can't be reached shows that page with the error.
+- Links to other sites open in the browser; downloads go to **Downloads**. Voice memos and
+  photos ask for the microphone and camera the first time.
+- It shows notifications while it runs (see [Notifications](#notifications)); clicking one
+  opens its note.
+- It copies new recordings from a Pocket recorder over the recorder's WiFi into the folder
+  **Pocket AI** (see [Copying straight from the recorder](#copying-straight-from-the-recorder-desktop-app)).
+- Installing the APK needs **Install unknown apps** allowed for the browser or file manager
+  that opens it. An update installs over the app only when both are signed with the same
+  key (see the README's **Signing**).
 
 ## AI processing (OpenRouter)
 

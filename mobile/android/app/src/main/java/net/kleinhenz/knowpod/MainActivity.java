@@ -78,6 +78,9 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
+        // Capacitor also calls this from onCreate, before the bridge is set up; onCreate
+        // takes the launch intent's page itself.
+        if (appBridge == null) return;
         String path = pathOf(intent);
         if (path != null) open(path);
     }
