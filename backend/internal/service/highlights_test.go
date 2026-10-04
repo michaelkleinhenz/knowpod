@@ -83,6 +83,10 @@ func TestShiftTimestamps(t *testing.T) {
 	if shiftTimestamps("[0:30] a", 59*time.Minute+45*time.Second) != "[1:00:15] a" {
 		t.Fatal("hour overflow")
 	}
+	// Seconds without their leading zero are read, and written with it.
+	if got := shiftTimestamps("[0:0] a\n[0:3] b\n[0:12] c", 0); got != "[0:00] a\n[0:03] b\n[0:12] c" {
+		t.Fatalf("short seconds: got %q", got)
+	}
 }
 
 func TestSummaryPromptWithHighlights(t *testing.T) {

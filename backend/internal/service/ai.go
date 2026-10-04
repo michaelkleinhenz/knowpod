@@ -104,11 +104,13 @@ func inLanguage(prompt, language string) string {
 	).Replace(prompt)
 }
 
-// timestampPattern matches the [m:ss] / [h:mm:ss] time stamps in transcripts.
-var timestampPattern = regexp.MustCompile(`\[(?:(\d{1,2}):)?(\d{1,3}):(\d{2})\]`)
+// timestampPattern matches the [m:ss] / [h:mm:ss] time stamps in transcripts, also with the
+// leading zero of the seconds left out ("[0:3]"), as models sometimes write them.
+var timestampPattern = regexp.MustCompile(`\[(?:(\d{1,2}):)?(\d{1,3}):(\d{1,2})\]`)
 
 // shiftTimestamps adds offset to the time stamps in a transcript piece, so that the
-// pieces of a long recording carry times relative to the whole recording.
+// pieces of a long recording carry times relative to the whole recording. The time stamps
+// are written as [m:ss] / [h:mm:ss] in any case.
 func shiftTimestamps(text string, offset time.Duration) string {
 	return timestampPattern.ReplaceAllStringFunc(text, func(m string) string {
 		p := timestampPattern.FindStringSubmatch(m)

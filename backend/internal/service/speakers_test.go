@@ -18,6 +18,15 @@ func TestSpeakerLabels(t *testing.T) {
 	if want := []string{"Speaker 1", "Speaker 2", "Speaker 10"}; !slices.Equal(got, want) {
 		t.Fatalf("labels = %q", got)
 	}
+	// Models sometimes leave out the leading zero of the seconds.
+	short := "[0:0] Speaker 1: Gut.\n[0:8] Speaker 2: Also,\n[0:12] Speaker 2: ich bin zwiegespalten."
+	if got := SpeakerLabels(short); !slices.Equal(got, []string{"Speaker 1", "Speaker 2"}) {
+		t.Fatalf("labels = %q", got)
+	}
+	want := "[0:0] Michael: Gut.\n[0:8] Jutta: Also,\n[0:12] Jutta: ich bin zwiegespalten."
+	if got := renameSpeakerLines(renameSpeakerLines(short, "Speaker 1", "Michael"), "Speaker 2", "Jutta"); got != want {
+		t.Fatalf("renamed = %q", got)
+	}
 }
 
 func TestReplaceName(t *testing.T) {

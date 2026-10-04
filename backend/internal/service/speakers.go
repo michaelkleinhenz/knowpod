@@ -14,8 +14,8 @@ import (
 
 // speakerLine matches a transcript line that starts with a speaker label, after an optional
 // time stamp: "[1:05] Speaker 2: …" or "Anna: …". Group 1 is everything before the label,
-// group 2 the label.
-var speakerLine = regexp.MustCompile(`^(\s*(?:\[(?:\d{1,2}:)?\d{1,3}:\d{2}\]\s*)?)([^:\n\[\]]{1,40}):\s`)
+// group 2 the label. Models sometimes leave out the leading zero of the seconds ("[0:3]").
+var speakerLine = regexp.MustCompile(`^(\s*(?:\[(?:\d{1,2}:)?\d{1,3}:\d{1,2}\]\s*)?)([^:\n\[\]]{1,40}):\s`)
 
 // maxSpeakerName bounds a speaker's name.
 const maxSpeakerName = 40
