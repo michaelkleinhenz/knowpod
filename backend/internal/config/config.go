@@ -44,6 +44,9 @@ type Config struct {
 
 	// OpenRouterAPIURL is the OpenRouter endpoint (the API key and models are set in the UI).
 	OpenRouterAPIURL string
+	// ElevenLabsAPIURL is the ElevenLabs endpoint, used when it transcribes (the API key is
+	// set in the UI).
+	ElevenLabsAPIURL string
 
 	// WebPushSubject identifies the service to browser push services (a mailto: or https:
 	// URL); empty uses mailto:ADMIN_EMAIL.
@@ -75,6 +78,7 @@ func Load() Config {
 		S3Prefix:               env("AWS_S3_PREFIX", ""),
 		PocketAPIURL:           env("POCKET_API_URL", "https://public.heypocketai.com/api/v1"),
 		OpenRouterAPIURL:       env("OPENROUTER_API_URL", "https://openrouter.ai/api/v1"),
+		ElevenLabsAPIURL:       env("ELEVENLABS_API_URL", "https://api.elevenlabs.io/v1"),
 		WebPushSubject:         env("WEBPUSH_SUBJECT", ""),
 		RemarkableAuthURL:      env("REMARKABLE_AUTH_URL", ""),
 		RemarkableSyncURL:      env("REMARKABLE_SYNC_URL", ""),

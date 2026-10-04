@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
-import { api, ModelOption, OpenRouterSettings as Settings } from '../api/client';
+import { api, ModelOption, OpenRouterUpdate, OpenRouterSettings as Settings, TranscriptionProvider } from '../api/client';
 import { locale } from '../i18n';
 import { errorText } from '../lib/errors';
 
@@ -81,6 +81,10 @@ export function OpenRouterSettings() {
   const [models, setModels] = useState<{ transcription: ModelOption[]; summary: ModelOption[]; document: ModelOption[] } | null>(null);
   const [modelsError, setModelsError] = useState<string | null>(null);
   const [apiKey, setAPIKey] = useState('');
+  const [provider, setProvider] = useState<TranscriptionProvider>('openrouter');
+  const [elevenLabsKey, setElevenLabsKey] = useState('');
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; text: string } | null>(null);
   const [transcriptionModel, setTranscriptionModel] = useState('');
   const [summaryModel, setSummaryModel] = useState('');
   const [documentModel, setDocumentModel] = useState('');
@@ -92,6 +96,7 @@ export function OpenRouterSettings() {
     api.openRouterSettings().then(
       (s) => {
         setCurrent(s);
+        setProvider(s.transcriptionProvider ?? 'openrouter');
         setTranscriptionModel(s.transcriptionModel);
         setSummaryModel(s.summaryModel);
         setDocumentModel(s.documentModel ?? '');
@@ -109,13 +114,15 @@ export function OpenRouterSettings() {
     );
   }, [t]);
 
-  async function save(update: { apiKey?: string; transcriptionModel?: string; summaryModel?: string; documentModel?: string }) {
+  async function save(update: OpenRouterUpdate) {
     setBusy(true);
     setError(null);
     setSaved(false);
     try {
       setCurrent(await api.saveOpenRouterSettings(update));
       setAPIKey('');
+      setElevenLabsKey('');
+      setTestResult(null);
       setSaved(true);
     } catch (err) {
       setError(errorText(err, t));
@@ -126,16 +133,32 @@ export function OpenRouterSettings() {
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    const update: { apiKey?: string; transcriptionModel?: string; summaryModel?: string; documentModel?: string } = {
-      transcriptionModel,
-      summaryModel,
-      documentModel,
-    };
+    const update: OpenRouterUpdate = { transcriptionProvider: provider, transcriptionModel, summaryModel, documentModel };
     if (apiKey.trim()) update.apiKey = apiKey.trim();
+    if (elevenLabsKey.trim()) update.elevenLabsApiKey = elevenLabsKey.trim();
     save(update);
   }
 
-  const active = !!current?.apiKeyConfigured && !!current.transcriptionModel && !!current.summaryModel;
+  // testElevenLabs tries the key typed in, or else the stored one.
+  async function testElevenLabs() {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      await api.testElevenLabs(elevenLabsKey.trim());
+      setTestResult({ ok: true, text: t('settings.ai.elevenLabsTestOk') });
+    } catch (err) {
+      setTestResult({ ok: false, text: errorText(err, t) });
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  const elevenLabs = provider === 'elevenlabs';
+  const canTranscribe =
+    current?.transcriptionProvider === 'elevenlabs'
+      ? !!current.elevenLabsApiKeyConfigured
+      : !!current?.apiKeyConfigured && !!current.transcriptionModel;
+  const active = canTranscribe && !!current?.apiKeyConfigured && !!current.summaryModel;
 
   return (
     <>
@@ -179,16 +202,76 @@ export function OpenRouterSettings() {
           </p>
         )}
 
+        <label>
+          {t('settings.ai.transcriptionProvider')}
+          <select value={provider} onChange={(e) => setProvider(e.target.value as TranscriptionProvider)}>
+            <option value="openrouter">{t('settings.ai.providerOpenRouter')}</option>
+            <option value="elevenlabs">{t('settings.ai.providerElevenLabs')}</option>
+          </select>
+        </label>
+        <p className="muted field-hint">{t(elevenLabs ? 'settings.ai.providerElevenLabsHint' : 'settings.ai.providerOpenRouterHint')}</p>
+
+        {elevenLabs && (
+          <>
+            <label>
+              {t('settings.ai.elevenLabsApiKey')}
+              <input
+                type="password"
+                autoComplete="off"
+                placeholder={
+                  current?.elevenLabsApiKeyConfigured
+                    ? t('settings.ai.apiKeyPlaceholderSet', { hint: current.elevenLabsApiKeyHint ?? '…' })
+                    : 'sk_…'
+                }
+                value={elevenLabsKey}
+                onChange={(e) => {
+                  setElevenLabsKey(e.target.value);
+                  setTestResult(null);
+                }}
+              />
+            </label>
+            <p className="muted field-hint">
+              <Trans
+                i18nKey="settings.ai.elevenLabsKeyHint"
+                components={{ 1: <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" rel="noreferrer" /> }}
+              />
+            </p>
+            <p className="field-hint">
+              <button
+                type="button"
+                className="secondary-button"
+                disabled={busy || testing || (!elevenLabsKey.trim() && !current?.elevenLabsApiKeyConfigured)}
+                onClick={testElevenLabs}
+              >
+                {testing ? t('settings.ai.elevenLabsTesting') : t('settings.ai.elevenLabsTest')}
+              </button>{' '}
+              {current?.elevenLabsApiKeyConfigured && (
+                <button
+                  type="button"
+                  className="link-button danger-link"
+                  disabled={busy}
+                  onClick={() => window.confirm(t('settings.ai.removeElevenLabsKeyConfirm')) && save({ elevenLabsApiKey: '' })}
+                >
+                  {t('settings.ai.removeElevenLabsKey')}
+                </button>
+              )}
+            </p>
+            {testResult && <p className={testResult.ok ? 'success' : 'error'}>{testResult.text}</p>}
+          </>
+        )}
+
         {modelsError && <p className="error">{t('settings.ai.modelsError', { error: modelsError })}</p>}
-        <ModelPicker
-          id="transcription-model"
-          label={t('settings.ai.transcriptionModel')}
-          hint={t('settings.ai.transcriptionHint')}
-          models={models?.transcription ?? null}
-          value={transcriptionModel}
-          audio
-          onChange={setTranscriptionModel}
-        />
+        {!elevenLabs && (
+          <ModelPicker
+            id="transcription-model"
+            label={t('settings.ai.transcriptionModel')}
+            hint={t('settings.ai.transcriptionHint')}
+            models={models?.transcription ?? null}
+            value={transcriptionModel}
+            audio
+            onChange={setTranscriptionModel}
+          />
+        )}
         <ModelPicker
           id="summary-model"
           label={t('settings.ai.summaryModel')}
@@ -205,7 +288,13 @@ export function OpenRouterSettings() {
           models={models?.document ?? null}
           value={documentModel}
           audio={false}
-          emptyLabel={t('settings.ai.sameAsTranscription')}
+          emptyLabel={
+            !elevenLabs
+              ? t('settings.ai.sameAsTranscription')
+              : transcriptionModel
+                ? t('settings.ai.sameAsModel', { model: transcriptionModel })
+                : undefined
+          }
           onChange={setDocumentModel}
         />
 

@@ -584,6 +584,17 @@ recordings (all device uploads) are decoded, mixed to mono, reduced to 16 kHz an
 (MP3 from Pocket or browser uploads, M4A from Pocket) are sent in one piece and are limited to 20 MB (roughly 40 minutes of
 MP3 at 64 kbit/s); larger ones fail with a clear error.
 
+**Transcribing with ElevenLabs instead.** Under **Transcription service**, choose
+**ElevenLabs Scribe**. Then paste an ElevenLabs API key that has the speech-to-text
+permission (create it at [elevenlabs.io/app/settings/api-keys](https://elevenlabs.io/app/settings/api-keys))
+and save. **Test API access** transcribes one second of silence with the key you typed, or
+with the stored key, and reports whether ElevenLabs accepted it. ElevenLabs tells speakers
+apart by their voices, and takes each recording in one piece of any length (up to 10 hours),
+so the 20 MB limit above doesn't apply. Its transcripts stay in the spoken language and are
+not translated into the owner's app language. Summaries, Ask and documents still need the
+OpenRouter key and models. Usage is billed by ElevenLabs per hour of audio.
+`ELEVENLABS_API_URL` overrides the endpoint (default `https://api.elevenlabs.io/v1`).
+
 **How documents are sent.** Notebook pages with writing are rendered to PNG images
 (1053×1404 pixels) and sent eight at a time; PDFs are sent as files (up to 20 MB). At most
 50 pages of a document are read; the text says when pages were left out. EPUBs are not read.

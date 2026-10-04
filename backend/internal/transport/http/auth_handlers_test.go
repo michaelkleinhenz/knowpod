@@ -88,6 +88,7 @@ func TestAccessControl(t *testing.T) {
 		{"user devices", bob, "GET", "/api/v1/devices", 200},
 		{"user may not list users", bob, "GET", "/api/v1/admin/users", 403},
 		{"user may not read AI settings", bob, "GET", "/api/v1/admin/settings/openrouter", 403},
+		{"user may not test ElevenLabs", bob, "POST", "/api/v1/admin/settings/elevenlabs/test", 403},
 		{"user may read AI status", bob, "GET", "/api/v1/ai/status", 200},
 		{"admin lists users", admin, "GET", "/api/v1/admin/users", 200},
 		{"script lists users", f.script(adminToken), "GET", "/api/v1/admin/users", 200},

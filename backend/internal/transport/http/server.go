@@ -340,6 +340,7 @@ func (s *Server) Router() http.Handler {
 			a.Put("/users/{id}/password", s.handleSetUserPassword)
 			a.Get("/settings/openrouter", s.handleGetOpenRouterSettings)
 			a.Put("/settings/openrouter", s.handleUpdateOpenRouterSettings)
+			a.With(httprate.LimitByIP(20, time.Hour)).Post("/settings/elevenlabs/test", s.handleTestElevenLabs)
 			a.With(httprate.LimitByIP(6, time.Hour)).Get("/backup", s.handleBackup)
 			a.With(httprate.LimitByIP(6, time.Hour)).Post("/restore", s.handleRestore)
 		})

@@ -20,6 +20,7 @@ import (
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/audio"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/settings"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/elevenlabs"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/openrouter"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/ports"
 )
@@ -28,6 +29,12 @@ import (
 type AIClient interface {
 	Complete(ctx context.Context, apiKey string, r openrouter.Request) (string, error)
 	Models(ctx context.Context) ([]openrouter.Model, error)
+}
+
+// SpeechClient is the part of the ElevenLabs client the transcription stage needs.
+type SpeechClient interface {
+	Transcribe(ctx context.Context, apiKey string, audio io.Reader, filename string) (*elevenlabs.Transcript, error)
+	Check(ctx context.Context, apiKey string) error
 }
 
 const (
@@ -192,9 +199,12 @@ type AIService struct {
 	Users   ports.UserRepository
 	objects ports.ObjectStore
 	ai      AIClient
-	tmpDir  string
-	log     *slog.Logger
-	clock   func() time.Time
+	// Speech transcribes audio when ElevenLabs is the transcription provider. Optional:
+	// without it, that provider can't be used.
+	Speech SpeechClient
+	tmpDir string
+	log    *slog.Logger
+	clock  func() time.Time
 	// OnSettingsChanged is called after the settings were saved, e.g. to wake the worker so
 	// recordings waiting for a configuration are processed. Optional.
 	OnSettingsChanged func()
@@ -207,24 +217,30 @@ func NewAIService(st ports.SettingsRepository, themes *ThemeService, objects por
 
 // --- settings ---
 
-// OpenRouterView is the OpenRouter configuration as shown to administrators: the API key
-// itself is never returned.
+// OpenRouterView is the AI configuration as shown to administrators: the API keys
+// themselves are never returned.
 type OpenRouterView struct {
-	APIKeyConfigured   bool      `json:"apiKeyConfigured"`
-	APIKeyHint         string    `json:"apiKeyHint,omitempty"` // last characters, e.g. "…a1b2"
-	TranscriptionModel string    `json:"transcriptionModel"`
-	SummaryModel       string    `json:"summaryModel"`
-	DocumentModel      string    `json:"documentModel"` // empty: the transcription model
-	UpdatedAt          time.Time `json:"updatedAt,omitempty"`
+	APIKeyConfigured bool   `json:"apiKeyConfigured"`
+	APIKeyHint       string `json:"apiKeyHint,omitempty"` // last characters, e.g. "…a1b2"
+	// TranscriptionProvider transcribes audio: "openrouter" or "elevenlabs".
+	TranscriptionProvider      string    `json:"transcriptionProvider"`
+	ElevenLabsAPIKeyConfigured bool      `json:"elevenLabsApiKeyConfigured"`
+	ElevenLabsAPIKeyHint       string    `json:"elevenLabsApiKeyHint,omitempty"`
+	TranscriptionModel         string    `json:"transcriptionModel"`
+	SummaryModel               string    `json:"summaryModel"`
+	DocumentModel              string    `json:"documentModel"` // empty: the transcription model
+	UpdatedAt                  time.Time `json:"updatedAt,omitempty"`
 }
 
-// OpenRouterUpdate changes settings. Nil fields are left unchanged; an empty APIKey removes
-// the key.
+// OpenRouterUpdate changes settings. Nil fields are left unchanged; an empty APIKey or
+// ElevenLabsAPIKey removes the key.
 type OpenRouterUpdate struct {
-	APIKey             *string `json:"apiKey,omitempty"`
-	TranscriptionModel *string `json:"transcriptionModel,omitempty"`
-	SummaryModel       *string `json:"summaryModel,omitempty"`
-	DocumentModel      *string `json:"documentModel,omitempty"`
+	APIKey                *string `json:"apiKey,omitempty"`
+	TranscriptionProvider *string `json:"transcriptionProvider,omitempty"`
+	ElevenLabsAPIKey      *string `json:"elevenLabsApiKey,omitempty"`
+	TranscriptionModel    *string `json:"transcriptionModel,omitempty"`
+	SummaryModel          *string `json:"summaryModel,omitempty"`
+	DocumentModel         *string `json:"documentModel,omitempty"`
 }
 
 // Settings returns the current OpenRouter configuration.
@@ -244,6 +260,17 @@ func (s *AIService) UpdateSettings(ctx context.Context, u OpenRouterUpdate) (*Op
 	}
 	if u.APIKey != nil {
 		st.APIKey = strings.TrimSpace(*u.APIKey)
+	}
+	if u.TranscriptionProvider != nil {
+		switch p := strings.TrimSpace(*u.TranscriptionProvider); p {
+		case settings.ProviderOpenRouter, settings.ProviderElevenLabs:
+			st.TranscriptionProvider = p
+		default:
+			return nil, invalid("the transcription provider is %q or %q", settings.ProviderOpenRouter, settings.ProviderElevenLabs)
+		}
+	}
+	if u.ElevenLabsAPIKey != nil {
+		st.ElevenLabsAPIKey = strings.TrimSpace(*u.ElevenLabsAPIKey)
 	}
 	if u.TranscriptionModel != nil {
 		st.TranscriptionModel = strings.TrimSpace(*u.TranscriptionModel)
@@ -270,14 +297,43 @@ func (s *AIService) UpdateSettings(ctx context.Context, u OpenRouterUpdate) (*Op
 }
 
 func view(st *settings.OpenRouter) *OpenRouterView {
-	v := &OpenRouterView{
-		APIKeyConfigured: st.APIKey != "", TranscriptionModel: st.TranscriptionModel,
-		SummaryModel: st.SummaryModel, DocumentModel: st.DocumentModel, UpdatedAt: st.UpdatedAt,
+	return &OpenRouterView{
+		APIKeyConfigured: st.APIKey != "", APIKeyHint: keyHint(st.APIKey),
+		TranscriptionProvider:      st.Provider(),
+		ElevenLabsAPIKeyConfigured: st.ElevenLabsAPIKey != "", ElevenLabsAPIKeyHint: keyHint(st.ElevenLabsAPIKey),
+		TranscriptionModel: st.TranscriptionModel,
+		SummaryModel:       st.SummaryModel, DocumentModel: st.DocumentModel, UpdatedAt: st.UpdatedAt,
 	}
-	if k := st.APIKey; len(k) >= 8 {
-		v.APIKeyHint = "…" + k[len(k)-4:]
+}
+
+// keyHint shows the last characters of an API key, e.g. "…a1b2".
+func keyHint(k string) string {
+	if len(k) < 8 {
+		return ""
 	}
-	return v
+	return "…" + k[len(k)-4:]
+}
+
+// ErrSpeechUnavailable is returned when ElevenLabs is used but the service runs without
+// an ElevenLabs client.
+var ErrSpeechUnavailable = errors.New("ElevenLabs transcription is not available")
+
+// TestElevenLabs checks that an ElevenLabs API key may transcribe: the given one, or the
+// stored one when apiKey is empty.
+func (s *AIService) TestElevenLabs(ctx context.Context, apiKey string) error {
+	if s.Speech == nil {
+		return ErrSpeechUnavailable
+	}
+	if apiKey = strings.TrimSpace(apiKey); apiKey == "" {
+		st, err := s.settings.OpenRouter(ctx)
+		if err != nil {
+			return err
+		}
+		if apiKey = st.ElevenLabsAPIKey; apiKey == "" {
+			return invalid("no ElevenLabs API key is set")
+		}
+	}
+	return s.Speech.Check(ctx, apiKey)
 }
 
 // ModelOption is a model offered for selection.
@@ -366,15 +422,21 @@ func (s *AIService) Transcribe(ctx context.Context, rec *recording.Recording) er
 	if err != nil {
 		return err
 	}
+	language := s.ownerLanguage(ctx, rec.OwnerID).Name
+	if rec.IsDocument() {
+		if !st.CanReadDocuments() {
+			return errors.New("reading documents is not configured")
+		}
+		return s.readDocument(ctx, st, rec, language)
+	}
 	if !st.CanTranscribe() {
 		return errors.New("transcription is not configured")
 	}
-	language := s.ownerLanguage(ctx, rec.OwnerID).Name
-	if rec.IsDocument() {
-		return s.readDocument(ctx, st, rec, language)
-	}
 	if rec.Audio == nil {
 		return errors.New("recording has no archived audio")
+	}
+	if st.Provider() == settings.ProviderElevenLabs {
+		return s.transcribeElevenLabs(ctx, st, rec)
 	}
 
 	// Fetch the archived audio to a temporary file.
