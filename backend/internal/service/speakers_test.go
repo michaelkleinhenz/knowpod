@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/repository/memory"
 )
 
 const speakerTranscript = "[0:01] Speaker 1: Hi, I'm Anna.\n[0:04] Speaker 2: Hello Anna, Ben here.\n\n[0:09] Speaker 1: Let's talk about Speaker 10.\n[0:15] Speaker 10: That's me."
@@ -90,6 +92,66 @@ func TestRenameSpeaker(t *testing.T) {
 	}
 	if _, err := f.s.RenameSpeaker(ctx, &Account{ID: "someone"}, "r1", SpeakerRename{From: "Anna", To: "B"}); !errors.Is(err, ErrNotFound) {
 		t.Errorf("other user: err = %v", err)
+	}
+}
+
+func TestNameSpeakers(t *testing.T) {
+	f := newTaskFixture(t)
+	f.s.Versions = memory.NewNoteVersions()
+	ctx := context.Background()
+	newRec := func(id string) {
+		t.Helper()
+		rec := &recording.Recording{ID: id, OwnerID: "u1", DeviceID: "d", ClientID: id, Status: recording.StatusSummarized,
+			Transcript: &recording.Transcript{Text: speakerTranscript},
+			Summary:    &recording.Summary{Title: "Intro", Markdown: "Speaker 1 introduces herself to Speaker 2."}}
+		if err := f.recs.Create(ctx, rec); err != nil {
+			t.Fatal(err)
+		}
+	}
+	newRec("r1")
+	newRec("r2")
+
+	// Several at once, in the summary too; an unchanged one is fine.
+	got, err := f.s.NameSpeakers(ctx, f.acc, "r1", SpeakerNames{Names: []SpeakerRename{
+		{From: "Speaker 1", To: "Anna"}, {From: "Speaker 2", To: "Ben"}, {From: "Speaker 10", To: "Speaker 10"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if labels := SpeakerLabels(got.Transcript.Text); !slices.Equal(labels, []string{"Anna", "Ben", "Speaker 10"}) ||
+		got.Summary.Markdown != "Anna introduces herself to Ben." || got.Revision != 1 || got.Status != recording.StatusSummarized {
+		t.Fatalf("named: %q %q rev %d", labels, got.Summary.Markdown, got.Revision)
+	}
+
+	// With resummarize the summary is made again, and the old one is kept as a version.
+	got, err = f.s.NameSpeakers(ctx, f.acc, "r2", SpeakerNames{Names: []SpeakerRename{{From: "Speaker 1", To: "Anna"}}, Resummarize: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Summary != nil || got.Status != recording.StatusTranscribed || !strings.HasPrefix(got.Transcript.Text, "[0:01] Anna: Hi") {
+		t.Fatalf("resummarize: %+v", got)
+	}
+	if versions, err := f.s.ListVersions(ctx, f.acc, "r2"); err != nil || len(versions) != 1 {
+		t.Fatalf("versions = %d, %v", len(versions), err)
+	}
+	// Until the new summary is there, the names can't change.
+	if _, err := f.s.NameSpeakers(ctx, f.acc, "r2", SpeakerNames{Names: []SpeakerRename{{From: "Anna", To: "Ann"}}}); !errors.Is(err, ErrNotReady) {
+		t.Fatalf("while processing: err = %v", err)
+	}
+
+	for name, names := range map[string][]SpeakerRename{
+		"none":         nil,
+		"twice":        {{From: "Speaker 10", To: "Carl"}, {From: "Speaker 10", To: "Dan"}},
+		"chained":      {{From: "Speaker 10", To: "Anna"}, {From: "Anna", To: "Ann"}},
+		"unknown":      {{From: "Speaker 10", To: "Carl"}, {From: "Speaker 7", To: "Dan"}},
+		"invalid name": {{From: "Speaker 10", To: "[Carl]"}},
+	} {
+		if _, err := f.s.NameSpeakers(ctx, f.acc, "r1", SpeakerNames{Names: names}); !errors.Is(err, ErrInvalidInput) {
+			t.Errorf("%s: err = %v", name, err)
+		}
+	}
+	// A refused request changes nothing.
+	if rec, _ := f.recs.Get(ctx, "r1"); !strings.Contains(rec.Transcript.Text, "Speaker 10:") {
+		t.Errorf("transcript changed: %q", rec.Transcript.Text)
 	}
 }
 

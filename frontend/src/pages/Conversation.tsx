@@ -826,7 +826,12 @@ function NoteBody({ rec, aiReady, aiWriting, tab, setTab, setRec, reload, create
             !isDocument &&
             (rec.transcript ? (
               <>
-                {rec.transcript.text && !readOnly && <Speakers rec={rec} setRec={setRec} />}
+                {rec.transcript.text && !readOnly && !rec.deletedAt && (
+                  // On narrow screens the sidebar is hidden; speakers are named here then.
+                  <div className="transcript-speakers">
+                    <Speakers rec={rec} setRec={setRec} onRegenerate={(fn) => regenerate(fn)} />
+                  </div>
+                )}
                 {rec.transcript.text ? (
                   <Transcript text={rec.transcript.text} onSeek={seekTo} />
                 ) : (
@@ -948,6 +953,9 @@ function NoteBody({ rec, aiReady, aiWriting, tab, setTab, setRec, reload, create
             <h2>{t('labels.title')}</h2>
             <NoteLabels rec={rec} setRec={setRec} withTask={false} />
           </section>
+          {rec.transcript?.text && !isDocument && !readOnly && !rec.deletedAt && (
+            <Speakers rec={rec} setRec={setRec} onRegenerate={(fn) => regenerate(fn)} />
+          )}
           <Attachments rec={rec} setRec={setRec} readOnly={readOnly} />
           {isText && !fromRemarkable && !rec.deletedAt && (
             <section>

@@ -1655,6 +1655,51 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
 
+  /recordings/{recordingId}/speakers:
+    put:
+      tags: ["Recordings"]
+      summary: Name several speakers of the transcript
+      description: |
+        Names speakers like `POST /recordings/{recordingId}/speakers/rename`, several at once. With
+        `resummarize`, the summary is not edited but made again from the renamed transcript, so
+        it is written with the names: the note goes back to `transcribed` and the summary it
+        replaces is kept as an earlier version. Not while the note is being processed. Needs
+        editing rights; counts up the note's `revision`.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [names]
+              properties:
+                names:
+                  type: array
+                  minItems: 1
+                  maxItems: 50
+                  description: Applied in order. A name can't be the label of another speaker renamed in the same request.
+                  items:
+                    type: object
+                    required: [from, to]
+                    properties:
+                      from: { type: string, description: The speaker's label in the transcript, example: "Speaker 1" }
+                      to: { type: string, maxLength: 40, description: The speaker's name (no colons or brackets), example: "Anna" }
+                resummarize: { type: boolean, description: Make the summary again with the names }
+      responses:
+        "200":
+          description: Named; with `resummarize`, the note is queued for a new summary
+          content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
+        "400":
+          description: The transcript has no such speaker, or a name isn't valid
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "404": { $ref: "#/components/responses/Error" }
+        "409":
+          description: The note has no transcript with speakers, or is being processed
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
   /recordings/{recordingId}/speakers/rename:
     post:
       tags: ["Recordings"]

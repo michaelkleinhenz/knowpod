@@ -65,6 +65,28 @@ func TestRenameSpeakerAPI(t *testing.T) {
 	}
 }
 
+func TestNameSpeakersAPI(t *testing.T) {
+	f := newAPIFixture(t)
+	admin := f.signedIn(adminEmail, adminPassword)
+	var me service.Account
+	admin.do("GET", "/api/v1/auth/me", nil, nil, &me)
+	rec := &recording.Recording{ID: "r1", OwnerID: me.ID, DeviceID: "d", ClientID: "r1", Status: recording.StatusSummarized,
+		Transcript: &recording.Transcript{Text: "[0:01] Speaker 1: Hi.\n[0:02] Speaker 2: Hello."}, Summary: &recording.Summary{Title: "T", Markdown: "Speaker 1 says hi."}}
+	if err := f.recs.Create(context.Background(), rec); err != nil {
+		t.Fatal(err)
+	}
+	in := map[string]any{"names": []map[string]string{{"from": "Speaker 1", "to": "Anna"}, {"from": "Speaker 2", "to": "Ben"}}, "resummarize": true}
+	var got recording.Recording
+	if res := admin.do("PUT", "/api/v1/recordings/r1/speakers", in, nil, &got); res.StatusCode != 200 ||
+		got.Transcript.Text != "[0:01] Anna: Hi.\n[0:02] Ben: Hello." || got.Summary != nil || got.Status != recording.StatusTranscribed {
+		t.Fatalf("name: %d %+v", res.StatusCode, got)
+	}
+	// While the summary is made again, the names can't change.
+	if res := admin.do("PUT", "/api/v1/recordings/r1/speakers", map[string]any{"names": []map[string]string{{"from": "Anna", "to": "Ann"}}}, nil, nil); res.StatusCode != 409 {
+		t.Fatalf("while processing: %d", res.StatusCode)
+	}
+}
+
 func TestBriefingAPI(t *testing.T) {
 	f := newAPIFixture(t)
 	admin := f.signedIn(adminEmail, adminPassword)

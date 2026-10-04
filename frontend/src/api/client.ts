@@ -867,8 +867,10 @@ export const api = {
     request<{ redirectTo: string }>('POST', '/oauth/authorize', { ...params, approve }),
   createActionItemTask: (id: string, itemId: string) =>
     request<{ task: Recording; note: Recording }>('POST', `/recordings/${encodeURIComponent(id)}/action-items/${encodeURIComponent(itemId)}/task`),
-  renameSpeaker: (id: string, from: string, to: string) =>
-    request<Recording>('POST', `/recordings/${encodeURIComponent(id)}/speakers/rename`, { from, to }),
+  // nameSpeakers names several speakers at once; with resummarize the summary is made again
+  // from the renamed transcript.
+  nameSpeakers: (id: string, names: { from: string; to: string }[], resummarize: boolean) =>
+    request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/speakers`, { names, resummarize }),
   ask: (question: string, history: AskTurn[] = []) => request<AskAnswer>('POST', '/ask', { question, history }),
   briefing: () => request<BriefingSettings>('GET', '/me/briefing'),
   saveBriefing: (b: BriefingSettings) => request<BriefingSettings>('PUT', '/me/briefing', b),

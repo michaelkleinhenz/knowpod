@@ -174,9 +174,11 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
   answers from those notes, citing each as [1], [2], … with a supporting quote; a quote from
   a recording links to the moment it is said. AI assistants get the same search through the
   MCP tool `find_notes`.
-- **Speakers**: transcripts label speakers "Speaker 1", "Speaker 2", …; **Transcript →
-  Speakers** gives them their names, in the transcript, the summary and the action items.
-  Names the AI recognized in the conversation ("Hi, I'm Anna") are offered with one click.
+- **Speakers**: transcripts label speakers "Speaker 1", "Speaker 2", …; **Speakers** in the
+  note's sidebar (above the transcript on a phone) gives them their names in the transcript
+  and makes the summary again with them (or, unticked, replaces the labels in the summary and
+  the action items). Names the AI recognized in the conversation ("Hi, I'm Anna") are offered
+  with one click.
 - **Briefings**: **Settings → Account → Briefings** turns on a daily briefing and a weekly
   review, made at the time you choose (in your time zone) as notes in the folder
   **Briefings** and announced by a notification. The briefing lists the tasks due today and
