@@ -1,7 +1,7 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useState } from 'react';
 import { Account, api, ApiError } from './api/client';
 import { clearOffline, readOffline, writeOffline } from './api/offline';
-import { applyLanguage } from './i18n';
+import i18n, { applyLanguage } from './i18n';
 import { applyAppearance } from './lib/appearance';
 import { applyFontSize } from './lib/fontSize';
 
@@ -83,6 +83,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .then(update)
       .catch(() => undefined); // offline or unknown zone: tried again next time
   }, [signedIn, zone, update]);
+
+  // Without a saved language the app shows the browser's, but the server (which writes
+  // transcripts and summaries) can't see it: save the one shown, so both agree.
+  const language = account?.language;
+  useEffect(() => {
+    if (!signedIn || language) return;
+    api
+      .savePreferences({ language: i18n.language === 'de' ? 'de' : 'en' })
+      .then(update)
+      .catch(() => undefined); // offline: tried again next time
+  }, [signedIn, language, update]);
 
   return <AuthContext.Provider value={{ account, loading, login, logout, update }}>{children}</AuthContext.Provider>;
 }

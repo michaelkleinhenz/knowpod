@@ -101,15 +101,35 @@ const summaryPrompt = summaryIntro + `Reply with a JSON object with exactly thes
 - "speakers": when the transcript's lines carry speaker labels such as "Speaker 1:", the speakers whose names are clear from the conversation (they introduce themselves, are addressed by name or are named by others), as objects with "label" (the label exactly as in the transcript, e.g. "Speaker 1") and "name" (the person's name as used in the conversation, e.g. "Anna"). Leave out speakers whose names aren't clear; an empty array if there are none.
 %s Write the action items' text in the same language as the summary. Reply with the JSON object only.`
 
+// emptySummary is the title and text of the summary of a recording without speech (or a
+// document without text), in German for a German summary language and in English otherwise.
+func emptySummary(language string, document bool) (title, text string) {
+	german := strings.HasPrefix(language, "de-")
+	switch {
+	case document && german:
+		return "Kein Text gefunden", "_In diesem Dokument wurde kein Text gefunden._"
+	case document:
+		return "No text found", "_No text was found in this document._"
+	case german:
+		return "Keine Sprache erkannt", "_In dieser Aufnahme wurde keine Sprache erkannt._"
+	}
+	return "No speech detected", "_No speech was detected in this recording._"
+}
+
 // maxActionItems bounds the action items kept from one summary.
 const maxActionItems = 30
 
 // summarySystemPrompt builds the instructions for a theme, a language ("auto" or a key of
 // SummaryLanguages) and the highlights the user marked.
 func summarySystemPrompt(instructions, language string, highlights []recording.Highlight) string {
-	lang := "Write the title and the summary in the language of the transcript."
+	// These instructions are in English; without a firm rule the model tends to answer in
+	// English too, even for a transcript in another language.
+	lang := "Write the title and the summary in the language of the transcript (the language most of it is spoken in), " +
+		"even though these instructions are in English: translate the headings given above into that language. " +
+		"Only write in English if the transcript is in English."
 	if name, ok := SummaryLanguages[language]; ok {
-		lang = "Write the title and the summary in " + name + ", regardless of the transcript's language."
+		lang = "Write the title and the summary in " + name + ", regardless of the transcript's language, " +
+			"translating the headings given above into " + name + "."
 	}
 	if len(highlights) > 0 {
 		times := make([]string, len(highlights))
@@ -420,12 +440,9 @@ func (s *AIService) Summarize(ctx context.Context, rec *recording.Recording) err
 	}
 	th := s.themes.Resolve(ctx, rec.OwnerID, opts.ThemeID)
 	if strings.TrimSpace(rec.Transcript.Text) == "" {
-		title, text := "No speech detected", "_No speech was detected in this recording._"
-		if rec.IsDocument() {
-			title, text = "No text found", "_No text was found in this document._"
-			if rec.Title != "" {
-				title = rec.Title
-			}
+		title, text := emptySummary(language, rec.IsDocument())
+		if rec.IsDocument() && rec.Title != "" {
+			title = rec.Title
 		}
 		rec.Summary = &recording.Summary{Title: title, Markdown: text,
 			Language: language, ThemeID: th.ID, ThemeName: th.Name, CreatedAt: s.clock().UTC()}

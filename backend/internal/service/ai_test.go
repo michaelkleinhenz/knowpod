@@ -125,6 +125,23 @@ func TestSummarize(t *testing.T) {
 	if err := s.Summarize(context.Background(), empty); err != nil || empty.Summary.Title != "No speech detected" || len(ai.requests) != 1 {
 		t.Fatalf("empty: %+v, %v", empty.Summary, err)
 	}
+	// ... and say so in the summary's language.
+	german := &recording.Recording{ID: "r3", Transcript: &recording.Transcript{Text: ""},
+		SummaryOptions: recording.SummaryOptions{Language: "de-DE"}}
+	if err := s.Summarize(context.Background(), german); err != nil || german.Summary.Title != "Keine Sprache erkannt" {
+		t.Fatalf("german empty: %+v, %v", german.Summary, err)
+	}
+}
+
+func TestSummarySystemPromptLanguage(t *testing.T) {
+	auto := summarySystemPrompt("Use \"## Key points\".", "auto", nil)
+	if !strings.Contains(auto, "language of the transcript") || !strings.Contains(auto, "translate the headings") {
+		t.Fatalf("auto prompt = %q", auto)
+	}
+	german := summarySystemPrompt("Use \"## Key points\".", "de-DE", nil)
+	if !strings.Contains(german, "in German, regardless") || !strings.Contains(german, "headings given above into German") {
+		t.Fatalf("German prompt = %q", german)
+	}
 }
 
 func TestParseSummary(t *testing.T) {
