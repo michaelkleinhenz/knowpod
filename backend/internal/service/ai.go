@@ -40,8 +40,45 @@ const (
 )
 
 const transcriptionPrompt = `Transcribe this audio recording verbatim in its original language. Do not translate, summarize or comment.
-Start each speaker's turn on a new line with its start time in the form [m:ss] (minutes and seconds from the start of this audio), followed by a speaker label such as "Speaker 1:" when more than one person speaks, e.g. "[1:05] Speaker 2: …". In long turns, start a new line with a new time stamp at least every 30 seconds.
+Tell the speakers apart by their voices (pitch, timbre, accent, speaking style) and by the conversation (questions and answers, people addressing or answering each other), and number them in the order they first speak. Do not merge different people into one speaker.
+Start a new line every time the speaker changes, even for a short interjection, with its start time in the form [m:ss] (minutes and seconds from the start of this audio) and the speaker's label, e.g. "[1:05] Speaker 2: …". Label every line, also "Speaker 1" when only one person speaks, and keep the same label for the same voice throughout. In long turns, start a new line with a new time stamp at least every 30 seconds.
 Output only the transcript. If there is no speech, output nothing.`
+
+// continuationContext is how much of the end of the previous part's transcript is shown when
+// transcribing the next part of a long recording, so speakers keep their labels.
+const continuationContext = 2000
+
+// continuationPrompt tells the model transcribing a later part of a long recording how the
+// previous part ended, so the same people keep the labels they had and new ones are numbered
+// on. It can't hear the earlier audio: matching voices relies on the conversation.
+func continuationPrompt(part int, previous []string) string {
+	p := fmt.Sprintf("\nThis is part %d of a longer recording; the previous part ended just before it.", part)
+	text := strings.Join(previous, "\n\n")
+	labels := SpeakerLabels(text)
+	if len(labels) == 0 {
+		return p
+	}
+	tail := text
+	if len(tail) > continuationContext {
+		tail = tail[len(tail)-continuationContext:]
+		if i := strings.IndexByte(tail, '\n'); i >= 0 {
+			tail = tail[i+1:] // start at a whole line
+		}
+	}
+	highest := 0
+	for _, l := range labels {
+		if n, err := strconv.Atoi(strings.TrimPrefix(l, "Speaker ")); err == nil && strings.HasPrefix(l, "Speaker ") {
+			highest = max(highest, n)
+		}
+	}
+	p += "\nSo far the speakers were labeled " + strings.Join(labels, ", ") + "."
+	p += " Continue the conversation: give people who already spoke the label they had (most likely the ones speaking at the end of the previous part)"
+	if highest > 0 {
+		p += fmt.Sprintf(", and number new speakers from Speaker %d on", highest+1)
+	}
+	p += ". Time stamps still count from the start of this audio. The previous part ended with:\n<previous>\n" + tail + "\n</previous>"
+	return p
+}
 
 // accountLanguage is how an app language a user can choose (user.Languages) applies to their
 // recordings: Name is the language transcripts are written in, Summary the key of
@@ -363,7 +400,7 @@ func (s *AIService) Transcribe(ctx context.Context, rec *recording.Recording) er
 	transcribe := func(data []byte, format string, part int) error {
 		prompt := inLanguage(transcriptionPrompt, language)
 		if part > 1 {
-			prompt += fmt.Sprintf("\nThis is part %d of a longer recording; the previous part ended just before it.", part)
+			prompt += continuationPrompt(part, parts)
 		}
 		text, err := s.ai.Complete(ctx, st.APIKey, openrouter.Request{
 			Model: st.TranscriptionModel,

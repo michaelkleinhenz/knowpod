@@ -679,7 +679,9 @@ hides it (the page, and so the stream, keeps running) and a tray icon offers Ope
 the tray).
 
 **Speakers.** Transcripts start each turn with a speaker label ("Speaker 1:", after the time
-stamp). The summary prompt also asks for `speakers`: the names the conversation makes clear
+stamp); the transcription prompt asks the model to tell voices apart and to label every line.
+Each later 5-minute piece is sent with the labels used so far and the end of the previous
+piece's transcript (`continuationPrompt`), so the same people keep their labels. The summary prompt also asks for `speakers`: the names the conversation makes clear
 for those labels, kept in `summary.speakers` when the label is in the transcript
 (`parseSpeakers`). `POST /recordings/{id}/speakers/rename` (`service/speakers.go`) replaces a
 label where it starts lines of the transcript and where the summary and the action items
