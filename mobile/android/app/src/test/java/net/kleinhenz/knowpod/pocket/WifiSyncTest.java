@@ -19,7 +19,8 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-// Tests for the whole copy (WifiSync): list, ask the server, transfer, upload.
+// Tests for the whole copy (WifiSync): list, ask the server, transfer over Bluetooth or WiFi,
+// upload.
 public class WifiSyncTest {
     private File temp;
     private FakeRecorder recorder;
@@ -29,6 +30,8 @@ public class WifiSyncTest {
     // the server's notes: these files are already notes
     private final Set<String> notes = new LinkedHashSet<>();
     private int uploadStatus = 0; // 0: upload works; else the HTTP status the server answers
+    private boolean noWifi; // the phone can't join the recorder's network
+    private static final long BLUETOOTH_MAX_BYTES = WifiSync.bluetoothMaxBytes;
 
     @Before
     public void setUp() throws IOException {
@@ -40,6 +43,7 @@ public class WifiSyncTest {
     public void tearDown() throws IOException {
         recorder.stop();
         temp.getParentFile().delete();
+        WifiSync.bluetoothMaxBytes = BLUETOOTH_MAX_BYTES;
     }
 
     private final ServerApi api = new ServerApi(url -> null) {
@@ -74,7 +78,7 @@ public class WifiSyncTest {
 
             @Override
             public HostWifi wifi() {
-                return recorder.wifi();
+                return noWifi ? null : recorder.wifi();
             }
 
             @Override
@@ -108,11 +112,12 @@ public class WifiSyncTest {
                 finished.add(lastId);
             }
         };
-        return new WifiSync(env, "127.0.0.1", recorder.port, FakeRecorder.timings());
+        return new WifiSync(env, "127.0.0.1", recorder.port, FakeRecorder.timings(), FakeRecorder.bluetoothTimings());
     }
 
     @Test
     public void copiesTheNewRecordings() throws Exception {
+        WifiSync.bluetoothMaxBytes = 0; // all over WiFi
         notes.add("20261003141332.mp3"); // already a note
         WifiSync sync = sync();
         assertTrue(sync.start());
@@ -149,6 +154,7 @@ public class WifiSyncTest {
 
     @Test
     public void aFailedUploadFailsTheCopy() throws Exception {
+        WifiSync.bluetoothMaxBytes = 0;
         uploadStatus = 500;
         WifiSync sync = sync();
         sync.start();
@@ -158,5 +164,91 @@ public class WifiSyncTest {
         assertEquals("server", state.get("error"));
         assertEquals("boom", state.get("message"));
         assertTrue("the recorder's WiFi was lowered", recorder.sent.contains("WIFIC"));
+    }
+
+    private void assertAllUploaded() {
+        for (Map.Entry<String, byte[]> f : recorder.files.entrySet()) {
+            assertArrayEquals(f.getKey(), f.getValue(), uploaded.get(f.getKey() + ".mp3"));
+        }
+    }
+
+    @Test
+    public void shortRecordingsComeOverBluetoothWithoutWifi() throws Exception {
+        WifiSync sync = sync();
+        sync.start();
+        sync.join();
+        Map<String, Object> state = sync.state();
+        assertEquals(state.toString(), "done", state.get("phase"));
+        assertEquals(3, state.get("copied"));
+        assertEquals(0, state.get("failed"));
+        assertAllUploaded();
+        assertEquals(3, recorder.overBluetooth.size());
+        assertFalse("no access point for short recordings", recorder.sent.contains("WIFIO"));
+        assertEquals(Collections.emptyList(), recorder.violations);
+    }
+
+    @Test
+    public void shortOverBluetoothLongOverWifi() throws Exception {
+        WifiSync.bluetoothMaxBytes = 500_000; // the 92 KB recording over Bluetooth
+        WifiSync sync = sync();
+        sync.start();
+        sync.join();
+        Map<String, Object> state = sync.state();
+        assertEquals(state.toString(), "done", state.get("phase"));
+        assertEquals(3, state.get("copied"));
+        assertAllUploaded();
+        assertEquals(Collections.singletonList("20261003160116"), recorder.overBluetooth);
+        // Bluetooth first, then the access point for the long ones.
+        int bluetooth = recorder.sent.indexOf("U&2026-10-03&20261003160116");
+        int wifi = recorder.sent.indexOf("WIFIO");
+        assertTrue(recorder.sent.toString(), bluetooth >= 0 && wifi > bluetooth);
+        assertEquals(1, recorder.apStarts);
+        assertTrue(recorder.sent.contains("WIFIC"));
+        assertEquals(Collections.emptyList(), recorder.violations);
+    }
+
+    @Test
+    public void withoutTheRecordersWifiAllComeOverBluetooth() throws Exception {
+        WifiSync.bluetoothMaxBytes = 0;
+        recorder.joinable = false;
+        WifiSync sync = sync();
+        sync.start();
+        sync.join();
+        Map<String, Object> state = sync.state();
+        assertEquals(state.toString(), "done", state.get("phase"));
+        assertEquals(3, state.get("copied"));
+        assertAllUploaded();
+        assertEquals(3, recorder.overBluetooth.size());
+        assertTrue("the access point was lowered", recorder.sent.contains("WIFIC"));
+        assertTrue(recorder.calls.contains("restore"));
+        assertEquals(Collections.emptyList(), recorder.violations);
+    }
+
+    @Test
+    public void aPhoneWithoutWifiCopiesOverBluetooth() throws Exception {
+        WifiSync.bluetoothMaxBytes = 0;
+        noWifi = true;
+        WifiSync sync = sync();
+        sync.start();
+        sync.join();
+        assertEquals("done", sync.state().get("phase"));
+        assertEquals(3, sync.state().get("copied"));
+        assertAllUploaded();
+        assertFalse(recorder.sent.contains("WIFIO"));
+    }
+
+    @Test
+    public void aBluetoothTransferThatStopsShortFailsThatRecording() throws Exception {
+        recorder.bluetoothStopAt = 50_000; // all three are longer
+        WifiSync sync = sync();
+        sync.start();
+        sync.join();
+        Map<String, Object> state = sync.state();
+        assertEquals(state.toString(), "done", state.get("phase"));
+        assertEquals(0, state.get("copied"));
+        assertEquals(3, state.get("failed"));
+        assertEquals("transfer", state.get("error"));
+        assertTrue(uploaded.isEmpty());
+        assertFalse("not remembered: copying again picks them up", remembered.contains("20261003160116.mp3"));
     }
 }

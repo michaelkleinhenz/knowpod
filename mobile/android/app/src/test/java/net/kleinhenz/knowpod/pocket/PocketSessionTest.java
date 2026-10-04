@@ -41,7 +41,7 @@ public class PocketSessionTest {
             }
 
             @Override
-            public void subscribeAudio() { }
+            public void subscribeAudio(java.util.function.Consumer<byte[]> listener) { }
 
             @Override
             public void close() { }
@@ -89,7 +89,7 @@ public class PocketSessionTest {
                 }
 
                 @Override
-                public void subscribeAudio() { }
+                public void subscribeAudio(java.util.function.Consumer<byte[]> listener) { }
 
                 @Override
                 public void close() { }
@@ -113,7 +113,7 @@ public class PocketSessionTest {
             }
 
             @Override
-            public void subscribeAudio() { }
+            public void subscribeAudio(java.util.function.Consumer<byte[]> listener) { }
 
             @Override
             public void close() { }

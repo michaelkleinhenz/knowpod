@@ -60,7 +60,8 @@ public final class PocketSyncService extends Service {
         String text;
         switch (phase) {
             case "downloading":
-                text = context.getString(R.string.pocket_progress_downloading, current, total);
+                text = context.getString("bluetooth".equals(state.get("via")) ? R.string.pocket_progress_downloading_bluetooth
+                        : R.string.pocket_progress_downloading, current, total);
                 break;
             case "uploading":
                 text = context.getString(R.string.pocket_progress_uploading, current, total);

@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.UUID;
+import java.util.function.Consumer;
 
 // AndroidBle is the Bluetooth LE connection to a Pocket recorder on the phone: it finds the
 // recorder by its address, connects, and carries the commands of a PocketSession (the
@@ -53,6 +54,7 @@ public final class AndroidBle implements PocketSession.Link {
     private BluetoothGatt gatt;
     private BluetoothGattCharacteristic command;
     private BluetoothGattCharacteristic audio;
+    private volatile Consumer<byte[]> audioListener;
 
     private AndroidBle(Context context) {
         this.context = context.getApplicationContext();
@@ -108,6 +110,9 @@ public final class AndroidBle implements PocketSession.Link {
         audio = service == null ? null : service.getCharacteristic(AUDIO);
         if (command == null) throw new PocketException("failed", "This device isn't a Pocket");
         subscribe(command);
+        // A short connection interval, as the Pocket app has: recordings come over Bluetooth
+        // several times faster.
+        gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH);
     }
 
     // scan finds the recorder: it answers only while it advertises (awake, and not connected
@@ -248,8 +253,9 @@ public final class AndroidBle implements PocketSession.Link {
     }
 
     @Override
-    public void subscribeAudio() throws IOException {
+    public void subscribeAudio(Consumer<byte[]> listener) throws IOException {
         if (audio == null) throw new IOException("The recorder has no audio characteristic");
+        audioListener = listener;
         try {
             subscribe(audio);
         } catch (PocketException e) {
@@ -276,8 +282,13 @@ public final class AndroidBle implements PocketSession.Link {
     }
 
     private void received(BluetoothGattCharacteristic characteristic, byte[] value) {
-        if (value == null || !COMMAND.equals(characteristic.getUuid())) return; // audio is thrown away
-        log.add(new String(value, StandardCharsets.US_ASCII));
+        if (value == null) return;
+        if (COMMAND.equals(characteristic.getUuid())) {
+            log.add(new String(value, StandardCharsets.US_ASCII));
+        } else if (AUDIO.equals(characteristic.getUuid())) {
+            Consumer<byte[]> listener = audioListener;
+            if (listener != null) listener.accept(value);
+        }
     }
 
     private final BluetoothGattCallback callback = new BluetoothGattCallback() {
@@ -329,7 +340,11 @@ public final class AndroidBle implements PocketSession.Link {
         @SuppressWarnings("deprecation")
         public void onCharacteristicChanged(BluetoothGatt g, BluetoothGattCharacteristic characteristic) {
             // Android 12 and older; newer ones call the one above.
-            if (Build.VERSION.SDK_INT < 33) received(characteristic, characteristic.getValue());
+            // The characteristic's value is reused for the next notification: copy it.
+            if (Build.VERSION.SDK_INT < 33) {
+                byte[] value = characteristic.getValue();
+                received(characteristic, value == null ? null : value.clone());
+            }
         }
     };
 }

@@ -248,7 +248,7 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
   web UI in a native window, signed in to and talking to the server exactly like the web app
   (see [Desktop app](#desktop-app)).
 - An **Android app** does the same on phones, and copies recordings from a Pocket recorder
-  over the recorder's WiFi (see [Android app](#android-app)).
+  over Bluetooth and the recorder's WiFi (see [Android app](#android-app)).
 - An **iOS app** does the same on iPhone and iPad, without the Pocket copy (see
   [iOS app](#ios-app)).
 
@@ -375,7 +375,8 @@ make android-test                                   # unit tests: the Pocket pro
 
 Requires Node.js 22, JDK 21 and the Android SDK (`ANDROID_HOME`, or `sdk.dir` in
 `mobile/android/local.properties`); Android Studio opens `mobile/android/` after
-`make android-deps`. The app needs Android 7 or newer, the WiFi copy Android 10 or newer. The
+`make android-deps`. The app needs Android 7 or newer, copying long Pocket recordings over WiFi Android 10 or
+newer (older phones copy them over Bluetooth). The
 **Desktop and mobile apps** workflow builds and tests the APK next to the desktop installers
 and attaches it to the `desktop-v<version>` release.
 

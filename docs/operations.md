@@ -248,14 +248,20 @@ files named by when they started, in UTC (`RECORD/2026-10-2/20261002090356.mp3`)
   back. Closing the dialog keeps the copy running; a notification says when it's done.
   Quitting the app during a copy stops it first, so the WiFi is put back. How the transfer
   works on the wire is in `tools/pocket-wifi-probe/RESEARCH.md`.
-- **From the [Android app](#android-app)**, over the recorder's WiFi only (the same
+- **From the [Android app](#android-app)**, over Bluetooth and the recorder's WiFi (the same
   **Pocket Sync** dialog, with the same Bluetooth settings under **Settings → Account**, kept
-  in the app, the key encrypted with the Android Keystore). It needs Android 10 or newer and
-  works like the desktop app's copy, with these differences:
+  in the app, the key encrypted with the Android Keystore). It works like the desktop app's
+  copy, with these differences:
+  - Like the Pocket app, it copies **short recordings (up to 10 minutes) over Bluetooth**,
+    about 65 KB/s, and turns on the recorder's WiFi only for longer ones: raising and joining
+    it takes longer than a short recording takes over Bluetooth. When the phone can't join
+    the recorder's WiFi (or runs Android 9 or older), the long ones come over Bluetooth too.
+  - The dialog offers a new copy each time it opens; how the last one ended is in its
+    notification.
   - Android asks for **Nearby devices** (Bluetooth) the first time, on Android 11 and older
     for the location instead. It also asks for the location (optional) and for
     notifications.
-  - The phone joins the recorder's network as a local-only network (as the Pocket app does)
+  - For long recordings, the phone joins the recorder's network as a local-only network (as the Pocket app does)
     and stays on its usual network meanwhile, so it keeps internet. **Android asks each time
     whether it may join** the recorder's network; choose the Pocket there. Once the location
     permission is allowed, the app remembers the network's BSSID, and Android then joins

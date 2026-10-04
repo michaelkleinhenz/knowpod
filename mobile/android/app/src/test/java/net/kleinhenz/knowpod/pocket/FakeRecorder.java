@@ -13,11 +13,14 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 // FakeRecorder behaves like the real recorder measured on firmware 1.8
-// (tools/pocket-wifi-probe/RESEARCH.md), as in desktop/test/pocket-wifi.test.js: it serves the
-// transfer socket for two connections per access point session, sends a file and the end
-// marker only on a connection that is open when U&WIFI comes, and answers like the recorder.
+// (tools/pocket-wifi-probe/RESEARCH.md), as in desktop/test/pocket-wifi.test.js: U&<date>&<ts>
+// starts a Bluetooth transfer (the file in 244-byte audio notifications, then MCU&OFF) while
+// the audio is subscribed to; it serves the transfer socket for two connections per access
+// point session, sends a file and the end marker only on a connection that is open when
+// U&WIFI comes (which stops the Bluetooth transfer), and answers like the recorder.
 // Failures seen on the real one can be switched on (see the fields).
 final class FakeRecorder implements PocketSession.Link {
     // the recordings: timestamp → file
@@ -34,6 +37,10 @@ final class FakeRecorder implements PocketSession.Link {
     int wifioAnswers = Integer.MAX_VALUE;
     // how many times each notification is delivered (BlueZ delivers some several times)
     int repeats = 1;
+    // stop Bluetooth transfers after this many bytes (with MCU&OFF), or never (-1)
+    long bluetoothStopAt = -1;
+    // whether the phone can join the access point
+    boolean joinable = true;
 
     final MessageLog log = new MessageLog();
     final List<String> sent = Collections.synchronizedList(new ArrayList<>());
@@ -48,6 +55,10 @@ final class FakeRecorder implements PocketSession.Link {
     private int acceptedTotal;
     private volatile Socket current;
     private byte[] staged;
+    private volatile Consumer<byte[]> audio;
+    // the Bluetooth transfer that runs, until it's switched to WiFi or done
+    private volatile Thread bluetoothTransfer;
+    final List<String> overBluetooth = Collections.synchronizedList(new ArrayList<>());
 
     FakeRecorder() throws IOException {
         try (ServerSocket probe = new ServerSocket(0, 50, InetAddress.getLoopbackAddress())) {
@@ -190,6 +201,9 @@ final class FakeRecorder implements PocketSession.Link {
             status = 0;
             say("MCU&WIFIC");
         } else if (name.equals("U&WIFI")) {
+            Thread running = bluetoothTransfer;
+            bluetoothTransfer = null;
+            if (running != null) running.interrupt();
             Socket socket = current;
             if (!open(socket)) {
                 violations.add("U&WIFI without an open connection");
@@ -221,7 +235,40 @@ final class FakeRecorder implements PocketSession.Link {
             }
             staged = files.get(timestamp);
             say("MCU&U&" + staged.length);
+            sendOverBluetooth(timestamp, staged);
         }
+    }
+
+    // sendOverBluetooth sends file as audio notifications (paced, so a switch to WiFi comes
+    // first for long files), then MCU&OFF; nothing without a subscriber.
+    private void sendOverBluetooth(String timestamp, byte[] file) {
+        Consumer<byte[]> listener = audio;
+        if (listener == null) {
+            say("MCU&OFF");
+            return;
+        }
+        Thread thread = new Thread(() -> {
+            long end = bluetoothStopAt >= 0 ? Math.min(bluetoothStopAt, file.length) : file.length;
+            int chunks = 0;
+            for (int at = 0; at < end; at += 244) {
+                if (bluetoothTransfer != Thread.currentThread()) return; // switched to WiFi
+                listener.accept(java.util.Arrays.copyOfRange(file, at, (int) Math.min(at + 244, end)));
+                if (++chunks % 16 == 0) {
+                    try {
+                        Thread.sleep(1);
+                    } catch (InterruptedException e) {
+                        return;
+                    }
+                }
+            }
+            if (bluetoothTransfer != Thread.currentThread()) return;
+            bluetoothTransfer = null;
+            if (end == file.length) overBluetooth.add(timestamp);
+            say("MCU&OFF");
+        });
+        thread.setDaemon(true);
+        bluetoothTransfer = thread;
+        thread.start();
     }
 
     static String day(String timestamp) {
@@ -229,7 +276,8 @@ final class FakeRecorder implements PocketSession.Link {
     }
 
     @Override
-    public void subscribeAudio() {
+    public void subscribeAudio(Consumer<byte[]> listener) {
+        audio = listener;
         calls.add("subscribeAudio");
     }
 
@@ -258,6 +306,7 @@ final class FakeRecorder implements PocketSession.Link {
             @Override
             public boolean join(String ssid, long deadline) {
                 calls.add("join");
+                if (!joinable) return false;
                 status = 1;
                 return true;
             }
@@ -296,6 +345,15 @@ final class FakeRecorder implements PocketSession.Link {
         t.receive.firstByte = 2_000;
         t.receive.idle = 2_000;
         t.receive.marker = 300;
+        return t;
+    }
+
+    static BluetoothTransfer.Timings bluetoothTimings() {
+        BluetoothTransfer.Timings t = new BluetoothTransfer.Timings();
+        t.answer = 1_000;
+        t.firstByte = 1_000;
+        t.idle = 1_000;
+        t.offWait = 500;
         return t;
     }
 

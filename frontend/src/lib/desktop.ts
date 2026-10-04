@@ -60,10 +60,13 @@ export interface PocketWifiState {
   // downloading and uploading: recording current of total
   current: number;
   total: number;
-  // downloading: bytes of totalBytes of the current recording, at rate bytes per second
+  // downloading: bytes of totalBytes of the current recording, at rate bytes per second, over
+  // the Pocket's WiFi or Bluetooth (the Android app copies short recordings over Bluetooth;
+  // missing in the desktop app, which copies over WiFi only)
   bytes: number;
   totalBytes: number;
   rate: number;
+  via?: '' | 'bluetooth' | 'wifi';
   // done: copied into knowpod, failed to transfer
   copied: number;
   failed: number;
