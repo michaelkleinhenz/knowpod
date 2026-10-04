@@ -42,7 +42,8 @@ const TABS: Tab[] = ['summary', 'transcript', 'source'];
 const INK_TABS: Tab[] = ['summary', 'ink'];
 const POLL_MS = 5_000;
 
-const TIME = /^\[(?:(\d{1,2}):)?(\d{1,3}):(\d{2})\]\s*/;
+// TIME matches a line's time stamp: [m:ss] or [h:mm:ss], also "[0:3]" as models sometimes write it.
+const TIME = /^\[(?:(\d{1,2}):)?(\d{1,3}):(\d{1,2})\]\s*/;
 
 // Transcript shows the transcript line by line. Time stamps ("[1:05]") become buttons that
 // play the audio from there; speaker labels ("Speaker 1:") are set off.
@@ -549,6 +550,7 @@ function NoteBody({ rec, aiReady, aiWriting, tab, setTab, setRec, reload, create
   const tools = (
     <div className="note-tools">
       {tab === 'summary' && rec.transcript && isOwner && <SummaryDetails rec={rec} onRegenerate={(fn) => regenerate(fn)} />}
+      {rec.transcript && isOwner && !isText && !isBoard && <SummaryDetails redo rec={rec} onRegenerate={(fn) => regenerate(fn)} />}
       {download && (
         <a className="icon-button" href={download.href} download title={download.label} aria-label={download.label}>
           <DownloadIcon />

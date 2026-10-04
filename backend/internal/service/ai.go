@@ -104,11 +104,13 @@ func inLanguage(prompt, language string) string {
 	).Replace(prompt)
 }
 
-// timestampPattern matches the [m:ss] / [h:mm:ss] time stamps in transcripts.
-var timestampPattern = regexp.MustCompile(`\[(?:(\d{1,2}):)?(\d{1,3}):(\d{2})\]`)
+// timestampPattern matches the [m:ss] / [h:mm:ss] time stamps in transcripts, also with the
+// leading zero of the seconds left out ("[0:3]"), as models sometimes write them.
+var timestampPattern = regexp.MustCompile(`\[(?:(\d{1,2}):)?(\d{1,3}):(\d{1,2})\]`)
 
 // shiftTimestamps adds offset to the time stamps in a transcript piece, so that the
-// pieces of a long recording carry times relative to the whole recording.
+// pieces of a long recording carry times relative to the whole recording. The time stamps
+// are written as [m:ss] / [h:mm:ss] in any case.
 func shiftTimestamps(text string, offset time.Duration) string {
 	return timestampPattern.ReplaceAllStringFunc(text, func(m string) string {
 		p := timestampPattern.FindStringSubmatch(m)
@@ -459,6 +461,17 @@ func (s *AIService) Summarize(ctx context.Context, rec *recording.Recording) err
 		return errors.New("recording has no transcript")
 	}
 	opts := rec.SummaryOptions
+	if next := rec.NextSummary; next != nil {
+		if next.Language != "" {
+			opts.Language = next.Language
+		}
+		if next.Model != "" {
+			opts.Model = next.Model
+		}
+		if next.ThemeID != "" {
+			opts.ThemeID = next.ThemeID
+		}
+	}
 	language := opts.Language
 	if language == "" {
 		// Auto: the language the owner chose for the app, else the transcript's.
@@ -473,6 +486,7 @@ func (s *AIService) Summarize(ctx context.Context, rec *recording.Recording) err
 	}
 	if rec.IsDocument() && rec.Summary != nil && rec.Summary.EditedAt != nil {
 		// A changed document was read again; the summary the user edited is kept.
+		rec.NextSummary = nil
 		return nil
 	}
 	th := s.themes.Resolve(ctx, rec.OwnerID, opts.ThemeID)
@@ -483,6 +497,7 @@ func (s *AIService) Summarize(ctx context.Context, rec *recording.Recording) err
 		}
 		rec.Summary = &recording.Summary{Title: title, Markdown: text,
 			Language: language, ThemeID: th.ID, ThemeName: th.Name, CreatedAt: s.clock().UTC()}
+		rec.NextSummary = nil
 		return nil
 	}
 
@@ -517,6 +532,7 @@ func (s *AIService) Summarize(ctx context.Context, rec *recording.Recording) err
 	rec.Summary = &recording.Summary{Title: title, Markdown: markdown, Model: model, Language: language,
 		ThemeID: th.ID, ThemeName: th.Name, ActionItems: items, Speakers: parseSpeakers(answer, rec.Transcript.Text),
 		CreatedAt: s.clock().UTC()}
+	rec.NextSummary = nil
 	s.log.Info("recording summarized", "id", rec.ID, "model", model, "theme", th.ID, "language", language, "title", title)
 	return nil
 }

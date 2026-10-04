@@ -4,8 +4,8 @@ import { api, Recording } from '../api/client';
 import { errorText } from '../lib/errors';
 
 // SPEAKER matches a transcript line starting with a speaker label, after an optional time
-// stamp ("[1:05] Speaker 2: …"), as the server reads them.
-const SPEAKER = /^\s*(?:\[(?:\d{1,2}:)?\d{1,3}:\d{2}\]\s*)?([^:\n[\]]{1,40}):\s/;
+// stamp ("[1:05] Speaker 2: …", also "[0:3]"), as the server reads them.
+const SPEAKER = /^\s*(?:\[(?:\d{1,2}:)?\d{1,3}:\d{1,2}\]\s*)?([^:\n[\]]{1,40}):\s/;
 
 // speakerLabels returns the speaker labels of a transcript in the order they first speak.
 export function speakerLabels(text: string): string[] {

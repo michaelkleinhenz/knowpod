@@ -18,6 +18,15 @@ func TestSpeakerLabels(t *testing.T) {
 	if want := []string{"Speaker 1", "Speaker 2", "Speaker 10"}; !slices.Equal(got, want) {
 		t.Fatalf("labels = %q", got)
 	}
+	// Models sometimes leave out the leading zero of the seconds.
+	short := "[0:0] Speaker 1: Gut.\n[0:8] Speaker 2: Also,\n[0:12] Speaker 2: ich bin zwiegespalten."
+	if got := SpeakerLabels(short); !slices.Equal(got, []string{"Speaker 1", "Speaker 2"}) {
+		t.Fatalf("labels = %q", got)
+	}
+	want := "[0:0] Michael: Gut.\n[0:8] Jutta: Also,\n[0:12] Jutta: ich bin zwiegespalten."
+	if got := renameSpeakerLines(renameSpeakerLines(short, "Speaker 1", "Michael"), "Speaker 2", "Jutta"); got != want {
+		t.Fatalf("renamed = %q", got)
+	}
 }
 
 func TestReplaceName(t *testing.T) {
@@ -103,7 +112,8 @@ func TestNameSpeakers(t *testing.T) {
 		t.Helper()
 		rec := &recording.Recording{ID: id, OwnerID: "u1", DeviceID: "d", ClientID: id, Status: recording.StatusSummarized,
 			Transcript: &recording.Transcript{Text: speakerTranscript},
-			Summary:    &recording.Summary{Title: "Intro", Markdown: "Speaker 1 introduces herself to Speaker 2."}}
+			Summary: &recording.Summary{Title: "Intro", Markdown: "Speaker 1 introduces herself to Speaker 2.",
+				Model: "anthropic/old", ThemeID: "meeting", Language: "de-DE"}}
 		if err := f.recs.Create(ctx, rec); err != nil {
 			t.Fatal(err)
 		}
@@ -129,6 +139,10 @@ func TestNameSpeakers(t *testing.T) {
 	}
 	if got.Summary != nil || got.Status != recording.StatusTranscribed || !strings.HasPrefix(got.Transcript.Text, "[0:01] Anna: Hi") {
 		t.Fatalf("resummarize: %+v", got)
+	}
+	// It is made like the summary it replaces.
+	if want := (recording.SummaryOptions{Language: "de-DE", Model: "anthropic/old", ThemeID: "meeting"}); got.NextSummary == nil || *got.NextSummary != want {
+		t.Fatalf("next summary = %+v", got.NextSummary)
 	}
 	if versions, err := f.s.ListVersions(ctx, f.acc, "r2"); err != nil || len(versions) != 1 {
 		t.Fatalf("versions = %d, %v", len(versions), err)

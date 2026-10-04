@@ -14,8 +14,8 @@ import (
 
 // speakerLine matches a transcript line that starts with a speaker label, after an optional
 // time stamp: "[1:05] Speaker 2: …" or "Anna: …". Group 1 is everything before the label,
-// group 2 the label.
-var speakerLine = regexp.MustCompile(`^(\s*(?:\[(?:\d{1,2}:)?\d{1,3}:\d{2}\]\s*)?)([^:\n\[\]]{1,40}):\s`)
+// group 2 the label. Models sometimes leave out the leading zero of the seconds ("[0:3]").
+var speakerLine = regexp.MustCompile(`^(\s*(?:\[(?:\d{1,2}:)?\d{1,3}:\d{1,2}\]\s*)?)([^:\n\[\]]{1,40}):\s`)
 
 // maxSpeakerName bounds a speaker's name.
 const maxSpeakerName = 40
@@ -100,8 +100,8 @@ func (in SpeakerNames) clean() ([]SpeakerRename, error) {
 }
 
 // NameSpeakers gives speakers of the note's transcript names (see RenameSpeaker). With
-// Resummarize the summary is made again from the renamed transcript; the one it replaces is
-// kept as an earlier version.
+// Resummarize the summary is made again from the renamed transcript, with the model, theme
+// and language of the one it replaces, which is kept as an earlier version.
 func (s *RecordingService) NameSpeakers(ctx context.Context, acc *Account, id string, in SpeakerNames) (*recording.Recording, error) {
 	names, err := in.clean()
 	if err != nil {
@@ -111,6 +111,11 @@ func (s *RecordingService) NameSpeakers(ctx context.Context, acc *Account, id st
 		return s.requeueAs(ctx, acc, id, recording.RoleEditor, func(rec *recording.Recording) (recording.Status, error) {
 			if _, err := renameSpeakers(rec, names, false); err != nil {
 				return "", err
+			}
+			// Only the names change: the new summary is made like the one it replaces, even
+			// if the default model changed since.
+			if old := rec.Summary; old != nil {
+				rec.NextSummary = &recording.SummaryOptions{Language: old.Language, Model: old.Model, ThemeID: old.ThemeID}
 			}
 			rec.Summary = nil
 			return recording.StatusTranscribed, nil

@@ -83,6 +83,10 @@ func TestShiftTimestamps(t *testing.T) {
 	if shiftTimestamps("[0:30] a", 59*time.Minute+45*time.Second) != "[1:00:15] a" {
 		t.Fatal("hour overflow")
 	}
+	// Seconds without their leading zero are read, and written with it.
+	if got := shiftTimestamps("[0:0] a\n[0:3] b\n[0:12] c", 0); got != "[0:00] a\n[0:03] b\n[0:12] c" {
+		t.Fatalf("short seconds: got %q", got)
+	}
 }
 
 func TestSummaryPromptWithHighlights(t *testing.T) {
@@ -103,5 +107,27 @@ func TestSummaryPromptWithHighlights(t *testing.T) {
 	_ = s.Summarize(ctx, rec2)
 	if strings.Contains(ai.requests[1].Messages[0].Content.(string), "## Highlights") {
 		t.Fatal("highlights section requested without highlights")
+	}
+}
+
+func TestSummarizeNextSummary(t *testing.T) {
+	ctx := context.Background()
+	ai := &fakeAI{answer: `{"title":"T","summary":"S"}`}
+	s, _ := newAI(t, ai)
+	rec := &recording.Recording{ID: "r1", OwnerID: "alice", Transcript: &recording.Transcript{Text: "hi"},
+		SummaryOptions: recording.SummaryOptions{Model: "openai/gpt-x"},
+		NextSummary:    &recording.SummaryOptions{Model: "anthropic/old", ThemeID: "meeting"}}
+	if err := s.Summarize(ctx, rec); err != nil {
+		t.Fatal(err)
+	}
+	if ai.requests[0].Model != "anthropic/old" || rec.Summary.Model != "anthropic/old" || rec.Summary.ThemeID != "meeting" || rec.NextSummary != nil {
+		t.Fatalf("summary %+v, next %+v", rec.Summary, rec.NextSummary)
+	}
+	// Used once: the next summary follows the note's options again.
+	if err := s.Summarize(ctx, rec); err != nil {
+		t.Fatal(err)
+	}
+	if ai.requests[1].Model != "openai/gpt-x" || rec.Summary.ThemeID != AutoTheme {
+		t.Fatalf("second summary %+v", rec.Summary)
 	}
 }

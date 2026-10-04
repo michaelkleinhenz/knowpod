@@ -4,7 +4,7 @@ import { api, ModelOption, Recording, SummaryOptions, Theme } from '../api/clien
 import { errorText } from '../lib/errors';
 import { languageName } from '../lib/recordings';
 import { useThemeText } from '../lib/themes';
-import { SlidersIcon } from './Icons';
+import { SlidersIcon, SparkleIcon } from './Icons';
 
 type View = 'main' | 'language' | 'model' | 'theme';
 
@@ -73,14 +73,26 @@ function OptionList(props: {
 // SummaryDetails is the "Summary details" menu of a note: it shows and changes the language,
 // model and theme of the summary, and regenerates it. onRegenerate runs the request; the
 // page asks for confirmation and makes sure pending edits aren't saved over the new summary.
-export function SummaryDetails({ rec, onRegenerate }: { rec: Recording; onRegenerate: (request: () => Promise<unknown>) => Promise<void> }) {
+// As "redo" it is the "Redo summary" menu instead: the summary is made again from the
+// transcript there is, with the default theme chosen unless another one is picked.
+export function SummaryDetails({
+  rec,
+  onRegenerate,
+  redo = false,
+}: {
+  rec: Recording;
+  onRegenerate: (request: () => Promise<unknown>) => Promise<void>;
+  redo?: boolean;
+}) {
   const { t } = useTranslation();
   const themeText = useThemeText();
-  const current: SummaryOptions = {
-    language: rec.summary?.language || rec.summaryOptions?.language || 'auto',
-    model: rec.summaryOptions?.model || '',
-    themeId: rec.summary?.themeId || rec.summaryOptions?.themeId || 'auto',
-  };
+  const current: SummaryOptions = redo
+    ? { language: rec.summaryOptions?.language || 'auto', model: rec.summaryOptions?.model || '', themeId: 'auto' }
+    : {
+        language: rec.summary?.language || rec.summaryOptions?.language || 'auto',
+        model: rec.summaryOptions?.model || '',
+        themeId: rec.summary?.themeId || rec.summaryOptions?.themeId || 'auto',
+      };
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<View>('main');
   const [pending, setPending] = useState<SummaryOptions>(current);
@@ -152,11 +164,14 @@ export function SummaryDetails({ rec, onRegenerate }: { rec: Recording; onRegene
   };
   const canRegenerate = !!rec.transcript;
 
+  const themeRow = { view: 'theme' as View, label: t('details.theme'), value: themeLabel(pending.themeId) };
   const rows: { view: View; label: string; value: string }[] = [
+    ...(redo ? [themeRow] : []),
     { view: 'language', label: t('details.language'), value: languageLabel(pending.language) },
     { view: 'model', label: t('details.model'), value: modelLabel(pending.model) },
-    { view: 'theme', label: t('details.theme'), value: themeLabel(pending.themeId) },
+    ...(redo ? [] : [themeRow]),
   ];
+  const title = redo ? t('details.redoTitle') : t('details.title');
 
   return (
     <div className="summary-details" ref={root}>
@@ -165,19 +180,20 @@ export function SummaryDetails({ rec, onRegenerate }: { rec: Recording; onRegene
         className={`icon-button details-trigger${open ? ' active' : ''}`}
         aria-expanded={open}
         aria-haspopup="dialog"
-        aria-label={t('details.title')}
-        title={`${t('details.title')}: ${themeLabel(current.themeId)}`}
+        aria-label={title}
+        title={redo ? t('details.redoHint') : `${title}: ${themeLabel(current.themeId)}`}
         onClick={toggle}
       >
-        <SlidersIcon />
+        {redo ? <SparkleIcon size={18} /> : <SlidersIcon />}
       </button>
       {open && (
         <>
           <div className="details-backdrop" onClick={() => setOpen(false)} />
-          <div className="details-panel" role="dialog" aria-label={t('details.title')}>
+          <div className="details-panel" role="dialog" aria-label={title}>
             {view === 'main' && (
               <>
-                <div className="details-title">{t('details.title')}</div>
+                <div className="details-title">{title}</div>
+                {redo && <p className="muted details-note">{t('details.redoNote')}</p>}
                 <ul className="details-rows">
                   {rows.map((r) => (
                     <li key={r.view}>
@@ -238,7 +254,14 @@ export function SummaryDetails({ rec, onRegenerate }: { rec: Recording; onRegene
               <OptionList
                 title={t('details.theme')}
                 placeholder={t('details.searchThemes')}
-                options={themes && themes.map((th) => ({ id: th.id, label: themeText(th).name, sub: themeText(th).description }))}
+                options={
+                  themes &&
+                  themes.map((th) => ({
+                    id: th.id,
+                    label: th.id === 'auto' ? `${themeText(th).name} (${t('details.defaultTheme')})` : themeText(th).name,
+                    sub: themeText(th).description,
+                  }))
+                }
                 selected={pending.themeId || 'auto'}
                 onSelect={(id) => {
                   setPending({ ...pending, themeId: id });

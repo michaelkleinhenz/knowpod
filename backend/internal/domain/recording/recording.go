@@ -216,6 +216,9 @@ type Recording struct {
 	Transcript     *Transcript    `bson:"transcript,omitempty" json:"transcript,omitempty"`
 	Summary        *Summary       `bson:"summary,omitempty" json:"summary,omitempty"`
 	SummaryOptions SummaryOptions `bson:"summaryOptions,omitempty" json:"summaryOptions"`
+	// NextSummary overrides SummaryOptions for the next summary only, e.g. to make the summary
+	// again with the model and theme of the one it replaces. Cleared once it is used.
+	NextSummary *SummaryOptions `bson:"nextSummary,omitempty" json:"-"`
 
 	// Background processing bookkeeping. NotBefore is both the retry backoff and the lease of
 	// the worker currently processing the recording.
