@@ -126,6 +126,15 @@ export const en = {
     collapseSidebar: 'Hide the list (Ctrl+\\)',
     expandSidebar: 'Show the list (Ctrl+\\)',
   },
+  tabs: {
+    label: 'Open notes',
+    openInNewTab: 'Open in new tab',
+    close: 'Close',
+    closeLabel: 'Close {{title}}',
+    closeOthers: 'Close other tabs',
+    closeRight: 'Close tabs to the right',
+    closeAll: 'Close all tabs',
+  },
   tasks: {
     reporter: 'Reporter',
     assignee: 'Assignee',

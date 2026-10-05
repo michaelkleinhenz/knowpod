@@ -239,7 +239,9 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
   [OpenRouter](https://openrouter.ai). The API key and both models are chosen by an admin
   in the web UI under **Admin → General**.
 - The web UI's **Workspace** page (a note per recording) lists your recordings by the title of
-  their summary; on desktop the list stays in a sidebar next to the open note;
+  their summary; on desktop the list stays in a sidebar next to the open note, and notes open
+  in tabs above it (Ctrl/Cmd+click, a middle click or **Open in new tab** in a note's context
+  menu opens one in a new tab; drag tabs to reorder them, middle-click or × to close them);
   each note shows its summary, transcript and audio, and can be re-transcribed,
   re-summarized (the ✦ **Redo summary** button: summarizes the existing transcript again
   with a theme of your choice, the default Auto preselected) or deleted from icon buttons next to the view switcher. Summaries are always editable in place, like a document
@@ -532,6 +534,7 @@ frontend/src/
                        Users, Settings (tabs), Status, Account, Login
   components/NotesList the workspace list (sidebar on desktop, start page on phones)
   context/             NotesContext: the workspace list shared by sidebar and open note
+                       NoteTabs: the notes open in tabs on desktop
   hooks/useAutosave.ts saving the open note's summary
   i18n/                translations (en.ts, de.ts) and language setup
   lib/                 display helpers (recordings, themes, error texts)

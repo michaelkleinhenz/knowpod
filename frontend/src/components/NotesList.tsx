@@ -5,6 +5,7 @@ import { api, Recording } from '../api/client';
 import { useNotes } from '../context/NotesContext';
 import { useAuth } from '../auth';
 import { FolderTree, NOTE_TYPE } from './FolderTree';
+import { useNoteTabs } from '../context/NoteTabs';
 import { FilterBar } from './SavedFilters';
 import { TimerBar } from './TimeControls';
 import { HomeIcon, MicIcon, NewBoardIcon, NewFolderIcon, NewNoteIcon, RefreshIcon, SearchIcon, SparkleIcon, TrashIcon, UploadIcon } from './Icons';
@@ -71,6 +72,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
   const { account } = useAuth();
   const navigate = useNavigate();
   const { recordings, folders, filters, filterContext, trash, moveToTrash, aiReady, error, refreshing, reload: load, upsert } = useNotes();
+  const tabs = useNoteTabs();
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -182,7 +184,8 @@ export function NotesList({ activeId }: { activeId?: string }) {
   // TRASH_DAYS. The open note is left first, so its pending edits are saved with it.
   async function trashNote(r: Recording) {
     setCreateError(null);
-    if (r.id === activeId) navigate('/', { replace: true });
+    if (tabs) tabs.close(r.id);
+    else if (r.id === activeId) navigate('/', { replace: true });
     try {
       await moveToTrash(r);
     } catch (err) {
@@ -283,6 +286,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
       const r = recordings?.find((n) => n.id === e.dataTransfer.getData(NOTE_TYPE));
       if (!r) return;
       setCreateError(null);
+      tabs?.close(r.id);
       moveToTrash(r).catch((err) => setCreateError(errorText(err, t)));
     },
   };

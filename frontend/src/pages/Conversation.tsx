@@ -21,6 +21,7 @@ import { OriginBadge } from '../components/PersonBadge';
 import { SubNotes } from '../components/SubNotes';
 import { SummaryDetails } from '../components/SummaryDetails';
 import { useNotes } from '../context/NotesContext';
+import { useNoteTabs } from '../context/NoteTabs';
 import { Sync, useAutosave } from '../hooks/useAutosave';
 import { locale } from '../i18n';
 import { errorText } from '../lib/errors';
@@ -340,6 +341,10 @@ function NoteBody({ rec, aiReady, aiWriting, tab, setTab, setRec, reload, create
     }, confirmText);
   };
 
+  // leave closes the deleted note's tab (showing the next one), or goes back to the list.
+  const tabs = useNoteTabs();
+  const leave = () => (tabs ? tabs.close(rec.id) : navigate('/', { replace: true }));
+
   // Deleting moves the note to the trash, where it can be restored for TRASH_DAYS.
   async function handleDelete() {
     setBusy(true);
@@ -348,7 +353,7 @@ function NoteBody({ rec, aiReady, aiWriting, tab, setTab, setRec, reload, create
       await autosave.save();
       await notes.moveToTrash(rec);
       autosave.discard();
-      navigate('/', { replace: true });
+      leave();
     } catch (err) {
       setError(errorText(err, t));
       setBusy(false);
@@ -382,7 +387,7 @@ function NoteBody({ rec, aiReady, aiWriting, tab, setTab, setRec, reload, create
     try {
       autosave.discard();
       await notes.deleteForever(rec);
-      navigate('/', { replace: true });
+      leave();
     } catch (err) {
       setError(errorText(err, t));
       setBusy(false);

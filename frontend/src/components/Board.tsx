@@ -10,6 +10,7 @@ import { isTask, labelName, labelStyle, noteLabels } from '../lib/labels';
 import { TaskMeta } from './TaskControls';
 import { iconKind, title, when } from '../lib/recordings';
 import { GripIcon, NewNoteIcon, NoteIcon, PencilIcon, TrashIcon } from './Icons';
+import { useTabLink } from '../context/NoteTabs';
 
 // DRAG_TYPE marks a card being dragged, so the columns ignore other drags (files, notes
 // from the sidebar).
@@ -176,6 +177,7 @@ function ColumnHeader({
 // columns are renamed, added and deleted. Every change is saved right away.
 export function Board({ rec, setRec }: { rec: Recording; setRec: (r: Recording) => void }) {
   const { t } = useTranslation();
+  const tabLink = useTabLink();
   const { recordings, folders, labels, filters, filterContext, upsert } = useNotes();
   const [board, setBoard] = useState<BoardSetup>(() => rec.board ?? { scope: { kind: '', id: '' }, columns: [] });
   const [error, setError] = useState<string | null>(null);
@@ -478,7 +480,7 @@ export function Board({ rec, setRec }: { rec: Recording; setRec: (r: Recording) 
                     ) : (
                       <NoteIcon type={iconKind(r)} label={t(`conversations.types.${iconKind(r)}`)} />
                     )}
-                    <Link to={`/conversations/${r.id}`} className="board-card-title" draggable={false}>
+                    <Link to={`/conversations/${r.id}`} className="board-card-title" draggable={false} {...tabLink(r.id)}>
                       {title(r)}
                     </Link>
                     <span className="board-card-move">

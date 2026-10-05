@@ -128,6 +128,15 @@ export const de: Translation = {
     collapseSidebar: 'Liste ausblenden (Strg+\\)',
     expandSidebar: 'Liste einblenden (Strg+\\)',
   },
+  tabs: {
+    label: 'Geöffnete Notizen',
+    openInNewTab: 'In neuem Tab öffnen',
+    close: 'Schließen',
+    closeLabel: '{{title}} schließen',
+    closeOthers: 'Andere Tabs schließen',
+    closeRight: 'Tabs rechts schließen',
+    closeAll: 'Alle Tabs schließen',
+  },
   tasks: {
     reporter: 'Melder',
     assignee: 'Bearbeiter',
