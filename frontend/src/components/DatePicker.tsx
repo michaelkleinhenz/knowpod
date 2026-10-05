@@ -7,9 +7,13 @@ import { dayOf, validDate } from '../lib/mentions';
 interface Props {
   // value is the date shown at first ("2026-10-05"); rect is what the calendar opens at.
   value: string;
-  rect: DOMRect;
+  rect?: DOMRect;
+  // counts is how many tasks fall on a day ("2026-10-05" → 2), shown as dots under the day.
+  counts?: Record<string, number>;
+  // inline shows the calendar in place, without floating, taking keys or closing on outside clicks.
+  inline?: boolean;
   onPick: (date: string) => void;
-  onClose: () => void;
+  onClose?: () => void;
 }
 
 const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
@@ -17,7 +21,7 @@ const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), 
 // DatePicker is a month calendar to choose a day, opened below (or above) rect. It takes the
 // keys while it is open, so the editor keeps its focus: the arrow keys move the day, Page
 // Up/Down the month, Enter takes the day and Escape closes it.
-export function DatePicker({ value, rect, onPick, onClose }: Props) {
+export function DatePicker({ value, rect, counts, inline, onPick, onClose = () => {} }: Props) {
   const { t, i18n } = useTranslation();
   const [day, setDay] = useState(() => (validDate(value) ? dayOf(value) : new Date()));
   // month is the first day of the month shown; it follows the chosen day.
@@ -27,7 +31,7 @@ export function DatePicker({ value, rect, onPick, onClose }: Props) {
 
   useLayoutEffect(() => {
     const el = box.current;
-    if (!el) return;
+    if (!el || inline || !rect) return;
     const h = el.offsetHeight;
     const w = el.offsetWidth;
     const below = rect.bottom + 6 + h <= window.innerHeight;
@@ -35,7 +39,7 @@ export function DatePicker({ value, rect, onPick, onClose }: Props) {
       top: below ? rect.bottom + 6 : Math.max(8, rect.top - h - 6),
       left: Math.max(8, Math.min(rect.left, window.innerWidth - w - 8)),
     });
-  }, [rect]);
+  }, [rect, inline]);
 
   const move = (d: Date) => {
     setDay(d);
@@ -50,6 +54,7 @@ export function DatePicker({ value, rect, onPick, onClose }: Props) {
   };
 
   useEffect(() => {
+    if (inline) return;
     const onKey = (e: KeyboardEvent) => {
       const steps: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 };
       if (e.key === 'Escape') onClose();
@@ -83,7 +88,7 @@ export function DatePicker({ value, rect, onPick, onClose }: Props) {
   const keep = (e: ReactMouseEvent) => e.preventDefault(); // keep the editor's focus
 
   return (
-    <div ref={box} className="date-picker" style={{ top: pos.top, left: pos.left }} role="dialog" aria-label={t('mentions.chooseDate')} onMouseDown={keep}>
+    <div ref={box} className={`date-picker${inline ? ' inline' : ''}`} style={inline ? undefined : { top: pos.top, left: pos.left }} role="dialog" aria-label={t('mentions.chooseDate')} onMouseDown={keep}>
       <div className="date-picker-head">
         <button type="button" className="date-picker-nav" aria-label={t('mentions.prevMonth')} title={t('mentions.prevMonth')} onClick={() => shiftMonth(-1)}>
           ‹
@@ -113,11 +118,18 @@ export function DatePicker({ value, rect, onPick, onClose }: Props) {
               type="button"
               role="gridcell"
               aria-selected={iso === chosen}
-              aria-label={d.toLocaleDateString(locale(), { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+              aria-label={d.toLocaleDateString(locale(), { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) + (counts?.[iso] ? `, ${t('tasks.dayTasks', { count: counts[iso] })}` : '')}
               className={cls.join(' ')}
               onClick={() => onPick(iso)}
             >
               {d.getDate()}
+              {counts?.[iso] ? (
+                <span className="date-picker-dots" aria-hidden="true">
+                  {Array.from({ length: Math.min(counts[iso], 3) }, (_, i) => (
+                    <i key={i} />
+                  ))}
+                </span>
+              ) : null}
             </button>
           );
         })}
