@@ -8,7 +8,7 @@
 // yesterday), people (me, an email, or its part before the @: "bob"): owner:bob (whose note it
 // is), from:bob (who made it; also by:, author:, reporter:), assignee:bob (also none),
 // shared (shared with anyone), shared:me (shared with the user by someone else),
-// shared:bob (shared with the user by bob), mine (the user's own notes), done, task, p1-p3 (priority:none for none), repeat, estimate, template, type:text|audio|
+// shared:bob (shared with the user by bob), mine (the user's own notes), done, task, p1-p4 (p4 and priority:none for none), repeat, estimate, template, type:text|audio|
 // document|board, and today, tomorrow, overdue on their own. They combine with & (or just a
 // space), | and !, grouped with parentheses; & binds tighter than |.
 import type { Folder, Label, Person, Recording } from '../api/client';
@@ -232,7 +232,7 @@ class Compiler {
           return (r) => noteType(r) === v;
         case 'priority':
         case 'p':
-          if (v === 'none' || v === '0') return (r) => !r.priority;
+          if (v === 'none' || v === '0' || v === '4') return (r) => !r.priority;
           if (!/^[123]$/.test(v)) throw new FilterSyntaxError('badPriority', at);
           return (r) => r.priority === Number(v);
         case 'assignee':
@@ -284,6 +284,8 @@ class Compiler {
         const p = Number(w[1]);
         return (r) => r.priority === p;
       }
+      case 'p4':
+        return (r) => !r.priority;
     }
     return has(text);
   }

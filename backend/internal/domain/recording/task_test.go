@@ -96,3 +96,17 @@ func TestDueAdvanceAndReminder(t *testing.T) {
 		t.Error("a reminder without Remind")
 	}
 }
+
+func TestPriorityRanksP4Last(t *testing.T) {
+	for _, c := range []struct {
+		in, want Priority
+		ok       bool
+	}{{1, 1, true}, {3, 3, true}, {0, 0, true}, {DefaultPriority, 0, true}, {5, 5, false}, {-1, -1, false}} {
+		if got, ok := c.in.Normalize(); got != c.want || ok != c.ok {
+			t.Errorf("Normalize(%d) = %d, %v", c.in, got, ok)
+		}
+	}
+	if !(Priority(1).Rank() < Priority(3).Rank() && Priority(3).Rank() < Priority(0).Rank()) {
+		t.Error("P1 < P3 < none")
+	}
+}

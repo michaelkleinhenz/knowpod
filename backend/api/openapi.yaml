@@ -2049,7 +2049,7 @@ paths:
     put:
       tags: ["Recordings", "Tasks"]
       summary: Set a task's priority
-      description: 1 is the most urgent, 3 the least; 0 clears it. A note gets the `task` label when a priority is set.
+      description: 1 is the most urgent, 3 the least; 4 (P4, the default) or 0 clears it. A note gets the `task` label when a priority from 1 to 3 is set.
       security: [{ sessionCookie: [] }, { adminToken: [] }]
       parameters:
         - { name: recordingId, in: path, required: true, schema: { type: string } }
@@ -3242,8 +3242,8 @@ components:
     Priority:
       type: integer
       minimum: 0
-      maximum: 3
-      description: 1 is the most urgent, 3 the least; 0 or absent is none.
+      maximum: 4
+      description: 1 is the most urgent, 3 the least; 0 or absent is none, shown as P4 (the default). 4 is accepted as input and stored as none.
 
     ActionItem:
       type: object

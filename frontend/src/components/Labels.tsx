@@ -7,7 +7,7 @@ import { errorText } from '../lib/errors';
 import { isTask, LABEL_COLORS, labelName, labelStyle, noteLabels } from '../lib/labels';
 import { formatDue } from '../lib/tasks';
 import { CheckIcon, FinishIcon, TagIcon } from './Icons';
-import { TaskControls } from './TaskControls';
+import { TaskControls, TaskPriority } from './TaskControls';
 import { TimeControls } from './TimeControls';
 
 export function LabelChip({ label, onRemove }: { label: Label; onRemove?: () => void }) {
@@ -192,6 +192,7 @@ export function NoteLabels({ rec, setRec, withTask = true }: { rec: Recording; s
     <div className="note-labels">
       {withTask && <NoteDone rec={rec} setRec={setRec} />}
       {withTask && rec.type !== 'board' && <TaskControls rec={rec} setRec={setRec} />}
+      {withTask && rec.type !== 'board' && <TaskPriority rec={rec} setRec={setRec} />}
       {withTask && rec.type !== 'board' && <TimeControls rec={rec} setRec={setRec} />}
       {noteLabels(rec, labels).map((l) => (
         <LabelChip key={l.id} label={l} onRemove={() => act(() => toggle(l.id))} />

@@ -116,7 +116,7 @@ export function FilterHelp() {
     ['due:none · due:any · due:2026-10-01', 'dueSome'],
     ['due<2026-10-01 · due>=today', 'dueCompare'],
     ['done · task · repeat · estimate · template', 'flags'],
-    ['p1 · p2 · p3 · priority:none', 'priority'],
+    ['p1 · p2 · p3 · p4 · priority:none', 'priority'],
     ['assignee:me · assignee:bob · assignee:none', 'people'],
     ['owner:me · owner:bob · from:me · from:bob', 'owner'],
     ['shared · shared:me · shared:bob · mine', 'shared'],

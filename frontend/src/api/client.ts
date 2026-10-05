@@ -309,7 +309,7 @@ export interface Due {
   remind?: number;
 }
 
-// Priority ranks a task: 1 is the most urgent, 3 the least, 0 none.
+// Priority ranks a task: 1 is the most urgent, 3 the least, 0 none (shown as P4, the default).
 export type Priority = 0 | 1 | 2 | 3;
 
 // TaskFields make a new note a task.

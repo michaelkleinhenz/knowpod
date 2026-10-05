@@ -98,12 +98,18 @@ func TestPriorityAndTakingTheTaskLabelOff(t *testing.T) {
 	f := newTaskFixture(t)
 	ctx := context.Background()
 	rec := f.note(t, TextNoteInput{})
-	if _, err := f.s.SetPriority(ctx, f.acc, rec.ID, 4); !errors.Is(err, ErrInvalidInput) {
-		t.Errorf("priority 4: %v", err)
+	for _, bad := range []recording.Priority{-1, 5} {
+		if _, err := f.s.SetPriority(ctx, f.acc, rec.ID, bad); !errors.Is(err, ErrInvalidInput) {
+			t.Errorf("priority %d: %v", bad, err)
+		}
 	}
 	got, err := f.s.SetPriority(ctx, f.acc, rec.ID, 1)
 	if err != nil || got.Priority != 1 || !slices.Contains(got.Labels, label.Task) {
 		t.Fatalf("%+v, %v", got, err)
+	}
+	// P4 is the default: stored as no priority.
+	if got, err = f.s.SetPriority(ctx, f.acc, rec.ID, recording.DefaultPriority); err != nil || got.Priority != 0 {
+		t.Fatalf("priority 4: %+v, %v", got, err)
 	}
 	if _, err := f.s.SetDue(ctx, f.acc, rec.ID, &recording.Due{Date: "2026-10-01", Remind: ptr(0)}); err != nil {
 		t.Fatal(err)

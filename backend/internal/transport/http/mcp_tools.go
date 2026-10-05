@@ -91,7 +91,7 @@ var mcpTools = []*mcpTool{
 	{
 		Name:  "list_tasks",
 		Title: "List tasks",
-		Description: "Lists the user's tasks (notes labeled as a task), open ones first, by due date and priority. " +
+		Description: "Lists the user's tasks (notes labeled as a task), open ones first, by due date, then priority, then time. " +
 			"Dates are in the user's time zone.",
 		InputSchema: schemaObject(nil, map[string]any{
 			"includeDone": schemaOf("boolean", "Also list checked-off tasks."),
@@ -130,7 +130,7 @@ var mcpTools = []*mcpTool{
 			"task":     schemaOf("boolean", "Make the note a task (implied by dueDate and priority)."),
 			"dueDate":  schemaOf("string", "The task's due date, YYYY-MM-DD."),
 			"dueTime":  schemaOf("string", "The task's due time, HH:MM (24 hours); needs dueDate."),
-			"priority": map[string]any{"type": "integer", "minimum": 0, "maximum": 3, "description": "1 (most urgent) to 3; 0 for none."},
+			"priority": map[string]any{"type": "integer", "minimum": 0, "maximum": 4, "description": "1 (most urgent) to 4; 4 (the default) or 0 for none."},
 		}),
 		Annotations: mcpWrites(false),
 		run:         (*Server).mcpCreateNote,
@@ -160,7 +160,7 @@ var mcpTools = []*mcpTool{
 			"done":     schemaOf("boolean", "Check the task off (true) or open it again (false)."),
 			"dueDate":  schemaOf("string", "The new due date, YYYY-MM-DD; an empty string removes the date."),
 			"dueTime":  schemaOf("string", "The new due time, HH:MM (24 hours), with dueDate; left out for the whole day."),
-			"priority": map[string]any{"type": "integer", "minimum": 0, "maximum": 3, "description": "1 (most urgent) to 3; 0 for none."},
+			"priority": map[string]any{"type": "integer", "minimum": 0, "maximum": 4, "description": "1 (most urgent) to 4; 4 (the default) or 0 for none."},
 		}),
 		Annotations: mcpWrites(true),
 		run:         (*Server).mcpUpdateTask,
@@ -570,7 +570,8 @@ func (s *Server) mcpListTasks(ctx context.Context, acc *service.Account, raw jso
 		}
 		tasks = append(tasks, r)
 	}
-	// Open before done; dated by date and time, before undated; then by priority (none last).
+	// Open before done; dated by date before undated; then by priority (P1 first, none
+	// last), then by time.
 	slices.SortFunc(tasks, func(a, b *recording.Recording) int {
 		if a.Done != b.Done {
 			if a.Done {
@@ -578,10 +579,13 @@ func (s *Server) mcpListTasks(ctx context.Context, acc *service.Account, raw jso
 			}
 			return -1
 		}
-		if d := cmp.Compare(mcpDueKey(a), mcpDueKey(b)); d != 0 {
+		if d := cmp.Compare(mcpDueDay(a), mcpDueDay(b)); d != 0 {
 			return d
 		}
-		if d := cmp.Compare(mcpPriorityKey(a), mcpPriorityKey(b)); d != 0 {
+		if d := cmp.Compare(a.Priority.Rank(), b.Priority.Rank()); d != 0 {
+			return d
+		}
+		if d := cmp.Compare(mcpDueClock(a), mcpDueClock(b)); d != 0 {
 			return d
 		}
 		return b.CreatedAt.Compare(a.CreatedAt)
@@ -593,18 +597,18 @@ func (s *Server) mcpListTasks(ctx context.Context, acc *service.Account, raw jso
 	return map[string]any{"tasks": out, "today": s.now().In(user.LoadLocation(acc.TimeZone)).Format(recording.DateLayout)}, nil
 }
 
-func mcpDueKey(r *recording.Recording) string {
+func mcpDueDay(r *recording.Recording) string {
 	if r.Due == nil {
 		return "~" // after every date
 	}
-	return r.Due.Date + " " + cmp.Or(r.Due.Time, "~")
+	return r.Due.Date
 }
 
-func mcpPriorityKey(r *recording.Recording) int {
-	if r.Priority == 0 {
-		return int(recording.MaxPriority) + 1
+func mcpDueClock(r *recording.Recording) string {
+	if r.Due == nil {
+		return ""
 	}
-	return int(r.Priority)
+	return cmp.Or(r.Due.Time, "~") // timed before all-day
 }
 
 func (s *Server) mcpListFolders(ctx context.Context, acc *service.Account, raw json.RawMessage) (any, error) {
