@@ -5,6 +5,7 @@ import { api, Due, Priority, Recording, Repeat, Sharing } from '../api/client';
 import { errorText } from '../lib/errors';
 import { isoDate, parseTask } from '../lib/dateParse';
 import { dueDate, formatDue, formatReminder, formatRepeat, nthWeekdayRepeat, overdue, REMINDERS } from '../lib/tasks';
+import { isTask } from '../lib/labels';
 import { formatMinutes } from '../lib/timer';
 import { BellIcon, CalendarIcon, ClockIcon, FlagIcon, RepeatIcon } from './Icons';
 
@@ -114,7 +115,7 @@ const openPicker = (e: ReactMouseEvent<HTMLInputElement>) => {
 };
 
 // TaskPicker is a popover that sets a task's date (typed like "tomorrow 3pm" or "every
-// monday", or picked), time, repeat rule, reminder and priority. Changes are saved at once.
+// monday", or picked), time, repeat rule and reminder. Changes are saved at once.
 function TaskPicker({ rec, save, onClose }: { rec: Recording; save: (fn: () => Promise<Recording>) => Promise<void>; onClose: () => void }) {
   const { t } = useTranslation();
   const [text, setText] = useState('');
@@ -252,29 +253,12 @@ function TaskPicker({ rec, save, onClose }: { rec: Recording; save: (fn: () => P
           </select>
         </label>
       </div>
-
-      <div className="task-priorities" role="radiogroup" aria-label={t('tasks.priority')}>
-        {[...PRIORITIES, 0 as Priority].map((p) => (
-          <button
-            key={p}
-            type="button"
-            role="radio"
-            aria-checked={(rec.priority ?? 0) === p}
-            className={`priority-option p${p}${(rec.priority ?? 0) === p ? ' selected' : ''}`}
-            onClick={() => void save(() => api.setNotePriority(rec.id, p))}
-            title={p ? t('tasks.priorityN', { n: p }) : t('tasks.noPriority')}
-          >
-            <FlagIcon size={14} filled={p > 0} />
-            {p ? `P${p}` : t('tasks.noPriorityShort')}
-          </button>
-        ))}
-      </div>
     </div>
   );
 }
 
-// TaskControls shows a task's date and priority in the note's header, with the button
-// that opens the picker. Any note can be given a date; it then becomes a task.
+// TaskControls shows a task's date in the note's header, with the button that opens the
+// picker. Any note can be given a date; it then becomes a task.
 export function TaskControls({ rec, setRec }: { rec: Recording; setRec: (r: Recording) => void }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -301,9 +285,76 @@ export function TaskControls({ rec, setRec }: { rec: Recording; setRec: (r: Reco
             <CalendarIcon size={13} /> {t('tasks.setDate')}
           </>
         )}
-        {rec.priority ? <PriorityFlag priority={rec.priority} /> : null}
       </button>
       {open && <TaskPicker rec={rec} save={save} onClose={() => setOpen(false)} />}
+      {error && <p className="error">{error}</p>}
+    </div>
+  );
+}
+
+// TaskPriority shows a task's priority (P4, the default, when none is set) next to its date,
+// with a button that opens P1 to P4 to pick from. Any note can be given a priority; it then
+// becomes a task.
+export function TaskPriority({ rec, setRec }: { rec: Recording; setRec: (r: Recording) => void }) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const current = rec.priority ?? 0;
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (!(e.target as Element).closest?.('.task-priority')) setOpen(false);
+    };
+    const onKey = (e: globalThis.KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const pick = async (p: Priority) => {
+    setError(null);
+    try {
+      setRec(await api.setNotePriority(rec.id, p));
+      setOpen(false);
+    } catch (err) {
+      setError(errorText(err, t));
+    }
+  };
+  return (
+    <div className="label-add task-priority">
+      <button
+        type="button"
+        className={`label-add-button task-priority-button p${current}${current ? ' has-priority' : ''}`}
+        aria-expanded={open}
+        aria-label={current ? t('tasks.priorityN', { n: current }) : t('tasks.noPriority')}
+        title={current ? t('tasks.priorityN', { n: current }) : t('tasks.noPriority')}
+        onClick={() => setOpen(!open)}
+      >
+        <FlagIcon size={13} filled={current > 0} />
+        {current ? `P${current}` : isTask(rec) ? t('tasks.noPriorityShort') : t('tasks.priority')}
+      </button>
+      {open && (
+        <div className="label-popover priority-popover task-priorities" role="radiogroup" aria-label={t('tasks.priority')}>
+          {[...PRIORITIES, 0 as Priority].map((p) => (
+            <button
+              key={p}
+              type="button"
+              role="radio"
+              aria-checked={current === p}
+              className={`priority-option p${p}${current === p ? ' selected' : ''}`}
+              onClick={() => void pick(p)}
+              title={p ? t('tasks.priorityN', { n: p }) : t('tasks.noPriority')}
+            >
+              <FlagIcon size={14} filled={p > 0} />
+              {p ? `P${p}` : t('tasks.noPriorityShort')}
+            </button>
+          ))}
+        </div>
+      )}
       {error && <p className="error">{error}</p>}
     </div>
   );

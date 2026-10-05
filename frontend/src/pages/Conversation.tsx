@@ -10,7 +10,7 @@ import { inline, Markdown } from '../components/Markdown';
 import { NoteDone, NoteLabels } from '../components/Labels';
 import { Attachments } from '../components/Attachments';
 import { ActionItems } from '../components/ActionItems';
-import { PriorityFlag, TaskControls, TaskPeople } from '../components/TaskControls';
+import { PriorityFlag, TaskControls, TaskPeople, TaskPriority } from '../components/TaskControls';
 import { TimeControls } from '../components/TimeControls';
 import { useTaskParse } from '../lib/useTaskParse';
 import { formatDue, formatRepeat } from '../lib/tasks';
@@ -945,6 +945,7 @@ function NoteBody({ rec, aiReady, aiWriting, tab, setTab, setRec, reload, create
             <fieldset className="note-aside-task view-only-fieldset" disabled={readOnly}>
               <NoteDone rec={rec} setRec={setRec} finish />
               <TaskControls rec={rec} setRec={setRec} />
+              <TaskPriority rec={rec} setRec={setRec} />
               {isTask(rec) && <TaskPeople rec={rec} setRec={setRec} />}
             </fieldset>
           </section>

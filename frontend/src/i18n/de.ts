@@ -133,7 +133,7 @@ export const de: Translation = {
     assignee: 'Bearbeiter',
     unassigned: 'Nicht zugewiesen',
     setDate: 'Datum',
-    pickerTitle: 'Datum und Priorität',
+    pickerTitle: 'Datum',
     typeDate: 'Datum eingeben',
     typeDatePlaceholder: 'z. B. morgen 15 Uhr, jeden Montag, p1',
     notUnderstood: 'Kein Datum erkannt',

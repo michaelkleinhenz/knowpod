@@ -4549,8 +4549,34 @@ p.due-line {
 .task-priorities {
   display: flex;
   gap: 0.25rem;
-  border-top: 1px solid var(--color-border);
-  padding-top: 0.4rem;
+}
+
+.priority-popover {
+  width: auto;
+  min-width: 220px;
+}
+
+.task-priority-button.p1 {
+  --priority: var(--color-error);
+}
+
+.task-priority-button.p2 {
+  --priority: var(--color-orange);
+}
+
+.task-priority-button.p3 {
+  --priority: var(--color-primary);
+}
+
+.task-priority-button.has-priority {
+  color: var(--priority);
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--priority) 35%, transparent);
+}
+
+.task-priority > .error {
+  margin: 0.3rem 0 0;
+  font-size: 0.85rem;
 }
 
 .priority-option {

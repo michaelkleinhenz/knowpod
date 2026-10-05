@@ -131,7 +131,7 @@ export const en = {
     assignee: 'Assignee',
     unassigned: 'Unassigned',
     setDate: 'Date',
-    pickerTitle: 'Date and priority',
+    pickerTitle: 'Date',
     typeDate: 'Type a date',
     typeDatePlaceholder: 'e.g. tomorrow 3pm, every monday, p1',
     notUnderstood: 'No date recognized',
