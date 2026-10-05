@@ -235,6 +235,14 @@ export const de: Translation = {
     due: 'Fällig: {{when}}',
     overdue: 'Überfällig: {{when}}',
   },
+  mentions: {
+    menu: 'Person oder Datum erwähnen',
+    date: 'Datum',
+    chooseDate: 'Datum wählen',
+    prevMonth: 'Vorheriger Monat',
+    nextMonth: 'Nächster Monat',
+    today: 'Heute',
+  },
   noteRefs: {
     menu: 'Auf einen Eintrag verweisen',
     noMatches: 'Kein Eintrag mit dieser Nummer',

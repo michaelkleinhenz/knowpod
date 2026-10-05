@@ -233,6 +233,14 @@ export const en = {
     due: 'Due: {{when}}',
     overdue: 'Overdue: {{when}}',
   },
+  mentions: {
+    menu: 'Mention a person or a date',
+    date: 'Date',
+    chooseDate: 'Choose a date',
+    prevMonth: 'Previous month',
+    nextMonth: 'Next month',
+    today: 'Today',
+  },
   noteRefs: {
     menu: 'Link to an item',
     noMatches: 'No item with this number',

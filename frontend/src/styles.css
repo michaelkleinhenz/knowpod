@@ -6533,6 +6533,179 @@ body.focus-open {
   letter-spacing: 0.03em;
 }
 
+/* Columns are resized by dragging their borders (see lib/tableWidths). Once a column has a
+   width the table is laid out by the widths, so the text wraps inside them. */
+.editor-content table[style^='width'],
+.prose table[style^='width'] {
+  table-layout: fixed;
+  min-width: 0;
+}
+
+.editor-content table:has(col[style^='width']) th,
+.editor-content table:has(col[style^='width']) td,
+.prose table:has(col[style^='width']) th,
+.prose table:has(col[style^='width']) td {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.editor-content .column-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -2px;
+  bottom: -2px;
+  width: 4px;
+  z-index: 2;
+  pointer-events: none;
+  background: var(--color-primary);
+}
+
+.editor-content.resize-cursor,
+.editor-content.resize-cursor * {
+  cursor: col-resize;
+}
+
+/* --- Mentions ("@"): people and dates as pills --- */
+
+.mention-pill {
+  display: inline-block;
+  padding: 0 0.4em;
+  font-size: 0.9em;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+  vertical-align: baseline;
+  color: var(--color-primary-text);
+  background: var(--color-highlight);
+  border-radius: 999px;
+}
+
+.editor-content[contenteditable='true'] .mention-pill.date {
+  cursor: pointer;
+}
+
+.editor-content[contenteditable='true'] .mention-pill.date:hover {
+  background: var(--color-highlight-strong);
+}
+
+.editor-content .mention-pill.ProseMirror-selectednode {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.mention-menu-icon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: var(--color-primary);
+}
+
+.mention-menu-email {
+  margin-left: 0.3rem;
+  font-size: 0.8rem;
+  color: var(--color-muted);
+}
+
+.date-picker {
+  position: fixed;
+  z-index: 50;
+  width: 16.5rem;
+  padding: 0.6rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-soft);
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(var(--shadow-rgb), 0.16), 0 2px 6px rgba(var(--shadow-rgb), 0.08);
+  user-select: none;
+}
+
+.date-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.4rem;
+}
+
+.date-picker-month {
+  font-size: 0.93rem;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.date-picker button {
+  font: inherit;
+  color: var(--color-text);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.date-picker-nav {
+  width: 2rem;
+  height: 2rem;
+  font-size: 1.2rem !important;
+  line-height: 1;
+  border-radius: 7px;
+}
+
+.date-picker-nav:hover,
+.date-picker-day:hover,
+.date-picker-today:hover {
+  background: var(--color-hover) !important;
+}
+
+.date-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.date-picker-weekday {
+  padding: 0.2rem 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: center;
+  color: var(--color-muted);
+}
+
+.date-picker-day {
+  height: 2rem;
+  font-size: 0.88rem !important;
+  font-variant-numeric: tabular-nums;
+  border-radius: 7px;
+}
+
+.date-picker-day.other {
+  color: var(--color-placeholder) !important;
+}
+
+.date-picker-day.today {
+  font-weight: 700;
+  color: var(--color-primary) !important;
+}
+
+.date-picker-day.selected,
+.date-picker-day.selected:hover {
+  color: var(--color-on-primary) !important;
+  background: var(--color-primary) !important;
+}
+
+.date-picker-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.4rem;
+}
+
+.date-picker-today {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.85rem !important;
+  font-weight: 600;
+  color: var(--color-primary-text) !important;
+  border-radius: 7px;
+}
+
 /* --- Writing with AI --- */
 
 .bubble-ai {

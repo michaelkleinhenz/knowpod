@@ -103,6 +103,14 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
   that language, such as "[tomorrow]", "[morgen]", "[Friday]" or "[vor 3 Tagen]" (put the cursor
   in it to see and edit the date), and its whole line is colored by when it is due: red overdue,
   orange today, green within a week, the accent color later; checked-off items aren't colored.
+- **Mentions**: typing **@** in a note's text opens a list with **Date** and the people you
+  share notes with, filtered as you type. A person is shown as a pill ("@anna.berg", kept in the
+  Markdown as "@anna.berg@example.com"). **Date** opens a calendar (arrow keys move the day,
+  Page Up/Down the month, Enter takes it); the date is shown as a pill ("Mon, Oct 5, 2026",
+  kept as "@2026-10-05"), and clicking it (or Enter on it) opens the calendar again to change it.
+- **Table columns** are resized by dragging the border between them (with a mouse). The widths
+  are kept in a comment above the table ("<!-- colwidths: 200 0 120 -->", 0 for a column of
+  natural width), which other Markdown readers don't show.
 - **Boards** are kanban boards, listed like any other note: each shows the notes of a folder,
   with a label or found by a saved filter as cards, all starting in the first column. New boards have the columns Todo,
   In Progress and Done; columns can be renamed, added and deleted, and cards are dragged

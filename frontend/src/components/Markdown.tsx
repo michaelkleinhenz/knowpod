@@ -1,7 +1,9 @@
-import { Fragment, ReactNode } from 'react';
+import { CSSProperties, Fragment, ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { DUE_MARK, dueLabel, dueLineState, dueState, dueText } from '../lib/dueMarks';
 import { imageWidth } from '../lib/imageWidth';
+import { DATE_MENTION, dateMentionText, MENTION, mentionName, validDate } from '../lib/mentions';
+import { COLWIDTHS, MIN_COLUMN_WIDTH, parseColWidths } from '../lib/tableWidths';
 import { NOTE_REF } from '../lib/noteRefs';
 import { NoteRef } from './NoteRef';
 
@@ -64,9 +66,10 @@ export function inline(text: string, noteLinks = false, cite?: Cite): ReactNode[
 }
 
 // plain renders plain text: due marks ("[2026-10-01 en]") relative to today ("[tomorrow]")
-// and colored by when they are due, and with noteLinks, "#12" as links to the notes.
+// and colored by when they are due, mentions ("@bob@example.com", "@2026-10-05") as pills, and
+// with noteLinks, "#12" as links to the notes.
 function plain(text: string, noteLinks: boolean): ReactNode {
-  const rest = (t: string) => (noteLinks ? linkNotes(t) : t);
+  const rest = (t: string) => mentions(t, noteLinks ? linkNotes : (x) => x);
   const out: ReactNode[] = [];
   let last = 0;
   const now = new Date();
@@ -81,6 +84,34 @@ function plain(text: string, noteLinks: boolean): ReactNode {
   }
   if (out.length === 0) return rest(text);
   out.push(<Fragment key="end">{rest(text.slice(last))}</Fragment>);
+  return out;
+}
+
+// MENTIONS finds both kinds of mentions: a person (group 1) or a date (group 2).
+const MENTIONS = new RegExp(`${MENTION.source}|${DATE_MENTION.source}`, 'g');
+
+// mentions shows the people and dates mentioned in text as pills, and the rest by then.
+function mentions(text: string, then: (t: string) => ReactNode): ReactNode {
+  const out: ReactNode[] = [];
+  let last = 0;
+  for (const m of text.matchAll(MENTIONS)) {
+    if (m[2] && !validDate(m[2])) continue;
+    out.push(<Fragment key={`t${m.index}`}>{then(text.slice(last, m.index))}</Fragment>);
+    out.push(
+      m[1] ? (
+        <span key={m.index} className="mention-pill person" title={m[1]}>
+          {mentionName(m[1])}
+        </span>
+      ) : (
+        <span key={m.index} className="mention-pill date" title={m[2]}>
+          {dateMentionText(m[2])}
+        </span>
+      ),
+    );
+    last = m.index! + m[0].length;
+  }
+  if (out.length === 0) return then(text);
+  out.push(<Fragment key="end">{then(text.slice(last))}</Fragment>);
   return out;
 }
 
@@ -116,7 +147,7 @@ type Block =
   | { kind: 'code'; text: string }
   | { kind: 'quote'; children: Block[] }
   | { kind: 'ul' | 'ol'; start: number; items: ListItem[] }
-  | { kind: 'table'; align: Align[]; head: string[]; rows: string[][] };
+  | { kind: 'table'; align: Align[]; head: string[]; rows: string[][]; widths?: number[] };
 
 type Align = 'left' | 'center' | 'right' | undefined;
 
@@ -170,6 +201,7 @@ function tableAt(lines: string[], i: number): boolean {
 function parse(lines: string[]): Block[] {
   const blocks: Block[] = [];
   let i = 0;
+  let widths: number[] | undefined;
   while (i < lines.length) {
     const line = lines[i];
     const trimmed = line.trim();
@@ -185,6 +217,13 @@ function parse(lines: string[]): Block[] {
       blocks.push({ kind: 'code', text: code.join('\n') });
       continue;
     }
+    // The column widths of the table below (see lib/tableWidths); the comment isn't shown.
+    const colwidths = COLWIDTHS.exec(`${line}\n`);
+    if (colwidths) {
+      i++;
+      if (i < lines.length && tableAt(lines, i)) widths = parseColWidths(colwidths[1]);
+      continue;
+    }
     if (tableAt(lines, i)) {
       const head = cells(line);
       const align: Align[] = cells(lines[i + 1]).map((c) =>
@@ -195,7 +234,8 @@ function parse(lines: string[]): Block[] {
         const row = cells(lines[i]);
         rows.push(head.map((_, j) => row[j] ?? ''));
       }
-      blocks.push({ kind: 'table', align, head, rows });
+      blocks.push({ kind: 'table', align, head, rows, widths });
+      widths = undefined;
       continue;
     }
     const heading = HEADING.exec(trimmed);
@@ -256,6 +296,14 @@ function parse(lines: string[]): Block[] {
   return blocks;
 }
 
+// tableStyle sizes a table whose columns have widths like the editor does: as wide as its
+// columns when all have one, else at least that wide.
+function tableStyle(widths: number[] | undefined): CSSProperties | undefined {
+  if (!widths) return undefined;
+  const total = widths.reduce((sum, w) => sum + (w || MIN_COLUMN_WIDTH), 0);
+  return widths.every((w) => w > 0) ? { width: total } : { minWidth: total };
+}
+
 function render(blocks: Block[], noteLinks: boolean, cite?: Cite): ReactNode[] {
   return blocks.map((b, i) => {
     switch (b.kind) {
@@ -277,7 +325,14 @@ function render(blocks: Block[], noteLinks: boolean, cite?: Cite): ReactNode[] {
       case 'table':
         return (
           <div key={i} className="table-wrap">
-            <table>
+            <table style={tableStyle(b.widths)}>
+              {b.widths && (
+                <colgroup>
+                  {b.head.map((_, j) => (
+                    <col key={j} style={b.widths?.[j] ? { width: b.widths[j] } : undefined} />
+                  ))}
+                </colgroup>
+              )}
               <thead>
                 <tr>
                   {b.head.map((c, j) => (
