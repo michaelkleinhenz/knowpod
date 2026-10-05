@@ -760,6 +760,21 @@ paths:
         "403": { $ref: "#/components/responses/Error" }
         "404": { $ref: "#/components/responses/Error" }
 
+  /folders/{folderId}/duplicate:
+    parameters:
+      - { name: folderId, in: path, required: true, schema: { type: string } }
+    post:
+      tags: ["Folders"]
+      summary: Duplicate a folder
+      description: Copies one of your folders with the folders and notes in it next to the original; the copy's name ends in " (copy)". Sharing isn't copied. The folder of a paired reMarkable's documents (`remarkable`) can't be duplicated.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      responses:
+        "201":
+          description: The copy
+          content: { application/json: { schema: { $ref: "#/components/schemas/Folder" } } }
+        "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
   /folders/{folderId}/shares:
     parameters:
       - { name: folderId, in: path, required: true, schema: { type: string } }
@@ -1430,6 +1445,20 @@ paths:
           description: The note without the file
           content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
         "403": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /recordings/{recordingId}/duplicate:
+    post:
+      tags: ["Recordings"]
+      summary: Duplicate a note
+      description: Copies one of your notes with its sub-notes next to the original; the copy's title ends in " (copy)". The copy holds the title and text, labels and pictures; files, sharing, the public link, due dates and logged time aren't copied. A recording or document is copied as a text note of its summary.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      parameters:
+        - { name: recordingId, in: path, required: true, schema: { type: string } }
+      responses:
+        "201":
+          description: The copy
+          content: { application/json: { schema: { $ref: "#/components/schemas/Recording" } } }
         "404": { $ref: "#/components/responses/Error" }
 
   /recordings/{recordingId}/restore:

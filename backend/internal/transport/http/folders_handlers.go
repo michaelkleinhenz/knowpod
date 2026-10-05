@@ -43,6 +43,16 @@ func (s *Server) handleUpdateFolder(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, f)
 }
 
+// handleDuplicateFolder copies a folder with what is in it.
+func (s *Server) handleDuplicateFolder(w http.ResponseWriter, r *http.Request) {
+	f, err := s.folders.Duplicate(r.Context(), accountFrom(r.Context()), chi.URLParam(r, "id"))
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, f)
+}
+
 func (s *Server) handleDeleteFolder(w http.ResponseWriter, r *http.Request) {
 	if err := s.folders.Delete(r.Context(), accountFrom(r.Context()), chi.URLParam(r, "id")); err != nil {
 		s.writeErr(w, err)

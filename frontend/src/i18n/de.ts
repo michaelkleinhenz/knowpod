@@ -291,6 +291,7 @@ export const de: Translation = {
     empty: 'Keine Einträge mit Fälligkeitsdatum.',
   },
   folders: {
+    duplicate: 'Duplizieren',
     viewLabel: 'Einträge sortieren',
     views: { timeline: 'Erstellung', due: 'Fällig', folders: 'Ordner', tasks: 'Aufgaben' },
     new: 'Neuer Ordner',

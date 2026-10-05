@@ -285,6 +285,16 @@ func (s *Server) handleRestoreRecording(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, rec)
 }
 
+// handleDuplicateRecording copies a note with its sub-notes.
+func (s *Server) handleDuplicateRecording(w http.ResponseWriter, r *http.Request) {
+	rec, err := s.actions.Duplicate(r.Context(), accountFrom(r.Context()), chi.URLParam(r, "id"))
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, rec)
+}
+
 // handleEmptyTrash deletes all notes in the trash for good.
 func (s *Server) handleEmptyTrash(w http.ResponseWriter, r *http.Request) {
 	if _, err := s.actions.EmptyTrash(r.Context(), accountFrom(r.Context())); err != nil {

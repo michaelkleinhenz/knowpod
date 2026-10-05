@@ -7188,3 +7188,42 @@ a.state-pill.public-pill {
     margin-right: 0.5em;
   }
 }
+
+/* The menu that opens on right click or long press of a note or folder. */
+.context-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 10rem;
+  margin: 0;
+  padding: 0.25rem;
+  list-style: none;
+  background: var(--color-surface, var(--color-bg));
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(var(--shadow-rgb), 0.25);
+}
+
+.context-menu button {
+  display: block;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.context-menu button:hover,
+.context-menu button:focus-visible {
+  background: var(--color-border-soft);
+  outline: none;
+}
+
+/* No system callout on a long press of a row. */
+.note-line,
+.tree-row {
+  -webkit-touch-callout: none;
+}
