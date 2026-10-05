@@ -6742,6 +6742,41 @@ body.focus-open {
   background: var(--color-primary) !important;
 }
 
+.date-picker.inline {
+  position: static;
+  width: auto;
+  padding: 0.4rem 0;
+  background: none;
+  border: none;
+  box-shadow: none;
+}
+
+.date-picker-day {
+  position: relative;
+}
+
+.date-picker-dots {
+  position: absolute;
+  bottom: 2px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.date-picker-dots i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--color-primary);
+}
+
+.date-picker-day.selected .date-picker-dots i {
+  background: var(--color-on-primary);
+}
+
 .date-picker-foot {
   display: flex;
   justify-content: flex-end;

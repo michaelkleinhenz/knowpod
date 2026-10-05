@@ -133,6 +133,8 @@ export const en = {
     setDate: 'Date',
     pickerTitle: 'Date',
     typeDate: 'Type a date',
+    dayTasks_one: '{{count}} task',
+    dayTasks_other: '{{count}} tasks',
     typeDatePlaceholder: 'e.g. tomorrow 3pm, every monday, p1',
     notUnderstood: 'No date recognized',
     quick: { today: 'Today', tomorrow: 'Tomorrow', nextWeek: 'Next week', none: 'No date' },

@@ -6,6 +6,8 @@ import { errorText } from '../lib/errors';
 import { isoDate, parseTask } from '../lib/dateParse';
 import { dueDate, formatDue, formatReminder, formatRepeat, nthWeekdayRepeat, overdue, REMINDERS } from '../lib/tasks';
 import { isTask } from '../lib/labels';
+import { useNotesIfAny } from '../context/NotesContext';
+import { DatePicker } from './DatePicker';
 import { formatMinutes } from '../lib/timer';
 import { BellIcon, CalendarIcon, ClockIcon, FlagIcon, RepeatIcon } from './Icons';
 
@@ -121,6 +123,13 @@ function TaskPicker({ rec, save, onClose }: { rec: Recording; save: (fn: () => P
   const [text, setText] = useState('');
   const typed = useMemo(() => (text.trim() ? parseTask(text) : null), [text]);
   const due = rec.due;
+  // counts are the open tasks on each day, shown as dots in the calendar.
+  const recordings = useNotesIfAny()?.recordings;
+  const counts = useMemo(() => {
+    const c: Record<string, number> = {};
+    for (const r of recordings ?? []) if (r.id !== rec.id && r.due && !r.done && !r.deletedAt) c[r.due.date] = (c[r.due.date] ?? 0) + 1;
+    return c;
+  }, [recordings, rec.id]);
 
   useEffect(() => {
     const onDown = (e: MouseEvent) => {
@@ -195,12 +204,9 @@ function TaskPicker({ rec, save, onClose }: { rec: Recording; save: (fn: () => P
         )}
       </div>
 
+      <DatePicker inline value={due?.date ?? isoDate(new Date())} counts={counts} onPick={(d) => void setDate(d)} />
+
       <div className="task-fields">
-        <label title={t('tasks.date')}>
-          <CalendarIcon size={12} />
-          <span className="sr-only">{t('tasks.date')}</span>
-          <input type="date" onClick={openPicker} value={due?.date ?? ''} onChange={(e) => e.target.value && void setDate(e.target.value)} />
-        </label>
         <label title={t('tasks.time')}>
           <ClockIcon />
           <span className="sr-only">{t('tasks.time')}</span>
