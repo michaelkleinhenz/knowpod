@@ -1,6 +1,6 @@
 import { Editor, Extension, InputRule, isTextSelection, Range } from '@tiptap/core';
 import { Node as PMNode } from '@tiptap/pm/model';
-import { EditorState, Plugin, PluginKey } from '@tiptap/pm/state';
+import { EditorState, NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import Image from '@tiptap/extension-image';
 import { TaskItem, TaskList } from '@tiptap/extension-list';
@@ -13,16 +13,22 @@ import StarterKit from '@tiptap/starter-kit';
 import Suggestion, { SuggestionKeyDownProps, SuggestionProps } from '@tiptap/suggestion';
 import { ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { api, Recording } from '../api/client';
+import { api, Person, Recording } from '../api/client';
 import { DUE_MARK, dueLabel, dueMarkFor, dueState, dueText } from '../lib/dueMarks';
 import { imageWidth, MIN_IMAGE_WIDTH, withImageWidth } from '../lib/imageWidth';
 import { errorText } from '../lib/errors';
+import { DateMention, PersonMention } from '../lib/mentionNodes';
+import { matchPeople, today } from '../lib/mentions';
 import { matchNotes, NOTE_REF, noteByNumber } from '../lib/noteRefs';
+import { personName } from '../lib/people';
 import { iconKind, title } from '../lib/recordings';
 import { fillTemplate, loadTemplate, Template } from '../lib/templates';
+import { TableWithWidths } from '../lib/tableWidths';
 import { renderTaskItem, taskListTokenizer } from '../lib/taskListMarkdown';
 import { AiPanel, AiTargetExtension, aiTargetKey, insertMarkdown } from './AiWriter';
-import { NoteIcon, SparkleIcon } from './Icons';
+import { DatePicker } from './DatePicker';
+import { CalendarIcon, NoteIcon, SparkleIcon } from './Icons';
+import { Avatar } from './PersonBadge';
 
 interface Props {
   markdown: string;
@@ -49,6 +55,8 @@ interface Props {
   // filled in with title.
   templates?: Template[];
   title?: string;
+  // people are the user and those they share notes with; the others are offered after "@".
+  people?: Person[];
 }
 
 // cleanMarkdown drops the "&nbsp;" lines that empty paragraphs become: Markdown has no
@@ -333,6 +341,96 @@ function noteLinks(bridge: MenuBridge<Recording>, opts: NoteLinkOptions, hint: s
       ];
     },
   });
+}
+
+// --- Mentions ("@") ----------------------------------------------------------------------
+
+// AtItem is an entry of the menu after "@": a date, or a person the user shares notes with.
+type AtItem = { kind: 'date' } | { kind: 'person'; person: Person };
+
+interface AtOptions {
+  people: () => Person[];
+  // dateLabel names the date entry, so it can be found by typing it.
+  dateLabel: () => string;
+  // chooseDate opens the calendar to insert a date at pos.
+  chooseDate: (pos: number) => void;
+}
+
+// atMentions offers a date and the people the user shares notes with after "@" is typed
+// (filtered as the user types); a person is inserted as a pill, a date is chosen first.
+function atMentions(bridge: MenuBridge<AtItem>, opts: AtOptions) {
+  return Extension.create({
+    name: 'atMentions',
+    addProseMirrorPlugins() {
+      return [
+        Suggestion<AtItem>({
+          editor: this.editor,
+          pluginKey: new PluginKey('atMentionSuggestion'),
+          char: '@',
+          items: ({ query }) => {
+            const q = query.trim().toLocaleLowerCase();
+            const date: AtItem[] = !q || opts.dateLabel().toLocaleLowerCase().startsWith(q) || 'date'.startsWith(q) ? [{ kind: 'date' }] : [];
+            return [...date, ...matchPeople(opts.people(), q).map((person): AtItem => ({ kind: 'person', person }))];
+          },
+          command: ({ editor, range, props }) => {
+            if (props.kind === 'person') {
+              editor
+                .chain()
+                .focus()
+                .insertContentAt(range, [
+                  { type: 'personMention', attrs: { email: props.person.email } },
+                  { type: 'text', text: ' ' },
+                ])
+                .run();
+              return;
+            }
+            editor.chain().focus().deleteRange(range).run();
+            opts.chooseDate(range.from);
+          },
+          render: menuRender(bridge),
+        }),
+      ];
+    },
+  });
+}
+
+// AtMenu lists what can be mentioned after typing "@": a date, and people.
+function AtMenu({ state, onHover }: { state: MenuState<AtItem>; onHover: (i: number) => void }) {
+  const { t } = useTranslation();
+  const { menu, pos } = useMenuPosition(state.rect, state.items.length, state.selected);
+  return (
+    <div ref={menu} className="slash-menu note-menu" style={{ top: pos.top, left: pos.left }} role="listbox" aria-label={t('mentions.menu')}>
+      {state.items.length === 0 && <div className="slash-empty">{t('common.noMatches')}</div>}
+      {state.items.map((item, i) => (
+        <button
+          key={item.kind === 'date' ? 'date' : item.person.userId}
+          type="button"
+          role="option"
+          aria-selected={i === state.selected}
+          className={i === state.selected ? 'selected' : ''}
+          onMouseEnter={() => onHover(i)}
+          onMouseDown={(e) => e.preventDefault()} // keep the editor's focus
+          onClick={() => state.choose(item)}
+        >
+          {item.kind === 'date' ? (
+            <>
+              <span className="mention-menu-icon" aria-hidden="true">
+                <CalendarIcon size={14} />
+              </span>
+              <span className="note-menu-title">{t('mentions.date')}</span>
+            </>
+          ) : (
+            <>
+              <Avatar person={item.person} size={20} title="" />
+              <span className="note-menu-title">
+                {personName(item.person)} <span className="mention-menu-email">{item.person.email}</span>
+              </span>
+            </>
+          )}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 // --- Due marks ("[today]") ---------------------------------------------------------------
@@ -638,10 +736,17 @@ const MultilineTaskList = TaskList.extend({
 // at the start of a line opens a block menu, and selecting text shows a formatting bubble.
 // The text is loaded from and read as Markdown, which is how summaries are stored; saving
 // is done by the caller (useAutosave). It is loaded on demand (see Conversation.tsx).
-export default function SummaryEditor({ markdown, onReady, onChange, onSaveShortcut, notes, noteId, onOpenNote, readOnly = false, onConvertTask, aiEnabled = false, templates, title: noteTitle }: Props) {
+export default function SummaryEditor({ markdown, onReady, onChange, onSaveShortcut, notes, noteId, onOpenNote, readOnly = false, onConvertTask, aiEnabled = false, templates, title: noteTitle, people }: Props) {
   const { t } = useTranslation();
   const slash = useMenuBridge<SlashItem>();
   const noteMenu = useMenuBridge<Recording>();
+  const atMenu = useMenuBridge<AtItem>();
+  const peopleRef = useRef<Person[]>(people ?? []);
+  peopleRef.current = people ?? [];
+  // The calendar for a date mention: inserting one at pos, or changing the one at pos. Set
+  // once the editor exists, like insertImagesRef.
+  const [datePicker, setDatePicker] = useState<{ pos: number; insert: boolean; date: string; rect: DOMRect } | null>(null);
+  const openDateRef = useRef<(pos: number, insert: boolean) => void>(() => {});
   // The plugins read the latest notes through these.
   const notesRef = useRef<Recording[]>(notes ?? []);
   notesRef.current = notes ?? [];
@@ -679,12 +784,17 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
       taskItemWithConvert((item, getPos) => convertItemRef.current(item, getPos), t('editor.convertTask')).configure({ nested: true }),
       Placeholder.configure({ placeholder: t('editor.placeholder'), showOnlyCurrent: true }),
       ResizableImage.configure({ allowBase64: false }),
-      // Column widths can't be kept in Markdown, so columns aren't resized.
-      TableKit.configure({ table: { resizable: false } }),
+      // Columns are resized by dragging their borders; the widths are kept in the Markdown
+      // (see lib/tableWidths).
+      TableKit.configure({ table: false }),
+      TableWithWidths.configure({ resizable: true, cellMinWidth: 48, renderWrapper: true }),
       Markdown,
       AiTargetExtension,
       slashCommands(slash.bridge, (id) => t(`editor.slash.${id}`), () => slashUI.current),
       DueMarks,
+      PersonMention,
+      DateMention,
+      atMentions(atMenu.bridge, { people: () => peopleRef.current, dateLabel: () => t('mentions.date'), chooseDate: (pos) => openDateRef.current(pos, true) }),
       noteLinks(noteMenu.bridge, { notes: () => notesRef.current, noteId: () => noteIdRef.current }, t('noteRefs.openHint', { key: /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : t('noteRefs.ctrl') })),
     ],
     content: markdown,
@@ -709,6 +819,12 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
           return false;
         },
       },
+      // A click on a date opens the calendar to choose another.
+      handleClickOn: (view, _pos, node, nodePos) => {
+        if (node.type.name !== 'dateMention' || !view.editable) return false;
+        openDateRef.current(nodePos, false);
+        return true;
+      },
       // A picture pasted (a screenshot, a copied image) or dropped (from the desktop) is
       // uploaded and shown in the text. Text that comes with it (Word) is pasted as usual.
       handlePaste: (_view, event) => {
@@ -725,7 +841,7 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
         insertImagesRef.current(files, view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos);
         return true;
       },
-      handleKeyDown: (_view, event) => {
+      handleKeyDown: (view, event) => {
         if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 's') {
           event.preventDefault();
           onSaveShortcut();
@@ -735,6 +851,13 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
         if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === 'j' && slashUI.current.offers('ai')) {
           event.preventDefault();
           slashUI.current.openAI();
+          return true;
+        }
+        // Enter on a selected date opens the calendar, like a click.
+        const sel = view.state.selection;
+        if (event.key === 'Enter' && sel instanceof NodeSelection && sel.node.type.name === 'dateMention' && view.editable) {
+          event.preventDefault();
+          openDateRef.current(sel.from, false);
           return true;
         }
         return false;
@@ -767,6 +890,44 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
       }
     })();
   };
+
+  openDateRef.current = (pos, insert) => {
+    if (!editor.isEditable) return;
+    const node = insert ? null : editor.state.doc.nodeAt(pos);
+    if (!insert && node?.type.name !== 'dateMention') return;
+    const dom = insert ? null : editor.view.nodeDOM(pos);
+    let rect: DOMRect;
+    if (dom instanceof HTMLElement) rect = dom.getBoundingClientRect();
+    else {
+      const c = editor.view.coordsAtPos(pos);
+      rect = new DOMRect(c.left, c.top, 0, c.bottom - c.top);
+    }
+    editor.view.dispatch(editor.state.tr.setMeta(formatMenuKey, 'hide').setMeta(tableMenuKey, 'hide'));
+    setDatePicker({ pos, insert, date: node?.attrs.date || today(), rect });
+  };
+
+  // pickDate puts the date chosen in the calendar in the text, or changes the date clicked.
+  function pickDate(date: string) {
+    const p = datePicker;
+    setDatePicker(null);
+    if (!p || editor.isDestroyed || !editor.isEditable) return;
+    if (p.insert) {
+      const at = Math.min(p.pos, editor.state.doc.content.size);
+      editor
+        .chain()
+        .focus()
+        .insertContentAt(at, [
+          { type: 'dateMention', attrs: { date } },
+          { type: 'text', text: ' ' },
+        ])
+        .run();
+      return;
+    }
+    const node = editor.state.doc.nodeAt(p.pos);
+    if (node?.type.name !== 'dateMention') return; // the text changed meanwhile
+    editor.view.dispatch(editor.state.tr.setNodeMarkup(p.pos, undefined, { ...node.attrs, date }));
+    editor.commands.focus();
+  }
 
   // Makes a task of a checklist item, then takes the item out of the list. The text may have
   // changed while the task was being created, so the item is looked up again.
@@ -978,6 +1139,8 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
       )}
       {slash.state && <SlashMenu state={slash.state} onHover={slash.hover} />}
       {noteMenu.state && <NoteMenu state={noteMenu.state} onHover={noteMenu.hover} />}
+      {atMenu.state && <AtMenu state={atMenu.state} onHover={atMenu.hover} />}
+      {datePicker && <DatePicker key={`${datePicker.pos}:${datePicker.insert}`} value={datePicker.date} rect={datePicker.rect} onPick={pickDate} onClose={() => setDatePicker(null)} />}
     </div>
   );
 }

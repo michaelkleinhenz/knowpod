@@ -783,6 +783,7 @@ function NoteBody({ rec, aiReady, aiWriting, tab, setTab, setRec, reload, create
                     aiEnabled={aiWriting && !textReadOnly}
                     templates={templates}
                     title={autosave.title}
+                    people={notes.people}
                   />
                 </Suspense>
                 </div>
