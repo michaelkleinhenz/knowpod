@@ -7,9 +7,9 @@ import type { Matcher } from '../lib/filterQuery';
 import { childFolders, folderOf, isInside, isUnderNote, notePath, sortInPlace } from '../lib/folders';
 import { lastFolder, setLastFolder } from '../lib/lastFolder';
 import { setOpen, useOpen } from '../lib/treeOpen';
-import { ChevronIcon, FolderIcon, NewFolderIcon, NewNoteIcon, PencilIcon, ShareIcon, TrashIcon } from './Icons';
+import { ChevronIcon, FolderIcon, NewNoteIcon, ShareIcon } from './Icons';
 import { ShareFolder } from './ShareNote';
-import { MenuDiv } from './ContextMenu';
+import { MenuDiv, MenuItem } from './ContextMenu';
 import { NoteTreeRows, useNoteTree } from './NoteTree';
 
 // Drag data types; the browser only reveals the types (not the data) while dragging over.
@@ -84,6 +84,8 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
   const [editing, setEditing] = useState<Editing | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // sharing is the folder whose sharing is shown, below its row.
+  const [sharing, setSharing] = useState<{ id: string; anchor: HTMLElement } | null>(null);
   const saving = useRef(false);
 
   // Before paint, so the name field is there (and focused) for the first key typed.
@@ -421,13 +423,51 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
       const canAdd = own || f.access === 'editor';
       // Folders shared with the user can still be filed in the user's own tree.
       const canMove = own || !!f.movable;
+      const newItem = () => {
+        openFolder(f, true);
+        onNewInFolder?.(f.id);
+      };
+      // Right click or long press opens the folder's menu; only adding an item has a button.
+      const menu: MenuItem[] = [
+        ...(onNewInFolder && canAdd ? [{ label: t('folders.newItem'), onSelect: newItem }] : []),
+        ...(canAdd
+          ? [
+              {
+                label: t('folders.newInside'),
+                onSelect: () => {
+                  openFolder(f, true);
+                  setEditing({ parentId: f.id, name: '' });
+                },
+              },
+            ]
+          : []),
+        {
+          label: f.shared ? t('sharing.sharedTitle') : t('sharing.folder.title'),
+          onSelect: () => {
+            const anchor = treeRef.current?.querySelector<HTMLElement>(`[data-folder="${CSS.escape(f.id)}"]`);
+            if (anchor) setSharing({ id: f.id, anchor });
+          },
+        },
+        ...(own
+          ? [
+              { label: t('folders.rename'), onSelect: () => setEditing({ id: f.id, parentId: f.parentId ?? '', name: f.name }) },
+              // The folder of a paired reMarkable stays.
+              ...(!f.remarkable
+                ? [
+                    { label: t('folders.duplicate'), onSelect: () => void duplicate(f) },
+                    { label: t('common.delete'), danger: true, onSelect: () => void remove(f) },
+                  ]
+                : []),
+            ]
+          : []),
+      ];
       return (
         <li key={f.id} className="tree-folder">
           {renaming ? (
             nameField
           ) : (
             <MenuDiv
-              items={own && !f.remarkable ? [{ label: t('folders.duplicate'), onSelect: () => void duplicate(f) }] : []}
+              items={menu}
               className={`tree-row${dropClass(dropTarget, f.id)}`}
               data-folder={f.id}
               draggable={canMove}
@@ -471,64 +511,16 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
                 )}
                 <span className="tree-count">{counts.get(f.id) || ''}</span>
               </button>
-              <span className="tree-actions">
-                {onNewInFolder && canAdd && (
-                  <button
-                    type="button"
-                    className="icon-button"
-                    title={t('folders.newItem')}
-                    aria-label={t('folders.newItemLabel', { name: f.name })}
-                    onClick={() => {
-                      openFolder(f, true);
-                      onNewInFolder(f.id);
-                    }}
-                  >
+              {onNewInFolder && canAdd && (
+                <span className="tree-actions">
+                  <button type="button" className="icon-button" title={t('folders.newItem')} aria-label={t('folders.newItemLabel', { name: f.name })} onClick={newItem}>
                     <NewNoteIcon />
                   </button>
-                )}
-                <ShareFolder folder={f} />
-                {canAdd && (
-                  <button
-                    type="button"
-                    className="icon-button"
-                    title={t('folders.newInside')}
-                    aria-label={t('folders.newInsideLabel', { name: f.name })}
-                    onClick={() => {
-                      openFolder(f, true);
-                      setEditing({ parentId: f.id, name: '' });
-                    }}
-                  >
-                    <NewFolderIcon />
-                  </button>
-                )}
-                {own && (
-                  <>
-                    <button
-                      type="button"
-                      className="icon-button"
-                      title={t('folders.rename')}
-                      aria-label={t('folders.renameLabel', { name: f.name })}
-                      onClick={() => setEditing({ id: f.id, parentId: f.parentId ?? '', name: f.name })}
-                    >
-                      <PencilIcon />
-                    </button>
-                    {/* The folder of a paired reMarkable stays. */}
-                    {!f.remarkable && (
-                      <button
-                        type="button"
-                        className="icon-button danger"
-                        title={t('common.delete')}
-                        aria-label={t('folders.deleteLabel', { name: f.name })}
-                        onClick={() => void remove(f)}
-                      >
-                        <TrashIcon />
-                      </button>
-                    )}
-                  </>
-                )}
-              </span>
+                </span>
+              )}
             </MenuDiv>
           )}
+          {sharing?.id === f.id && <ShareFolder folder={f} anchor={sharing.anchor} onClose={() => setSharing(null)} />}
           {isOpen && (
             <ul className="tree-children">
               {editing && !editing.id && editing.parentId === f.id && <li>{nameField}</li>}

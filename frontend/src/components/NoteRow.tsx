@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { Recording } from '../api/client';
 import { isTask } from '../lib/labels';
 import { iconKind, statusLabel, title } from '../lib/recordings';
-import { ChevronIcon, NewNoteIcon, NoteIcon, ShareIcon, TrashIcon } from './Icons';
+import { ChevronIcon, NewNoteIcon, NoteIcon, ShareIcon } from './Icons';
 import { noteOrigin, OriginBadge } from './PersonBadge';
 import { TaskMeta } from './TaskControls';
 import { useNotesIfAny } from '../context/NotesContext';
@@ -22,9 +22,9 @@ interface Props {
   onSetDone: (r: Recording, done: boolean) => void;
   // taskDate shows a task's due date on the row (off where the list is grouped by it).
   taskDate?: boolean;
-  // onNewSub, when set, shows a button that adds a sub-note to the note.
+  // onNewSub, when set, shows a button (and a menu item) that adds a sub-note to the note.
   onNewSub?: (r: Recording) => void;
-  // onTrash, when set, shows a button that moves the note to the trash.
+  // onTrash, when set, adds a menu item that moves the note to the trash.
   onTrash?: (r: Recording) => void;
   onDragStart?: (e: DragEvent) => void;
   // sub is set for a note with sub-notes: how many, and whether they are shown below it.
@@ -42,7 +42,8 @@ interface Props {
 // NoteRow is one note in the sidebar: in front, a toggle for its sub-notes if it has any (in a
 // gutter every row has, so the rows' icons line up); then its type icon (a check box for
 // tasks), title (shortened to fit, its number always shown, to link it with "#12"),
-// processing state and time; and buttons to add a sub-note and move it to the trash.
+// processing state and time; and a button to add a sub-note. Its other actions are in its
+// menu (right click or long press).
 export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = true, onNewSub, onTrash, onDragStart, sub, lineProps, drop, inSharedFolder, children }: Props) {
   const { t } = useTranslation();
   const state = statusLabel(r, aiReady);
@@ -53,9 +54,10 @@ export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = t
   const tabs = useNoteTabs();
   const tabLink = useTabLink();
   // Right click or long press opens a menu: the note opens in a new tab (where tabs are
-  // shown), and only the owner can duplicate it.
+  // shown), gets a sub-note, and only the owner can duplicate it; last it goes to the trash.
   const { handlers: menuHandlers, menu } = useContextMenu([
     ...(tabs && tabsShown() ? [{ label: t('tabs.openInNewTab'), onSelect: () => tabs.open(r.id) }] : []),
+    ...(onNewSub ? [{ label: t('subNotes.new'), onSelect: () => onNewSub(r) }] : []),
     ...(notes && (r.access ?? 'owner') === 'owner'
       ? [
           {
@@ -69,6 +71,7 @@ export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = t
           },
         ]
       : []),
+    ...(onTrash ? [{ label: t('conversation.moveToTrash'), danger: true, onSelect: () => onTrash(r) }] : []),
   ]);
   return (
     <li className={task ? `task-item${r.done ? ' done' : ''}` : undefined}>
@@ -120,18 +123,11 @@ export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = t
           {meta && <span className="conversation-time">{meta}</span>}
         </Link>
         {/* Shown over the end of the row on hover (always on touch screens), like a folder's. */}
-        {(onTrash || onNewSub) && (
+        {onNewSub && (
           <span className="tree-actions note-actions">
-            {onNewSub && (
-              <button type="button" className="icon-button" title={t('subNotes.new')} aria-label={t('subNotes.newLabel', { title: title(r) })} onClick={() => onNewSub(r)}>
-                <NewNoteIcon />
-              </button>
-            )}
-            {onTrash && (
-              <button type="button" className="icon-button danger" title={t('conversation.moveToTrash')} aria-label={t('conversation.moveToTrashLabel', { title: title(r) })} onClick={() => onTrash(r)}>
-                <TrashIcon />
-              </button>
-            )}
+            <button type="button" className="icon-button" title={t('subNotes.new')} aria-label={t('subNotes.newLabel', { title: title(r) })} onClick={() => onNewSub(r)}>
+              <NewNoteIcon />
+            </button>
           </span>
         )}
         {/* Over the note's icon; outside the link so checking doesn't open the note. */}

@@ -308,23 +308,19 @@ export function ShareNote({ rec, setRec }: { rec: Recording; setRec: (r: Recordi
   );
 }
 
-// ShareFolder is a folder row's button that shows who the folder is shared with. Its panel
-// floats over the page (the sidebar's list would cut it off), below the button and within
-// the window.
-export function ShareFolder({ folder: f }: { folder: Folder }) {
-  const { t } = useTranslation();
+// ShareFolder shows who a folder is shared with; it opens from the folder's menu. Its panel
+// floats over the page (the sidebar's list would cut it off), below the folder's row (anchor)
+// and within the window.
+export function ShareFolder({ folder: f, anchor, onClose }: { folder: Folder; anchor: HTMLElement; onClose: () => void }) {
   const notes = useNotes();
-  const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<CSSProperties>({});
-  const button = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
-  useDismiss(open, () => setOpen(false), [button, panel]);
+  useDismiss(true, onClose, [panel]);
   const id = f.id;
 
   useLayoutEffect(() => {
-    if (!open || !button.current) return;
     const place = () => {
-      const r = button.current!.getBoundingClientRect();
+      const r = anchor.getBoundingClientRect();
       const width = Math.min(340, window.innerWidth - 32);
       setPos({ position: 'fixed', top: r.bottom + 6, left: Math.max(16, Math.min(r.left, window.innerWidth - width - 16)), right: 'auto', width });
     };
@@ -335,7 +331,7 @@ export function ShareFolder({ folder: f }: { folder: Folder }) {
       window.removeEventListener('resize', place);
       window.removeEventListener('scroll', place, true);
     };
-  }, [open]);
+  }, [anchor]);
 
   const target: ShareTarget = {
     kind: 'folder',
@@ -349,33 +345,16 @@ export function ShareFolder({ folder: f }: { folder: Folder }) {
       await Promise.all([notes.reload(), notes.reloadFolders()]);
     },
     left: () => {
-      setOpen(false);
+      onClose();
       void notes.reload();
       void notes.reloadFolders();
     },
   };
-  const label = f.shared ? t('sharing.sharedTitle') : t('sharing.folder.title');
 
-  return (
-    <>
-      <button
-        ref={button}
-        type="button"
-        className={`icon-button${open ? ' active' : ''}${f.shared ? ' shared' : ''}`}
-        aria-expanded={open}
-        title={label}
-        aria-label={t('sharing.folder.label', { name: f.name })}
-        onClick={() => setOpen(!open)}
-      >
-        <ShareIcon size={16} />
-      </button>
-      {open &&
-        createPortal(
-          <div ref={panel}>
-            <SharePanel target={target} className="share-popover-floating" style={pos} />
-          </div>,
-          document.body,
-        )}
-    </>
+  return createPortal(
+    <div ref={panel}>
+      <SharePanel target={target} className="share-popover-floating" style={pos} />
+    </div>,
+    document.body,
   );
 }
