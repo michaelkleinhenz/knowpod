@@ -289,6 +289,7 @@ export const en = {
     empty: 'No items with a due date.',
   },
   folders: {
+    duplicate: 'Duplicate',
     viewLabel: 'Sort items',
     views: { timeline: 'Created', due: 'Due', folders: 'Folders', tasks: 'Tasks' },
     new: 'New folder',

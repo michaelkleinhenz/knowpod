@@ -8,6 +8,9 @@ import { ChevronIcon, NewNoteIcon, NoteIcon, ShareIcon, TrashIcon } from './Icon
 import { noteOrigin, OriginBadge } from './PersonBadge';
 import { TaskMeta } from './TaskControls';
 import { useNotesIfAny } from '../context/NotesContext';
+import { api } from '../api/client';
+import { errorText } from '../lib/errors';
+import { useContextMenu } from './ContextMenu';
 
 interface Props {
   rec: Recording;
@@ -46,9 +49,25 @@ export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = t
   const notes = useNotesIfAny();
   // A note from someone else shows their avatar instead of the shared mark.
   const fromOther = !!noteOrigin(r, notes?.filterContext.userId);
+  // Right click or long press opens a menu; only the owner can duplicate a note.
+  const { handlers: menuHandlers, menu } = useContextMenu(
+    notes && (r.access ?? 'owner') === 'owner'
+      ? [
+          {
+            label: t('folders.duplicate'),
+            onSelect: () => {
+              api
+                .duplicateNote(r.id)
+                .then(() => notes.reload())
+                .catch((err) => window.alert(errorText(err, t)));
+            },
+          },
+        ]
+      : [],
+  );
   return (
     <li className={task ? `task-item${r.done ? ' done' : ''}` : undefined}>
-      <div {...lineProps} className={`note-line${drop === true ? ' drop' : drop ? ` drop-${drop}` : ''}`}>
+      <div {...lineProps} {...menuHandlers} className={`note-line${drop === true ? ' drop' : drop ? ` drop-${drop}` : ''}`}>
         <span className="note-gutter">
           {sub && (
             <button
@@ -121,6 +140,7 @@ export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = t
             aria-label={t('labels.doneLabel', { title: title(r) })}
           />
         )}
+        {menu}
       </div>
       {children}
     </li>

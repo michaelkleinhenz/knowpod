@@ -9,6 +9,7 @@ import { lastFolder, setLastFolder } from '../lib/lastFolder';
 import { setOpen, useOpen } from '../lib/treeOpen';
 import { ChevronIcon, FolderIcon, NewFolderIcon, NewNoteIcon, PencilIcon, ShareIcon, TrashIcon } from './Icons';
 import { ShareFolder } from './ShareNote';
+import { MenuDiv } from './ContextMenu';
 import { NoteTreeRows, useNoteTree } from './NoteTree';
 
 // Drag data types; the browser only reveals the types (not the data) while dragging over.
@@ -190,6 +191,13 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
     if (!window.confirm(t('folders.deleteConfirm', { name: f.name }))) return;
     await run(async () => {
       await api.deleteFolder(f.id);
+      await Promise.all([reloadFolders(), reload()]);
+    });
+  }
+
+  async function duplicate(f: Folder) {
+    await run(async () => {
+      await api.duplicateFolder(f.id);
       await Promise.all([reloadFolders(), reload()]);
     });
   }
@@ -418,7 +426,8 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
           {renaming ? (
             nameField
           ) : (
-            <div
+            <MenuDiv
+              items={own && !f.remarkable ? [{ label: t('folders.duplicate'), onSelect: () => void duplicate(f) }] : []}
               className={`tree-row${dropClass(dropTarget, f.id)}`}
               data-folder={f.id}
               draggable={canMove}
@@ -518,7 +527,7 @@ export function FolderTree({ notes, search, activeId, aiReady, onSetDone, onNewS
                   </>
                 )}
               </span>
-            </div>
+            </MenuDiv>
           )}
           {isOpen && (
             <ul className="tree-children">
