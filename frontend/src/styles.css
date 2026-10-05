@@ -7399,6 +7399,10 @@ a.state-pill.public-pill {
   outline: none;
 }
 
+.context-menu button.danger {
+  color: var(--color-error);
+}
+
 /* No system callout on a long press of a row. */
 .note-line,
 .tree-row {

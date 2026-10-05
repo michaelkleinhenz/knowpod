@@ -4,6 +4,8 @@ import { createPortal } from 'react-dom';
 export interface MenuItem {
   label: string;
   onSelect: () => void;
+  // danger marks an item that deletes something.
+  danger?: boolean;
 }
 
 // LONG_PRESS is how long a finger rests on an item to open its menu on touch screens.
@@ -28,7 +30,11 @@ export function useContextMenu(items: MenuItem[]): { handlers: Pick<HTMLAttribut
       e.preventDefault();
       e.stopPropagation();
       cancel();
-      setAt({ x: e.clientX, y: e.clientY });
+      // From the keyboard (the menu key or Shift+F10) there's no pointer: it opens below the item.
+      if (e.clientX === 0 && e.clientY === 0) {
+        const r = e.currentTarget.getBoundingClientRect();
+        setAt({ x: r.left + 8, y: r.bottom });
+      } else setAt({ x: e.clientX, y: e.clientY });
     },
     onTouchStart: (e: TouchEvent) => {
       if (items.length === 0 || e.touches.length !== 1) return;
@@ -98,6 +104,7 @@ function Menu({ at, items, onClose }: { at: { x: number; y: number }; items: Men
           <button
             type="button"
             role="menuitem"
+            className={it.danger ? 'danger' : undefined}
             onClick={() => {
               onClose();
               it.onSelect();
