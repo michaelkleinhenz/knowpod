@@ -145,12 +145,13 @@ const clock = (h: number, m = 0) => (h >= 0 && h < 24 && m >= 0 && m < 60 ? `${p
 // The rules, most specific first. Each removes what it matched from the text; a rule whose
 // part is already known (e.g. a second date) leaves the words in the title.
 const RULES: Rule[] = [
-  // Priority: p1–p3, or !1–!3.
+  // Priority: p1–p4, or !1–!4. P4 is the default, so it only leaves the title.
   {
-    re: re('p([1-3])|!([1-3])'),
+    re: re('p([1-4])|!([1-4])'),
     apply: (m, _t, f) => {
       if (f.priority) return false;
-      f.priority = Number(m[1] ?? m[2]) as Priority;
+      const p = Number(m[1] ?? m[2]);
+      if (p < 4) f.priority = p as Priority;
     },
   },
   // Repeat: "every weekday", "werktags", "jeden Werktag".

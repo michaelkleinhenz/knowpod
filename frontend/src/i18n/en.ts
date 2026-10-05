@@ -142,8 +142,8 @@ export const en = {
     reminder: 'Reminder',
     priority: 'Priority',
     priorityN: 'Priority {{n}}',
-    noPriority: 'No priority',
-    noPriorityShort: 'None',
+    noPriority: 'Priority 4 (default)',
+    noPriorityShort: 'P4',
     overdue: 'Overdue',
     repeat: {
       none: "Doesn't repeat",
@@ -710,7 +710,7 @@ export const en = {
       badDate: 'Unknown date at {{at}}: use today, tomorrow, week, month, overdue, none or 2026-10-01.',
       badType: 'Unknown type at {{at}}: use text, audio, document or board.',
       badPerson: 'Missing person at {{at}}: use me, an email or its part before the @ (or none for assignee).',
-      badPriority: 'Unknown priority at {{at}}: use 1, 2, 3 or none.',
+      badPriority: 'Unknown priority at {{at}}: use 1, 2, 3, 4 or none.',
     },
     help: {
       title: 'How to write filters',
@@ -726,7 +726,7 @@ export const en = {
       people: 'Tasks assigned to you, to bob (an email or its part before the @), or to no one',
       owner: 'Notes you own, or bob owns; notes you, or bob, made (also in a shared note)',
       shared: 'Shared with anyone, shared with you, shared with you by bob; your own notes',
-      priority: 'Tasks with this priority, or without one',
+      priority: 'Tasks with this priority; p4 and priority:none are those without one',
       type: 'Items of this kind',
       combine: 'And (& or a space), or (|), not (!), grouped with parentheses',
     },

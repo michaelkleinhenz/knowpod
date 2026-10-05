@@ -499,7 +499,7 @@ user's labels, folders and notes, both for the workspace list (the search box ta
 language; plain words search the titles) and for boards that show a filter. The language
 has words, `#12`, `label:`/`@`, `folder:` (and the folders in it), `due:` (`today`,
 `tomorrow`, `overdue`, `week`, `month`, `none`, `any`, a date) and `due<`/`<=`/`>`/`>=`,
-`done`, `task`, `p1`–`p3`, `repeat`, `estimate`, `template`, `type:`, people (`owner:`,
+`done`, `task`, `p1`–`p4`, `repeat`, `estimate`, `template`, `type:`, people (`owner:`,
 `from:`/`by:`/`author:`/`reporter:` for who made the note, `assignee:`, `shared:me` and
 `shared:<person>` for notes others shared with the user, `shared`, `mine`; a person is `me`,
 an email, its part before the @ or the start of one, resolved against `GET /me/people`, the
@@ -637,7 +637,7 @@ is kept by the worker like `folderId`.
 
 **Tasks** (`domain/recording/task.go`, `service/tasks.go`). A note labeled `task` has, besides
 `done`, an optional `due` (`date` YYYY-MM-DD, `time` HH:MM, `repeat`, `remind` in minutes
-before) and a `priority` (1–3). Dates are calendar days in the owner's time zone
+before) and a `priority` (1–3; none is shown as P4, the default, and 4 is accepted as none). Dates are calendar days in the owner's time zone
 (`user.timeZone`, set by the web app from the browser through `PUT /me/preferences`), so a
 repeat like "every Monday at 9:00" stays at 9:00 across daylight saving changes.
 `PUT /recordings/{id}/due` and `/priority` label the note as a task; taking the label off

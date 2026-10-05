@@ -144,8 +144,8 @@ export const de: Translation = {
     reminder: 'Erinnerung',
     priority: 'Priorität',
     priorityN: 'Priorität {{n}}',
-    noPriority: 'Keine Priorität',
-    noPriorityShort: 'Keine',
+    noPriority: 'Priorität 4 (Standard)',
+    noPriorityShort: 'P4',
     overdue: 'Überfällig',
     repeat: {
       none: 'Keine Wiederholung',
@@ -712,7 +712,7 @@ export const de: Translation = {
       badDate: 'Unbekanntes Datum bei {{at}}: today, tomorrow, week, month, overdue, none oder 2026-10-01.',
       badType: 'Unbekannte Art bei {{at}}: text, audio, document oder board.',
       badPerson: 'Person fehlt bei {{at}}: me, eine E-Mail oder ihr Teil vor dem @ (bei assignee auch none).',
-      badPriority: 'Unbekannte Priorität bei {{at}}: 1, 2, 3 oder none.',
+      badPriority: 'Unbekannte Priorität bei {{at}}: 1, 2, 3, 4 oder none.',
     },
     help: {
       title: 'So schreibst du Filter',
@@ -728,7 +728,7 @@ export const de: Translation = {
       people: 'Aufgaben, die dir, bob (E-Mail oder ihr Teil vor dem @) oder niemandem zugewiesen sind',
       owner: 'Notizen, die dir oder bob gehören; die du oder bob erstellt hast (auch in einer geteilten Notiz)',
       shared: 'Mit jemandem geteilt, mit dir geteilt, von bob mit dir geteilt; deine eigenen Notizen',
-      priority: 'Aufgaben mit dieser Priorität oder ohne',
+      priority: 'Aufgaben mit dieser Priorität; p4 und priority:none sind die ohne',
       type: 'Einträge dieser Art',
       combine: 'Und (& oder ein Leerzeichen), oder (|), nicht (!), gruppiert mit Klammern',
     },

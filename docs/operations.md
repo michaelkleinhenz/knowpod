@@ -419,10 +419,11 @@ curl -H "Authorization: Bearer $ADMIN_TOKEN" "$API/recordings/<id>/summary?forma
 
 Any note can be a task: the **Date** button on the note's page (in its header, or in its
 sidebar on wide screens) sets a due date (typed as "tomorrow 3pm", "every monday", "jeden
-Monat am 1.", "every third friday", "jeden letzten Montag" or picked), an optional time, a repeat rule, a reminder and a priority (P1–P3), and puts the **Task** label on it. Typing a date
+Monat am 1.", "every third friday", "jeden letzten Montag" or picked), an optional time, a repeat rule, a reminder and a priority (P1–P4, P4 being the default), and puts the **Task** label on it. Typing a date
 into a note's title offers it as the task's date (Enter takes it out of the title). The
 **Tasks** view of the workspace list shows the open tasks by due date (overdue, today, the next
-days, later, no date) and adds tasks from one line ("Call Anna tomorrow 3pm p1"). Checking
+days, later, no date), within a day the most urgent first (P1 red, P2 orange, P3 blue, P4
+without color), and adds tasks from one line ("Call Anna tomorrow 3pm p1"). Checking
 off a recurring task moves it to its next date.
 
 Summaries list the **action items** found in the conversation (who does what, by when).

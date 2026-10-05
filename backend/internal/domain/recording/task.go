@@ -203,11 +203,32 @@ func (d *Due) Advance(today string) bool {
 	return true
 }
 
-// Priority ranks a task, like Todoist: 1 is the most urgent, 3 the least; 0 is none.
+// Priority ranks a task, like Todoist: 1 is the most urgent, 3 the least; 0 is none, shown
+// as P4, the default every task starts with.
 type Priority int
 
-// MaxPriority is the lowest-ranked priority that can be set.
+// MaxPriority is the lowest-ranked priority that is stored.
 const MaxPriority Priority = 3
+
+// DefaultPriority (P4) is the rank of a task without a priority. It is accepted as input
+// and stored as 0.
+const DefaultPriority Priority = 4
+
+// Normalize returns p with DefaultPriority as 0, and whether p is a valid priority.
+func (p Priority) Normalize() (Priority, bool) {
+	if p == DefaultPriority {
+		return 0, true
+	}
+	return p, p >= 0 && p <= MaxPriority
+}
+
+// Rank orders priorities from the most urgent: P1 first, a task without one (P4) last.
+func (p Priority) Rank() int {
+	if p == 0 {
+		return int(DefaultPriority)
+	}
+	return int(p)
+}
 
 // ActionItem is a follow-up the AI found in a recording or document: something someone
 // committed to or was asked to do. It can be turned into a task note.

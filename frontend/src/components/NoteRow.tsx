@@ -113,7 +113,7 @@ export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = t
         {task && (
           <input
             type="checkbox"
-            className="task-check"
+            className={`task-check${r.priority ? ` p${r.priority}` : ''}`}
             checked={!!r.done}
             disabled={r.access === 'viewer'}
             title={r.access === 'viewer' ? t('labels.viewOnly') : r.due?.repeat && !r.done ? t('labels.repeatHint') : undefined}

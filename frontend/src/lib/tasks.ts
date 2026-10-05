@@ -101,15 +101,18 @@ export function formatReminder(minutes: number | undefined, allDay: boolean): st
   return t('tasks.remind.minutesBefore', { count: minutes });
 }
 
-// compareTasks orders tasks by date (timed before all-day on the same day, no date last),
-// then priority (none last), then title.
+// compareTasks orders tasks by date (no date last), then priority (P1 first, P4 — none —
+// last), then time (timed before all-day).
 export function compareTasks(a: Recording, b: Recording): number {
-  const da = a.due ? `${a.due.date} ${a.due.time ?? '99:99'}` : '9999';
-  const db = b.due ? `${b.due.date} ${b.due.time ?? '99:99'}` : '9999';
+  const da = a.due?.date ?? '9999';
+  const db = b.due?.date ?? '9999';
   if (da !== db) return da < db ? -1 : 1;
-  const pa = a.priority || 9;
-  const pb = b.priority || 9;
-  return pa - pb;
+  const pa = a.priority || 4;
+  const pb = b.priority || 4;
+  if (pa !== pb) return pa - pb;
+  const ta = a.due?.time ?? '99:99';
+  const tb = b.due?.time ?? '99:99';
+  return ta < tb ? -1 : ta > tb ? 1 : 0;
 }
 
 export interface TaskGroup {

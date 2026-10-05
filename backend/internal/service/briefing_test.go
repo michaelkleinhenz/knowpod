@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -442,5 +443,26 @@ func TestBriefingRefLinksEveryNote(t *testing.T) {
 		if got := d.ref(c.r); got != c.want {
 			t.Errorf("ref(%s) = %q, want %q", c.r.ID, got, c.want)
 		}
+	}
+}
+
+func TestBriefingListsADaysTasksByPriorityFirst(t *testing.T) {
+	task := func(id, date, clock string, p recording.Priority) *recording.Recording {
+		return &recording.Recording{ID: id, Labels: []string{label.Task}, Due: &recording.Due{Date: date, Time: clock}, Priority: p}
+	}
+	d := &briefingData{notes: []*recording.Recording{
+		task("p4-morning", "2026-09-27", "08:00", 0),
+		task("tomorrow-p1", "2026-09-28", "", 1),
+		task("p1-allday", "2026-09-27", "", 1),
+		task("p2-evening", "2026-09-27", "18:00", 2),
+		task("p2-noon", "2026-09-27", "12:00", 2),
+	}}
+	var got []string
+	for _, r := range d.openTasks(func(*recording.Recording) bool { return true }) {
+		got = append(got, r.ID)
+	}
+	want := []string{"p1-allday", "p2-noon", "p2-evening", "p4-morning", "tomorrow-p1"}
+	if !slices.Equal(got, want) {
+		t.Errorf("got %v, want %v", got, want)
 	}
 }

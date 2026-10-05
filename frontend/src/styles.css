@@ -3356,6 +3356,30 @@ html:has(.notes-layout) {
   --icon-w: 22px;
 }
 
+/* A prioritized task's check box is ringed in its priority's color (P4, none, stays plain). */
+.task-check.p1 {
+  --priority: var(--color-error);
+}
+
+.task-check.p2 {
+  --priority: var(--color-orange);
+}
+
+.task-check.p3 {
+  --priority: var(--color-primary);
+}
+
+.task-check:is(.p1, .p2, .p3) {
+  border-radius: 4px;
+  outline: 2px solid var(--priority);
+  outline-offset: 0;
+  accent-color: var(--priority);
+}
+
+.task-check:is(.p1, .p2, .p3):focus-visible {
+  outline-offset: 2px;
+}
+
 .task-item .doc-icon > :not(rect:first-child) {
   opacity: 0.15;
 }

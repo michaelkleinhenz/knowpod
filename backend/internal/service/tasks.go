@@ -120,11 +120,12 @@ func (s *RecordingService) SetDue(ctx context.Context, acc *Account, id string, 
 	})
 }
 
-// SetPriority ranks the task (1 most urgent … 3; 0 none). A note gets the task label when a
-// priority is set.
+// SetPriority ranks the task (1 most urgent … 3; 0 or 4 none). A note gets the task label
+// when a priority is set.
 func (s *RecordingService) SetPriority(ctx context.Context, acc *Account, id string, p recording.Priority) (*recording.Recording, error) {
-	if p < 0 || p > recording.MaxPriority {
-		return nil, invalid("priority must be 0 (none) to %d", recording.MaxPriority)
+	p, ok := p.Normalize()
+	if !ok {
+		return nil, invalid("priority must be 1 to %d, or 0 (none)", recording.DefaultPriority)
 	}
 	return s.change(ctx, acc, id, recording.RoleEditor, func(rec *recording.Recording, _ recording.Role) error {
 		if p > 0 {
@@ -218,9 +219,11 @@ type TaskFields struct {
 
 // apply validates the fields and sets them on a new note.
 func (f TaskFields) apply(s *RecordingService, ctx context.Context, rec *recording.Recording) error {
-	if f.Priority < 0 || f.Priority > recording.MaxPriority {
-		return invalid("priority must be 0 (none) to %d", recording.MaxPriority)
+	p, ok := f.Priority.Normalize()
+	if !ok {
+		return invalid("priority must be 1 to %d, or 0 (none)", recording.DefaultPriority)
 	}
+	f.Priority = p
 	due, err := cleanDue(f.Due)
 	if err != nil {
 		return err

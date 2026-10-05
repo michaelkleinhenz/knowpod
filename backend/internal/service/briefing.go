@@ -470,7 +470,8 @@ func (d *briefingData) ref(r *recording.Recording) string {
 // linkText keeps brackets in a title from ending its link's text early.
 var linkText = strings.NewReplacer("[", "(", "]", ")")
 
-// openTasks returns the open tasks matching keep, by date, time and priority.
+// openTasks returns the open tasks matching keep, by date, then priority (P1 first), then
+// time.
 func (d *briefingData) openTasks(keep func(r *recording.Recording) bool) []*recording.Recording {
 	var out []*recording.Recording
 	for _, r := range d.notes {
@@ -479,26 +480,29 @@ func (d *briefingData) openTasks(keep func(r *recording.Recording) bool) []*reco
 		}
 	}
 	slices.SortStableFunc(out, func(a, b *recording.Recording) int {
-		if c := strings.Compare(dueKey(a), dueKey(b)); c != 0 {
+		if c := strings.Compare(dueDay(a), dueDay(b)); c != 0 {
 			return c
 		}
-		return int(priorityRank(a) - priorityRank(b))
+		if c := a.Priority.Rank() - b.Priority.Rank(); c != 0 {
+			return c
+		}
+		return strings.Compare(dueClock(a), dueClock(b))
 	})
 	return out
 }
 
-func dueKey(r *recording.Recording) string {
+func dueDay(r *recording.Recording) string {
 	if r.Due == nil {
 		return "9999"
 	}
-	return r.Due.Date + " " + r.Due.Time
+	return r.Due.Date
 }
 
-func priorityRank(r *recording.Recording) recording.Priority {
-	if r.Priority == 0 {
-		return 9
+func dueClock(r *recording.Recording) string {
+	if r.Due == nil {
+		return ""
 	}
-	return r.Priority
+	return r.Due.Time
 }
 
 // taskLine is a task in a list: its check box, title, time or date and priority.
