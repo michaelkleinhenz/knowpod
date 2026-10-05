@@ -11,6 +11,7 @@ import { useNotesIfAny } from '../context/NotesContext';
 import { api } from '../api/client';
 import { errorText } from '../lib/errors';
 import { useContextMenu } from './ContextMenu';
+import { tabsShown, useNoteTabs, useTabLink } from '../context/NoteTabs';
 
 interface Props {
   rec: Recording;
@@ -49,9 +50,13 @@ export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = t
   const notes = useNotesIfAny();
   // A note from someone else shows their avatar instead of the shared mark.
   const fromOther = !!noteOrigin(r, notes?.filterContext.userId);
-  // Right click or long press opens a menu; only the owner can duplicate a note.
-  const { handlers: menuHandlers, menu } = useContextMenu(
-    notes && (r.access ?? 'owner') === 'owner'
+  const tabs = useNoteTabs();
+  const tabLink = useTabLink();
+  // Right click or long press opens a menu: the note opens in a new tab (where tabs are
+  // shown), and only the owner can duplicate it.
+  const { handlers: menuHandlers, menu } = useContextMenu([
+    ...(tabs && tabsShown() ? [{ label: t('tabs.openInNewTab'), onSelect: () => tabs.open(r.id) }] : []),
+    ...(notes && (r.access ?? 'owner') === 'owner'
       ? [
           {
             label: t('folders.duplicate'),
@@ -63,8 +68,8 @@ export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = t
             },
           },
         ]
-      : [],
-  );
+      : []),
+  ]);
   return (
     <li className={task ? `task-item${r.done ? ' done' : ''}` : undefined}>
       <div {...lineProps} {...menuHandlers} className={`note-line${drop === true ? ' drop' : drop ? ` drop-${drop}` : ''}`}>
@@ -89,6 +94,7 @@ export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = t
           title={title(r)}
           draggable={!!onDragStart}
           onDragStart={onDragStart}
+          {...tabLink(r.id)}
         >
           <NoteIcon type={iconKind(r)} label={t(`conversations.types.${iconKind(r)}`)} />
           <span className="conversation-title">
