@@ -2783,7 +2783,8 @@ button.sync-state:focus-visible {
    stays in place as the page scrolls, and at the window's left edge while the sidebar is hidden. */
 .sidebar-toggle {
   position: fixed;
-  top: calc(var(--header-height, calc(3.5rem + env(safe-area-inset-top))) + 0.6rem);
+  /* Centred on the tabs, which sit at the bottom of the 3.1rem bar. */
+  top: calc(var(--header-height, calc(3.5rem + env(safe-area-inset-top))) + 1rem);
   left: calc(var(--sidebar-width, 20rem) + 0.6rem);
   z-index: 5;
   display: inline-flex;
