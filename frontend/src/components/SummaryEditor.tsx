@@ -1085,7 +1085,13 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
         pluginKey={tableMenuKey}
         className="bubble-menu table-menu"
         options={{ placement: 'top-start' }}
-        shouldShow={({ editor: e, state }) => e.isEditable && state.selection.empty && e.isActive('table') && !aiOpen}
+        shouldShow={({ editor: e, view, state, element }) =>
+          e.isEditable &&
+          state.selection.empty &&
+          e.isActive('table') &&
+          !aiOpen &&
+          (view.hasFocus() || element.contains(document.activeElement))
+        }
         getReferencedVirtualElement={() => {
           const at = editor.view.domAtPos(editor.state.selection.from).node;
           const table = (at instanceof Element ? at : at.parentElement)?.closest('table');
