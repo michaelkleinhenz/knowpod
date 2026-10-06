@@ -677,6 +677,7 @@ func (m *Sessions) Count() int {
 type Settings struct {
 	mu         sync.Mutex
 	openRouter settings.OpenRouter
+	email      settings.Email
 	webPush    *settings.WebPush
 }
 
@@ -694,6 +695,20 @@ func (m *Settings) SaveOpenRouter(_ context.Context, s *settings.OpenRouter) err
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.openRouter = *s
+	return nil
+}
+
+func (m *Settings) Email(context.Context) (*settings.Email, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.email
+	return &s, nil
+}
+
+func (m *Settings) SaveEmail(_ context.Context, s *settings.Email) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.email = *s
 	return nil
 }
 

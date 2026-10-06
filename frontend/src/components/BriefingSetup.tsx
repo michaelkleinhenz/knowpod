@@ -68,6 +68,11 @@ export function BriefingSetup() {
               <input type="checkbox" checked={settings.notify} disabled={busy} onChange={(e) => void save({ ...settings, notify: e.target.checked })} />
               {t('briefing.notify')}
             </label>
+            <label className="checkbox">
+              <input type="checkbox" checked={settings.email} disabled={busy || !settings.emailAvailable} onChange={(e) => void save({ ...settings, email: e.target.checked })} />
+              {t('briefing.email')}
+            </label>
+            {!settings.emailAvailable && <p className="muted field-note">{t('briefing.emailUnavailable')}</p>}
             <fieldset className="briefing-sections">
               <legend>{t('briefing.sections')}</legend>
               {BRIEFING_SECTIONS.map((sec) => (

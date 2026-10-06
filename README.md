@@ -195,6 +195,9 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
   overdue, the notes that came in since the day before with an AI digest, and open action
   items; the weekly review sums up the week before: new notes, tasks done, time logged, and
   what is overdue, coming up or waiting for over 30 days. Both can also be made right away.
+  The daily briefing can also be sent by email (off by default; turn it on in the same place
+  once an admin has set up email under **Admin → General → Email (Amazon SES)**, where a test
+  email can be sent to check the setup).
 - **Voice memos**: **Record** (the microphone next to the search box) records in the
   browser, also while you move around the app; mark moments as highlights while recording.
   The memo is saved as a WAV file and transcribed and summarized like any recording.

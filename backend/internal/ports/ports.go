@@ -185,6 +185,8 @@ type SessionRepository interface {
 type SettingsRepository interface {
 	OpenRouter(ctx context.Context) (*settings.OpenRouter, error)
 	SaveOpenRouter(ctx context.Context, s *settings.OpenRouter) error
+	Email(ctx context.Context) (*settings.Email, error)
+	SaveEmail(ctx context.Context, s *settings.Email) error
 	// InitWebPush stores the VAPID keys unless keys are stored already, and returns the
 	// stored ones.
 	InitWebPush(ctx context.Context, k *settings.WebPush) (*settings.WebPush, error)

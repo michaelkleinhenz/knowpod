@@ -56,6 +56,8 @@ type BriefingService struct {
 	clock   func() time.Time
 	// Notifications announce new briefings. Optional.
 	Notifications *NotificationService
+	// Emails sends the daily briefing to users who want it by email. Optional.
+	Emails *EmailService
 	// TimeEntries adds the week's logged time to the weekly review. Optional.
 	TimeEntries ports.TimeEntryRepository
 }
@@ -75,6 +77,10 @@ type BriefingSettings struct {
 	WeeklyDay int `json:"weeklyDay"`
 	// Notify announces the daily briefing with a notification.
 	Notify bool `json:"notify"`
+	// Email sends the daily briefing by email (when the administrator set up email).
+	Email bool `json:"email"`
+	// EmailAvailable tells whether the administrator set up email; read-only.
+	EmailAvailable bool `json:"emailAvailable"`
 	// Sections are the daily briefing's parts besides the tasks due today (see
 	// user.BriefingSections); left out, they stay as they are.
 	Sections []string `json:"sections"`
@@ -96,8 +102,8 @@ func (s *BriefingService) Settings(ctx context.Context, acc *Account) (*Briefing
 			sections = append(sections, sec)
 		}
 	}
-	return &BriefingSettings{Daily: b.Daily(), Weekly: b.Weekly, Time: b.At(), WeeklyDay: int(b.ReviewDay()),
-		Notify: !b.NoNotify, Sections: sections, ActionItemDays: b.ActionDays()}, nil
+	return &BriefingSettings{EmailAvailable: s.Emails != nil && s.Emails.Enabled(ctx), Daily: b.Daily(), Weekly: b.Weekly, Time: b.At(), WeeklyDay: int(b.ReviewDay()),
+		Notify: !b.NoNotify, Email: b.Email, Sections: sections, ActionItemDays: b.ActionDays()}, nil
 }
 
 // UpdateSettings changes the account's briefing settings.
@@ -128,6 +134,7 @@ func (s *BriefingService) UpdateSettings(ctx context.Context, acc *Account, in B
 	shown, days := slices.Clone(b.Sections), b.ActionItemDays
 	day := in.WeeklyDay
 	b.DailyOff, b.Weekly, b.Time, b.WeeklyDay, b.NoNotify = !in.Daily, in.Weekly, in.Time, &day, !in.Notify
+	b.Email = in.Email
 	if in.Sections != nil {
 		// Kept in their order, each once; an empty list is kept, too (not the default).
 		b.Sections = []string{}
@@ -364,8 +371,16 @@ func (s *BriefingService) makeDaily(ctx context.Context, u *user.User, day, lang
 // user doesn't want that.
 func (s *BriefingService) announceDaily(ctx context.Context, u *user.User, day, lang string) error {
 	t, err := s.makeDaily(ctx, u, day, lang)
-	if err != nil || s.Notifications == nil || u.Briefing.NoNotify {
+	if err != nil {
 		return err
+	}
+	if u.Briefing.Email && s.Emails != nil && s.Emails.Enabled(ctx) {
+		if err := s.Emails.Send(ctx, u.Email, t.Title, t.Markdown); err != nil {
+			s.log.Warn("emailing a briefing failed", "user", u.ID, "err", err)
+		}
+	}
+	if s.Notifications == nil || u.Briefing.NoNotify {
+		return nil
 	}
 	m := Message{Title: t.Title, Body: t.Summary, URL: "/briefing", Tag: "briefing-" + string(BriefingDaily)}
 	if _, err := s.Notifications.Notify(ctx, u.ID, m, briefingTTL); err != nil {
