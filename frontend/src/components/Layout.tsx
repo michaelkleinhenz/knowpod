@@ -4,7 +4,7 @@ import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useOffline } from '../api/offline';
 import { useAuth } from '../auth';
 import { RecorderProvider, useRecorder } from '../context/Recorder';
-import { appContext, isAndroidApp, useDesktopNotifications } from '../lib/desktop';
+import { appContext, isMobileApp, useDesktopNotifications } from '../lib/desktop';
 import { MicIcon, SignOutIcon, UsbIcon, WifiIcon } from './Icons';
 import { NewItemDialog } from './NewItemDialog';
 import { PocketUsbSyncDialog, pocketUsbSyncAvailable } from './PocketUsbSync';
@@ -165,9 +165,10 @@ export function Layout({ children }: { children: ReactNode }) {
   );
 }
 
-// PocketSyncIcon is the Pocket Sync button's icon: WiFi in the Android app, USB in the desktop app.
+// PocketSyncIcon is the Pocket Sync button's icon: WiFi in the Android and iOS apps, USB in the
+// desktop app.
 function PocketSyncIcon({ size }: { size?: number }) {
-  return isAndroidApp() ? <WifiIcon size={size} /> : <UsbIcon size={size} />;
+  return isMobileApp() ? <WifiIcon size={size} /> : <UsbIcon size={size} />;
 }
 
 // HeaderRecordButton starts a voice memo from the phone's header, left of the menu button; while

@@ -5,8 +5,8 @@ import WebKit
 // knowpod for iOS: the knowpod web app in a WKWebView, like the Android app (mobile/android/)
 // and the desktop app (desktop/). The backend isn't bundled; the app loads the web UI from a
 // knowpod server, whose address the bundled setup page (www/) asks for on the first start.
-// It shows the server's notifications while it runs; unlike the Android app it doesn't copy
-// from a Pocket recorder.
+// It shows the server's notifications while it runs, and, like the Android app, copies from a
+// Pocket recorder over Bluetooth and the recorder's WiFi (Pocket/).
 class MainViewController: CAPBridgeViewController {
     // current is the app's controller, for a clicked notification.
     private static weak var current: MainViewController?

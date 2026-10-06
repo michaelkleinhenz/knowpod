@@ -3,7 +3,9 @@ import WebKit
 
 // AppBridge tells the web app it runs in the iOS app (window.knowpodIOS, see
 // frontend/src/lib/desktop.ts), like the Android app's AppBridge.java: it lets the web app show
-// notifications and open the page of a clicked one, and go back to the setup page.
+// notifications and open the page of a clicked one, set up the Pocket recorder's Bluetooth
+// connection and copy from the Pocket (Pocket/PocketController.swift), and go back to the
+// setup page.
 //
 // Only pages of the knowpod server get it: the script that offers it runs in the main frame of
 // the server's origin only, and messages from anywhere else are ignored.
@@ -41,22 +43,32 @@ final class AppBridge: NSObject, WKScriptMessageHandler {
         pageReady = false
     }
 
-    // shim is the window.knowpodIOS the web app sees; events come back through
-    // window.__knowpodIOSEvent.
+    // shim is the window.knowpodIOS the web app sees: calls go out as {id, method, args} and
+    // come back as {id, result}, events as {event, …}, both through window.__knowpodIOSEvent.
     private func shim(server: String) -> String {
         """
         (() => {
           const native = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.\(Self.channel);
           if (!native || window.knowpodIOS || window.location.origin !== \(jsString(server))) return;
           const openListeners = new Set();
+          const pending = new Map();
+          let next = 1;
           const post = (message) => native.postMessage(JSON.stringify(message));
           Object.defineProperty(window, '__knowpodIOSEvent', { value: (m) => {
-            if (m && m.event === 'open') openListeners.forEach((l) => l(m.url));
+            if (!m) return;
+            if (m.event === 'open') openListeners.forEach((l) => l(m.url));
+            else if (pending.has(m.id)) { pending.get(m.id)(m.result); pending.delete(m.id); }
           } });
+          const call = (method, args) => new Promise((resolve) => {
+            const id = next++;
+            pending.set(id, resolve);
+            post({ id, method, args });
+          });
           Object.defineProperty(window, 'knowpodIOS', { value: Object.freeze({
             platform: 'ios',
             version: \(jsString(controller?.versionName ?? "")),
             notify: (message) => post({ method: 'notify', args: message }),
+            pocketBluetooth: (request) => call('pocketBluetooth', request),
             showSetup: () => post({ method: 'showSetup' }),
             onOpen: (listener) => { openListeners.add(listener); return () => openListeners.delete(listener); },
           }) });
@@ -79,6 +91,14 @@ final class AppBridge: NSObject, WKScriptMessageHandler {
             if let args = m["args"] as? [String: Any] { Notifications.show(args) }
         case "showSetup":
             controller?.showSetup(nil)
+        case "pocketBluetooth":
+            let id = m["id"] as? Int ?? 0
+            let request = m["args"] as? [String: Any] ?? [:]
+            PocketController.shared.handle(request) { result in
+                Task { @MainActor [weak self] in
+                    self?.answer(id: id, result: result)
+                }
+            }
         default:
             break
         }
@@ -89,6 +109,15 @@ final class AppBridge: NSObject, WKScriptMessageHandler {
         guard pageReady, let webView, ServerConfig.isServerURL(webView.url) else { return false }
         webView.evaluateJavaScript("window.__knowpodIOSEvent && window.__knowpodIOSEvent({ event: 'open', url: \(jsString(url)) })", completionHandler: nil)
         return true
+    }
+
+    // answer hands a call's result to the page, if it's still a page of the server.
+    private func answer(id: Int, result: [String: Any]) {
+        guard let webView, ServerConfig.isServerURL(webView.url),
+              let data = try? JSONSerialization.data(withJSONObject: ["id": id, "result": result]),
+              let json = String(data: data, encoding: .utf8)
+        else { return }
+        webView.evaluateJavaScript("window.__knowpodIOSEvent && window.__knowpodIOSEvent(\(json))", completionHandler: nil)
     }
 
     // forgetPage: a new page is loading; it says hello when it's ready.

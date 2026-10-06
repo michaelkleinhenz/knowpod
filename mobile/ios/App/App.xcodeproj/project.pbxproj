@@ -21,6 +21,18 @@
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };
+		A1B2C3D4E5F6000000000200 /* BluetoothTransfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000000000100 /* BluetoothTransfer.swift */; };
+		A1B2C3D4E5F6000000000201 /* IOSBle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000000000101 /* IOSBle.swift */; };
+		A1B2C3D4E5F6000000000202 /* IOSWifi.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000000000102 /* IOSWifi.swift */; };
+		A1B2C3D4E5F6000000000203 /* MessageLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000000000103 /* MessageLog.swift */; };
+		A1B2C3D4E5F6000000000204 /* PocketController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000000000104 /* PocketController.swift */; };
+		A1B2C3D4E5F6000000000205 /* PocketError.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000000000105 /* PocketError.swift */; };
+		A1B2C3D4E5F6000000000206 /* PocketSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000000000106 /* PocketSession.swift */; };
+		A1B2C3D4E5F6000000000207 /* PocketSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000000000107 /* PocketSettings.swift */; };
+		A1B2C3D4E5F6000000000208 /* ServerApi.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000000000108 /* ServerApi.swift */; };
+		A1B2C3D4E5F6000000000209 /* Transfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000000000109 /* Transfer.swift */; };
+		A1B2C3D4E5F6000000000210 /* WifiSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000000000110 /* WifiSession.swift */; };
+		A1B2C3D4E5F6000000000211 /* WifiSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6000000000111 /* WifiSync.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -40,6 +52,19 @@
 		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
 		9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
+		A1B2C3D4E5F6000000000100 /* BluetoothTransfer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BluetoothTransfer.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000000000101 /* IOSBle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSBle.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000000000102 /* IOSWifi.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IOSWifi.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000000000103 /* MessageLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageLog.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000000000104 /* PocketController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketController.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000000000105 /* PocketError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketError.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000000000106 /* PocketSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketSession.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000000000107 /* PocketSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PocketSettings.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000000000108 /* ServerApi.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerApi.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000000000109 /* Transfer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transfer.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000000000110 /* WifiSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WifiSession.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000000000111 /* WifiSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WifiSync.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6000000000301 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -82,6 +107,8 @@
 				A1B2C3D4E5F6000000000012 /* SetupPlugin.swift */,
 				A1B2C3D4E5F6000000000013 /* ServerConfig.swift */,
 				A1B2C3D4E5F6000000000014 /* Notifications.swift */,
+				A1B2C3D4E5F6000000000300 /* Pocket */,
+				A1B2C3D4E5F6000000000301 /* App.entitlements */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
@@ -90,6 +117,25 @@
 				50B271D01FEDC1A000F3C39B /* public */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		A1B2C3D4E5F6000000000300 /* Pocket */ = {
+			isa = PBXGroup;
+			children = (
+				A1B2C3D4E5F6000000000100 /* BluetoothTransfer.swift */,
+				A1B2C3D4E5F6000000000101 /* IOSBle.swift */,
+				A1B2C3D4E5F6000000000102 /* IOSWifi.swift */,
+				A1B2C3D4E5F6000000000103 /* MessageLog.swift */,
+				A1B2C3D4E5F6000000000104 /* PocketController.swift */,
+				A1B2C3D4E5F6000000000105 /* PocketError.swift */,
+				A1B2C3D4E5F6000000000106 /* PocketSession.swift */,
+				A1B2C3D4E5F6000000000107 /* PocketSettings.swift */,
+				A1B2C3D4E5F6000000000108 /* ServerApi.swift */,
+				A1B2C3D4E5F6000000000109 /* Transfer.swift */,
+				A1B2C3D4E5F6000000000110 /* WifiSession.swift */,
+				A1B2C3D4E5F6000000000111 /* WifiSync.swift */,
+			);
+			path = Pocket;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -180,6 +226,18 @@
 				A1B2C3D4E5F6000000000022 /* SetupPlugin.swift in Sources */,
 				A1B2C3D4E5F6000000000023 /* ServerConfig.swift in Sources */,
 				A1B2C3D4E5F6000000000024 /* Notifications.swift in Sources */,
+				A1B2C3D4E5F6000000000200 /* BluetoothTransfer.swift in Sources */,
+				A1B2C3D4E5F6000000000201 /* IOSBle.swift in Sources */,
+				A1B2C3D4E5F6000000000202 /* IOSWifi.swift in Sources */,
+				A1B2C3D4E5F6000000000203 /* MessageLog.swift in Sources */,
+				A1B2C3D4E5F6000000000204 /* PocketController.swift in Sources */,
+				A1B2C3D4E5F6000000000205 /* PocketError.swift in Sources */,
+				A1B2C3D4E5F6000000000206 /* PocketSession.swift in Sources */,
+				A1B2C3D4E5F6000000000207 /* PocketSettings.swift in Sources */,
+				A1B2C3D4E5F6000000000208 /* ServerApi.swift in Sources */,
+				A1B2C3D4E5F6000000000209 /* Transfer.swift in Sources */,
+				A1B2C3D4E5F6000000000210 /* WifiSession.swift in Sources */,
+				A1B2C3D4E5F6000000000211 /* WifiSync.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -319,6 +377,7 @@
 			baseConfigurationReference = 958DCC722DB07C7200EA8C5F /* debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1000;
 				INFOPLIST_FILE = App/Info.plist;
@@ -342,6 +401,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1000;
 				INFOPLIST_FILE = App/Info.plist;
