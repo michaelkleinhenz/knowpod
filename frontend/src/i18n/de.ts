@@ -307,7 +307,7 @@ export const de: Translation = {
     viewLabel: 'Einträge sortieren',
     views: { timeline: 'Erstellung', due: 'Fällig', folders: 'Ordner', tasks: 'Aufgaben' },
     new: 'Neuer Ordner',
-    newInside: 'Neuer Ordner darin',
+    newInside: 'Neuer Unterordner',
     newItem: 'Neuer Eintrag in diesem Ordner',
     newItemLabel: 'Neuer Eintrag in „{{name}}“',
     name: 'Ordnername',
@@ -569,7 +569,7 @@ export const de: Translation = {
   },
   sharing: {
     title: 'Teilen',
-    sharedTitle: 'Geteilt – sehen, wer sie hat',
+    sharedTitle: 'Geteilt mit…',
     heading: 'Personen mit Zugriff',
     you: '(du)',
     roles: { owner: 'Besitzer', editor: 'Kann bearbeiten', viewer: 'Kann ansehen' },
