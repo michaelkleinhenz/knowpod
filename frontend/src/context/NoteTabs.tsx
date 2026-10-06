@@ -15,8 +15,8 @@ interface NoteTabsState {
   tabs: NoteTab[];
   // activeId is the note shown now, or null while the main area shows another page.
   activeId: string | null;
-  // open adds a tab for the note at the end, without switching to it (like a browser's
-  // Ctrl+click); a note already in a tab keeps its place.
+  // open adds a tab for the note at the end and switches to it; a note already in a tab keeps
+  // its place and is just switched to.
   open: (id: string) => void;
   // close removes the note's tab; closing the active tab shows its neighbour (or home).
   close: (id: string) => void;
@@ -153,8 +153,8 @@ export function NoteTabsProvider({ children }: { children: ReactNode }) {
       activeId,
       open: (noteId) => {
         const list = tabsRef.current;
-        if (list.some((t) => t.id === noteId)) return;
-        setTabs([...list, { id: noteId, title: titleFor(noteId) }]);
+        if (!list.some((t) => t.id === noteId)) setTabs([...list, { id: noteId, title: titleFor(noteId) }]);
+        navigate(`/conversations/${noteId}`);
       },
       close: (noteId) => {
         // A note shown without a tab (e.g. right after it was opened) is left all the same.
