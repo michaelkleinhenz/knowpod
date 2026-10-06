@@ -1116,6 +1116,9 @@ export function Conversation() {
 
   // The check mark, labels, folder and parent note can also change in the sidebar; take them over.
   const listed = notes.recordings?.find((r) => r.id === id);
+  // While a note loads, its layout (with or without the sidebar) is already that of the list entry,
+  // so the page doesn't jump when the note arrives.
+  const shownType = rec?.type ?? listed?.type;
   const listedLabels = listed?.labels?.join(',') ?? '';
   const listedDone = listed?.done ?? false;
   const listedFolder = listed?.folderId ?? '';
@@ -1152,7 +1155,7 @@ export function Conversation() {
   }, [inProgress, load]);
 
   return (
-    <section className={`conversation${rec?.type === 'board' ? ' board-note' : rec ? ' with-aside' : ''}`}>
+    <section className={`conversation${shownType === 'board' ? ' board-note' : shownType ? ' with-aside' : ''}`}>
       <Link to="/" className="back-link">
         <BackIcon />
         <span>{t('conversation.back')}</span>
@@ -1174,6 +1177,13 @@ export function Conversation() {
         />
       ) : error ? (
         <p className="error">{error}</p>
+      ) : shownType && shownType !== 'board' ? (
+        <div className="note-layout">
+          <div className="note-main">
+            <p className="muted">{t('common.loading')}</p>
+          </div>
+          <aside className="note-aside" aria-hidden="true" />
+        </div>
       ) : (
         <p className="muted">{t('common.loading')}</p>
       )}
