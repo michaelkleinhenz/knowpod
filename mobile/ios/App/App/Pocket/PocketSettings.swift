@@ -95,6 +95,22 @@ final class PocketSettings {
         defaults.set(id?.uuidString, forKey: Self.prefix + "peripheral")
     }
 
+    // wifiUnavailable says whether this version of the app found it can't join the recorder's
+    // WiFi (IOSWifi.refusesAll): the copy then goes over Bluetooth right away. A new version
+    // (maybe signed with the capability) tries again.
+    var wifiUnavailable: Bool {
+        defaults.string(forKey: Self.prefix + "wifiUnavailable") == Self.appVersion
+    }
+
+    func setWifiUnavailable() {
+        defaults.set(Self.appVersion, forKey: Self.prefix + "wifiUnavailable")
+    }
+
+    private static var appVersion: String {
+        let info = Bundle.main.infoDictionary
+        return "\(info?["CFBundleShortVersionString"] as? String ?? "") (\(info?["CFBundleVersion"] as? String ?? ""))"
+    }
+
     // The files already copied to a server are remembered, so they aren't asked about again
     // and a note deleted for good isn't copied again either.
     private static func rememberedKey(_ server: String) -> String {

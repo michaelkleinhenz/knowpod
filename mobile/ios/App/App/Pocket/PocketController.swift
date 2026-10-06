@@ -222,8 +222,14 @@ final class PocketController: WifiSyncEnv {
         ServerConfig.serverURL()
     }
 
+    // wifi is nil once iOS refused to let this version join networks: the long recordings then
+    // come over Bluetooth without trying (and waiting for) the WiFi first.
     func wifi() -> HostWifi? {
-        IOSWifi(log: { [weak self] in self?.log($0) })
+        if settings.wifiUnavailable {
+            log("WiFi: this app can't join networks (no Hotspot Configuration capability); copying over Bluetooth")
+            return nil
+        }
+        return IOSWifi(log: { [weak self] in self?.log($0) }, unavailable: { [settings] in settings.setWifiUnavailable() })
     }
 
     func api() -> ServerApi {

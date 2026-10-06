@@ -433,8 +433,9 @@ installers and attaches it to the `desktop-v<version>` release.
 run it from Xcode with your Apple ID as the team (**Signing & Capabilities**), or re-sign the
 IPA with your own certificate and provisioning profile (e.g. with Sideloadly, AltStore or
 `codesign`); the bundle ID is `net.kleinhenz.knowpod`. Joining the Pocket's WiFi needs the
-**Hotspot Configuration** capability (`mobile/ios/App/App/App.entitlements`); signed
-without it, the app copies all Pocket recordings over Bluetooth.
+**Hotspot Configuration** capability (`mobile/ios/App/App/App.entitlements`), which the
+unsigned IPA doesn't carry and a free Apple ID can't grant; sideloaded or signed without
+it, the app copies all Pocket recordings over Bluetooth.
 
 ## Version
 

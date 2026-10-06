@@ -278,8 +278,10 @@ files named by when they started, in UTC (`RECORD/2026-10-2/20261002090356.mp3`)
   - iOS asks for **Bluetooth** the first time, and for long recordings once whether knowpod
     may join the recorder's network and use the **local network**. The iPhone then leaves its
     usual WiFi for the recorder's and returns to it afterwards (cellular data keeps working).
-    Joining needs the app's Hotspot Configuration capability (`App.entitlements`); an app
-    signed without it copies the long recordings over Bluetooth too.
+    Joining needs the app's Hotspot Configuration capability (`App.entitlements`). The
+    unsigned IPA re-signed when sideloading usually lacks it: then the first copy finds out
+    that iOS refuses, and this version of the app copies the long recordings over Bluetooth
+    too, right away (slower: a 45-minute recording takes a few minutes).
   - Keep knowpod open while it copies: iOS pauses apps in the background (the screen stays
     on meanwhile). A notification says when it's done.
 

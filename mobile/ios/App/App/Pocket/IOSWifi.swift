@@ -9,16 +9,34 @@ import NetworkExtension
 // puts the iPhone back on its usual WiFi. The counterpart of mobile/android/…/AndroidWifi.java.
 //
 // The configuration stays while the recorder restarts its access point after every two
-// recordings, so iOS joins it again without asking. Without the capability (an app re-signed
-// without it) joining fails, and WifiSync copies the long recordings over Bluetooth too.
+// recordings, so iOS joins it again without asking. Without the capability (an unsigned IPA
+// re-signed when sideloading) iOS refuses to apply it: unavailable is called, and WifiSync
+// copies the long recordings over Bluetooth too.
 final class IOSWifi: HostWifi {
     private var ssid: String?
     private var password = ""
     private var configured = false
     private let log: (String) -> Void
+    private let unavailable: () -> Void
 
-    init(log: @escaping (String) -> Void) {
+    // unavailable: iOS won't let this app join networks at all (see refusesAll).
+    init(log: @escaping (String) -> Void, unavailable: @escaping () -> Void) {
         self.log = log
+        self.unavailable = unavailable
+    }
+
+    // refusesAll says whether error means this app can't join networks at all, rather than
+    // this once: what iOS answers an app without the Hotspot Configuration capability (an
+    // error of its own, or of the system service it talks to). Not when the user declined,
+    // or for a network that wasn't found.
+    static func refusesAll(_ error: NSError) -> Bool {
+        guard error.domain == NEHotspotConfigurationErrorDomain else { return true }
+        switch NEHotspotConfigurationError(rawValue: error.code) {
+        case .internal, .systemConfiguration, .unknown:
+            return true
+        default:
+            return false
+        }
     }
 
     func setup() throws {
@@ -56,6 +74,7 @@ final class IOSWifi: HostWifi {
                 && error.code == NEHotspotConfigurationError.alreadyAssociated.rawValue
             if !already {
                 log("WiFi: couldn't join \(ssid): \(error.localizedDescription) (\(error.domain) \(error.code))")
+                if Self.refusesAll(error) { unavailable() }
                 return false
             }
         }
