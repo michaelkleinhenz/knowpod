@@ -146,6 +146,7 @@ export const de: Translation = {
     typeDate: 'Datum eingeben',
     dayTasks_one: '{{count}} Aufgabe',
     dayTasks_other: '{{count}} Aufgaben',
+    noDayTasks: 'Keine Aufgaben',
     typeDatePlaceholder: 'z. B. morgen 15 Uhr, jeden Montag, p1',
     notUnderstood: 'Kein Datum erkannt',
     quick: { today: 'Heute', tomorrow: 'Morgen', nextWeek: 'Nächste Woche', none: 'Kein Datum' },

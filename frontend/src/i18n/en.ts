@@ -144,6 +144,7 @@ export const en = {
     typeDate: 'Type a date',
     dayTasks_one: '{{count}} task',
     dayTasks_other: '{{count}} tasks',
+    noDayTasks: 'No tasks',
     typeDatePlaceholder: 'e.g. tomorrow 3pm, every monday, p1',
     notUnderstood: 'No date recognized',
     quick: { today: 'Today', tomorrow: 'Tomorrow', nextWeek: 'Next week', none: 'No date' },
