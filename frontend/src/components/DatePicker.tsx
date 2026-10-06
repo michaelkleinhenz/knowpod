@@ -26,6 +26,8 @@ export function DatePicker({ value, rect, counts, inline, onPick, onClose = () =
   const [day, setDay] = useState(() => (validDate(value) ? dayOf(value) : new Date()));
   // month is the first day of the month shown; it follows the chosen day.
   const [month, setMonth] = useState(() => new Date(day.getFullYear(), day.getMonth(), 1));
+  // hover is the day under the pointer or focus; with counts, the header then tells its tasks.
+  const [hover, setHover] = useState<Date | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ top: -9999, left: -9999 });
 
@@ -94,7 +96,9 @@ export function DatePicker({ value, rect, counts, inline, onPick, onClose = () =
           ‹
         </button>
         <span className="date-picker-month" aria-live="polite">
-          {month.toLocaleDateString(locale(), { month: 'long', year: 'numeric' })}
+          {hover && counts
+            ? `${hover.toLocaleDateString(locale(), { weekday: 'short', month: 'short', day: 'numeric' })} · ${counts[isoDate(hover)] ? t('tasks.dayTasks', { count: counts[isoDate(hover)] }) : t('tasks.noDayTasks')}`
+            : month.toLocaleDateString(locale(), { month: 'long', year: 'numeric' })}
         </span>
         <button type="button" className="date-picker-nav" aria-label={t('mentions.nextMonth')} title={t('mentions.nextMonth')} onClick={() => shiftMonth(1)}>
           ›
@@ -121,6 +125,10 @@ export function DatePicker({ value, rect, counts, inline, onPick, onClose = () =
               aria-label={d.toLocaleDateString(locale(), { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) + (counts?.[iso] ? `, ${t('tasks.dayTasks', { count: counts[iso] })}` : '')}
               className={cls.join(' ')}
               onClick={() => onPick(iso)}
+              onMouseEnter={() => setHover(d)}
+              onMouseLeave={() => setHover(null)}
+              onFocus={() => setHover(d)}
+              onBlur={() => setHover(null)}
             >
               {d.getDate()}
               {counts?.[iso] ? (
