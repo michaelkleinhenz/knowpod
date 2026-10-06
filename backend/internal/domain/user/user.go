@@ -61,6 +61,8 @@ type Briefing struct {
 	WeeklyDay *int `bson:"weeklyDay,omitempty"`
 	// NoNotify makes the daily briefing without a notification announcing it.
 	NoNotify bool `bson:"noNotify,omitempty"`
+	// Email sends the daily briefing by email, too; off unless the user turned it on.
+	Email bool `bson:"email,omitempty"`
 	// Sections are the parts of the daily briefing besides the tasks due today (see
 	// BriefingSections); nil is DefaultBriefingSections.
 	Sections []string `bson:"sections,omitempty"`

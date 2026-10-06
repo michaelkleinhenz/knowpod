@@ -74,3 +74,57 @@ func (s *Server) handleAIStatus(w http.ResponseWriter, r *http.Request) {
 		"summary":       s.ai.CanSummarize(r.Context()),
 	})
 }
+
+func (s *Server) handleGetEmailSettings(w http.ResponseWriter, r *http.Request) {
+	if s.email == nil {
+		writeCode(w, http.StatusServiceUnavailable, "email_unavailable", "email is not available")
+		return
+	}
+	v, err := s.email.Settings(r.Context())
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
+}
+
+func (s *Server) handleUpdateEmailSettings(w http.ResponseWriter, r *http.Request) {
+	if s.email == nil {
+		writeCode(w, http.StatusServiceUnavailable, "email_unavailable", "email is not available")
+		return
+	}
+	var u service.EmailUpdate
+	if !decode(w, r, &u) {
+		return
+	}
+	v, err := s.email.UpdateSettings(r.Context(), u)
+	if err != nil {
+		s.writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, v)
+}
+
+// handleTestEmail sends a test email to the recipient in the body.
+func (s *Server) handleTestEmail(w http.ResponseWriter, r *http.Request) {
+	if s.email == nil {
+		writeCode(w, http.StatusServiceUnavailable, "email_unavailable", "email is not available")
+		return
+	}
+	var in struct {
+		Recipient string `json:"recipient"`
+	}
+	if !decode(w, r, &in) {
+		return
+	}
+	err := s.email.SendTest(r.Context(), in.Recipient)
+	switch {
+	case err == nil:
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	case errors.Is(err, service.ErrInvalidInput):
+		s.writeErr(w, err)
+	default:
+		s.log.Warn("test email failed", "err", err)
+		writeCode(w, http.StatusBadGateway, "email_failed", "sending the test email failed: "+err.Error())
+	}
+}

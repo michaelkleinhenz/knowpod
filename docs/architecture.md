@@ -442,6 +442,13 @@ model calls.
 The AI settings (OpenRouter key and models, transcription service, ElevenLabs key) live in the `settings` collection and are read on
 every stage run, so changes apply immediately.
 
+Outgoing email goes through Amazon SES (`internal/ses`, behind the `service.Mailer`
+interface). The admin configures region, access key, secret key and sender under
+`/admin/settings/email` (the secret is stored like the other keys and never returned);
+`POST /admin/settings/email/test` sends a test email. Users opt in to the daily briefing by
+email with `email` in `/me/briefing/settings` (off by default); `BriefingService` sends it
+when the briefing is made, if email is configured.
+
 ### Time stamps and highlights
 
 The transcription prompt asks for a `[m:ss]` time stamp at every speaker turn (and at least

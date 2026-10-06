@@ -59,7 +59,8 @@ type Server struct {
 	// events tells the web app about note changes as they happen.
 	events *service.NoteEvents
 	// ask answers questions about the user's notes.
-	ask *service.AskService
+	email *service.EmailService
+	ask   *service.AskService
 	// briefings makes the users' daily and weekly briefings.
 	briefings *service.BriefingService
 	// backup makes and restores full backups.
@@ -105,6 +106,8 @@ type Deps struct {
 	// Ask and Briefings are optional in tests that don't use them.
 	Ask       *service.AskService
 	Briefings *service.BriefingService
+	// Email is optional in tests that don't use it.
+	Email *service.EmailService
 	// Backup is optional in tests that don't use it.
 	Backup *service.BackupService
 	// PersonalBackup is optional in tests that don't use it.
@@ -124,7 +127,7 @@ func NewServer(d Deps) *Server {
 		manual: d.Manual, actions: d.Actions, objects: d.Objects, pocket: d.Pocket, ai: d.AI, themes: d.Themes,
 		labels: d.Labels, folders: d.Folders, remarkable: d.Remarkable, notifications: d.Notifications,
 		filters: d.Filters, times: d.Times, calendar: d.Calendar, mcp: d.MCP, oauth: d.OAuth, events: d.Events,
-		ask: d.Ask, briefings: d.Briefings, backup: d.Backup, personalBackup: d.PersonalBackup, version: cmp.Or(d.Version, "dev"),
+		email: d.Email, ask: d.Ask, briefings: d.Briefings, backup: d.Backup, personalBackup: d.PersonalBackup, version: cmp.Or(d.Version, "dev"),
 		now: time.Now,
 	}
 }
@@ -342,6 +345,9 @@ func (s *Server) Router() http.Handler {
 			a.Put("/users/{id}/password", s.handleSetUserPassword)
 			a.Get("/settings/openrouter", s.handleGetOpenRouterSettings)
 			a.Put("/settings/openrouter", s.handleUpdateOpenRouterSettings)
+			a.Get("/settings/email", s.handleGetEmailSettings)
+			a.Put("/settings/email", s.handleUpdateEmailSettings)
+			a.With(httprate.LimitByIP(20, time.Hour)).Post("/settings/email/test", s.handleTestEmail)
 			a.With(httprate.LimitByIP(20, time.Hour)).Post("/settings/elevenlabs/test", s.handleTestElevenLabs)
 			a.With(httprate.LimitByIP(6, time.Hour)).Get("/backup", s.handleBackup)
 			a.With(httprate.LimitByIP(6, time.Hour)).Post("/restore", s.handleRestore)

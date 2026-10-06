@@ -64,3 +64,19 @@ type WebPush struct {
 
 // CanSummarize reports whether summarization is configured.
 func (o *OpenRouter) CanSummarize() bool { return o.APIKey != "" && o.SummaryModel != "" }
+
+// Email configures outgoing email through Amazon SES. Like the other settings it is kept in
+// the database, secret key included.
+type Email struct {
+	Region          string `bson:"region"`
+	AccessKeyID     string `bson:"accessKeyId"`
+	SecretAccessKey string `bson:"secretAccessKey"`
+	// From is the sender address, which must be verified in SES.
+	From      string    `bson:"from"`
+	UpdatedAt time.Time `bson:"updatedAt"`
+}
+
+// Configured reports whether emails can be sent.
+func (e *Email) Configured() bool {
+	return e.Region != "" && e.AccessKeyID != "" && e.SecretAccessKey != "" && e.From != ""
+}

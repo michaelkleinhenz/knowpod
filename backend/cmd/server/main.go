@@ -25,6 +25,7 @@ import (
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/remarkable"
 	repo "github.com/michaelkleinhenz/knowpod-service/backend/internal/repository/mongo"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/service"
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/ses"
 	s3store "github.com/michaelkleinhenz/knowpod-service/backend/internal/storage/s3"
 	httpx "github.com/michaelkleinhenz/knowpod-service/backend/internal/transport/http"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/webpush"
@@ -201,6 +202,8 @@ func main() {
 	askSvc := service.NewAskService(aiSvc, actions, log)
 	briefingSvc := service.NewBriefingService(users, actions, folderRepo, aiSvc, log)
 	briefingSvc.Notifications = notifySvc
+	emailSvc := service.NewEmailService(settingsRepo, ses.Sender{})
+	briefingSvc.Emails = emailSvc
 	briefingSvc.TimeEntries = timeRepo
 
 	backupSvc := service.NewBackupService(backupRepo, objects)
@@ -227,7 +230,7 @@ func main() {
 		Manual: manualSvc, Actions: actions, Objects: objects, Pocket: pocketSvc, AI: aiSvc, Themes: themeSvc,
 		Labels: labelSvc, Folders: folderSvc, Remarkable: remarkableSvc, Notifications: notifySvc,
 		Filters: filterSvc, Times: timeSvc, Calendar: calendarSvc, MCP: mcpSvc, OAuth: oauthSvc, Events: events,
-		Ask: askSvc, Briefings: briefingSvc, Backup: backupSvc, PersonalBackup: personalBackupSvc, Version: version,
+		Email: emailSvc, Ask: askSvc, Briefings: briefingSvc, Backup: backupSvc, PersonalBackup: personalBackupSvc, Version: version,
 	})
 	httpServer := &http.Server{
 		Addr:              ":" + cfg.Port,

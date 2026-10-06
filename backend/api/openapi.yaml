@@ -166,6 +166,8 @@ tags:
     description: Create, change and delete users. Administrators only.
   - name: "Admin: AI settings"
     description: OpenRouter API key and the models used to transcribe and summarize recordings, and the optional ElevenLabs transcription. Administrators only.
+  - name: "Admin: email"
+    description: Amazon SES settings for outgoing email and a test send. Administrators only.
   - name: "Admin: backup"
     description: |
       A full backup of everything in the system, and a full restore from one. Administrators
@@ -3055,6 +3057,59 @@ paths:
         "400": { description: "No key, or ElevenLabs rejected it (`elevenlabs_unauthorized`)", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
         "502": { description: "ElevenLabs answered with another error (`elevenlabs_failed`)", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
 
+  /admin/settings/email:
+    get:
+      tags: ["Admin: email"]
+      summary: Get the email (Amazon SES) settings
+      description: The secret access key is never returned, only whether it is set and its last characters.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      responses:
+        "200":
+          description: The settings
+          content: { application/json: { schema: { $ref: "#/components/schemas/EmailSettings" } } }
+    put:
+      tags: ["Admin: email"]
+      summary: Change the email (Amazon SES) settings
+      description: Fields left out stay as they are; an empty `secretAccessKey` removes the key.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                region: { type: string, example: eu-central-1 }
+                accessKeyId: { type: string }
+                secretAccessKey: { type: string }
+                from: { type: string, example: "KnowPod <noreply@example.com>", description: The sender; its address must be verified in SES }
+      responses:
+        "200":
+          description: The settings
+          content: { application/json: { schema: { $ref: "#/components/schemas/EmailSettings" } } }
+        "400": { $ref: "#/components/responses/Error" }
+
+  /admin/settings/email/test:
+    post:
+      tags: ["Admin: email"]
+      summary: Send a test email
+      description: Sends a short email to the recipient to check that sending works. Limited to 20 per hour per IP.
+      security: [{ sessionCookie: [] }, { adminToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [recipient]
+              properties:
+                recipient: { type: string, example: me@example.com }
+      responses:
+        "200":
+          description: The email was handed to SES
+          content: { application/json: { schema: { type: object, properties: { ok: { type: boolean } } } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "502": { description: "SES refused or could not be reached (`email_failed`)", content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } } }
+
   /admin/backup:
     get:
       tags: ["Admin: backup"]
@@ -3568,6 +3623,8 @@ components:
         time: { type: string, example: "07:00", description: When they are made (HH:MM in your time zone) }
         weeklyDay: { type: integer, minimum: 0, maximum: 6, description: 'The day of the weekly review (0 is Sunday); Monday (1) until one is chosen' }
         notify: { type: boolean, description: Announce the daily briefing with a notification }
+        emailAvailable: { type: boolean, readOnly: true, description: The administrator set up email }
+        email: { type: boolean, description: Send the daily briefing by email, too (off by default; needs the administrator to set up email) }
         sections:
           type: array
           items: { type: string, enum: [overdue, upcoming, new, digest, actionItems] }
@@ -3653,6 +3710,17 @@ components:
         transcriptionModel: { type: string }
         summaryModel: { type: string }
         documentModel: { type: string, description: Reads document pages; empty uses the transcription model }
+        updatedAt: { type: string, format: date-time }
+
+    EmailSettings:
+      type: object
+      properties:
+        configured: { type: boolean, description: Emails can be sent }
+        region: { type: string }
+        accessKeyId: { type: string }
+        secretAccessKeyConfigured: { type: boolean }
+        secretAccessKeyHint: { type: string, example: …a1b2 }
+        from: { type: string }
         updatedAt: { type: string, format: date-time }
 
     ModelOption:

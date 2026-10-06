@@ -564,6 +564,9 @@ export interface BriefingSettings {
   time: string;
   weeklyDay: number;
   notify: boolean;
+  // email sends the daily briefing by email, too; emailAvailable tells whether the administrator set up email.
+  email: boolean;
+  emailAvailable?: boolean;
   sections: BriefingSection[];
   actionItemDays: number;
 }
@@ -613,6 +616,22 @@ export interface NoteEvent {
   type: 'note' | 'reload' | 'folders';
   id?: string;
   version?: number;
+}
+
+// EmailSettings is the administrator's Amazon SES configuration; the secret key is never returned.
+export interface EmailSettings {
+  configured: boolean;
+  region: string;
+  accessKeyId: string;
+  secretAccessKeyConfigured: boolean;
+  secretAccessKeyHint?: string;
+  from: string;
+}
+export interface EmailUpdate {
+  region?: string;
+  accessKeyId?: string;
+  secretAccessKey?: string;
+  from?: string;
 }
 
 export type TranscriptionProvider = 'openrouter' | 'elevenlabs';
@@ -934,6 +953,10 @@ export const api = {
   restorePersonalBackup,
   openRouterSettings: () => request<OpenRouterSettings>('GET', '/admin/settings/openrouter'),
   saveOpenRouterSettings: (u: OpenRouterUpdate) => request<OpenRouterSettings>('PUT', '/admin/settings/openrouter', u),
+  emailSettings: () => request<EmailSettings>('GET', '/admin/settings/email'),
+  saveEmailSettings: (u: EmailUpdate) => request<EmailSettings>('PUT', '/admin/settings/email', u),
+  // Sends a test email to recipient.
+  testEmail: (recipient: string) => request<{ ok: boolean }>('POST', '/admin/settings/email/test', { recipient }),
   // Tests an ElevenLabs API key (the stored one when apiKey is empty).
   testElevenLabs: (apiKey?: string) => request<{ ok: boolean }>('POST', '/admin/settings/elevenlabs/test', { apiKey: apiKey ?? '' }),
   aiModels: () => request<{ transcription: ModelOption[]; summary: ModelOption[]; document: ModelOption[] }>('GET', '/ai/models'),
