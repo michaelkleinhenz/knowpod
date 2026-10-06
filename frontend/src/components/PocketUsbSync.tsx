@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { TFunction } from 'i18next';
 import { Trans, useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { appContext, pocketBluetooth, PocketBluetoothRequest, PocketBluetoothResult, PocketWifiState } from '../lib/desktop';
+import { appContext, deviceContext, pocketBluetooth, PocketBluetoothRequest, PocketBluetoothResult, PocketWifiState } from '../lib/desktop';
 import { bluetoothErrorText } from './PocketBluetooth';
 
 // How often the dialog asks the desktop app how copying goes.
@@ -350,7 +350,7 @@ function WifiPane({ state, call }: { state: PocketBluetoothResult; call: Call })
       <p>{t('pocketWifiSync.intro', { context })}</p>
       <ul className="pocket-wifi-notes">
         <li>{t('pocketWifiSync.noteFirmware')}</li>
-        <li>{t('pocketWifiSync.noteNetwork', { context })}</li>
+        <li>{t('pocketWifiSync.noteNetwork', { context: deviceContext() })}</li>
         <li>{t('pocketWifiSync.noteApp', { context })}</li>
       </ul>
       {startError && <p className="error">{startError}</p>}
@@ -398,7 +398,7 @@ function WifiProgress({ wifi, call }: { wifi: PocketWifiState; call: Call }) {
       <p>{wifiPhaseText(wifi, t)}</p>
       <div className="pocket-wifi-progress">{bar}</div>
       {detail && <p className="muted">{detail}</p>}
-      <p className="muted">{offline ? t('pocketWifiSync.offlineNote', { context: appContext() }) : t('pocketWifiSync.closeNote', { context: appContext() })}</p>
+      <p className="muted">{offline ? t('pocketWifiSync.offlineNote', { context: deviceContext() }) : t('pocketWifiSync.closeNote', { context: deviceContext() })}</p>
       <div className="new-item-actions">
         <button type="button" className="secondary-button" disabled={wifi.cancelling} onClick={() => void call({ action: 'wifi-cancel' })}>
           {wifi.cancelling ? t('pocketWifiSync.cancelling') : t('pocketWifiSync.cancel')}

@@ -1,8 +1,8 @@
 {
   "name": "knowpod-mobile",
   "private": true,
-  "version": "0.11.1",
-  "description": "knowpod for Android and iOS: a native shell around the knowpod web app, with Pocket sync over WiFi on Android.",
+  "version": "0.12.0",
+  "description": "knowpod for Android and iOS: a native shell around the knowpod web app, with Pocket sync over Bluetooth and WiFi.",
   "scripts": {
     "sync": "cap sync"
   },

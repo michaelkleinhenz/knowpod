@@ -268,6 +268,22 @@ files named by when they started, in UTC (`RECORD/2026-10-2/20261002090356.mp3`)
     again without asking (the recorder's WiFi is restarted after every two recordings).
   - The copy runs in a foreground service, with its progress in a notification, so it goes
     on with the screen off or the app in the background.
+- **From the [iOS app](#ios-app)**, the same way as the Android app: the same dialog and
+  Bluetooth settings (the session key in the keychain, on this device only), short recordings
+  over Bluetooth, long ones over the recorder's WiFi. The differences:
+  - iOS doesn't tell apps Bluetooth addresses. The app takes the device whose advertisement
+    carries the address if there is one, else the only Pocket nearby (its name starts with
+    `PKT01`); once the session key unlocked it, the app remembers it and finds it at once
+    next time. With several Pockets nearby the first time, keep only yours close.
+  - iOS asks for **Bluetooth** the first time, and for long recordings once whether knowpod
+    may join the recorder's network and use the **local network**. The iPhone then leaves its
+    usual WiFi for the recorder's and returns to it afterwards (cellular data keeps working).
+    Joining needs the app's Hotspot Configuration capability (`App.entitlements`). The
+    unsigned IPA re-signed when sideloading usually lacks it: then the first copy finds out
+    that iOS refuses, and this version of the app copies the long recordings over Bluetooth
+    too, right away (slower: a 45-minute recording takes a few minutes).
+  - Keep knowpod open while it copies: iOS pauses apps in the background (the screen stays
+    on meanwhile). A notification says when it's done.
 
 **Log message:** `pocket file imported`.
 
@@ -547,8 +563,7 @@ calls the API exactly like the browser, so nothing changes on the server.
 ## iOS app
 
 knowpod also runs as an iOS app on iPhone and iPad (iOS 15 or newer; built with `make ios`,
-see the [README](../README.md#ios-app)). It works like the Android app, without the Pocket
-copy:
+see the [README](../README.md#ios-app)). It works like the Android app:
 
 - On the first start it asks for the server's address, unless one was set when it was built
   (`SERVER_URL`). **Settings → General → Desktop and mobile apps → Change server** changes it;
@@ -557,6 +572,8 @@ copy:
   camera the first time.
 - It shows notifications while it is open (iOS pauses it soon after it goes to the
   background); clicking one opens its note.
+- It copies new recordings from a Pocket recorder over Bluetooth and the recorder's WiFi
+  into the folder **Pocket AI** (see [Copying straight from the recorder](#copying-straight-from-the-recorder-desktop-app)).
 - The IPA from a release is unsigned: sign it with your own Apple developer account before
   installing (see the README's **Signing** under iOS app).
 

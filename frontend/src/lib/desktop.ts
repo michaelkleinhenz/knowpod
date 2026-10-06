@@ -20,7 +20,7 @@ interface DesktopBridge {
   // notify and onOpen are missing in older desktop apps.
   notify?: (n: DesktopNotification) => void;
   onOpen?: (listener: (url: string) => void) => () => void;
-  // pocketBluetooth is missing in older desktop apps and in the iOS app.
+  // pocketBluetooth is missing in older desktop and iOS apps.
   pocketBluetooth?: (request: PocketBluetoothRequest) => Promise<PocketBluetoothResult>;
   // showSetup shows the mobile app's page for the server's address (mobile apps only).
   showSetup?: () => void;
@@ -28,8 +28,9 @@ interface DesktopBridge {
 
 // The desktop app's Bluetooth connection to a Pocket recorder (desktop/src/pocket-bluetooth.js),
 // which switches its USB drive on so the app can copy from it, and drives the copy over the
-// Pocket's WiFi (desktop/src/pocket-wifi-sync.js). The Android app answers the same calls
-// (mobile/android/…/pocket/PocketController.java), copying over the WiFi only. Its settings
+// Pocket's WiFi (desktop/src/pocket-wifi-sync.js). The Android and iOS apps answer the same
+// calls (mobile/android/…/pocket/PocketController.java, mobile/ios/App/App/Pocket/
+// PocketController.swift), copying over Bluetooth and the WiFi, not by USB. Its settings
 // stay in the app; the session key is never handed back.
 export type PocketBluetoothRequest =
   | { action: 'settings' | 'check' | 'usb-on' | 'state' | 'sync' | 'eject' | 'wifi-sync' | 'wifi-cancel' }
@@ -61,7 +62,7 @@ export interface PocketWifiState {
   current: number;
   total: number;
   // downloading: bytes of totalBytes of the current recording, at rate bytes per second, over
-  // the Pocket's WiFi or Bluetooth (the Android app copies short recordings over Bluetooth;
+  // the Pocket’s WiFi or Bluetooth (the mobile apps copy short recordings over Bluetooth;
   // missing in the desktop app, which copies over WiFi only)
   bytes: number;
   totalBytes: number;
@@ -94,7 +95,7 @@ export interface PocketBluetoothResult {
   storage?: { usedKB: number; totalKB: number } | null;
   // check and usb-on
   usb?: boolean | null;
-  // settings and state: false where there is no copying by USB (the Android app)
+  // settings and state: false where there is no copying by USB (the mobile apps)
   usbSupported?: boolean;
   // state: whether the Bluetooth connection is set up (configured) or in use (busy), and the
   // USB copying (desktop/src/pocket.js): turned on (enabled), a recorder mounted
@@ -116,7 +117,7 @@ export interface PocketBluetoothResult {
 }
 
 // pocketBluetooth returns the app's Pocket Bluetooth call, or undefined outside the desktop
-// and Android apps (and in older desktop apps).
+// and mobile apps (and in older desktop and iOS apps).
 export const pocketBluetooth = () => bridge()?.pocketBluetooth;
 
 type AppWindow = { knowpodDesktop?: DesktopBridge; knowpodAndroid?: DesktopBridge; knowpodIOS?: DesktopBridge };
@@ -138,6 +139,10 @@ export const isMobileApp = () => isAndroidApp() || isIOSApp();
 // appContext is the i18next context of texts that differ in the mobile apps ('phone': "this
 // phone" rather than "this computer"); see the *_phone keys in i18n/en.ts.
 export const appContext = (): 'phone' | undefined => (isMobileApp() ? 'phone' : undefined);
+
+// deviceContext is appContext for the few texts that differ between the Android and iOS apps
+// too ('ios'; every *_ios key needs a *_phone one beside it).
+export const deviceContext = (): 'ios' | 'phone' | undefined => (isIOSApp() ? 'ios' : appContext());
 
 // showAppSetup shows the mobile app's page for the server's address; false outside it.
 export function showAppSetup(): boolean {

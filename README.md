@@ -262,7 +262,7 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
   (see [Desktop app](#desktop-app)).
 - An **Android app** does the same on phones, and copies recordings from a Pocket recorder
   over Bluetooth and the recorder's WiFi (see [Android app](#android-app)).
-- An **iOS app** does the same on iPhone and iPad, without the Pocket copy (see
+- An **iOS app** does the same on iPhone and iPad, including the Pocket copy (see
   [iOS app](#ios-app)).
 
 ## How recordings flow
@@ -412,8 +412,12 @@ debug key: it installs, but the next build can't update it (uninstall first).
 newer): the web UI of a knowpod server in a WKWebView, with the same setup page
 (`mobile/www/`) on the first start and **Settings → General → Desktop and mobile apps →
 Change server** later. It shows the server's notifications while it is open, and opens a
-clicked one's note. It doesn't copy from a Pocket recorder: the Pocket Sync button stays
-hidden. The native code is in Swift (`mobile/ios/App/App/`).
+clicked one's note. Like the Android app it copies new recordings from a Pocket recorder,
+set up with the recorder's Bluetooth address and session key: short ones over Bluetooth,
+long ones over the recorder's WiFi (a Swift port of the Android app's, in
+`mobile/ios/App/App/Pocket/`; iOS hides Bluetooth addresses, so the app finds the Pocket
+nearby and remembers it once the session key unlocked it). The native code is in Swift
+(`mobile/ios/App/App/`).
 
 ```bash
 make ios                                        # mobile/dist/knowpod-<version>-ios-unsigned.ipa
@@ -428,7 +432,10 @@ installers and attaches it to the `desktop-v<version>` release.
 **Signing.** iOS installs only signed apps, and the IPA is unsigned. To put it on a device,
 run it from Xcode with your Apple ID as the team (**Signing & Capabilities**), or re-sign the
 IPA with your own certificate and provisioning profile (e.g. with Sideloadly, AltStore or
-`codesign`); the bundle ID is `net.kleinhenz.knowpod`.
+`codesign`); the bundle ID is `net.kleinhenz.knowpod`. Joining the Pocket's WiFi needs the
+**Hotspot Configuration** capability (`mobile/ios/App/App/App.entitlements`), which the
+unsigned IPA doesn't carry and a free Apple ID can't grant; sideloaded or signed without
+it, the app copies all Pocket recordings over Bluetooth.
 
 ## Version
 
