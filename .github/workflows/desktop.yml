@@ -1,11 +1,13 @@
-# Builds the desktop app (desktop/) on each OS it ships for and the Android and iOS apps
-# (mobile/), and keeps the installers, the APK and the IPA as workflow artifacts. Runs by hand
-# (Actions → Desktop and mobile apps → Run workflow) and for tags desktop-v*. The desktop builds
-# and the IPA are unsigned; the APK is signed with the keystore in the repository secrets ANDROID_KEYSTORE_BASE64,
-# ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD (see README.md#android-app),
-# else with a throwaway debug key. The version comes from the VERSION file; a tag
-# desktop-v<VERSION> also publishes the installers, the APK and the IPA as a GitHub release.
-name: Desktop and mobile apps
+# Builds the desktop app (desktop/) on each OS it ships for, the Android and iOS apps
+# (mobile/), and the ESP32 firmware (esp32/) for each supported board. Keeps all
+# installers, the APK, the IPA and firmware binaries as workflow artifacts. Runs by hand
+# (Actions → Build and release → Run workflow) and for tags desktop-v*. The desktop builds
+# and the IPA are unsigned; the APK is signed with the keystore in the repository secrets
+# ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and
+# ANDROID_KEY_PASSWORD (see README.md#android-app), else with a throwaway debug key.
+# The version comes from the VERSION file; a tag desktop-v<VERSION> also publishes
+# everything as a GitHub release.
+name: Build and release
 
 on:
   workflow_dispatch:
@@ -162,9 +164,48 @@ jobs:
           path: mobile/dist/*.ipa
           if-no-files-found: error
 
+  esp32:
+    needs: version
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - env: esp32-s3-epaper-397
+            label: epaper-397
+          - env: esp32-s3-epaper-154g
+            label: epaper-154g
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install PlatformIO
+        run: pip install platformio
+      - name: Build
+        working-directory: esp32
+        run: pio run -e ${{ matrix.env }}
+      - name: Create merged firmware image
+        working-directory: esp32
+        run: |
+          pip install esptool
+          VERSION="${{ needs.version.outputs.version }}"
+          BUILD=".pio/build/${{ matrix.env }}"
+          FLASH_SIZE=$(grep -A5 '\[env:${{ matrix.env }}\]' platformio.ini | grep flash_size | awk -F= '{print $2}' | tr -d ' ')
+          python -m esptool --chip esp32s3 merge_bin -o "../dist/knowpod-$VERSION-${{ matrix.label }}.bin" \
+            --flash_mode dio --flash_size "$FLASH_SIZE" \
+            0x0 "$BUILD/bootloader.bin" \
+            0x8000 "$BUILD/partitions.bin" \
+            0x10000 "$BUILD/firmware.bin"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: knowpod-firmware-${{ needs.version.outputs.version }}-${{ matrix.label }}
+          path: dist/*.bin
+          if-no-files-found: error
+
   release:
     if: github.ref_type == 'tag'
-    needs: [version, build, android, ios]
+    needs: [version, build, android, ios, esp32]
     runs-on: ubuntu-latest
     permissions:
       contents: write
