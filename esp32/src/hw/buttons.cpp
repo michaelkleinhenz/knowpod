@@ -33,7 +33,8 @@ static GpioButton gpio_buttons[] = {
     {BTN_BOOT, PIN_KEY_BOOT, false, false, false},
     {BTN_PWR,  PIN_KEY_PWR,  false, true,  false},
 #else
-    {BTN_BOOT, PIN_KEY_BOOT, false, false, true},
+    {BTN_BOOT, PIN_KEY_BOOT, false, false, false},
+    {BTN_PWR,  PIN_KEY_PWR,  false, false, true},   // long hold powers off
 #endif
 };
 

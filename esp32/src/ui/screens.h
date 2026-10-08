@@ -10,7 +10,6 @@ Screen *make_recordings();
 Screen *make_detail(const String &id);
 Screen *make_settings();
 Screen *make_recording();                       // recording in progress
-Screen *make_ask(const String &scope_id);       // empty scope: all recordings
 Screen *make_sleep();                           // shown during deep sleep
 
 // With `home_after_ms`, the message returns to the home screen by itself.

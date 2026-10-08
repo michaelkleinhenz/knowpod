@@ -173,8 +173,8 @@ jobs:
         include:
           - env: esp32-s3-epaper-397
             label: epaper-397
-          - env: esp32-s3-epaper-154g
-            label: epaper-154g
+          - env: esp32-c6-epaper-154
+            label: epaper-154
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

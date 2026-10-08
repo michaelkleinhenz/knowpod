@@ -16,7 +16,12 @@ from typing import Callable
 from bleak import BleakClient, BleakScanner
 
 SERVICE = "001120a0-2233-4455-6677-889912345678"
-COMMAND = "001120a3-2233-4455-6677-889912345678"
+COMMAND = "001120a3-2233-4455-6677-889912345678"  # answers arrive here (notify)
+# The official app writes its commands to 001120a2 as write requests (with response), after
+# subscribing to 001120a3 and 001120a1. An already set-up recorder also takes writes to
+# 001120a3; a factory-reset one only answered the app's way (capture of 2026-10-06).
+WRITE = "001120a2-2233-4455-6677-889912345678"
+AUDIO = "001120a1-2233-4455-6677-889912345678"
 
 
 class PocketError(Exception):
@@ -50,11 +55,17 @@ class PocketLink:
     """An open connection to the recorder. Use as `async with PocketLink(address) as pocket`."""
 
     def __init__(self, address: str, *, scan_timeout: float = 20.0, notify_all: bool = False,
-                 notify: list[str] | None = None,
+                 notify: list[str] | None = None, direct_fallback: bool = False,
+                 app_style: bool = False, force_le: bool = False,
                  on_message: Callable[[Message], None] | None = None,
                  on_event: Callable[[str, str], None] | None = None):
         self.address = address
         self.scan_timeout = scan_timeout
+        self.direct_fallback = direct_fallback
+        # app_style: write to WRITE with response and subscribe to AUDIO before unlocking,
+        # exactly as the official app does.
+        self.app_style = app_style
+        self.force_le = force_le
         self.notify_all = notify_all
         self.notify = [n.lower() for n in notify or []]
         self.on_message = on_message
@@ -71,18 +82,119 @@ class PocketLink:
         self.data: dict[str, bytearray] = {}
 
     async def __aenter__(self) -> "PocketLink":
-        device = await BleakScanner.find_device_by_address(self.address, timeout=self.scan_timeout)
+        device = None
+        try:
+            device = await BleakScanner.find_device_by_address(self.address, timeout=self.scan_timeout)
+        except Exception as e:  # noqa: BLE001 - a busy adapter (e.g. another scanner) can raise
+            if not self.direct_fallback:
+                raise
+            self.on_event("ble", f"scan failed ({type(e).__name__}); connecting by address directly")
         if device is None:
-            raise PocketError(f"Recorder {self.address} not found (is it awake and nearby?)")
-        self.client = BleakClient(device, disconnected_callback=self._on_disconnect)
+            if not self.direct_fallback:
+                raise PocketError(f"Recorder {self.address} not found (is it awake and nearby?)")
+            # BlueZ can connect to a device it already knows without a fresh scan; use the address.
+            self.on_event("ble", f"not found by scan; connecting to {self.address} directly")
+            self.client = BleakClient(self.address, disconnected_callback=self._on_disconnect)
+        else:
+            self.client = BleakClient(device, disconnected_callback=self._on_disconnect)
+        if self.force_le:
+            await self._connect_le(device)
         await self.client.connect()
-        self.on_event("ble", f"connected to {device.name or '?'} ({device.address})")
+        name = getattr(device, "name", None) or "?"
+        self.on_event("ble", f"connected to {name} ({getattr(device, 'address', self.address)})")
         # Only the command characteristic here: the recorder drops a connection that isn't
         # unlocked within a few seconds, so the others wait for subscribe_others().
         await self._subscribe(COMMAND)
         if COMMAND not in self._subscribed:
             raise PocketError("Could not subscribe to the command characteristic")
+        if self.app_style and await self._subscribe(AUDIO):
+            self.on_event("ble", f"subscribed to {AUDIO}")
         return self
+
+    async def _connect_le(self, device, timeout: float = 12.0) -> None:
+        """Opens the LE link through BlueZ, on Linux, forcing the LE bearer (Linux only).
+
+        The recorder's advertising doesn't set "BR/EDR not supported", so BlueZ treats it as
+        dual-mode, and the plain Device1.Connect that bleak uses pages it over classic Bluetooth.
+        The recorder never answers that, and BlueZ gives up after the page timeout. The phone app
+        connects over LE, so we do too, by two routes in turn:
+
+          1. org.bluez.Bearer.LE1.Connect on the device (BlueZ >= 6; needs Experimental). This
+             connects the LE bearer only. If it succeeds bleak sees the device connected and
+             skips its own Connect.
+          2. If that interface is missing or its connect doesn't take, Adapter1.ConnectDevice,
+             which is LE-only and creates the device fresh and connects it over LE (AddressType
+             is the device's own public/random kind, not a bearer -- the recorder is public). We
+             RemoveDevice first, because ConnectDevice refuses one BlueZ already knows (our scan
+             just registered it).
+
+        If both are unavailable, bleak's plain Connect runs and, on a dual-mode recorder, times
+        out on the classic page. A Bearer.LE1 call that hangs usually means the link itself isn't
+        forming -- most often the phone (or a stray bluetoothctl) still holds the single BLE
+        connection, or the adapter is mid-scan -- and ConnectDevice will then hang too.
+        """
+        try:
+            from dbus_fast import BusType, Message, MessageType, Variant
+            from dbus_fast.aio import MessageBus
+        except ImportError:
+            return
+        details = getattr(device, "details", None) if device is not None else None
+        details = details if isinstance(details, dict) else {}
+        path = details.get("path") or "/org/bluez/hci0/dev_" + self.address.upper().replace(":", "_")
+        adapter = path.rsplit("/", 1)[0]  # /org/bluez/hci0/dev_AA_.. -> /org/bluez/hci0
+        addr = self.address.upper()
+        # ConnectDevice's AddressType is the device's own kind (public/random), not the bearer;
+        # use what the scan saw, defaulting to public (the recorder advertises a public address).
+        addr_type = (details.get("props", {}) or {}).get("AddressType") or "public"
+        bus = await MessageBus(bus_type=BusType.SYSTEM).connect()
+
+        async def call(iface, member, path_, signature="", body=None, t=timeout):
+            """Returns the reply, or None if it timed out (logged by the caller)."""
+            try:
+                return await asyncio.wait_for(bus.call(Message(
+                    destination="org.bluez", path=path_, interface=iface, member=member,
+                    signature=signature, body=body or [])), t)
+            except asyncio.TimeoutError:
+                return None
+
+        try:
+            self.on_event("ble", "connecting over LE (BlueZ LE bearer)")
+            reply = await call("org.bluez.Bearer.LE1", "Connect", path)
+            if reply is None:
+                self.on_event("ble", f"LE bearer connect gave no answer within {timeout:g} s; "
+                                     "trying Adapter1.ConnectDevice")
+            elif reply.message_type != MessageType.ERROR:
+                await asyncio.sleep(0.5)  # let bleak's manager see the Connected change
+                return
+            elif reply.error_name in ("org.freedesktop.DBus.Error.UnknownInterface",
+                                      "org.freedesktop.DBus.Error.UnknownMethod"):
+                self.on_event("ble", "no LE bearer interface; trying Adapter1.ConnectDevice")
+            else:
+                self.on_event("ble", f"LE bearer connect failed: {reply.error_name} {reply.body}; "
+                                     "trying Adapter1.ConnectDevice")
+
+            # Force LE via Adapter1.ConnectDevice, which takes an explicit "le" address type and
+            # so never pages over classic. Drop the scan-registered record first (best-effort),
+            # since ConnectDevice refuses a device BlueZ already knows.
+            await call("org.bluez.Adapter1", "RemoveDevice", adapter, "o", [path])
+            reply = await call("org.bluez.Adapter1", "ConnectDevice", adapter, "a{sv}",
+                               [{"Address": Variant("s", addr),
+                                 "AddressType": Variant("s", addr_type)}])
+            if reply is None:
+                self.on_event("ble", f"ConnectDevice gave no answer within {timeout:g} s; "
+                                     "the recorder isn't accepting an LE link (phone still "
+                                     "connected? adapter busy?)")
+            elif reply.message_type == MessageType.ERROR:
+                if reply.error_name in ("org.freedesktop.DBus.Error.UnknownMethod",
+                                        "org.freedesktop.DBus.Error.UnknownInterface"):
+                    self.on_event("ble", "ConnectDevice not available (enable BlueZ Experimental); "
+                                         "falling back to a plain connect")
+                else:
+                    self.on_event("ble", f"ConnectDevice failed: {reply.error_name} {reply.body}")
+            else:
+                await asyncio.sleep(0.5)  # let bleak's manager see the Connected change
+        finally:
+            bus.disconnect()
 
     async def subscribe_others(self) -> None:
         """Subscribes to the other notify/indicate characteristics, one by one, logging each:
@@ -175,7 +287,10 @@ class PocketLink:
         async with self._write_lock:
             since = self.mark()
             self.on_event("ble>", f"APP&{command}")
-            await self.client.write_gatt_char(COMMAND, f"APP&{command}".encode("ascii"), response=False)
+            if self.app_style:
+                await self.client.write_gatt_char(WRITE, f"APP&{command}".encode("ascii"), response=True)
+            else:
+                await self.client.write_gatt_char(COMMAND, f"APP&{command}".encode("ascii"), response=False)
             return since
 
     async def wait_for(self, predicate: Callable[[Message], bool], *, since: int,

@@ -202,11 +202,6 @@ HttpResponse http_request(const String &url, const char *method, const HttpHeade
             r.retry_after_s = value.toInt();
         else if (name == "upload-offset:")
             r.upload_offset = atol(value.c_str());
-        else if (name == "set-cookie:") {
-            int semi = value.indexOf(';');  // keep name=value, drop attributes
-            if (!r.cookies.isEmpty()) r.cookies += "; ";
-            r.cookies += semi < 0 ? value : value.substring(0, semi);
-        }
     }
 
     // No body for HEAD-like responses

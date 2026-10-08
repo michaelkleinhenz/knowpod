@@ -4,7 +4,7 @@
 #include <atomic>
 #include <map>
 #include <esp_random.h>
-#include "proc/pipeline.h"
+#include "proc/upload.h"
 #include "proc/worker.h"
 #include "store/config.h"
 #include "store/recordings.h"
@@ -46,10 +46,12 @@ static TaskHandle_t task;
 static QueueHandle_t requests;
 static SemaphoreHandle_t mutex = xSemaphoreCreateMutex();
 
+namespace {  // file-local: each file's Lock guards its own mutex
 struct Lock {
     Lock()  { xSemaphoreTake(mutex, portMAX_DELAY); }
     ~Lock() { xSemaphoreGive(mutex); }
 };
+}
 
 static volatile bool wanted = false;
 static volatile bool paused = false;
@@ -378,7 +380,11 @@ static void handle_read(uint16_t to, const String &id, uint32_t offset, uint32_t
     set_activity("Sending " + recording_display_title(info) + " (" + String(percent) + "%)",
                  "BT " + String(percent) + "%");
 
+#ifdef BOARD_HAS_PSRAM
     static uint8_t *file_buf = (uint8_t *)ps_malloc(FILE_BUF_BYTES);
+#else
+    static uint8_t *file_buf = (uint8_t *)malloc(FILE_BUF_BYTES);
+#endif
     static uint8_t packet[520];
     size_t payload = min<size_t>(max<int>(mtu - 3 - 4, 16), sizeof(packet) - 4);
     sending = true;

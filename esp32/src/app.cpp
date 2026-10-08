@@ -21,10 +21,11 @@
 //   hold BOOT       start/stop recording             PWR click   sleep
 //   hold PWR        power off
 //
-// 1.54G buttons (BOOT only — PWR is hardware-only via ETA6098):
+// 1.54" buttons:
 //   BOOT click      next / highlight while recording
-//   BOOT hold       select (OK) / stop recording
-//   BOOT hold 2s    back (sleep on home screen)
+//   BOOT hold       back (sleep on home screen) / stop recording
+//   PWR click       select (ignored while recording)
+//   PWR hold 2s     power off
 
 #define SAVED_HOME_MS  10000   // "Saved" message returns to the home screen
 
@@ -41,7 +42,7 @@ void start_recording_from_ui()
     String error;
     if (!sd_ok) error = "No SD card.";
     else if (!codec_ok) error = "Audio codec not available.";
-    else if (debug_busy() || recorder_active()) error = "The microphone is busy.";
+    else if (recorder_active()) error = "The microphone is busy.";
     if (error.isEmpty() && session_start(error)) {
         ui_push(make_recording());
         return;
@@ -58,18 +59,12 @@ static void stop_recording(const String &reason = String())
     if (!reason.isEmpty()) body += reason + "\n\n";
     body += "Duration: " + format_duration(info.seconds) + "\n";
     body += "Highlights: " + String(info.highlights) + "\n\n";
-    bool ready = !config_wifi().empty() &&
-                 (config_processing_backend() ? config_backend_enabled() : !config_api_key().isEmpty());
     // Without Wi-Fi, a paired knowpod app takes the recording over Bluetooth and uploads it
-    if (config_processing_backend() && config_backend_enabled() && config_bluetooth_enabled() &&
-        ble_paired_count() > 0)
-        ready = true;
-    body += !ready ? String(config_processing_backend()
-                                ? "Add Wi-Fi and the backend settings to get a transcript and summary."
-                                : "Add Wi-Fi and an OpenRouter key to get a transcript and summary.")
-                   : String(config_processing_backend()
-                                ? "It is uploaded; the backend's transcript and summary follow."
-                                : "Transcript and summary will be ready when Wi-Fi is available.");
+    bool via_app = config_bluetooth_enabled() && ble_paired_count() > 0;
+    body += !config_backend_enabled() || (config_wifi().empty() && !via_app)
+                ? "Add Wi-Fi and the backend token to config.json to upload it to knowpod."
+                : "It is uploaded to knowpod when Wi-Fi is available (or through the paired app); "
+                  "the transcript and summary appear there.";
 
     ui_replace(make_message(reason.isEmpty() ? "Saved" : "Recording stopped", body, false, SAVED_HOME_MS));
     ui_dirty(true);  // the recording screen changed many times
@@ -107,9 +102,9 @@ static void enter_deep_sleep()
     ui_render(true);
     wifi_off(true);
 
+#ifdef HAS_ROCKER
     esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
 
-#ifdef HAS_ROCKER
     static const gpio_num_t WAKE_PINS[] = {
         (gpio_num_t)PIN_KEY_UP, (gpio_num_t)PIN_KEY_OK, (gpio_num_t)PIN_KEY_DOWN};
     uint64_t mask = 0;
@@ -123,10 +118,11 @@ static void enter_deep_sleep()
     rtc_gpio_pullup_dis((gpio_num_t)PIN_KEY_PWR);
     esp_sleep_enable_ext0_wakeup((gpio_num_t)PIN_KEY_PWR, 1);
 #else
-    // 1.54G: BOOT (GPIO0) wakes via ext1 (active low)
-    rtc_gpio_pullup_en((gpio_num_t)PIN_KEY_BOOT);
-    rtc_gpio_pulldown_dis((gpio_num_t)PIN_KEY_BOOT);
-    esp_sleep_enable_ext1_wakeup(1ULL << PIN_KEY_BOOT, ESP_EXT1_WAKEUP_ANY_LOW);
+    // 1.54": only PWR is on an LP GPIO that can wake the C6 (active low)
+    while (digitalRead(PIN_KEY_PWR) == LOW) delay(10);  // the press that sent us to sleep
+    rtc_gpio_pullup_en((gpio_num_t)PIN_KEY_PWR);
+    rtc_gpio_pulldown_dis((gpio_num_t)PIN_KEY_PWR);
+    esp_sleep_enable_ext1_wakeup(1ULL << PIN_KEY_PWR, ESP_EXT1_WAKEUP_ANY_LOW);
 #endif
 
     int hours = config_power_off_hours();
@@ -139,11 +135,11 @@ static bool may_sleep()
 {
     int minutes = config_sleep_minutes();
     if (minutes <= 0 || millis() - last_activity < (uint32_t)minutes * 60000) return false;
-    // With web access on USB power, stay awake so the web page and MCP stay reachable
+    // With web access on USB power, stay awake so the web page stays reachable
     if (web_active() && power_status().usb_connected) return false;
     // An app reading recordings over Bluetooth, or one being paired, needs the device awake
     if (ble_connected() || ble_pairing()) return false;
-    return !session_active() && !recorder_active() && !debug_busy() && !worker_busy();
+    return !session_active() && !recorder_active() && !worker_busy();
 }
 
 // ============================================================
@@ -183,8 +179,13 @@ static void handle_event(const ButtonEvent &ev)
     else top->on_button(ev);
 
 #else
-    // ── 1.54G (single button: BOOT) ────────────────────────────
-    // click = next/highlight, hold = select/stop, hold 2s = back/sleep
+    // ── 1.54" (BOOT + PWR) ─────────────────────────────────────
+    // BOOT: click = next/highlight, hold = back/stop; PWR: click = select, hold 2 s = power off
+
+    if (ev.id == BTN_PWR && ev.action == BTN_VLONG) {
+        power_off_now();
+        return;
+    }
 
     if (session_active()) {
         if (ev.id == BTN_BOOT && ev.action == BTN_CLICK) { session_highlight(); ui_dirty(); }
@@ -192,7 +193,7 @@ static void handle_event(const ButtonEvent &ev)
         return;
     }
 
-    if (ev.id == BTN_BOOT && ev.action == BTN_VLONG) {
+    if (ev.id == BTN_BOOT && ev.action == BTN_LONG) {
         if (ui_is_root()) enter_deep_sleep();
         else if (Screen *top = ui_top()) top->on_back();
         return;
@@ -203,7 +204,7 @@ static void handle_event(const ButtonEvent &ev)
 
     if (ev.id == BTN_BOOT && ev.action == BTN_CLICK) {
         top->on_button({BTN_DOWN, BTN_CLICK});
-    } else if (ev.id == BTN_BOOT && ev.action == BTN_LONG) {
+    } else if (ev.id == BTN_PWR) {  // click, or released before the power-off hold
         top->on_button({BTN_OK, BTN_CLICK});
     }
 #endif
@@ -225,18 +226,24 @@ void app_begin(bool sd, bool codec)
 
 void app_loop()
 {
+    debug_stage = "garbage";
     ui_collect_garbage();
+    debug_stage = "clock_poll";
     clock_poll();
 
     if (session_active()) {
+        debug_stage = "session_poll";
         String reason;
         if (!session_poll(reason)) stop_recording(reason);
     }
 
+    debug_stage = "buttons";
     ButtonEvent ev;
     while (buttons_get(ev)) handle_event(ev);
 
+    debug_stage = "web_poll";
     web_poll();
+    debug_stage = "screen tick";
     if (Screen *top = ui_top()) top->tick();
 
     // Keep the clock in the status bar current
@@ -246,6 +253,8 @@ void app_loop()
         ui_dirty();
     }
 
+    debug_stage = "may_sleep";
     if (may_sleep()) enter_deep_sleep();
+    debug_stage = "render";
     ui_render();
 }

@@ -1,4 +1,4 @@
-#include "pipeline.h"
+#include "upload.h"
 #include <mbedtls/sha256.h>
 #include "net/http.h"
 #include "store/config.h"
@@ -100,7 +100,7 @@ Step upload_next(const String &id, JsonDocument &meta, int &percent)
                                                     : meta["upload"].to<JsonObject>();
     up["status"] = "uploading";
 
-    // 1. Checksum of the finished WAV file
+    // 1. Checksum of the finished audio file (WAV or MP3)
     if (!up["sha256"].is<const char *>() || (size_t)(up["size"] | 0) != size) {
         String hex;
         bool ok = sha256_file(f, hex);
@@ -196,7 +196,7 @@ Step upload_next(const String &id, JsonDocument &meta, int &percent)
         up.remove("upload_id");
         up["offset"] = 0;
         break;
-    case 422: {  // checksum mismatch (server reset to 0) or not a valid WAV
+    case 422: {  // checksum mismatch (server reset to 0) or not valid WAV/MP3 audio
         int resets = (up["checksum_resets"] | 0) + 1;
         up["checksum_resets"] = resets;
         if (resets > MAX_CHECKSUM_RESETS)

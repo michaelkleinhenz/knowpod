@@ -10,7 +10,7 @@ struct SessionInfo {
     float    seconds;
     int      highlights;
     float    last_highlight;  // seconds into the recording, -1 if none
-    float    hours_left;      // SD space left at 16 kHz
+    float    hours_left;      // SD space left at the recording format's data rate
     float    dropped_seconds;
 };
 
