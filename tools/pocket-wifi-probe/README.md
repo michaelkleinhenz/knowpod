@@ -18,22 +18,55 @@ sequence, port 8475, what the Android app's strings reveal, the working theory o
 transfer, the next steps, and the plan for the desktop app. Keep it up to date after each run.
 
 
-## Capturing the official app (`capture_quick_transfer.py`)
+## Capturing the official app (`capture_app.py`)
 
-To see what the official Android app does during a Quick Transfer, run this on the laptop with
-the phone on adb (USB debugging on, the Pocket app installed and paired):
+To see what the official Android app does, run this on the laptop with the phone on adb (USB
+debugging on, the Pocket app installed, the Bluetooth HCI snoop log enabled):
 
 ```sh
-python3 capture_quick_transfer.py
+python3 capture_app.py snoop-check       # first: does the live Bluetooth log come through?
+python3 capture_app.py activation        # the app activating (setting up) a recorder
+python3 capture_app.py quick-transfer    # the app's Quick Transfer (Wi-Fi)
 ```
 
-It needs `adb`, `iw`, `tcpdump`, `nmcli` and sudo, and uses only the standard library. It
-streams the phone's Bluetooth HCI snoop log from its btsnoop socket (`adb forward` to 8872) and
-decodes the `APP&`/`MCU&` commands live. It also records `adb logcat`, and puts the laptop's
-WiFi card in monitor mode on the recorder's channel to capture the phone's traffic on the AP,
-including the WPA handshake needed to decrypt it. At the end it takes a bug report for the
-on-phone snoop log, in case the socket isn't available. The script tells you when to do what in
-the app. Output goes to `qt-capture-<time>/` (gitignored; it contains the session key).
+It needs `adb`, `iw`, `tcpdump`, `nmcli` and sudo (`--no-wifi`: only `adb`), and uses only the
+standard library. The script tells you when to do what in the app. While it runs, type a note
+and Enter at each step in the app ("tapped Add device") to put a marker in the timeline; type
+`done` when finished.
+
+- **Bluetooth:** it streams the phone's HCI snoop log from its btsnoop socket (`adb forward` from
+  a free laptop port to the phone's 8872) and decodes it live: the recorder's advertising (any name matching `--device-name`,
+  default `^PKT`), connections, pairing (SMP) and encryption, the GATT layout as the app
+  discovers it, and every ATT read, write, subscription, notification and indication, labelled
+  with the characteristic's UUID. Text values like `APP&`/`MCU&` show as text, others as hex. At
+  the end it takes a bug report for the on-phone snoop log, in case the socket isn't available.
+- **WiFi:** it puts the laptop's WiFi card in monitor mode and hops the 2.4 GHz channels until
+  it sees the recorder: its known AP MAC (`--bssid`) or any MAC with its WiFi OUI (`--oui`,
+  default `a4:c1:38`), so a recorder never seen before is found too. It then stays on that
+  channel and records everything, including WPA handshakes. It logs the networks the recorder
+  announces or looks for (probe requests), which shows whether it's given home WiFi details.
+- **App log:** `adb logcat`. For `activation` it prints every line from the app's process.
+- It saves the phone's Bluetooth state (`dumpsys bluetooth_manager`) before and after, so
+  bonds that appear show up.
+
+`snoop-check` tests the live log on its own: it forwards a port, reads the btsnoop header and
+shows packets for 20 s (`--restart` restarts the phone's Bluetooth first). The capture runs the
+same check. A working forward isn't proof by itself: `adb forward` accepts the connection even
+when nothing listens on the phone, so only a btsnoop header counts. The socket serves one client
+at a time, so close Wireshark's androiddump and other forwards to 8872 first.
+
+Output goes to `capture-<scenario>-<time>/` (gitignored; it can contain the session key and
+WiFi passwords): `timeline.log` (everything printed, unredacted, with full values),
+`phone-live.btsnoop`, `*.decoded.txt` (every btsnoop log decoded with all details),
+`wifi-monitor.pcap`, `logcat.txt` and the bug report. The app's own internet traffic (for
+example to its cloud during activation) is TLS from the phone and isn't captured; logcat is
+the window into it.
+
+To decode a btsnoop log again, or one from elsewhere, without a phone:
+
+```sh
+python3 capture_app.py decode capture-…/phone-live.btsnoop          # --all for every detail
+```
 
 ## What a run does
 
@@ -48,6 +81,32 @@ the app. Output goes to `qt-capture-<time>/` (gitignored; it contains the sessio
    checks. `--no-begin` skips this step.
 6. Teardown, which always runs, including after Ctrl-C: stops the monitors, sends `WIFIC`,
    rejoins the original WiFi network, deletes the temporary profile and disconnects Bluetooth.
+
+## Testing how the recorder takes its session key (`pocket-keybind`)
+
+After a factory reset, use this to find out how the recorder decides which session key to
+accept (see RESEARCH.md). It uses this machine's Bluetooth only (no WiFi, no phone):
+
+```sh
+pocket-keybind F4:4B:26:17:34:1D lzYjgY68j5fmiwAM      # or set POCKET_SESSION_KEY
+```
+
+It runs a few connections in turn. Each one optionally sends a single `APP&SK&<key>`, then
+sends `APP&BAT` and reports whether the recorder answered (the real sign of being unlocked) and
+whether it dropped the link. The steps are `--steps` (default `none,key,fresh,key`):
+
+| step          | what it sends |
+|---------------|---------------|
+| `none`        | no key: does the recorder answer commands unlocked? |
+| `key`         | the key on the command line / `POCKET_SESSION_KEY` (on a reset recorder: the activation) |
+| `fresh`       | a freshly generated 16-char key, not the command-line one |
+| `other:<KEY>` | a specific key, e.g. the one the vendor app used before the reset |
+
+Each step opens its own connection, like the app does. Unlocking makes the recorder raise its WiFi AP, and while that AP is up it stops advertising over Bluetooth for ~15 s, so the next step can't be found at once. The tool handles this by dropping the AP (`WIFIC`) before disconnecting, retrying the scan (`--scan-attempts`, default 4) and waiting between steps (`--between`, default 15 s). If a step still ends in 'Recorder not found', give it longer: `--between 25 --scan-timeout 30`.
+
+At the end it prints a plain-language reading (first-key-wins, any key works, or not locked).
+Keys are redacted from the output and left out of the `--out` JSON report. Run it only against a
+recorder you own; for a clean first-key test, factory reset it first.
 
 ## Install and run
 

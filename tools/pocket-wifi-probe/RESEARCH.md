@@ -49,6 +49,17 @@ needs a physical power-cycle. `APP&WIFIC` can't fix that, because Bluetooth is a
   the recorder answers `MCU&<cmd>&<value>` as notifications on the same characteristic. The
   desktop app and pocket-libre both use this characteristic. PROTOCOL.md's table points at
   `e49a3002/3`, which also exist.
+- **How the official app writes (capture of 2026-10-06):** it subscribes to `001120a3` and
+  `001120a1` (and Service Changed), then writes every command to **`001120a2`** (handle
+  `0x002b`) as a **write request with response** (ATT `0x12`). Answers still arrive as
+  notifications on `001120a3`. Our tools wrote to `001120a3` without response, which the
+  set-up grey recorder accepted, but a factory-reset recorder didn't answer that way.
+  `PocketLink(app_style=True)` writes like the app; `pocket-keybind` uses it by default.
+- **Connect over LE explicitly on Linux.** The BLUE recorder's advertising flags are `0x02`
+  ("BR/EDR not supported" isn't set), so BlueZ treats it as dual-mode. bleak's `Connect`
+  then pages it over classic Bluetooth; the recorder never answers, and BlueZ drops the
+  device after the 5.12 s page timeout (`keybind` log of 2026-10-06 19:08). The phone connects
+  over LE. `PocketLink(force_le=True)` connects BlueZ's `org.bluez.Bearer.LE1` first.
 - A connection must first be unlocked with `APP&SK&<16-char session key>` → `MCU&SK&OK`.
   The **first 8 characters of the session key are the AP's WPA2 password**. Treat the key as a
   secret: the desktop app encrypts it with `safeStorage`, and the probe redacts it from reports.
@@ -453,6 +464,38 @@ for adding checks. What it does now:
 **Next:** build a `download` command into the probe using the protocol above (several
 files, two per AP session, MD5 against `MCU&U` sizes and the marker), then the desktop app's
 "Transfer over WiFi" (see the plan below).
+
+## Session key and activation (capture of 2026-10-06, `capture_app.py activation`)
+
+Recorder: `PKT01_BLUE_2617341d`, Bluetooth `F4:4B:26:17:34:1D` (`APP&MAC` → `MCU&MAC&f44b2617341d`),
+firmware 1.8, WiFi V9. The name's suffix is the last 4 bytes of the Bluetooth address (also true
+for `PKT01_GREY_261717ff` / `F4:4C:26:17:17:FF`).
+
+- **The session key is the first 16 characters of the owner's Firebase Auth user ID.** The app
+  signed in as user `lzYjgY…NjhS2` (28 characters, account created 2026-10-06 15:49 UTC), and 20 s
+  later unlocked the recorder with `APP&SK&` plus that ID's first 16 characters → `MCU&SK&OK`.
+  The same user ID is PostHog's `distinct_id` and OneSignal's/RevenueCat's external ID. PostHog's
+  other IDs (`$anon_distinct_id`, `$device_id`) are per app install, not per recorder.
+- **No Bluetooth pairing or bonding.** No SMP, no encryption; Android keeps no key for the
+  recorder. The access control is only the `SK` check.
+- Right after `MCU&SK&OK` the recorder sent `MCU&WIFIO` unprompted, and `MCU&WIFIC` 15 s later.
+  The WiFi monitor saw no frames from the recorder.
+- **This was the activation.** The recorder had been removed from its previous account and
+  factory reset, and the phone had never seen it before (the earlier on-phone log has no
+  `PKT` traffic). The whole activation on the Bluetooth side is the first `APP&SK&<key>` →
+  `MCU&SK&OK`. No other command, no pairing, and nothing written besides the key. So a reset
+  recorder most likely adopts the first session key it gets (trust on first use).
+- The app's own HTTPS calls (Flutter) don't show in logcat. It probably registers the recorder
+  with the account on Pocket's server, but the recorder doesn't need that to work.
+- To confirm, run `pocket-keybind <address> <key>` against the recorder (it uses this
+  machine's Bluetooth; see below). It opens one connection per step and, for each, sends an
+  optional `APP&SK&<key>` then `APP&BAT` and reports whether the recorder answered. The default
+  `none,key,fresh,key` shows, in order: unlocked access, the real key, a different random key,
+  the real key again.
+  - first-key-wins (the theory): none refused, key OK, fresh refused, key OK.
+  - any key works (no binding): fresh also OK.
+  - not locked at all: none already answers.
+  For a clean first-key test, factory reset the recorder first, so no key has been adopted yet.
 
 ## Open questions
 
