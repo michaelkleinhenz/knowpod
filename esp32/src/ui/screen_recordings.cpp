@@ -4,7 +4,12 @@
 #include "proc/worker.h"
 #include "store/config.h"
 #include "store/recordings.h"
-#include "store/templates.h"
+
+#if SCREEN_H < 400
+#define COMPACT_DATES true   // no year: dates fit the 200 px screen
+#else
+#define COMPACT_DATES false
+#endif
 
 // ============================================================
 // List
@@ -12,7 +17,11 @@
 
 class RecordingsScreen : public Screen {
 public:
+#ifdef HAS_ROCKER
     RecordingsScreen() { list.empty_text = "No recordings yet. Hold BOOT to record."; }
+#else
+    RecordingsScreen() { list.empty_text = "No recordings yet. Choose Record on the home screen."; }
+#endif
 
     void draw() override
     {
@@ -52,11 +61,10 @@ private:
         list.items.clear();
         ids.clear();
         for (const RecordingInfo &r : recordings_list()) {
-            String sub = r.created_unix ? recording_display_date(r.created_unix) : r.id;
-            sub += " · " + format_duration(r.duration_s);
-            if (r.state != "summarized") sub += " · " + recording_state_label(r.state);
-            if (r.upload == "failed") sub += " · upload failed";
-            list.items.push_back({recording_display_title(r), sub});
+            // The title is the date unless the recording has its own title
+            String sub = r.title.isEmpty() ? String() : recording_display_date(r.created_unix, COMPACT_DATES) + " · ";
+            sub += format_duration(r.duration_s) + " · " + recording_state_label(r);
+            list.items.push_back({recording_display_title(r, COMPACT_DATES), sub});
             if (r.id == selected_id) list.selected = ids.size();
             ids.push_back(r.id);
         }
@@ -73,10 +81,6 @@ Screen *make_recordings()
 // Detail
 // ============================================================
 
-enum DetailView { VIEW_SUMMARY, VIEW_ACTIONS, VIEW_TRANSCRIPT, VIEW_DETAILS };
-
-static const char *const VIEW_NAMES[] = {"Summary", "Action items", "Transcript", "Details"};
-
 class DetailScreen : public Screen {
 public:
     explicit DetailScreen(const String &id) : id(id) {}
@@ -84,9 +88,9 @@ public:
     void draw() override
     {
         if (generation != recordings_generation()) load();
-        String sub = VIEW_NAMES[view_mode];
+        String sub = recording_state_label(info);
         if (view.pages() > 1) sub += " · page " + String(view.page() + 1) + "/" + String(view.pages());
-        draw_title(recording_display_title(info), sub);
+        draw_title(recording_display_title(info, COMPACT_DATES), sub);
         view.draw();
     }
 
@@ -98,10 +102,10 @@ public:
 
     void tick() override
     {
-        // Follow processing progress of this recording
+        // Follow the upload of this recording
         if (generation != recordings_generation() && millis() - last_refresh > 10000) {
             RecordingInfo now;
-            if (recording_info(id, now) && now.state != info.state) {
+            if (recording_info(id, now) && (now.upload != info.upload || now.upload_percent != info.upload_percent)) {
                 last_refresh = millis();
                 ui_dirty();
             } else {
@@ -113,155 +117,60 @@ public:
 #ifdef HAS_ROCKER
     const char *hint() override { return "Rocker: scroll · Press: menu · BOOT: back"; }
 #else
-    const char *hint() override { return "Tap: scroll · Hold: menu"; }
+    const char *hint() override { return "BOOT: scroll · PWR: menu"; }
 #endif
-
-    void show(DetailView v)
-    {
-        view_mode = v;
-        view.clear();  // start at the first page
-        load();
-        ui_dirty();
-    }
 
 private:
     String id;
     RecordingInfo info;
-    DetailView view_mode = VIEW_SUMMARY;
-    bool first_load = true;
     TextView view;
     uint32_t generation = 0;
     uint32_t last_refresh = 0;
-
-    String processing_note()
-    {
-        if (info.state == "error") return "Processing failed: " + info.error + "\n\nUse the menu to retry.";
-        if (info.state == "summarized") return "";
-        if (config_processing_backend()) {
-            if (info.upload == "failed") return "The upload failed: " + info.upload_error + "\n\nUse the menu to retry.";
-            if (info.upload != "done")
-                return "Waiting for the upload (" + String(info.upload_percent) + " %). The backend "
-                       "transcribes and summarizes it afterwards.";
-            String note = "Uploaded. Waiting for the backend's transcript and summary.";
-            if (worker_current_id() == id) note += "\n\n" + worker_status();
-            return note;
-        }
-        String note = "Not summarized yet (" + recording_state_label(info.state) + ").";
-        if (worker_current_id() == id) note += "\n\n" + worker_status();
-        else if (worker_pending()) note += "\n\nWaiting for Wi-Fi or other recordings.";
-        return note;
-    }
 
     void load()
     {
         generation = recordings_generation();
         int page = view.page();
-        String old_state = info.state;
         if (!recording_info(id, info)) {
             info.id = id;
             info.state = "missing";
         }
-        if (first_load) {
-            view_mode = info.state == "summarized" ? VIEW_SUMMARY : VIEW_DETAILS;
-            first_load = false;
-        }
 
+        JsonDocument meta;
+        recording_load_meta(id, meta);
         view.clear();
-        String content;
-        JsonDocument summary;
-        switch (view_mode) {
-        case VIEW_SUMMARY:
-            if (read_file(recording_path(id, "summary.json"), content) && !deserializeJson(summary, content)) {
-                JsonArrayConst tags = summary["tags"];
-                if (tags.size()) {
-                    String t;
-                    for (size_t i = 0; i < tags.size(); i++) t += (i ? ", " : "") + String(tags[i] | "");
-                    view.add(t, FONT_SMALL);
-                    view.add("");
-                }
-                view.add_markdown(summary["summary"] | "");
-            } else {
-                view.add(processing_note());
-            }
-            break;
-
-        case VIEW_ACTIONS:
-            if (read_file(recording_path(id, "summary.json"), content) && !deserializeJson(summary, content)) {
-                JsonArrayConst actions = summary["action_items"];
-                view.add("Action items", FONT_BOLD);
-                if (!actions.size()) view.add("None.");
-                for (JsonObjectConst a : actions) {
-                    String line = "[ ] " + String(a["task"] | "");
-                    String owner = a["owner"] | "", due = a["due"] | "";
-                    if (!owner.isEmpty()) line += " - " + owner;
-                    if (!due.isEmpty()) line += " (" + due + ")";
-                    view.add(line);
-                }
-                JsonArrayConst hl = summary["highlights"];
-                if (hl.size()) {
-                    view.add("");
-                    view.add("Highlights", FONT_BOLD);
-                    for (JsonObjectConst h : hl)
-                        view.add(String(h["time"] | "") + "  " + String(h["note"] | ""));
-                }
-            } else {
-                view.add(processing_note());
-            }
-            break;
-
-        case VIEW_TRANSCRIPT:
-            if (read_file(recording_path(id, "transcript.md"), content)) {
-                if (content.startsWith("# Transcript")) content.remove(0, 12);
-                view.add_markdown(content);
-            } else {
-                view.add(processing_note());
-            }
-            break;
-
-        case VIEW_DETAILS: {
-            JsonDocument meta;
-            recording_load_meta(id, meta);
-            view.add("Recorded", FONT_SMALL);
-            view.add(recording_display_date(info.created_unix));
-            view.add("Duration", FONT_SMALL);
-            view.add(format_duration(info.duration_s));
-            view.add("Status", FONT_SMALL);
-            view.add(recording_state_label(info.state) + (info.error.isEmpty() ? "" : ": " + info.error));
-            if (worker_current_id() == id) view.add(worker_status());
-            JsonArrayConst hl = meta["highlights"];
-            if (hl.size()) {
-                view.add("Highlights", FONT_SMALL);
-                String times;
-                for (size_t i = 0; i < hl.size(); i++) times += (i ? ", " : "") + format_duration(hl[i] | 0.0f);
-                view.add(times);
-            }
-            if (meta["template"].is<const char *>()) {
-                view.add("Template", FONT_SMALL);
-                view.add(meta["template"] | "");
-            }
-            if (meta["model"].is<const char *>()) {
-                view.add("Model", FONT_SMALL);
-                view.add(meta["model"] | "");
-            }
-            if ((meta["dropped_s"] | 0.0f) > 0) {
-                view.add("Lost audio", FONT_SMALL);
-                view.add(String(meta["dropped_s"] | 0.0f, 1) + " s (SD card too slow)");
-            }
-            if (meta["recovered"] | false) view.add("Recovered after a power loss.", FONT_SMALL);
-            if (config_backend_enabled() || !info.upload.isEmpty()) {
-                view.add("Backend upload", FONT_SMALL);
-                if (info.upload == "done") view.add("Uploaded");
-                else if (info.upload == "failed") view.add("Failed: " + info.upload_error);
-                else if (info.upload == "uploading") view.add(String(info.upload_percent) + " % uploaded");
-                else view.add("Waiting");
-            }
-            view.add("Folder", FONT_SMALL);
-            view.add(recording_dir(id));
-            break;
+        view.add("Recorded", FONT_SMALL);
+        view.add(recording_display_date(info.created_unix));
+        view.add("Duration", FONT_SMALL);
+        view.add(format_duration(info.duration_s));
+        if (!info.error.isEmpty()) {
+            view.add("Error", FONT_SMALL);
+            view.add(info.error);
         }
+        JsonArrayConst hl = meta["highlights"];
+        if (hl.size()) {
+            view.add("Highlights", FONT_SMALL);
+            String times;
+            for (size_t i = 0; i < hl.size(); i++) times += (i ? ", " : "") + format_duration(hl[i] | 0.0f);
+            view.add(times);
         }
-        // Stay on the same page when only the state changed
-        if (old_state == info.state) view.set_page(page);
+        if ((meta["dropped_s"] | 0.0f) > 0) {
+            view.add("Lost audio", FONT_SMALL);
+            view.add(String(meta["dropped_s"] | 0.0f, 1) + " s (SD card too slow)");
+        }
+        if (meta["recovered"] | false) view.add("Recovered after a power loss.", FONT_SMALL);
+
+        view.add("Upload", FONT_SMALL);
+        if (info.upload == "done") view.add("Uploaded. Transcript and summary are in knowpod.");
+        else if (info.upload == "failed") view.add("Failed: " + info.upload_error + "\n\nUse the menu to retry.");
+        else if (!config_backend_enabled()) view.add("Add the backend token to config.json to upload.");
+        else if (worker_current_id() == id) view.add(worker_status());
+        else if (info.upload == "uploading") view.add("Uploading: " + String(info.upload_percent) + "%");
+        else view.add("Waiting for Wi-Fi or other recordings.");
+
+        view.add("Folder", FONT_SMALL);
+        view.add(recording_dir(id));
+        view.set_page(page);
     }
 
     void open_actions();
@@ -269,43 +178,32 @@ private:
 
 void DetailScreen::open_actions()
 {
-    std::vector<String> options = {"Summary", "Action items & highlights", "Transcript", "Details",
-                                   "Ask about this recording", "Play audio"};
-    if (!config_processing_backend()) options.push_back("Summarize with template...");
-    if (info.state == "error") options.push_back("Retry processing");
+    // The device plays WAV only; MP3 recordings play in the browser (web page)
+    std::vector<String> options;
+    if (recording_audio_path(id).endsWith(".wav")) options.push_back("Play audio");
     if (info.upload == "failed") options.push_back("Retry upload");
     options.push_back("Delete");
 
     String rec_id = id;
-    DetailScreen *self = this;
-    ui_push(make_menu("Recording", options, view_mode, [=](int choice) {
+    bool uploaded = info.upload == "done";
+    ui_push(make_menu("Recording", options, 0, [=](int choice) {
         String option = options[choice];
-        if (choice <= VIEW_DETAILS) {
-            self->show((DetailView)choice);
-        } else if (option.startsWith("Ask")) {
-            ui_push(make_ask(rec_id));
-        } else if (option == "Play audio") {
+        if (option == "Play audio") {
             show_progress("Playing", "Press any button to stop.");
             play_wav(recordings_fs(), recording_audio_path(rec_id).c_str(), [] {
                 ButtonEvent ev;
                 return buttons_get(ev);
             });
             ui_dirty();
-        } else if (option.startsWith("Summarize")) {
-            std::vector<String> names = templates_list();
-            ui_push(make_menu("Template", names, 0, [=](int t) {
-                worker_resummarize(rec_id, names[t]);
-                ui_push(make_message("Queued", "The recording will be summarized again with the \"" +
-                                                   names[t] + "\" template."));
-            }));
-        } else if (option.startsWith("Retry")) {
+        } else if (option == "Retry upload") {
             worker_retry(rec_id);
-            ui_push(make_message("Queued", option == "Retry upload" ? "The upload will be retried."
-                                                                    : "Processing will be retried."));
+            ui_push(make_message("Queued", "The upload will be retried."));
         } else if (option == "Delete") {
-            ui_push(make_confirm("Delete?", "Delete this recording with its transcript and summary?", [=] {
+            String body = uploaded ? "Delete this recording from the device? The uploaded copy stays in knowpod."
+                                   : "Delete this recording? It has not been uploaded yet.";
+            ui_push(make_confirm("Delete?", body, [=] {
                 if (worker_current_id() == rec_id) {
-                    ui_push(make_message("Busy", "This recording is being processed. Try again in a moment."));
+                    ui_push(make_message("Busy", "This recording is being uploaded. Try again in a moment."));
                     return;
                 }
                 recording_delete(rec_id);

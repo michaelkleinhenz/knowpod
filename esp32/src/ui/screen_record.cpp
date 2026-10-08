@@ -4,10 +4,6 @@
 #include "session.h"
 #include "store/recordings.h"
 
-#define REC_REFRESH_MS       5000
-#define QUESTION_MAX_S       60
-#define QUESTION_PATH        "/asks/question.wav"
-
 // ============================================================
 // Recording in progress (buttons are handled globally in app.cpp)
 // ============================================================
@@ -48,28 +44,41 @@ public:
         }
 #else
         int cx = MARGIN + 6, cy = TITLE_Y - 5;
-        if (pulse) g.fillCircle(cx, cy, 5, INK);
-        else for (int r = 3; r <= 5; r++) g.drawCircle(cx, cy, r, INK);
-        gfx_color().fillCircle(cx, cy, 5, 1);  // red recording dot
+        if (pulse) g.fillCircle(cx, cy, 6, INK);
+        else for (int r = 4; r <= 6; r++) g.drawCircle(cx, cy, r, INK);
         pulse = !pulse;
-        draw_text(MARGIN + 16, TITLE_Y, "Recording", FONT_TITLE);
+        draw_text(MARGIN + 18, TITLE_Y, "Recording", FONT_TITLE);
 
-        int timer_y = CONTENT_TOP + 26;
-        draw_text_centered(timer_y, format_duration(info.seconds).c_str(), FONT_DIGITS);
+        int y = CONTENT_TOP + 38;
+        draw_text_centered(y, format_duration(info.seconds).c_str(), FONT_DIGITS);
+        if (!info.started.isEmpty())
+            draw_text_centered(y + 18, ("since " + info.started).c_str(), FONT_SMALL);
 
-        int y = timer_y + 20;
-        String hl = String(info.highlights) + (info.highlights == 1 ? " hl" : " hls");
-        draw_text(MARGIN, y + font_ascent(FONT_SMALL), hl.c_str(), FONT_SMALL);
+        y = CONTENT_BOTTOM - 22;
+        String hl = String(info.highlights) + (info.highlights == 1 ? " highlight" : " highlights");
+        if (info.last_highlight >= 0) hl += ", last " + format_duration(info.last_highlight);
+        draw_text_centered(y, hl.c_str(), FONT_BODY);
+
+        if (info.dropped_seconds > 0) {
+            char dropped[48];
+            snprintf(dropped, sizeof(dropped), "%.1f s lost (slow SD card)", info.dropped_seconds);
+            draw_text_centered(y + 17, dropped, FONT_BOLD);
+        } else {
+            char space[32];
+            snprintf(space, sizeof(space), "SD card: %.0f h left", info.hours_left);
+            draw_text_centered(y + 17, space, FONT_SMALL);
+        }
 #endif
-        last_draw = millis();
+        shown_s = (uint32_t)info.seconds;
     }
 
     void on_button(const ButtonEvent &) override {}
     void on_back() override {}
 
+    // Redraw whenever the shown time changes, i.e. every second
     void tick() override
     {
-        if (millis() - last_draw >= REC_REFRESH_MS) ui_dirty();
+        if ((uint32_t)recorder_seconds() != shown_s) ui_dirty();
     }
 
     // No periodic cleanup flashes while recording; a clean refresh follows when it stops
@@ -77,161 +86,15 @@ public:
 #ifdef HAS_ROCKER
     const char *hint() override { return "BOOT: highlight · Hold BOOT: stop"; }
 #else
-    const char *hint() override { return "Tap: hl · Hold: stop"; }
+    const char *hint() override { return "BOOT: highlight · Hold: stop"; }
 #endif
 
 private:
-    uint32_t last_draw = 0;
+    uint32_t shown_s = 0;
     bool pulse = true;
 };
 
 Screen *make_recording()
 {
     return new RecordingScreen();
-}
-
-// ============================================================
-// Ask: record a spoken question, answer it from the recordings
-// ============================================================
-
-class AskScreen : public Screen {
-public:
-    explicit AskScreen(const String &scope_id) : scope(scope_id)
-    {
-        if (!scope.isEmpty()) {
-            RecordingInfo info;
-            if (recording_info(scope, info)) scope_title = recording_display_title(info);
-        }
-    }
-
-    ~AskScreen() override
-    {
-        if (state == LISTENING) recorder_stop();
-    }
-
-    void draw() override
-    {
-        draw_title("Ask", scope.isEmpty() ? String("about all recordings") : "about " + scope_title);
-        int y = CONTENT_TOP + 20;
-        switch (state) {
-        case READY:
-#ifdef HAS_ROCKER
-            draw_paragraph(MARGIN, y, SCREEN_W - 2 * MARGIN,
-                           "Press the rocker, ask your question, then press again.\n\n"
-                           "Examples: \"What did we decide about the budget?\" - "
-                           "\"What are my open tasks from this week?\"",
-                           FONT_BODY, CONTENT_BOTTOM);
-#else
-            draw_paragraph(MARGIN, y, SCREEN_W - 2 * MARGIN,
-                           "Press PWR, speak your question, then press again.",
-                           FONT_BODY, CONTENT_BOTTOM);
-#endif
-            break;
-        case LISTENING:
-#if SCREEN_H >= 400
-            draw_text_centered(260, format_duration(recorder_seconds()).c_str(), FONT_DIGITS);
-            draw_text_centered(310, "Listening ...", FONT_BODY);
-#else
-            draw_text_centered(CONTENT_TOP + 30, format_duration(recorder_seconds()).c_str(), FONT_DIGITS);
-            draw_text_centered(CONTENT_TOP + 50, "Listening ...", FONT_SMALL);
-#endif
-            break;
-        case THINKING:
-            draw_paragraph(MARGIN, y, SCREEN_W - 2 * MARGIN,
-                           "Thinking ...",
-                           FONT_BODY, CONTENT_BOTTOM);
-            break;
-        }
-        last_draw = millis();
-    }
-
-    void on_button(const ButtonEvent &ev) override
-    {
-        if (ev.id != BTN_OK || ev.action != BTN_CLICK) return;
-        if (state == READY) start_listening();
-        else if (state == LISTENING) finish_listening();
-    }
-
-    void on_back() override
-    {
-        if (state == LISTENING) {
-            recorder_stop();
-            state = READY;
-            ui_dirty();
-            return;
-        }
-        if (state == THINKING) return;  // the worker is busy; wait for the answer
-        ui_pop();
-    }
-
-    void tick() override
-    {
-        if (state == LISTENING) {
-            recorder_poll();
-            if (recorder_failed() || recorder_seconds() >= QUESTION_MAX_S) finish_listening();
-            else if (millis() - last_draw >= 5000) ui_dirty();
-        } else if (state == THINKING) {
-            String question, answer;
-            bool ok;
-            if (worker_ask_state(question, answer, ok) != ASK_DONE) return;
-            worker_ask_reset();
-            String body = ok ? "**" + question + "**\n\n" + answer
-                             : (question.isEmpty() ? String() : "**" + question + "**\n\n") + answer;
-            ui_replace(make_message(ok ? "Answer" : "Could not answer", body, true));
-        }
-    }
-
-    const char *hint() override
-    {
-        switch (state) {
-#ifdef HAS_ROCKER
-        case READY:     return "Press: start · Hold press: back";
-        case LISTENING: return "Press: ask · BOOT: cancel";
-#else
-        case READY:     return "Hold: start · 2s: back";
-        case LISTENING: return "Hold: ask · 2s: cancel";
-#endif
-        default:        return "";
-        }
-    }
-
-private:
-    enum State { READY, LISTENING, THINKING };
-    State state = READY;
-    String scope, scope_title;
-    uint32_t last_draw = 0;
-
-    void start_listening()
-    {
-        fs::FS &fs = recordings_fs();
-        if (!fs.exists("/asks")) fs.mkdir("/asks");
-        if (session_active() || recorder_active() || !recorder_start(fs, QUESTION_PATH)) {
-            ui_push(make_message("Ask", "The microphone is busy."));
-            return;
-        }
-        state = LISTENING;
-        ui_dirty();
-    }
-
-    void finish_listening()
-    {
-        recorder_stop();
-        if (recorder_seconds() < 1.0f) {
-            state = READY;
-            ui_dirty();
-            return;
-        }
-        if (!worker_ask(QUESTION_PATH, scope)) {
-            state = READY;
-            ui_push(make_message("Ask", "Another question is still being answered."));
-            return;
-        }
-        state = THINKING;
-        ui_dirty();
-    }
-};
-
-Screen *make_ask(const String &scope_id)
-{
-    return new AskScreen(scope_id);
 }

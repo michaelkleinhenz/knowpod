@@ -1,5 +1,5 @@
 #include "recordings.h"
-#include <SD_MMC.h>
+#include "sdcard.h"
 #include <algorithm>
 #include <atomic>
 #include "audio/audio.h"
@@ -11,17 +11,25 @@ static std::atomic<uint32_t> generation{1};
 static uint32_t cached_generation = 0;
 static std::vector<RecordingInfo> cache;
 
+namespace {  // file-local: each file's Lock guards its own mutex
 struct Lock {
     Lock()  { xSemaphoreTakeRecursive(mutex, portMAX_DELAY); }
     ~Lock() { xSemaphoreGiveRecursive(mutex); }
 };
+}
 
 fs::FS &recordings_fs()                          { return *rec_fs; }
 String recording_dir(const String &id)           { return String(RECS_DIR "/") + id; }
 String recording_path(const String &id, const char *file) { return recording_dir(id) + "/" + file; }
-String recording_audio_path(const String &id)    { return recording_path(id, "audio.wav"); }
 uint32_t recordings_generation()                 { return generation; }
 void recordings_touch()                          { generation++; }
+
+String recording_audio_path(const String &id)
+{
+    // MP3 on boards that encode while recording; WAV elsewhere and in older recordings
+    String mp3 = recording_path(id, "audio.mp3");
+    return rec_fs->exists(mp3) ? mp3 : recording_path(id, "audio.wav");
+}
 
 bool recording_valid_id(const String &id)
 {
@@ -35,20 +43,7 @@ bool recording_valid_id(const String &id)
 // Files
 // ============================================================
 
-bool read_file(const String &path, String &out)
-{
-    File f = rec_fs->open(path, FILE_READ);
-    if (!f) return false;
-    out = "";
-    out.reserve(f.size());
-    uint8_t buf[512];
-    size_t n;
-    while ((n = f.read(buf, sizeof(buf))) > 0) out.concat((const char *)buf, n);
-    f.close();
-    return true;
-}
-
-bool write_file(const String &path, const String &content)
+static bool write_file(const String &path, const String &content)
 {
     // Write a temp file first so a power cut never leaves a truncated file
     String tmp = path + ".tmp";
@@ -59,15 +54,6 @@ bool write_file(const String &path, const String &content)
     if (!ok) return false;
     rec_fs->remove(path);
     return rec_fs->rename(tmp, path);
-}
-
-bool append_file(const String &path, const String &content)
-{
-    File f = rec_fs->open(path, FILE_APPEND);
-    if (!f) return false;
-    bool ok = f.write((const uint8_t *)content.c_str(), content.length()) == content.length();
-    f.close();
-    return ok;
 }
 
 // ============================================================
@@ -204,32 +190,31 @@ String format_duration(float seconds)
     return buf;
 }
 
-String recording_display_date(uint32_t unix_time)
+String recording_display_date(uint32_t unix_time, bool compact)
 {
     if (!unix_time) return "Unknown date";
     time_t t = unix_time;
     tm local;
     localtime_r(&t, &local);
     char buf[32];
-    strftime(buf, sizeof(buf), "%a %d.%m.%Y %H:%M", &local);
+    strftime(buf, sizeof(buf), compact ? "%a %d.%m. %H:%M" : "%a %d.%m.%Y %H:%M", &local);
     return buf;
 }
 
-String recording_display_title(const RecordingInfo &info)
+String recording_display_title(const RecordingInfo &info, bool compact)
 {
     if (!info.title.isEmpty()) return info.title;
-    return info.created_unix ? recording_display_date(info.created_unix) : info.id;
+    return info.created_unix ? recording_display_date(info.created_unix, compact) : info.id;
 }
 
-String recording_state_label(const String &state)
+String recording_state_label(const RecordingInfo &info)
 {
-    if (state == "recording")    return "Recording";
-    if (state == "recorded")     return "Waiting";
-    if (state == "transcribing") return "Transcribing";
-    if (state == "transcribed")  return "Summarizing";
-    if (state == "summarized")   return "Done";
-    if (state == "error")        return "Error";
-    return state;
+    if (info.state == "recording") return "Recording";
+    if (info.state == "error")     return "Error";
+    if (info.upload == "done")     return "Uploaded";
+    if (info.upload == "failed")   return "Upload failed";
+    if (info.upload == "uploading") return "Upload " + String(info.upload_percent) + "%";
+    return "Not uploaded";
 }
 
 // ============================================================
@@ -237,28 +222,40 @@ String recording_state_label(const String &state)
 // ============================================================
 
 // A recording still marked "recording" at boot was cut off by a power loss or
-// crash. The WAV header is checkpointed every 5 s, but the file length (flushed
+// crash. WAV: the header is checkpointed every 5 s, but the file length (flushed
 // at the same time) is the better measure, so the header is rebuilt from it.
+// MP3 needs no header; its constant bitrate gives the duration.
 static void recover(const String &id, JsonDocument &meta)
 {
-    File f = rec_fs->open(recording_audio_path(id), "r+");
-    uint32_t data_bytes = 0;
-    if (f) {
-        if (f.size() > sizeof(WavHeader))
-            data_bytes = (f.size() - sizeof(WavHeader)) & ~1u;  // whole samples
-        WavHeader hdr;
-        hdr.set_data_size(data_bytes);
-        f.seek(0);
-        f.write((const uint8_t *)&hdr, sizeof(hdr));
+    String path = recording_audio_path(id);
+    float seconds = 0;
+#ifdef REC_MP3
+    if (path.endsWith(".mp3")) {
+        File f = rec_fs->open(path, FILE_READ);
+        if (f) seconds = (float)f.size() / REC_FILE_BYTES_PER_SEC;
         f.close();
+    } else
+#endif
+    {
+        File f = rec_fs->open(path, "r+");
+        uint32_t data_bytes = 0;
+        if (f) {
+            if (f.size() > sizeof(WavHeader))
+                data_bytes = (f.size() - sizeof(WavHeader)) & ~1u;  // whole samples
+            WavHeader hdr;
+            hdr.set_data_size(data_bytes);
+            f.seek(0);
+            f.write((const uint8_t *)&hdr, sizeof(hdr));
+            f.close();
+        }
+        seconds = (float)data_bytes / BYTES_PER_SEC;
     }
 
-    meta["duration_s"] = (float)data_bytes / BYTES_PER_SEC;
+    meta["duration_s"] = seconds;
     meta["state"] = "recorded";
     meta["recovered"] = true;
     recording_save_meta(id, meta);
-    Serial.printf("Recovered interrupted recording %s (%.0f s)\n", id.c_str(),
-                  (float)data_bytes / BYTES_PER_SEC);
+    Serial.printf("Recovered interrupted recording %s (%.0f s)\n", id.c_str(), seconds);
 }
 
 bool recordings_begin(fs::FS &fs)
@@ -287,6 +284,6 @@ bool recordings_begin(fs::FS &fs)
     // The first free-space query scans the FAT and can take seconds on large
     // cards; do it now so starting a recording later is instant.
     Serial.printf("%u recordings on SD card, %.1f GB free\n", (unsigned)ids.size(),
-                  (SD_MMC.totalBytes() - SD_MMC.usedBytes()) / 1e9);
+                  (SDCARD.totalBytes() - SDCARD.usedBytes()) / 1e9);
     return true;
 }

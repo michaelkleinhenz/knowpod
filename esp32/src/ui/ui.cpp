@@ -6,6 +6,7 @@
 #include "net/wifi.h"
 #include "proc/worker.h"
 #include "session.h"
+#include "debug.h"
 
 static std::vector<std::unique_ptr<Screen>> stack;
 static std::vector<std::unique_ptr<Screen>> trash;
@@ -105,40 +106,44 @@ static void draw_status_bar()
 }
 
 #else
-// ── 1.54G status bar (compact, with color) ──────────────────
+// ── 1.54" status bar ────────────────────────────────────────
 
 static void draw_battery(int x, int y, int percent, bool charging)
 {
     GFXcanvas1 &g = gfx();
-    g.drawRect(x, y, 16, 8, INK);
-    g.fillRect(x + 16, y + 2, 2, 4, INK);
-    if (percent > 0) g.fillRect(x + 1, y + 1, 14 * percent / 100, 6, INK);
-    if (percent <= 15) {
-        // Low battery: mark in red via color plane
-        gfx_color().fillRect(x, y, 18, 8, 1);
-    }
+    g.drawRect(x, y, 17, 9, INK);
+    g.fillRect(x + 17, y + 2, 2, 5, INK);
+    if (percent > 0) g.fillRect(x + 2, y + 2, 13 * percent / 100, 5, INK);
 }
 
 static void draw_status_bar()
 {
-    int asc = font_ascent(FONT_SMALL);
-    draw_text(MARGIN, asc + 2, clock_format("%H:%M").c_str(), FONT_BOLD);
+    const int base = STATUS_H - 6;  // text baseline
+    int left = draw_text(MARGIN, base, clock_format("%H:%M").c_str(), FONT_BOLD);
 
-    if (session_active()) {
-        // Red "REC" indicator via color plane
-        int rx = SCREEN_W / 2 - 10;
-        gfx().fillCircle(rx, asc / 2 + 2, 3, INK);
-        gfx_color().fillCircle(rx, asc / 2 + 2, 3, 1);  // → red dot
-        draw_text(rx + 6, asc + 2, "R", FONT_SMALL);
-        gfx_color().fillRect(rx + 6, 0, text_width("R", FONT_SMALL), STATUS_H, 1);  // → yellow text
+    // Right: battery percentage and icon, or USB
+    PowerStatus p = power_status();
+    int x = SCREEN_W - MARGIN;
+    if (p.battery_percent >= 0) {
+        x -= 19;
+        draw_battery(x, base - 8, p.battery_percent, p.charging);
+        String pct = String(p.battery_percent) + "%";
+        x -= text_width(pct.c_str(), FONT_SMALL) + 4;
+        draw_text(x, base, pct.c_str(), FONT_SMALL);
+    } else {
+        x -= text_width("USB", FONT_SMALL);
+        draw_text(x, base, "USB", FONT_SMALL);
     }
 
-    PowerStatus p = power_status();
-    int x = SCREEN_W - MARGIN - 18;
-    if (p.battery_percent >= 0)
-        draw_battery(x, (STATUS_H - 8) / 2, p.battery_percent, p.charging);
-    else
-        draw_text(SCREEN_W - MARGIN - text_width("U", FONT_SMALL), asc + 2, "U", FONT_SMALL);
+    if (session_active()) {
+        int w = 11 + text_width("REC", FONT_BOLD);
+        int rx = (SCREEN_W - w) / 2;
+        gfx().fillCircle(rx + 3, base - 4, 3, INK);
+        draw_text(rx + 11, base, "REC", FONT_BOLD);
+    } else if (const char *net = web_active() ? "Web" : wifi_connected() ? "Wi-Fi" : nullptr) {
+        int nx = x - 10 - text_width(net, FONT_SMALL);
+        if (nx > left + 8) draw_text(nx, base, net, FONT_SMALL);
+    }
 
     gfx().fillRect(0, STATUS_H, SCREEN_W, 1, INK);
 }
@@ -150,19 +155,22 @@ void ui_render(bool force)
     if (!dirty && !force) return;
     Screen *top = ui_top();
     display_clear();
+    debug_stage = "render: status bar";
     draw_status_bar();
     if (top) {
+        debug_stage = "render: screen";
         top->draw();
         const char *hint = top->hint();
         if (hint && *hint) {
 #if SCREEN_H >= 400
             gfx().fillRect(0, HINT_Y - 28, SCREEN_W, 1, INK);
 #else
-            gfx().fillRect(0, HINT_Y - 10, SCREEN_W, 1, INK);
+            gfx().fillRect(0, HINT_Y - 13, SCREEN_W, 1, INK);
 #endif
             draw_text_centered(HINT_Y, hint, FONT_SMALL);
         }
     }
+    debug_stage = "render: display_update";
     display_update(clean, top ? top->auto_clean() : true);
     dirty = clean = false;
 }
@@ -171,24 +179,29 @@ void ui_render(bool force)
 // Widgets
 // ============================================================
 
+String fit_text(const String &text, Font font, int width)
+{
+    if (text_width(text.c_str(), font) <= width) return text;
+    String t = text;
+    while (t.length() > 1 && text_width((t + "...").c_str(), font) > width) {
+        int cut = t.length() - 1;
+        while (cut > 0 && (t[cut] & 0xC0) == 0x80) cut--;  // keep UTF-8 sequences whole
+        t.remove(cut);
+    }
+    t.trim();
+    return t + "...";
+}
+
 void draw_title(const String &title, const String &subtitle)
 {
-    String t = title;
-    int max_w = SCREEN_W - 2 * MARGIN;
-    if (text_width(t.c_str(), FONT_TITLE) > max_w) {
-        while (t.length() > 1 && text_width((t + "...").c_str(), FONT_TITLE) > max_w) {
-            int cut = t.length() - 1;
-            while (cut > 0 && (t[cut] & 0xC0) == 0x80) cut--;
-            t.remove(cut);
-        }
-        t += "...";
-    }
+    String t = fit_text(title, FONT_TITLE, SCREEN_W - 2 * MARGIN);
 #if SCREEN_H >= 400
     draw_text(MARGIN, TITLE_Y - (subtitle.isEmpty() ? 0 : 12), t.c_str(), FONT_TITLE);
     if (!subtitle.isEmpty()) draw_text(MARGIN, TITLE_Y + 16, subtitle.c_str(), FONT_SMALL);
 #else
-    draw_text(MARGIN, TITLE_Y - (subtitle.isEmpty() ? 0 : 6), t.c_str(), FONT_TITLE);
-    if (!subtitle.isEmpty()) draw_text(MARGIN, TITLE_Y + 6, subtitle.c_str(), FONT_SMALL);
+    draw_text(MARGIN, TITLE_Y - (subtitle.isEmpty() ? 0 : 4), t.c_str(), FONT_TITLE);
+    if (!subtitle.isEmpty())
+        draw_text(MARGIN, TITLE_Y + 10, fit_text(subtitle, FONT_SMALL, SCREEN_W - 2 * MARGIN).c_str(), FONT_SMALL);
 #endif
 }
 
@@ -217,17 +230,11 @@ void ListView::draw()
 
 #if SCREEN_H >= 400
     int row_h = two_lines ? 84 : 66;
+    int rows = max(1, (bottom - top) / row_h);
+    int first = (selected / rows) * rows;
     int corner = 10;
     int pad_x = 8;
     int pad_y = 3;
-#else
-    int row_h = two_lines ? 28 : 20;
-    int corner = 4;
-    int pad_x = 3;
-    int pad_y = 1;
-#endif
-    int rows = max(1, (bottom - top) / row_h);
-    int first = (selected / rows) * rows;
 
     for (int i = first; i < (int)items.size() && i < first + rows; i++) {
         int y = top + (i - first) * row_h;
@@ -238,32 +245,55 @@ void ListView::draw()
         else     g.drawRoundRect(MARGIN - pad_x, y + pad_y, SCREEN_W - 2 * MARGIN + 2 * pad_x,
                                  row_h - 2 * pad_y, corner, INK);
 
-        std::vector<String> lines = wrap_text(items[i].title, FONT_BOLD, SCREEN_W - 2 * MARGIN - 2 * pad_x);
-        String title = lines.empty() ? String() : lines[0];
-        if (lines.size() > 1) title += "...";
-#if SCREEN_H >= 400
+        String title = fit_text(items[i].title, FONT_BOLD, SCREEN_W - 2 * MARGIN - 2 * pad_x);
         int ty = two_lines ? y + 12 + font_ascent(FONT_BOLD) : y + (row_h + font_ascent(FONT_BOLD)) / 2;
         draw_text(MARGIN + 6, ty, title.c_str(), FONT_BOLD, fg);
         if (two_lines)
             draw_text(MARGIN + 6, ty + line_height(FONT_SMALL) + 4, items[i].subtitle.c_str(), FONT_SMALL, fg);
-#else
-        int ty = two_lines ? y + pad_y + font_ascent(FONT_BOLD) + 1
-                           : y + (row_h + font_ascent(FONT_BOLD)) / 2;
-        draw_text(MARGIN + pad_x, ty, title.c_str(), FONT_BOLD, fg);
-        if (two_lines)
-            draw_text(MARGIN + pad_x, ty + line_height(FONT_SMALL), items[i].subtitle.c_str(), FONT_SMALL, fg);
-#endif
     }
 
     int pages = (items.size() + rows - 1) / rows;
     if (pages > 1) {
         String p = String(first / rows + 1) + "/" + String(pages);
-#if SCREEN_H >= 400
         draw_text(SCREEN_W - MARGIN - text_width(p.c_str(), FONT_SMALL), bottom + 22, p.c_str(), FONT_SMALL);
-#else
-        draw_text(SCREEN_W - MARGIN - text_width(p.c_str(), FONT_SMALL), bottom + 6, p.c_str(), FONT_SMALL);
-#endif
     }
+#else
+    // Unframed rows; the selected one is inverted. A thin scrollbar on the
+    // right shows the position when the list has more rows than fit.
+    int row_h = two_lines ? 34 : 26;
+    int rows = max(1, (bottom - top) / row_h);
+    int first = (selected / rows) * rows;
+    bool scroll = (int)items.size() > rows;
+    int rx = MARGIN - 4;
+    int rw = SCREEN_W - 2 * rx - (scroll ? 6 : 0);
+    int tx = rx + 6, tw = rw - 12;
+
+    for (int i = first; i < (int)items.size() && i < first + rows; i++) {
+        int y = top + (i - first) * row_h;
+        bool sel = i == selected;
+        uint16_t fg = sel ? PAPER : INK;
+        if (sel) g.fillRoundRect(rx, y + 1, rw, row_h - 2, 5, INK);
+
+        String title = fit_text(items[i].title, FONT_BOLD, tw);
+        if (!items[i].subtitle.isEmpty()) {
+            int ty = y + 4 + font_ascent(FONT_BOLD);
+            draw_text(tx, ty, title.c_str(), FONT_BOLD, fg);
+            draw_text(tx, ty + 14, fit_text(items[i].subtitle, FONT_SMALL, tw).c_str(), FONT_SMALL, fg);
+        } else {
+            draw_text(tx, y + (row_h + font_ascent(FONT_BOLD)) / 2, title.c_str(), FONT_BOLD, fg);
+        }
+    }
+
+    if (scroll) {
+        int track_h = rows * row_h - 2;
+        int x = SCREEN_W - rx - 2;
+        g.drawFastVLine(x, top + 1, track_h, INK);
+        int n = items.size();
+        int thumb_h = max(8, track_h * rows / n);
+        int thumb_y = top + 1 + (track_h - thumb_h) * first / max(1, n - rows);
+        g.fillRect(x - 1, thumb_y, 3, thumb_h, INK);
+    }
+#endif
 }
 
 bool ListView::on_button(const ButtonEvent &ev)

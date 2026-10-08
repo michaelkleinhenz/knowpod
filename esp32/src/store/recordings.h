@@ -8,19 +8,14 @@
 // Each recording lives in its own folder on the SD card:
 //
 //   /recs/20260924-143012/
+//     audio.mp3        16 kHz mono, 32 kbps (boards with REC_MP3), or
 //     audio.wav        16 kHz mono PCM
 //     meta.json        {"id", "created", "created_unix", "duration_s", "sample_rate",
-//                       "highlights": [seconds, ...], "dropped_s", "state", "title",
-//                       "tags", "template", "model", "error", "error_state",
+//                       "highlights": [seconds, ...], "dropped_s", "state", "error",
 //                       "upload": {"status", "sha256", "size", "upload_id", "offset", ...}}
-//     transcript.json  {"segments": [{"start", "end", "text"}], "speakers": [...]}
-//     transcript.md    readable transcript with timestamps (and speakers)
-//     summary.json     {"title", "tags", "summary", "action_items", "highlights"}
-//     summary.md       readable notes
-//     qa.md            questions asked about this recording
 //
-// "state": recording -> recorded -> transcribing -> transcribed -> summarized,
-// or error (with "error" and "error_state" to resume from).
+// "state": recording -> recorded, or error. Once recorded, the worker uploads
+// the recording to the knowpod backend, which transcribes and summarizes it.
 //
 // All functions are thread-safe.
 
@@ -28,7 +23,7 @@
 
 struct RecordingInfo {
     String   id;
-    String   title;          // empty until summarized
+    String   title;          // set by older firmware that summarized on the device
     uint32_t created_unix;   // 0 if the clock was not set
     float    duration_s;
     int      highlights;
@@ -58,7 +53,7 @@ bool recording_valid_id(const String &id);   // safe to use in paths
 
 String recording_dir(const String &id);
 String recording_path(const String &id, const char *file);
-String recording_audio_path(const String &id);
+String recording_audio_path(const String &id);   // existing file: audio.mp3 or audio.wav
 
 bool recording_create(const String &id);   // folder only
 bool recording_delete(const String &id);
@@ -66,12 +61,8 @@ bool recording_load_meta(const String &id, JsonDocument &meta);
 bool recording_save_meta(const String &id, const JsonDocument &meta);
 
 // Display helpers
-String recording_display_title(const RecordingInfo &info);   // title or date
-String recording_display_date(uint32_t unix_time);           // "Wed 24.09.2026 14:30"
-String recording_state_label(const String &state);           // "Transcribing", ...
+// compact: without the year, for small screens ("Wed 24.09. 14:30")
+String recording_display_title(const RecordingInfo &info, bool compact = false);   // title or date
+String recording_display_date(uint32_t unix_time, bool compact = false);           // "Wed 24.09.2026 14:30"
+String recording_state_label(const RecordingInfo &info);     // "Uploaded", "Upload 40%", ...
 String format_duration(float seconds);                       // "1:02:03"
-
-// Whole-file helpers (writes go through a temp file)
-bool read_file(const String &path, String &out);
-bool write_file(const String &path, const String &content);
-bool append_file(const String &path, const String &content);

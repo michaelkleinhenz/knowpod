@@ -16,6 +16,11 @@
 #define PIN_I2S_DIN   21
 #define PIN_PA_CTRL   39   // speaker amplifier enable
 
+// Recordings are encoded to MP3 while recording (lib/shine): ~14 MB per hour
+// instead of ~115 MB of WAV
+#define REC_MP3           1
+#define MP3_BITRATE_KBPS  32
+
 // SD card (4-bit SDMMC)
 #define PIN_SD_CLK    16
 #define PIN_SD_CMD    17
@@ -42,3 +47,6 @@
 #define PIN_KEY_BOOT  0
 #define PIN_KEY_PWR   1
 #define HAS_ROCKER    1
+
+// Core that runs loop(); tasks that must keep up with it are pinned here
+#define LOOP_CORE  1
