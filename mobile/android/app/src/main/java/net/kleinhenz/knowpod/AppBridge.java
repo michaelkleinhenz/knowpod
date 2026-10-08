@@ -13,6 +13,7 @@ import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
 import java.util.Collections;
 import net.kleinhenz.knowpod.pocket.PocketController;
+import net.kleinhenz.knowpod.recorder.RecorderController;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -20,7 +21,8 @@ import org.json.JSONObject;
 // frontend/src/lib/desktop.ts), the counterpart of the desktop app's preload script
 // (desktop/src/preload.js): it lets the web app show notifications and open the page of a
 // clicked one, set up the Pocket recorder's Bluetooth connection and copy from the Pocket
-// over its WiFi, and go back to the setup page.
+// over its WiFi, pair the knowpod recorder and copy from it over Bluetooth, and go back to the
+// setup page.
 //
 // Only pages of the knowpod server get it: the message channel and the script that wraps it
 // are both limited to the server's origin by the WebView itself.
@@ -99,6 +101,7 @@ final class AppBridge {
                 + "    version: " + JSONObject.quote(activity.versionName()) + ",\n"
                 + "    notify: (message) => post({ method: 'notify', args: message }),\n"
                 + "    pocketBluetooth: (request) => call('pocketBluetooth', request),\n"
+                + "    recorderBluetooth: (request) => call('recorderBluetooth', request),\n"
                 + "    showSetup: () => post({ method: 'showSetup' }),\n"
                 + "    onOpen: (listener) => { openListeners.add(listener); return () => openListeners.delete(listener); },\n"
                 + "  }) });\n"
@@ -134,6 +137,13 @@ final class AppBridge {
                 int id = m.optInt("id");
                 JSONObject request = m.optJSONObject("args");
                 PocketController.get(activity).handle(activity, request == null ? new JSONObject() : request,
+                        result -> main.post(() -> answer(reply, id, result)));
+                break;
+            }
+            case "recorderBluetooth": {
+                int id = m.optInt("id");
+                JSONObject request = m.optJSONObject("args");
+                RecorderController.get(activity).handle(activity, request == null ? new JSONObject() : request,
                         result -> main.post(() -> answer(reply, id, result)));
                 break;
             }

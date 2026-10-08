@@ -28,4 +28,18 @@
         <item quantity="other">%d copied.</item>
     </plurals>
     <string name="pocket_failed_title">Couldn’t copy from Pocket</string>
+
+    <string name="channel_recorder">knowpod recorder</string>
+    <string name="channel_recorder_progress">Copying from the knowpod recorder</string>
+    <string name="recorder_progress_title">Copying from the knowpod recorder</string>
+    <string name="recorder_progress_connecting">Talking to the recorder over Bluetooth…</string>
+    <string name="recorder_progress_uploading">Uploading recording %1$d of %2$d to knowpod…</string>
+    <string name="recorder_paired_title">Paired with %1$s</string>
+    <string name="recorder_paired_body">Recordings it can’t upload over Wi-Fi now come over Bluetooth.</string>
+    <string name="recorder_copied_title">Copied from %1$s</string>
+    <plurals name="recorder_copied_body">
+        <item quantity="one">%d recording was uploaded over Bluetooth and will be transcribed and summarized.</item>
+        <item quantity="other">%d recordings were uploaded over Bluetooth and will be transcribed and summarized.</item>
+    </plurals>
+    <string name="recorder_failed_title">Couldn’t copy from %1$s</string>
 </resources>
