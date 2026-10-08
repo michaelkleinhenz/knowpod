@@ -30,6 +30,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import net.kleinhenz.knowpod.recorder.RecorderController;
 
 // knowpod for Android: the knowpod web app in a WebView, like the desktop app (desktop/) and the
 // installed web app. The backend isn't bundled; the app loads the web UI from a knowpod server,
@@ -83,6 +84,20 @@ public class MainActivity extends BridgeActivity {
         if (appBridge == null) return;
         String path = pathOf(intent);
         if (path != null) open(path);
+    }
+
+    // While the app is open, it looks for the paired knowpod recorder now and then, to copy what
+    // it couldn't upload over Wi-Fi (recorder/RecorderController).
+    @Override
+    public void onResume() {
+        super.onResume();
+        RecorderController.get(this).resume();
+    }
+
+    @Override
+    public void onPause() {
+        RecorderController.get(this).pause();
+        super.onPause();
     }
 
     private static String pathOf(Intent intent) {

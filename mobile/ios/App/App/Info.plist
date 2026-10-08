@@ -65,7 +65,7 @@
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>knowpod connects to your Pocket recorder over Bluetooth to copy its recordings.</string>
+	<string>knowpod connects to your Pocket recorder and your knowpod recorder over Bluetooth to copy their recordings.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>knowpod copies long recordings from your Pocket recorder over the Pocket’s WiFi.</string>
 	<key>UIBackgroundModes</key>

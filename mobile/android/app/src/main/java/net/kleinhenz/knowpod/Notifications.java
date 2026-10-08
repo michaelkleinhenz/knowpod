@@ -15,12 +15,15 @@ import org.json.JSONObject;
 
 // Notifications shows the server's notifications ({title, body, url, tag}, see
 // backend/internal/service/notifications.go), which the web app hands over while it runs
-// (frontend/src/lib/desktop.ts: Web Push doesn't reach a WebView), and the Pocket copy's.
+// (frontend/src/lib/desktop.ts: Web Push doesn't reach a WebView), and those of the copies from
+// the Pocket and the knowpod recorder.
 // Clicking one opens its page in the app.
 public final class Notifications {
     public static final String CHANNEL_REMINDERS = "reminders";
     public static final String CHANNEL_POCKET = "pocket";
     public static final String CHANNEL_POCKET_PROGRESS = "pocket-progress";
+    public static final String CHANNEL_RECORDER = "recorder";
+    public static final String CHANNEL_RECORDER_PROGRESS = "recorder-progress";
     public static final String EXTRA_URL = "net.kleinhenz.knowpod.URL";
 
     private Notifications() {}
@@ -35,6 +38,10 @@ public final class Notifications {
                 context.getString(R.string.channel_pocket), NotificationManager.IMPORTANCE_DEFAULT));
         manager.createNotificationChannel(new NotificationChannel(CHANNEL_POCKET_PROGRESS,
                 context.getString(R.string.channel_pocket_progress), NotificationManager.IMPORTANCE_LOW));
+        manager.createNotificationChannel(new NotificationChannel(CHANNEL_RECORDER,
+                context.getString(R.string.channel_recorder), NotificationManager.IMPORTANCE_DEFAULT));
+        manager.createNotificationChannel(new NotificationChannel(CHANNEL_RECORDER_PROGRESS,
+                context.getString(R.string.channel_recorder_progress), NotificationManager.IMPORTANCE_LOW));
     }
 
     public static boolean allowed(Context context) {

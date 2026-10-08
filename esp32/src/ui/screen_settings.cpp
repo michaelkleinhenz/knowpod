@@ -3,6 +3,7 @@
 #include "audio/audio.h"
 #include "hw/clock.h"
 #include "hw/power.h"
+#include "net/ble.h"
 #include "net/openrouter.h"
 #include "net/web.h"
 #include "net/wifi.h"
@@ -53,6 +54,7 @@ static String device_info()
     s += "\nOpenRouter key: " + String(config_api_key().isEmpty() ? "missing (/openrouter.txt)" : "set");
     s += "\nBackend: " + (config_backend_enabled() ? config_backend_url() : String("off (no token in config.json)"));
     s += "\nProcessing: " + String(config_processing_backend() ? "backend" : "on device");
+    s += "\nBluetooth: " + ble_status() + ", " + String(max(ble_paired_count(), 0)) + " paired apps";
     int uploads = worker_pending_uploads();
     if (uploads) s += "\nWaiting for upload: " + String(uploads);
     s += "\nFree memory: " + String(ESP.getFreeHeap() / 1024) + " KB RAM, " +
@@ -70,6 +72,71 @@ static String web_access_info()
            " --header \"Authorization: Bearer " + config_web_password() + "\"\n\n"
            "On USB power the device stays awake; on battery it sleeps after the idle time and "
            "the server is unreachable until you wake it.";
+}
+
+// Pairing mode for the knowpod app: shows the passkey the app asks for.
+class BlePairingScreen : public Screen {
+public:
+    BlePairingScreen() { ble_start_pairing(); }
+    ~BlePairingScreen() override { ble_stop_pairing(); }
+
+    void draw() override
+    {
+        seen = state();
+        draw_title("Pair with app", ble_name());
+        view.clear();
+        String key = ble_passkey();
+        if (ble_paired_now()) {
+            view.add("Paired.", FONT_BOLD);
+            view.add("While no known Wi-Fi is in range, the app now takes the recordings that wait for "
+                     "an upload and sends them to the backend.");
+        } else if (!key.isEmpty()) {
+            view.add("Enter this code in the app:");
+            view.add(key, FONT_DIGITS);
+        } else if (!ble_pairing()) {
+            view.add("Pairing has ended. Choose \"Pair with app\" to try again.");
+        } else {
+            view.add("In the knowpod app on your phone or computer, open Settings > Devices > "
+                     "Bluetooth recorder and choose Pair.");
+            view.add("Pick " + ble_name() + ", then enter the code that appears here.");
+        }
+        if (!config_backend_enabled())
+            view.add("The app uploads with the device token, which is missing: set \"backend\": \"token\" "
+                     "in config.json.", FONT_SMALL);
+        view.draw();
+    }
+
+    void on_button(const ButtonEvent &ev) override
+    {
+        if (view.on_button(ev)) ui_dirty();
+        else if (ev.id == BTN_OK && ev.action == BTN_CLICK) ui_pop();
+    }
+
+    void tick() override
+    {
+        if (state() != seen) ui_dirty();
+    }
+
+#ifdef HAS_ROCKER
+    const char *hint() override { return "Press: close"; }
+#else
+    const char *hint() override { return "Hold: close"; }
+#endif
+
+private:
+    TextView view;
+    String seen;
+
+    // What the screen shows; it is redrawn only when this changes
+    static String state()
+    {
+        return ble_passkey() + (ble_pairing() ? "p" : "") + (ble_paired_now() ? "d" : "");
+    }
+};
+
+static Screen *make_ble_pairing()
+{
+    return new BlePairingScreen();
 }
 
 class SettingsScreen : public Screen {
@@ -102,6 +169,7 @@ private:
         list.items = {
             {"Device info", ""},
             {"Wi-Fi & time sync", wifi_connected() ? "Connected to " + wifi_ssid() : String("Off")},
+            {"Bluetooth transfer", ble_status()},
             {"Processing", config_processing_backend() ? "Backend (" + config_backend_url() + ")"
                                                        : String("On device (OpenRouter)")},
             {"Summary model", config_llm_model()},
@@ -151,7 +219,26 @@ private:
             break;
         }
 
-        case 2:
+        case 2: {
+            std::vector<String> options = {"Pair with app", config_bluetooth_enabled() ? "Turn off" : "Turn on"};
+            if (ble_paired_count() > 0) options.push_back("Forget paired apps");
+            ui_push(make_menu("Bluetooth transfer", options, 0, [](int c) {
+                if (c == 0) {
+                    if (!config_bluetooth_enabled()) config_set_bluetooth_enabled(true);
+                    ui_push(make_ble_pairing());
+                } else if (c == 1) {
+                    config_set_bluetooth_enabled(!config_bluetooth_enabled());
+                    worker_kick();
+                } else {
+                    ui_push(make_confirm("Forget paired apps",
+                                         "Apps can only take recordings over Bluetooth again after pairing anew.",
+                                         [] { ble_forget_all(); }));
+                }
+            }));
+            break;
+        }
+
+        case 3:
             ui_push(make_menu("Processing", {"On device (OpenRouter)", "Backend service"},
                               config_processing_backend() ? 1 : 0, [](int c) {
                 config_set_processing_backend(c == 1);
@@ -164,7 +251,7 @@ private:
             }));
             break;
 
-        case 3: {
+        case 4: {
             std::vector<String> models = config_model_choices();
             int sel = 0;
             for (size_t i = 0; i < models.size(); i++)
@@ -175,7 +262,7 @@ private:
             break;
         }
 
-        case 4: {
+        case 5: {
             std::vector<String> names = templates_list();
             int sel = 0;
             for (size_t i = 0; i < names.size(); i++)
@@ -186,7 +273,7 @@ private:
             break;
         }
 
-        case 5: {
+        case 6: {
             std::vector<String> names;
             int sel = 0;
             for (const Language &l : LANGUAGES) {
@@ -199,18 +286,18 @@ private:
             break;
         }
 
-        case 6:
+        case 7:
             config_set_speaker_labels(!config_speaker_labels());
             ui_dirty();
             break;
 
-        case 7:
+        case 8:
             config_set_sound_cues(!config_sound_cues());
             if (config_sound_cues()) play_cue(CUE_START);  // let the user hear it
             ui_dirty();
             break;
 
-        case 8: {
+        case 9: {
             std::vector<String> names;
             int sel = 0;
             for (int m : SLEEP_CHOICES) {
@@ -223,7 +310,7 @@ private:
             break;
         }
 
-        case 9:
+        case 10:
             if (config_web_enabled()) {
                 ui_push(make_menu("Web access & MCP", {"Show connection details", "Turn off"}, 0, [](int c) {
                     if (c == 0) {
@@ -246,7 +333,7 @@ private:
             }
             break;
 
-        case 10: {
+        case 11: {
             show_progress("Test", "Asking " + config_llm_model() + " ...");
             String reply;
             ApiResult r = {false, -1, "No Wi-Fi connection."};

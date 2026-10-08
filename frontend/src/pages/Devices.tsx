@@ -2,6 +2,8 @@ import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { api, Device } from '../api/client';
 import { CopyButton } from '../components/CopyButton';
+import { RecorderBluetooth } from '../components/RecorderBluetooth';
+import { recorderBluetooth } from '../lib/desktop';
 import { errorText } from '../lib/errors';
 import { formatDate } from '../lib/recordings';
 
@@ -153,6 +155,12 @@ export function Devices() {
           </ul>
         )}
       </section>
+
+      {recorderBluetooth() && (
+        <section className="card">
+          <RecorderBluetooth />
+        </section>
+      )}
     </>
   );
 }
