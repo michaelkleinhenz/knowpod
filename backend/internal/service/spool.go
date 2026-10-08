@@ -12,7 +12,7 @@ import (
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 )
 
-// Spool keeps in-flight and received WAV files on local disk until they are archived. Files
+// Spool keeps in-flight and received audio files on local disk until they are archived. Files
 // are named by the (server-generated) recording ID. The size of a file is the upload offset,
 // so bytes that arrived before a dropped connection count and the device resumes after them.
 type Spool struct{ dir string }
@@ -25,7 +25,8 @@ func NewSpool(dir string) (*Spool, error) {
 	return &Spool{dir: dir}, nil
 }
 
-// WAVPath returns the path of the recording's WAV file.
+// WAVPath returns the path of a device upload. The name is historical: devices may upload
+// MP3 as well, which is spooled here too (see SourceContentType on the recording).
 func (s *Spool) WAVPath(id string) string { return filepath.Join(s.dir, id+".wav") }
 
 // FLACPath returns the path of the recording's transcoded FLAC file.
@@ -35,7 +36,7 @@ func (s *Spool) FLACPath(id string) string { return filepath.Join(s.dir, id+".fl
 func (s *Spool) DownloadPath(id string) string { return filepath.Join(s.dir, id+".download") }
 
 // SourcePath returns the spooled audio of a recording: the file fetched or uploaded through
-// the web UI (any format), or the WAV uploaded by a device.
+// the web UI (any format), or the WAV or MP3 uploaded by a device.
 func (s *Spool) SourcePath(rec *recording.Recording) string {
 	if rec.Source != recording.SourceDevice {
 		return s.DownloadPath(rec.ID)
@@ -72,7 +73,7 @@ func (s *Spool) Append(id string, r io.Reader, limit int64) (int64, error) {
 	return n, err
 }
 
-// SHA256 returns the hex SHA-256 of the WAV file.
+// SHA256 returns the hex SHA-256 of the device upload.
 func (s *Spool) SHA256(id string) (string, error) {
 	f, err := os.Open(s.WAVPath(id))
 	if err != nil {

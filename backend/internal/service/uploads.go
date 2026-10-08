@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/michaelkleinhenz/knowpod-service/backend/internal/audio"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/device"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/ports"
@@ -21,13 +23,13 @@ var (
 	sha256Pattern   = regexp.MustCompile(`^[0-9a-f]{64}$`)
 )
 
-// minWAVSize is the size of the smallest possible WAV header.
+// minWAVSize is the size of the smallest possible WAV header, and the smallest upload.
 const minWAVSize = 44
 
 // UploadService implements the resumable upload protocol. A device creates an upload with
-// its own recording ID, the total size and the SHA-256 of the WAV file, then appends chunks
-// at the current offset. When the last byte arrives the checksum and WAV header are verified
-// and the recording is handed to background processing.
+// its own recording ID, the total size and the SHA-256 of the audio file (WAV or MP3), then
+// appends chunks at the current offset. When the last byte arrives the checksum and the
+// audio format are verified and the recording is handed to background processing.
 type UploadService struct {
 	recs    ports.RecordingRepository
 	spool   *Spool
@@ -55,8 +57,8 @@ type Upload struct {
 // CreateUploadInput describes a new upload.
 type CreateUploadInput struct {
 	RecordingID string     // device-assigned, unique per device
-	Size        int64      // total WAV size in bytes
-	SHA256      string     // hex SHA-256 of the complete WAV file
+	Size        int64      // total file size in bytes
+	SHA256      string     // hex SHA-256 of the complete audio file
 	RecordedAt  *time.Time // optional
 	// Highlights marked while recording; optional. Sent again with a repeated create, they
 	// replace the stored ones.
@@ -207,7 +209,7 @@ func (s *UploadService) finish(ctx context.Context, rec *recording.Recording) (*
 		return nil, ErrChecksumMismatch
 	}
 
-	info, err := wavInfoAt(s.spool.WAVPath(rec.ID))
+	format, ctype, err := deviceAudio(s.spool.WAVPath(rec.ID))
 	now := s.clock().UTC()
 	rec.UpdatedAt = now
 	if err != nil {
@@ -224,7 +226,8 @@ func (s *UploadService) finish(ctx context.Context, rec *recording.Recording) (*
 	}
 
 	rec.Status = recording.StatusReceived
-	rec.Format = info.Format()
+	rec.Format = format
+	rec.SourceContentType = ctype
 	rec.ReceivedAt = &now
 	rec.NotBefore = now
 	rec.Attempts = 0
@@ -235,6 +238,27 @@ func (s *UploadService) finish(ctx context.Context, rec *recording.Recording) (*
 		s.OnReceived()
 	}
 	return &Upload{Recording: rec, Offset: rec.Size}, nil
+}
+
+// deviceAudio checks a completely received device upload, which is either integer PCM WAV
+// or MP3. It returns the WAV format (nil for MP3) and the media type for MP3 ("" for WAV,
+// which is archived as FLAC).
+func deviceAudio(path string) (*recording.Format, string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, "", err
+	}
+	head := make([]byte, 12)
+	n, _ := io.ReadFull(f, head)
+	f.Close()
+	if ctype, _ := audio.Sniff(head[:n]); ctype == "audio/mpeg" {
+		return nil, ctype, nil
+	}
+	info, err := wavInfoAt(path)
+	if err != nil {
+		return nil, "", err
+	}
+	return info.Format(), "", nil
 }
 
 // PurgeStale deletes uploads that have not progressed within ttl, including their spooled

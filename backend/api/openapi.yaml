@@ -5,17 +5,17 @@ info:
   description: |
     Backend for the knowpod AI audio recorder.
 
-    **Device API** — recorders push WAV recordings with a resumable upload protocol:
+    **Device API** — recorders push WAV or MP3 recordings with a resumable upload protocol:
 
     1. `POST /uploads` with the device's own `recordingId`, the total `size` and the
-       `sha256` of the WAV file. Repeating the call with the same `recordingId` returns the
+       `sha256` of the audio file. Repeating the call with the same `recordingId` returns the
        existing upload (idempotent).
     2. `PATCH /uploads/{uploadId}` with an `Upload-Offset` header and a chunk of bytes as
        body. The whole file may be sent in one PATCH. After a dropped connection,
        `GET /uploads/{uploadId}` returns the offset to resume from.
-    3. When the last byte arrives, the checksum and WAV header are verified and the status
-       becomes `received`. The recording is then transcoded to FLAC and archived in S3 in
-       the background (status `stored`).
+    3. When the last byte arrives, the checksum and the audio format (integer PCM WAV, or
+       MP3) are verified and the status becomes `received`. The recording is then archived
+       in S3 in the background (status `stored`): WAV transcoded to FLAC, MP3 as it is.
 
     **Pocket** — each user connects their own Pocket recorder (heypocketai.com): its webhook
     (`POST /webhooks/pocket/{webhookId}`, URL from `GET /me/pocket`) announces recordings,
@@ -363,7 +363,7 @@ paths:
         "422":
           description: |
             Checksum mismatch (the upload is reset to offset 0; resend) or the file is not a
-            supported WAV (the recording is marked `failed`).
+            supported WAV or MP3 (the recording is marked `failed`).
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
 
   /me/pocket:
@@ -3243,8 +3243,8 @@ components:
           type: string
           pattern: "^[A-Za-z0-9._-]{1,128}$"
           description: ID assigned by the device; unique per device
-        size: { type: integer, format: int64, minimum: 44, description: Total WAV size in bytes }
-        sha256: { type: string, pattern: "^[0-9a-fA-F]{64}$", description: Hex SHA-256 of the WAV file }
+        size: { type: integer, format: int64, minimum: 44, description: Total size of the WAV or MP3 file in bytes }
+        sha256: { type: string, pattern: "^[0-9a-fA-F]{64}$", description: Hex SHA-256 of the audio file }
         recordedAt: { type: string, format: date-time }
         highlights:
           type: array
