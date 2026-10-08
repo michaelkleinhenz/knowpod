@@ -48,7 +48,9 @@ static String web_access_info()
            "the server is unreachable until you wake it.";
 }
 
-// Pairing mode for the knowpod app: shows the passkey the app asks for.
+// Pairing mode for the knowpod app: shows the device name to pick in the app
+// and the passkey to enter there. The passkey only exists once the app asks
+// for it; a new one is made for every attempt.
 class BlePairingScreen : public Screen {
 public:
     BlePairingScreen() { ble_start_pairing(); }
@@ -57,33 +59,32 @@ public:
     void draw() override
     {
         seen = state();
-        draw_title("Pair with app", ble_name());
-        view.clear();
+        draw_title("Pair with app");
+
+        int x = MARGIN;
+        int y = CONTENT_TOP + font_ascent(FONT_SMALL);
+        draw_text(x, y, "Device", FONT_SMALL);
+        y += line_height(FONT_BOLD);
+        draw_text(x, y, ble_name().c_str(), FONT_BOLD);
+
+        y += line_height(FONT_SMALL) + 8;
+        draw_text(x, y, "Code", FONT_SMALL);
         String key = ble_passkey();
         if (ble_paired_now()) {
-            view.add("Paired.", FONT_BOLD);
-            view.add("While no known Wi-Fi is in range, the app now takes the recordings that wait for "
-                     "an upload and sends them to the backend.");
+            y += line_height(FONT_BOLD);
+            draw_text(x, y, "Paired.", FONT_BOLD);
         } else if (!key.isEmpty()) {
-            view.add("Enter this code in the app:");
-            view.add(key, FONT_DIGITS);
-        } else if (!ble_pairing()) {
-            view.add("Pairing has ended. Choose \"Pair with app\" to try again.");
+            y += font_ascent(FONT_DIGITS) + 6;
+            draw_text(x, y, key.c_str(), FONT_DIGITS);
         } else {
-            view.add("In the knowpod app on your phone or computer, open Settings > Devices > "
-                     "Bluetooth recorder and choose Pair.");
-            view.add("Pick " + ble_name() + ", then enter the code that appears here.");
+            y += line_height(FONT_BODY);
+            draw_text(x, y, ble_pairing() ? "Waiting for the app..." : "Pairing has ended.", FONT_BODY);
         }
-        if (!config_backend_enabled())
-            view.add("The app uploads with the device token, which is missing: set \"backend\": \"token\" "
-                     "in config.json.", FONT_SMALL);
-        view.draw();
     }
 
     void on_button(const ButtonEvent &ev) override
     {
-        if (view.on_button(ev)) ui_dirty();
-        else if (ev.id == BTN_OK && ev.action == BTN_CLICK) ui_pop();
+        if (ev.id == BTN_OK && ev.action == BTN_CLICK) ui_pop();
     }
 
     void tick() override
@@ -98,7 +99,6 @@ public:
 #endif
 
 private:
-    TextView view;
     String seen;
 
     // What the screen shows; it is redrawn only when this changes
