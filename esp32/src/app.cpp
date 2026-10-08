@@ -6,6 +6,7 @@
 #include "hw/buttons.h"
 #include "hw/clock.h"
 #include "hw/power.h"
+#include "net/ble.h"
 #include "net/web.h"
 #include "net/wifi.h"
 #include "proc/worker.h"
@@ -59,6 +60,10 @@ static void stop_recording(const String &reason = String())
     body += "Highlights: " + String(info.highlights) + "\n\n";
     bool ready = !config_wifi().empty() &&
                  (config_processing_backend() ? config_backend_enabled() : !config_api_key().isEmpty());
+    // Without Wi-Fi, a paired knowpod app takes the recording over Bluetooth and uploads it
+    if (config_processing_backend() && config_backend_enabled() && config_bluetooth_enabled() &&
+        ble_paired_count() > 0)
+        ready = true;
     body += !ready ? String(config_processing_backend()
                                 ? "Add Wi-Fi and the backend settings to get a transcript and summary."
                                 : "Add Wi-Fi and an OpenRouter key to get a transcript and summary.")
@@ -136,6 +141,8 @@ static bool may_sleep()
     if (minutes <= 0 || millis() - last_activity < (uint32_t)minutes * 60000) return false;
     // With web access on USB power, stay awake so the web page and MCP stay reachable
     if (web_active() && power_status().usb_connected) return false;
+    // An app reading recordings over Bluetooth, or one being paired, needs the device awake
+    if (ble_connected() || ble_pairing()) return false;
     return !session_active() && !recorder_active() && !debug_busy() && !worker_busy();
 }
 

@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
+#include <FS.h>
 
 // Processing steps for one recording. Each step does one unit of network
 // work, updates `meta` (the caller saves it) and can be resumed after a
@@ -35,6 +36,9 @@ Step summarize(const String &id, JsonDocument &meta);
 // Uploads the recording to the knowpod backend, one step (checksum, create,
 // or one chunk) per call. Sets meta["upload"]["status"] to "done" at the end.
 Step upload_next(const String &id, JsonDocument &meta, int &percent);
+
+// SHA-256 of a whole file as lowercase hex (the checksum uploads are created with).
+bool sha256_file(File &f, String &hex);
 
 // Sends the highlights of an already uploaded recording (uploaded before
 // highlights were supported). Sets meta["upload"]["highlights_synced"].

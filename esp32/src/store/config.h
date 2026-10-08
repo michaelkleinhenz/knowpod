@@ -33,6 +33,9 @@
 //                              results with "processing": "backend" while the
 //                              backend doesn't accept the device token for
 //                              GET /recordings/{id}/transcript and /summary.
+//   "bluetooth": true,         offer recordings to the knowpod app over Bluetooth
+//                              while no Wi-Fi is available (the app uploads them
+//                              to the backend with the device token)
 //   "web_enabled": true,       web page and MCP server whenever Wi-Fi is available
 //   "web_password": ""         generated when web access is first enabled
 // }
@@ -72,6 +75,7 @@ int config_sleep_minutes();
 int config_power_off_hours();
 String config_web_password();           // generated and saved if empty
 bool config_web_enabled();
+bool config_bluetooth_enabled();
 String config_backend_url();             // API base, no trailing slash
 String config_backend_token();
 bool config_backend_enabled();           // url and token set
@@ -87,4 +91,5 @@ void config_set_speaker_labels(bool on);
 void config_set_sound_cues(bool on);
 void config_set_sleep_minutes(int minutes);
 void config_set_web_enabled(bool on);
+void config_set_bluetooth_enabled(bool on);
 void config_set_wifi(const std::vector<WifiNetwork> &networks);   // in priority order

@@ -2,6 +2,7 @@
 #include <ArduinoJson.h>
 #include <atomic>
 #include <map>
+#include "net/ble.h"
 #include "net/wifi.h"
 #include "pipeline.h"
 #include "store/config.h"
@@ -12,11 +13,17 @@
 #define WIFI_IDLE_OFF_MS   60000
 #define BACKOFF_MIN_MS     30000
 #define BACKOFF_MAX_MS     600000
+#define BLE_BUSY_WAIT_MS   5000    // Wi-Fi scans slow a Bluetooth transfer down
 
 struct Command {
-    enum Type : uint8_t { RETRY, RESUMMARIZE } type;
+    enum Type : uint8_t { RETRY, RESUMMARIZE, BLE_UPLOADED } type;
     char id[65];
     char tmpl[65];
+    // BLE_UPLOADED
+    char upload_id[65];
+    char sha256[65];
+    char remote_status[16];
+    uint32_t size;
 };
 
 static TaskHandle_t task;
@@ -100,6 +107,22 @@ static void apply_command(const Command &cmd)
             meta["upload"].remove("checksum_resets");
             uploads.reset();
         }
+    } else if (cmd.type == Command::BLE_UPLOADED) {
+        JsonObject up = meta["upload"].is<JsonObject>() ? meta["upload"].as<JsonObject>()
+                                                        : meta["upload"].to<JsonObject>();
+        up["status"] = "done";
+        up["via"] = "bluetooth";
+        up["upload_id"] = cmd.upload_id;
+        up["sha256"] = cmd.sha256;
+        up["size"] = cmd.size;
+        up["offset"] = cmd.size;
+        up["remote_status"] = cmd.remote_status;
+        up["highlights_synced"] = true;  // the app sent them with the upload
+        up.remove("error");
+        up.remove("checksum_resets");
+        uploads.reset();
+        processing.reset();  // backend processing: the results can be fetched now
+        Serial.printf("[worker] %s uploaded by the app over Bluetooth\n", cmd.id);
     } else {
         String state = meta["state"] | "";
         meta["template"] = cmd.tmpl;  // used when the summary is (re)done
@@ -125,6 +148,20 @@ static void send_command(Command::Type type, const String &id, const String &tmp
 void worker_retry(const String &id)                          { send_command(Command::RETRY, id, ""); }
 void worker_resummarize(const String &id, const String &tmpl) { send_command(Command::RESUMMARIZE, id, tmpl); }
 
+void worker_ble_uploaded(const String &id, const String &upload_id, const String &sha256, size_t size,
+                         const String &remote_status)
+{
+    Command cmd = {Command::BLE_UPLOADED};
+    strlcpy(cmd.id, id.c_str(), sizeof(cmd.id));
+    strlcpy(cmd.upload_id, upload_id.c_str(), sizeof(cmd.upload_id));
+    strlcpy(cmd.sha256, sha256.c_str(), sizeof(cmd.sha256));
+    strlcpy(cmd.remote_status, remote_status.c_str(), sizeof(cmd.remote_status));
+    cmd.size = size;
+    // Must not get lost: the BLE task can wait for room in the queue
+    xQueueSend(commands, &cmd, pdMS_TO_TICKS(5000));
+    worker_kick();
+}
+
 // ============================================================
 // Processing
 // ============================================================
@@ -137,7 +174,7 @@ static bool needs_processing(const RecordingInfo &r)
     return open;
 }
 
-static bool needs_upload(const RecordingInfo &r)
+bool worker_needs_upload(const RecordingInfo &r)
 {
     if (r.state == "recording" || r.upload == "failed") return false;
     return r.upload != "done" || r.highlights_unsynced;
@@ -145,13 +182,14 @@ static bool needs_upload(const RecordingInfo &r)
 
 // Oldest recording of each lane that can be worked on now; counts the
 // pending ones. `next_check` is the earliest time a deferred one is due.
+// `has_file_upl`: a recording's file still has to go (not just its highlights).
 static void find_work(RecordingInfo &proc, bool &has_proc, RecordingInfo &upl, bool &has_upl,
-                      uint32_t &next_check_ms)
+                      bool &has_file_upl, uint32_t &next_check_ms)
 {
     std::vector<RecordingInfo> list = recordings_list();
     bool backend = config_backend_enabled();
     int n_proc = 0, n_upl = 0;
-    has_proc = has_upl = false;
+    has_proc = has_upl = has_file_upl = false;
     next_check_ms = UINT32_MAX;
     for (auto it = list.rbegin(); it != list.rend(); ++it) {
         if (needs_processing(*it)) {
@@ -163,8 +201,9 @@ static void find_work(RecordingInfo &proc, bool &has_proc, RecordingInfo &upl, b
                 has_proc = true;
             }
         }
-        if (backend && needs_upload(*it)) {
+        if (backend && worker_needs_upload(*it)) {
             if (!n_upl++) upl = *it;
+            if (it->upload != "done") has_file_upl = true;
         }
     }
     has_upl = n_upl > 0;
@@ -334,9 +373,10 @@ static void worker_task(void *)
         }
 
         RecordingInfo proc, upl;
-        bool has_proc, has_upl;
+        bool has_proc, has_upl, has_file_upl;
         uint32_t next_check;
-        find_work(proc, has_proc, upl, has_upl, next_check);
+        find_work(proc, has_proc, upl, has_upl, has_file_upl, next_check);
+        if (!has_file_upl) ble_set_wanted(false);
         if (!has_proc && !has_upl) {
             if (next_check == UINT32_MAX) set_status("", "");  // keep "waiting for the backend" visible
             if (millis() - idle_since > WIFI_IDLE_OFF_MS) wifi_off();  // unless held by the web server
@@ -357,11 +397,20 @@ static void worker_task(void *)
             continue;
         }
 
+        // An app is reading recordings over Bluetooth: let it finish first
+        if (ble_connected() && !wifi_connected()) {
+            wait = BLE_BUSY_WAIT_MS;
+            continue;
+        }
+
         if (!wifi_connect()) {
             if (has_proc) backoff(processing, "no Wi-Fi");
             if (has_upl) backoff(uploads, "no Wi-Fi");
+            // Offer the waiting recordings to the knowpod app over Bluetooth instead
+            if (has_file_upl) ble_set_wanted(true);
             continue;
         }
+        ble_set_wanted(false);
         if (run_proc) process(proc);
         else upload(upl);
     }
@@ -426,7 +475,7 @@ String worker_status_short()  { Lock l; return status_short; }
 String worker_current_id()    { Lock l; return current_id; }
 int worker_pending()          { return processing.pending; }
 int worker_pending_uploads()  { return uploads.pending; }
-uint32_t worker_generation()  { return generation + recordings_generation(); }
+uint32_t worker_generation()  { return generation + recordings_generation() + ble_generation(); }
 
 bool worker_busy()
 {
