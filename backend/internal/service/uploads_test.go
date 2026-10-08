@@ -7,6 +7,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"log/slog"
+	"os"
 	"testing"
 	"time"
 
@@ -14,6 +16,7 @@ import (
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/device"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain/recording"
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/repository/memory"
+	memstore "github.com/michaelkleinhenz/knowpod-service/backend/internal/storage/memory"
 )
 
 var (
@@ -22,6 +25,14 @@ var (
 )
 
 func testWAV() []byte { return audiotest.WAV(16000, 16, audiotest.Samples(1, 16000, 16)) }
+
+// testMP3 starts like the MP3 the 1.54" recorder writes (MPEG-2 Layer III, 16 kHz mono,
+// 32 kbps), which is all the upload checks look at.
+func testMP3() []byte {
+	b := bytes.Repeat([]byte{0x55}, 400)
+	copy(b, []byte{0xFF, 0xF3, 0x48, 0xC4})
+	return b
+}
 
 func sum(b []byte) string {
 	s := sha256.Sum256(b)
@@ -220,6 +231,40 @@ func TestInvalidAudioFailsRecording(t *testing.T) {
 	st, _ := s.Get(ctx, dev1, up.Recording.ID)
 	if st.Recording.Status != recording.StatusFailed || st.Recording.LastError == "" {
 		t.Fatalf("after invalid audio: %+v", st.Recording)
+	}
+}
+
+func TestMP3UploadIsAccepted(t *testing.T) {
+	ctx := context.Background()
+	s, _, _ := newUploads(t)
+	mp3 := testMP3()
+	up := create(t, s, mp3)
+	got, err := s.Append(ctx, dev1, up.Recording.ID, 0, bytes.NewReader(mp3))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := got.Recording
+	if r.Status != recording.StatusReceived || r.SourceContentType != "audio/mpeg" || r.Format != nil {
+		t.Fatalf("recording = %+v", r)
+	}
+}
+
+func TestArchiveStoresDeviceMP3AsIs(t *testing.T) {
+	objects := memstore.New()
+	spool, err := NewSpool(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	arch := NewArchiver(spool, objects, true, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err := os.WriteFile(spool.WAVPath("m1"), testMP3(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rec := &recording.Recording{ID: "m1", OwnerID: "alice", SourceContentType: "audio/mpeg"}
+	if err := arch.Run(context.Background(), rec); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Audio == nil || rec.Audio.Key != "recordings/alice/m1.mp3" || rec.Audio.ContentType != "audio/mpeg" || rec.Original != nil {
+		t.Fatalf("archived audio %+v, original %+v", rec.Audio, rec.Original)
 	}
 }
 

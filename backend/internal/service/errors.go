@@ -17,7 +17,7 @@ var (
 	ErrConflict         = errors.New("recording already exists with a different size or checksum")
 	ErrTooLarge         = errors.New("upload exceeds the declared or maximum size")
 	ErrChecksumMismatch = errors.New("checksum mismatch; upload has been reset, resend from offset 0")
-	ErrInvalidAudio     = errors.New("uploaded file is not a supported WAV file")
+	ErrInvalidAudio     = errors.New("uploaded file is not a supported WAV or MP3 file")
 )
 
 // OffsetMismatchError is returned when a chunk does not start at the current upload offset.

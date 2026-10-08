@@ -14,7 +14,7 @@ import (
 
 // Archiver is the processing stage that moves received audio to object storage. WAV is
 // transcoded to FLAC (the original WAV is kept too if configured); other formats, e.g. MP3
-// or M4A fetched from Pocket, are stored unchanged.
+// from a recorder or M4A fetched from Pocket, are stored unchanged.
 type Archiver struct {
 	spool        *Spool
 	store        ports.ObjectStore
@@ -46,7 +46,7 @@ func (a *Archiver) Run(ctx context.Context, rec *recording.Recording) error {
 	if rec.IsDocument() {
 		return a.storeDocument(ctx, rec, srcPath)
 	}
-	if rec.Source != recording.SourceDevice && !isWAV(srcPath) {
+	if !isWAV(srcPath) { // e.g. MP3 from a recorder, the web app or Pocket
 		return a.storeAsIs(ctx, rec, srcPath)
 	}
 
