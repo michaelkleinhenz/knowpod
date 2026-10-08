@@ -1,6 +1,7 @@
 #include "worker.h"
 #include <ArduinoJson.h>
 #include <atomic>
+#include "net/ble.h"
 #include "net/wifi.h"
 #include "upload.h"
 #include "store/config.h"
@@ -11,9 +12,21 @@
 #define WIFI_IDLE_OFF_MS   60000
 #define BACKOFF_MIN_MS     30000
 #define BACKOFF_MAX_MS     600000
+#define BLE_BUSY_WAIT_MS   5000    // Wi-Fi scans slow a Bluetooth transfer down
+
+// Requests from other tasks, handled by the worker task
+struct Command {
+    enum Type : uint8_t { RETRY, BLE_UPLOADED } type;
+    char id[65];
+    // BLE_UPLOADED
+    char upload_id[65];
+    char sha256[65];
+    char remote_status[16];
+    uint32_t size;
+};
 
 static TaskHandle_t task;
-static QueueHandle_t retries;   // ids of recordings whose failed upload should be retried
+static QueueHandle_t commands;
 static SemaphoreHandle_t mutex = xSemaphoreCreateMutex();
 
 static volatile bool paused = false;
@@ -45,24 +58,55 @@ static void set_status(const String &full, const String &brief, const String &id
     if (!full.isEmpty()) Serial.printf("[worker] %s\n", full.c_str());
 }
 
-static void apply_retry(const char *id)
+static void apply_command(const Command &cmd)
 {
     JsonDocument meta;
-    if (!recording_load_meta(id, meta)) return;
-    if (meta["upload"]["status"] == "failed") {
-        meta["upload"]["status"] = "uploading";
-        meta["upload"].remove("error");
-        meta["upload"].remove("checksum_resets");
+    if (!recording_load_meta(cmd.id, meta)) return;
+    if (cmd.type == Command::RETRY) {
+        if (meta["upload"]["status"] == "failed") {
+            meta["upload"]["status"] = "uploading";
+            meta["upload"].remove("error");
+            meta["upload"].remove("checksum_resets");
+            reset_backoff();
+        }
+    } else {
+        JsonObject up = meta["upload"].is<JsonObject>() ? meta["upload"].as<JsonObject>()
+                                                        : meta["upload"].to<JsonObject>();
+        up["status"] = "done";
+        up["via"] = "bluetooth";
+        up["upload_id"] = cmd.upload_id;
+        up["sha256"] = cmd.sha256;
+        up["size"] = cmd.size;
+        up["offset"] = cmd.size;
+        up["remote_status"] = cmd.remote_status;
+        up["highlights_synced"] = true;  // the app sent them with the upload
+        up.remove("error");
+        up.remove("checksum_resets");
         reset_backoff();
+        Serial.printf("[worker] %s uploaded by the app over Bluetooth\n", cmd.id);
     }
-    recording_save_meta(id, meta);
+    recording_save_meta(cmd.id, meta);
 }
 
 void worker_retry(const String &id)
 {
-    char buf[65];
-    strlcpy(buf, id.c_str(), sizeof(buf));
-    xQueueSend(retries, buf, 0);
+    Command cmd = {Command::RETRY};
+    strlcpy(cmd.id, id.c_str(), sizeof(cmd.id));
+    xQueueSend(commands, &cmd, 0);
+    worker_kick();
+}
+
+void worker_ble_uploaded(const String &id, const String &upload_id, const String &sha256, size_t size,
+                         const String &remote_status)
+{
+    Command cmd = {Command::BLE_UPLOADED};
+    strlcpy(cmd.id, id.c_str(), sizeof(cmd.id));
+    strlcpy(cmd.upload_id, upload_id.c_str(), sizeof(cmd.upload_id));
+    strlcpy(cmd.sha256, sha256.c_str(), sizeof(cmd.sha256));
+    strlcpy(cmd.remote_status, remote_status.c_str(), sizeof(cmd.remote_status));
+    cmd.size = size;
+    // Must not get lost: the BLE task can wait for room in the queue
+    xQueueSend(commands, &cmd, pdMS_TO_TICKS(5000));
     worker_kick();
 }
 
@@ -70,15 +114,17 @@ void worker_retry(const String &id)
 // Uploads
 // ============================================================
 
-static bool needs_upload(const RecordingInfo &r)
+bool worker_needs_upload(const RecordingInfo &r)
 {
     if (r.state == "recording" || r.upload == "failed") return false;
     return r.upload != "done" || r.highlights_unsynced;
 }
 
 // Oldest recording that needs uploading; counts the pending ones.
-static bool find_work(RecordingInfo &next)
+// `has_file`: a recording's file still has to go (not just its highlights).
+static bool find_work(RecordingInfo &next, bool &has_file)
 {
+    has_file = false;
     if (!config_backend_enabled()) {
         pending = 0;
         return false;
@@ -86,7 +132,9 @@ static bool find_work(RecordingInfo &next)
     std::vector<RecordingInfo> list = recordings_list();
     int n = 0;
     for (auto it = list.rbegin(); it != list.rend(); ++it) {
-        if (needs_upload(*it) && !n++) next = *it;
+        if (!worker_needs_upload(*it)) continue;
+        if (!n++) next = *it;
+        if (it->upload != "done") has_file = true;
     }
     pending = n;
     return n > 0;
@@ -148,11 +196,14 @@ static void worker_task(void *)
             continue;
         }
 
-        char id[65];
-        while (xQueueReceive(retries, id, 0) == pdTRUE) apply_retry(id);
+        Command cmd;
+        while (xQueueReceive(commands, &cmd, 0) == pdTRUE) apply_command(cmd);
 
         RecordingInfo next;
-        if (!find_work(next)) {
+        bool has_file;
+        bool has_work = find_work(next, has_file);
+        if (!has_file) ble_set_wanted(false);
+        if (!has_work) {
             set_status("", "");
             if (millis() - idle_since > WIFI_IDLE_OFF_MS) wifi_off();  // unless held by the web server
             wait = IDLE_WAIT_MS;
@@ -164,10 +215,19 @@ static void worker_task(void *)
             wait = retry_at - millis();
             continue;
         }
-        if (!wifi_connect()) {
-            backoff("no Wi-Fi");
+        // An app is reading recordings over Bluetooth: let it finish first
+        if (ble_connected() && !wifi_connected()) {
+            wait = BLE_BUSY_WAIT_MS;
             continue;
         }
+
+        if (!wifi_connect()) {
+            backoff("no Wi-Fi");
+            // Offer the waiting recordings to the knowpod app over Bluetooth instead
+            if (has_file) ble_set_wanted(true);
+            continue;
+        }
+        ble_set_wanted(false);
         upload(next);
     }
 }
@@ -178,7 +238,7 @@ static void worker_task(void *)
 
 void worker_begin()
 {
-    retries = xQueueCreate(8, 65);
+    commands = xQueueCreate(8, sizeof(Command));
     xTaskCreatePinnedToCore(worker_task, "worker", WORKER_STACK, nullptr, 1, &task, 0);
 }
 
@@ -200,7 +260,7 @@ String worker_status()        { Lock l; return status; }
 String worker_status_short()  { Lock l; return status_short; }
 String worker_current_id()    { Lock l; return current_id; }
 int worker_pending_uploads()  { return pending; }
-uint32_t worker_generation()  { return generation + recordings_generation(); }
+uint32_t worker_generation()  { return generation + recordings_generation() + ble_generation(); }
 
 bool worker_busy()
 {

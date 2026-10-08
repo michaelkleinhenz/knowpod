@@ -7,6 +7,7 @@
 #include "hw/buttons.h"
 #include "hw/clock.h"
 #include "hw/power.h"
+#include "net/ble.h"
 #include "proc/worker.h"
 #include "store/config.h"
 #include "store/recordings.h"
@@ -57,7 +58,10 @@ void setup()
 
     Serial.println("Init app (display + UI)...");
     app_begin(sd_ok, codec_ok);
-    if (sd_ok) worker_begin();
+    if (sd_ok) {
+        worker_begin();
+        ble_begin();
+    }
     debug_begin();
     Serial.println("Setup complete.");
 }

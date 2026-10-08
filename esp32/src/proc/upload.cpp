@@ -51,7 +51,7 @@ static void add_highlights(JsonDocument &req, const JsonDocument &meta)
         list.add<JsonObject>()["offsetMs"] = (int64_t)lroundf(h * 1000);
 }
 
-static bool sha256_file(File &f, String &hex)
+bool sha256_file(File &f, String &hex)
 {
     mbedtls_sha256_context ctx;
     mbedtls_sha256_init(&ctx);

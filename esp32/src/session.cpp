@@ -4,6 +4,7 @@
 #include "audio/audio.h"
 #include "hw/clock.h"
 #include "hw/power.h"
+#include "net/ble.h"
 #include "net/web.h"
 #include "net/wifi.h"
 #include "proc/worker.h"
@@ -48,8 +49,9 @@ bool session_start(String &error)
         return false;
     }
 
-    // Wi-Fi draws a lot of power and adds noise; it is not needed while recording
+    // Wi-Fi and Bluetooth draw a lot of power and add noise; not needed while recording
     worker_set_paused(true);
+    ble_pause(true);
     web_stop();
     wifi_off(true);
 
@@ -74,6 +76,7 @@ bool session_start(String &error)
         meta["error"] = error;
         recording_save_meta(id, meta);
         worker_set_paused(false);
+        ble_pause(false);
         return false;
     }
 
@@ -148,6 +151,7 @@ void session_stop(SessionInfo &info)
     save_meta("recorded");
     active = false;
     worker_set_paused(false);  // start uploading
+    ble_pause(false);
     Serial.printf("Session %s saved: %.1f s, %d highlights\n", id.c_str(), info.seconds, info.highlights);
 }
 

@@ -2,6 +2,7 @@
 #include <memory>
 #include "hw/clock.h"
 #include "hw/power.h"
+#include "net/ble.h"
 #include "net/web.h"
 #include "net/wifi.h"
 #include "proc/worker.h"
@@ -83,7 +84,8 @@ static void draw_status_bar()
 {
     draw_text(MARGIN, 30, clock_format("%H:%M").c_str(), FONT_BOLD);
 
-    String center = session_active() ? String("REC") : worker_status_short();
+    String center = session_active() ? String("REC") : ble_status_short();
+    if (center.isEmpty()) center = worker_status_short();
     if (!center.isEmpty()) draw_text_centered(29, center.c_str(), FONT_SMALL);
 
     PowerStatus p = power_status();
@@ -97,7 +99,7 @@ static void draw_status_bar()
         x += 33 - text_width("USB", FONT_SMALL);
         draw_text(x, 29, "USB", FONT_SMALL);
     }
-    const char *net = web_active() ? "Web" : wifi_connected() ? "Wi-Fi" : nullptr;
+    const char *net = web_active() ? "Web" : wifi_connected() ? "Wi-Fi" : ble_connected() ? "BT" : nullptr;
     if (net) {
         x -= text_width(net, FONT_SMALL) + 14;
         draw_text(x, 29, net, FONT_SMALL);
@@ -140,7 +142,7 @@ static void draw_status_bar()
         int rx = (SCREEN_W - w) / 2;
         gfx().fillCircle(rx + 3, base - 4, 3, INK);
         draw_text(rx + 11, base, "REC", FONT_BOLD);
-    } else if (const char *net = web_active() ? "Web" : wifi_connected() ? "Wi-Fi" : nullptr) {
+    } else if (const char *net = web_active() ? "Web" : wifi_connected() ? "Wi-Fi" : ble_connected() ? "BT" : nullptr) {
         int nx = x - 10 - text_width(net, FONT_SMALL);
         if (nx > left + 8) draw_text(nx, base, net, FONT_SMALL);
     }

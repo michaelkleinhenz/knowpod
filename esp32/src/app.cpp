@@ -6,6 +6,7 @@
 #include "hw/buttons.h"
 #include "hw/clock.h"
 #include "hw/power.h"
+#include "net/ble.h"
 #include "net/web.h"
 #include "net/wifi.h"
 #include "proc/worker.h"
@@ -58,9 +59,12 @@ static void stop_recording(const String &reason = String())
     if (!reason.isEmpty()) body += reason + "\n\n";
     body += "Duration: " + format_duration(info.seconds) + "\n";
     body += "Highlights: " + String(info.highlights) + "\n\n";
-    body += config_wifi().empty() || !config_backend_enabled()
+    // Without Wi-Fi, a paired knowpod app takes the recording over Bluetooth and uploads it
+    bool via_app = config_bluetooth_enabled() && ble_paired_count() > 0;
+    body += !config_backend_enabled() || (config_wifi().empty() && !via_app)
                 ? "Add Wi-Fi and the backend token to config.json to upload it to knowpod."
-                : "It is uploaded to knowpod when Wi-Fi is available; the transcript and summary appear there.";
+                : "It is uploaded to knowpod when Wi-Fi is available (or through the paired app); "
+                  "the transcript and summary appear there.";
 
     ui_replace(make_message(reason.isEmpty() ? "Saved" : "Recording stopped", body, false, SAVED_HOME_MS));
     ui_dirty(true);  // the recording screen changed many times
@@ -133,6 +137,8 @@ static bool may_sleep()
     if (minutes <= 0 || millis() - last_activity < (uint32_t)minutes * 60000) return false;
     // With web access on USB power, stay awake so the web page stays reachable
     if (web_active() && power_status().usb_connected) return false;
+    // An app reading recordings over Bluetooth, or one being paired, needs the device awake
+    if (ble_connected() || ble_pairing()) return false;
     return !session_active() && !recorder_active() && !worker_busy();
 }
 

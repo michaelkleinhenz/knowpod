@@ -14,6 +14,7 @@ static const char DEFAULT_CONFIG[] = R"json({
     "url": "https://www.knowpod.de/api/v1",
     "token": ""
   },
+  "bluetooth": true,
   "web_enabled": true,
   "web_password": ""
 })json";
@@ -125,6 +126,7 @@ bool config_sound_cues()             { Lock l; return doc["sound_cues"] | true; 
 int config_sleep_minutes()           { Lock l; return doc["sleep_minutes"] | 5; }
 int config_power_off_hours()         { Lock l; return doc["power_off_hours"] | 12; }
 bool config_web_enabled()            { Lock l; return doc["web_enabled"] | true; }
+bool config_bluetooth_enabled()      { Lock l; return doc["bluetooth"] | true; }
 String config_backend_token()        { Lock l; return doc["backend"]["token"] | ""; }
 bool config_backend_enabled()        { return !config_backend_url().isEmpty() && !config_backend_token().isEmpty(); }
 
@@ -166,3 +168,4 @@ void config_set_wifi(const std::vector<WifiNetwork> &networks)
 }
 
 void config_set_web_enabled(bool on)                 { Lock l; doc["web_enabled"] = on; save_locked(); }
+void config_set_bluetooth_enabled(bool on)           { Lock l; doc["bluetooth"] = on; save_locked(); }

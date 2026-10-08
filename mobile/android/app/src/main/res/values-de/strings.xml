@@ -23,4 +23,18 @@
         <item quantity="other">%d kopiert.</item>
     </plurals>
     <string name="pocket_failed_title">Kopieren vom Pocket fehlgeschlagen</string>
+
+    <string name="channel_recorder">knowpod-Rekorder</string>
+    <string name="channel_recorder_progress">Kopieren vom knowpod-Rekorder</string>
+    <string name="recorder_progress_title">Kopieren vom knowpod-Rekorder</string>
+    <string name="recorder_progress_connecting">Spreche über Bluetooth mit dem Rekorder…</string>
+    <string name="recorder_progress_uploading">Lade Aufnahme %1$d von %2$d zu knowpod hoch…</string>
+    <string name="recorder_paired_title">Gekoppelt mit %1$s</string>
+    <string name="recorder_paired_body">Aufnahmen, die er nicht über WLAN hochladen kann, kommen jetzt über Bluetooth.</string>
+    <string name="recorder_copied_title">Von %1$s kopiert</string>
+    <plurals name="recorder_copied_body">
+        <item quantity="one">%d Aufnahme wurde über Bluetooth hochgeladen und wird transkribiert und zusammengefasst.</item>
+        <item quantity="other">%d Aufnahmen wurden über Bluetooth hochgeladen und werden transkribiert und zusammengefasst.</item>
+    </plurals>
+    <string name="recorder_failed_title">Kopieren von %1$s fehlgeschlagen</string>
 </resources>

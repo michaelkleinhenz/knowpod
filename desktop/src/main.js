@@ -15,6 +15,7 @@ const pkg = require('../package.json');
 const { startPocketSync } = require('./pocket');
 const { createPocketBluetooth } = require('./pocket-bluetooth');
 const { startPocketWifiSync } = require('./pocket-wifi-sync');
+const { startRecorderBluetooth } = require('./recorder-bluetooth');
 
 // Must match build.appId in package.json; electron-builder drops the build section from the
 // packaged package.json, so it can't be read from pkg at runtime.
@@ -68,6 +69,9 @@ let pocket = null;
 let pocketBluetooth = null;
 // pocketWifi copies recordings from the recorder over its WiFi (see pocket-wifi-sync.js).
 let pocketWifi = null;
+// recorderBluetooth takes recordings from a knowpod recorder (ESP32) over Bluetooth while it has
+// no Wi-Fi, and uploads them for it (see recorder-bluetooth.js).
+let recorderBluetooth = null;
 // usbStatus says how switching the USB drive on went, for the tray menu.
 let usbStatus = '';
 // quitting is set once the app is really quitting, so closing the window doesn't just hide it.
@@ -488,6 +492,30 @@ ipcMain.handle('knowpod:pocket-bluetooth', (event, request) => {
   }
 });
 
+// The settings page of the server pairs the knowpod recorder and shows how copying from it goes
+// (see frontend/src/components/RecorderBluetooth.tsx).
+ipcMain.handle('knowpod:recorder-bluetooth', (event, request) => {
+  if (!fromApp(event) || !recorderBluetooth || !request || typeof request !== 'object') return { ok: false, error: 'failed' };
+  switch (request.action) {
+    case 'state':
+      return recorderBluetooth.state();
+    case 'pair':
+      return recorderBluetooth.pair(request.name);
+    case 'pin':
+      return recorderBluetooth.pin(request.pin);
+    case 'sync':
+      return recorderBluetooth.syncNow();
+    case 'cancel':
+      return recorderBluetooth.cancel();
+    case 'enable':
+      return recorderBluetooth.setEnabled(request.enabled === true);
+    case 'forget':
+      return recorderBluetooth.forget();
+    default:
+      return { ok: false, error: 'failed' };
+  }
+});
+
 ipcMain.handle('knowpod:set-server', (event, input) => {
   // Only the bundled setup page may change the server, never a page the server sent.
   if (!event.senderFrame?.url.startsWith('file:')) return { ok: false };
@@ -609,11 +637,48 @@ function pocketMenu() {
   ];
 }
 
+// recorderStatus says how copying from the knowpod recorder over Bluetooth goes.
+function recorderStatus(state) {
+  switch (state.phase) {
+    case 'searching':
+    case 'connecting':
+    case 'pin':
+      return `${state.name || 'Recorder'}: connecting over Bluetooth…`;
+    case 'listing':
+    case 'preparing':
+      return `${state.name}: preparing ${state.current} of ${state.total}…`;
+    case 'uploading':
+      return `${state.name}: uploading ${state.current} of ${state.total}` +
+        (state.totalBytes ? ` (${Math.floor((100 * state.bytes) / state.totalBytes)} %)…` : '…');
+    default:
+      return '';
+  }
+}
+
+// recorderMenu shows the paired knowpod recorder and copies from it now.
+function recorderMenu() {
+  const state = recorderBluetooth?.state();
+  if (!state?.paired) return [];
+  const status = recorderStatus(state);
+  return [
+    ...(status ? [{ label: status, enabled: false }] : []),
+    {
+      label: `Copy from ${state.name} over Bluetooth`,
+      type: 'checkbox',
+      checked: state.enabled,
+      click: (item) => recorderBluetooth.setEnabled(item.checked),
+    },
+    ...(state.enabled ? [{ label: `Copy from ${state.name} Now`, enabled: !state.busy, click: () => recorderBluetooth.syncNow() }] : []),
+    { type: 'separator' },
+  ];
+}
+
 function buildTrayMenu() {
   return Menu.buildFromTemplate([
     { label: 'Open knowpod', click: showWindow },
     { type: 'separator' },
     ...pocketMenu(),
+    ...recorderMenu(),
     {
       label: 'Keep Running When Closed',
       type: 'checkbox',
@@ -744,7 +809,8 @@ function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-// Web Bluetooth (for pocket-bluetooth.js) is still experimental in Chromium on Linux.
+// Web Bluetooth (for pocket-bluetooth.js and recorder-bluetooth.js) is still experimental in
+// Chromium on Linux.
 if (process.platform === 'linux') app.commandLine.appendSwitch('enable-blink-features', 'WebBluetooth');
 
 // One window only: starting the app again brings the running one to the front.
@@ -765,6 +831,7 @@ if (!app.requestSingleInstanceLock()) {
     pocket = startPocketSync({ serverUrl, readConfig, writeConfig, notify: showNotification, onChange: updateTray });
     pocketBluetooth = createPocketBluetooth({ readConfig, writeConfig, onChange: updateTray });
     pocketWifi = startPocketWifiSync({ serverUrl, readConfig, writeConfig, notify: showNotification, pocketBluetooth, onChange: updateTray });
+    recorderBluetooth = startRecorderBluetooth({ serverUrl, readConfig, writeConfig, notify: showNotification, onChange: updateTray });
     updateTray();
     // macOS also activates the app when it launches; started at login, it stays in the tray.
     let skipActivate = startedHidden();

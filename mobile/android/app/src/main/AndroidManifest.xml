@@ -33,6 +33,13 @@
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
 
+        <!-- Keeps a copy from the knowpod recorder going in the background
+             (recorder/RecorderSyncService). -->
+        <service
+            android:name=".recorder.RecorderSyncService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -54,7 +61,7 @@
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
 
-    <!-- Pocket sync: Bluetooth to the recorder (finding it needs location up to Android 11),
+    <!-- Pocket sync and the knowpod recorder: Bluetooth to the recorder (finding it needs location up to Android 11),
          its WiFi network, and a foreground service while copying. Fine location is also asked
          for on newer Android, optionally: it lets Android tell the recorder network's BSSID,
          so joining it again needs no confirmation (pocket/AndroidWifi). -->

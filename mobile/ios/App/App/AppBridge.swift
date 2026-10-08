@@ -4,8 +4,9 @@ import WebKit
 // AppBridge tells the web app it runs in the iOS app (window.knowpodIOS, see
 // frontend/src/lib/desktop.ts), like the Android app's AppBridge.java: it lets the web app show
 // notifications and open the page of a clicked one, set up the Pocket recorder's Bluetooth
-// connection and copy from the Pocket (Pocket/PocketController.swift), and go back to the
-// setup page.
+// connection and copy from the Pocket (Pocket/PocketController.swift), pair the knowpod recorder
+// and copy from it over Bluetooth (Recorder/RecorderController.swift), and go back to the setup
+// page.
 //
 // Only pages of the knowpod server get it: the script that offers it runs in the main frame of
 // the server's origin only, and messages from anywhere else are ignored.
@@ -69,6 +70,7 @@ final class AppBridge: NSObject, WKScriptMessageHandler {
             version: \(jsString(controller?.versionName ?? "")),
             notify: (message) => post({ method: 'notify', args: message }),
             pocketBluetooth: (request) => call('pocketBluetooth', request),
+            recorderBluetooth: (request) => call('recorderBluetooth', request),
             showSetup: () => post({ method: 'showSetup' }),
             onOpen: (listener) => { openListeners.add(listener); return () => openListeners.delete(listener); },
           }) });
@@ -87,6 +89,7 @@ final class AppBridge: NSObject, WKScriptMessageHandler {
         case "hello":
             pageReady = true
             Notifications.askOnce()
+            RecorderController.shared.activate()
         case "notify":
             if let args = m["args"] as? [String: Any] { Notifications.show(args) }
         case "showSetup":
@@ -95,6 +98,14 @@ final class AppBridge: NSObject, WKScriptMessageHandler {
             let id = m["id"] as? Int ?? 0
             let request = m["args"] as? [String: Any] ?? [:]
             PocketController.shared.handle(request) { result in
+                Task { @MainActor [weak self] in
+                    self?.answer(id: id, result: result)
+                }
+            }
+        case "recorderBluetooth":
+            let id = m["id"] as? Int ?? 0
+            let request = m["args"] as? [String: Any] ?? [:]
+            RecorderController.shared.handle(request) { result in
                 Task { @MainActor [weak self] in
                     self?.answer(id: id, result: result)
                 }
