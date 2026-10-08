@@ -32,7 +32,7 @@
 #define MAX_LISTED          50
 #define FILE_BUF_BYTES      8192
 #define NOTIFY_TIMEOUT_MS   5000
-#define IDLE_DISCONNECT_MS  120000   // an app that stays connected without asking anything
+#define IDLE_DISCONNECT_MS  300000   // an app that stays connected without asking anything
 #define ADV_INTERVAL_MIN    160      // × 0.625 ms: 100 ms
 #define ADV_INTERVAL_MAX    320      // 200 ms
 
@@ -533,6 +533,7 @@ static void ble_task(void *)
         if (xQueueReceive(requests, &req, pdMS_TO_TICKS(POLL_MS)) == pdTRUE) {
             last_request = millis();
             if (req.conn == conn && !paused) handle(req);
+            last_request = millis();  // a long request (hashing, reading) counts as activity
             continue;
         }
 

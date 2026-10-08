@@ -58,7 +58,7 @@ notifications of CONTROL, each `[flags: 1 byte][bytes]`; bit 0 of `flags` is set
 fragments follow. The concatenated bytes are a JSON object with `ok` and the request's `op`; a
 failure has `ok: false`, an `error` code (`bad-request`, `not-found`, `io`) and a `message`.
 
-The recorder serves one app at a time and disconnects an app that asks nothing for two minutes.
+The recorder serves one app at a time and disconnects an app that asks nothing for five minutes.
 
 ### `info`
 
