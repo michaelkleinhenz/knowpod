@@ -116,7 +116,15 @@ function startRecorderBluetooth({ serverUrl, readConfig, writeConfig, notify, on
       if (device || device === false) answer(device, callback);
       else pending = callback;
     });
+    // Devices come in as they are found: pick may wait for more (pairing), so it's asked again
+    // now and then, and a last time when the scan times out.
+    const recheck = setInterval(() => {
+      if (answered || !pending) return;
+      const device = pick(seen, false);
+      if (device || device === false) answer(device, pending);
+    }, 500);
     const timer = setTimeout(() => {
+      clearInterval(recheck);
       if (answered || !pending) return;
       answer(pick(seen, true), pending);
     }, timeout);
@@ -124,6 +132,7 @@ function startRecorderBluetooth({ serverUrl, readConfig, writeConfig, notify, on
       await win.loadFile(path.join(__dirname, 'recorder-ble.html'));
     } catch (err) {
       clearTimeout(timer);
+      clearInterval(recheck);
       win.destroy();
       throw err;
     }
@@ -159,6 +168,7 @@ function startRecorderBluetooth({ serverUrl, readConfig, writeConfig, notify, on
       },
       close: async () => {
         clearTimeout(timer);
+        clearInterval(recheck);
         if (win.isDestroyed()) return;
         try {
           await withTimeout(exec('window.recorderBluetooth.close()'), 5_000, 'timeout');
