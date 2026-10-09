@@ -1285,7 +1285,7 @@ export const de: Translation = {
       someFailed_other: '{{count}} konnten nicht kopiert werden: {{detail}}',
     },
     errors: {
-      'not-found': 'Der Rekorder wurde nicht gefunden. Er bietet seine Aufnahmen nur über Bluetooth an, solange er kein WLAN hat; zum Koppeln schalte in seinen Einstellungen das Koppeln ein und halte ihn in der Nähe.',
+      'not-found': 'Der Rekorder wurde nicht gefunden. Er bietet seine Aufnahmen nur über Bluetooth an, solange er wach ist, kein WLAN hat und Aufnahmen auf den Upload warten (seine Einstellungen zeigen dann „Bluetooth transfer: Waiting for the app“); drück eine Taste, um ihn zu wecken. Zum Koppeln schalte in seinen Einstellungen das Koppeln ein und halte ihn in der Nähe.',
       unsupported: 'Bluetooth ist auf diesem Computer nicht verfügbar.',
       unsupported_phone: 'Bluetooth ist aus oder auf diesem Telefon nicht verfügbar. Schalte es ein und versuche es erneut.',
       permission: 'knowpod darf Bluetooth nicht verwenden. Erlaube es für knowpod in den Einstellungen des Telefons (unter Android „Geräte in der Nähe“) und versuche es erneut.',

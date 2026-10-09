@@ -1283,7 +1283,7 @@ export const en = {
       someFailed_other: '{{count}} couldn’t be copied: {{detail}}',
     },
     errors: {
-      'not-found': 'The recorder wasn’t found. It offers its recordings over Bluetooth only while it has no Wi-Fi; for pairing, switch pairing on in its settings and keep it close.',
+      'not-found': 'The recorder wasn’t found. It offers its recordings over Bluetooth only while it is awake, has no Wi-Fi and has recordings waiting for an upload (its settings then show “Bluetooth transfer: Waiting for the app”); press a button to wake it. For pairing, switch pairing on in its settings and keep it close.',
       unsupported: 'Bluetooth isn’t available on this computer.',
       unsupported_phone: 'Bluetooth is off or not available on this phone. Turn it on and try again.',
       permission: 'knowpod isn’t allowed to use Bluetooth. Allow it for knowpod in the phone’s settings (on Android “Nearby devices”) and try again.',

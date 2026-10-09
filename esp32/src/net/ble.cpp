@@ -27,6 +27,7 @@
 #define BLE_STACK           8192
 #define POLL_MS             1000
 #define PAIRING_MS          180000
+#define OFFER_AWAKE_MS      (20u * 60000)   // keeps the device awake while offering recordings
 #define AFTER_PAIRING_MS    60000    // stays reachable for the app's first connection after pairing
 #define MAX_REQUEST         512
 #define MAX_READ            (256u * 1024)
@@ -68,6 +69,7 @@ static volatile bool refuse_pairing = false;  // this connection tried to pair o
 static volatile bool paired_now = false;
 static volatile int paired_count = -1;        // -1: not known yet
 static volatile uint32_t last_request = 0;
+static volatile uint32_t offer_since = 0;     // millis() the recordings were last offered from
 static std::atomic<uint32_t> generation{0};
 static String activity, activity_short;       // guarded by mutex
 static String name;
@@ -137,6 +139,7 @@ class ServerCallbacks : public NimBLEServerCallbacks {
     {
         if (info.getConnHandle() != conn) return;
         conn = BLE_HS_CONN_HANDLE_NONE;
+        offer_since = millis();
         Serial.printf("[ble] app disconnected (reason 0x%x)\n", reason);
         changed();
     }
@@ -602,6 +605,7 @@ void ble_begin()
 void ble_set_wanted(bool w)
 {
     if (wanted == w) return;
+    if (w) offer_since = millis();
     wanted = w;
     changed();
 }
@@ -615,6 +619,11 @@ void ble_pause(bool p)
 bool ble_running()   { return running; }
 bool ble_connected() { return conn != BLE_HS_CONN_HANDLE_NONE; }
 bool ble_sending()   { return sending; }
+
+bool ble_offering()
+{
+    return wanted && running && !paused && millis() - offer_since < OFFER_AWAKE_MS;
+}
 
 void ble_start_pairing()
 {
