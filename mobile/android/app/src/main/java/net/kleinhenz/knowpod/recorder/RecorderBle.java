@@ -22,6 +22,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Build;
 import android.os.ParcelUuid;
+import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
 import java.io.ByteArrayOutputStream;
@@ -46,6 +47,7 @@ public final class RecorderBle implements RecorderRelay.Link {
     static final UUID SERVICE = UUID.fromString("6b6e7000-0b1e-4d0a-9c3e-6b6e6f77706f");
     static final UUID CONTROL = UUID.fromString("6b6e7001-0b1e-4d0a-9c3e-6b6e6f77706f");
     static final UUID DATA = UUID.fromString("6b6e7002-0b1e-4d0a-9c3e-6b6e6f77706f");
+    private static final String TAG = "knowpod";
     private static final UUID CCCD = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
 
     private static final long CONNECT_TIMEOUT = 20_000;
@@ -90,6 +92,9 @@ public final class RecorderBle implements RecorderRelay.Link {
     private ByteArrayOutputStream collected;
     private long next;
     private boolean gap;
+    private int packets;       // data notifications of the current read
+    private long firstAt = -1; // offset of its first one
+    private int late;          // data notifications that came when no read was waiting
 
     private RecorderBle(Context context) {
         this.context = context.getApplicationContext();
@@ -411,12 +416,17 @@ public final class RecorderBle implements RecorderRelay.Link {
             collected = out;
             next = offset;
             gap = false;
+            packets = 0;
+            firstAt = -1;
         }
         try {
             JSONObject message = new JSONObject().put("op", "read").put("id", id).put("offset", offset).put("length", length);
             JSONObject r = request(message, READ_TIMEOUT);
             if (!r.optBoolean("ok")) throw new RecorderException("recorder", "read: " + r.optString("message", r.optString("error")));
             synchronized (lock) {
+                Log.i(TAG, "recorder read " + id + " from " + offset + ": recorder sent " + r.optLong("length")
+                        + ", got " + out.size() + " in " + packets + " packets, first at " + firstAt + (gap ? ", gap" : "")
+                        + ", " + late + " late before");
                 return out.toByteArray();
             }
         } catch (JSONException e) {
@@ -429,6 +439,9 @@ public final class RecorderBle implements RecorderRelay.Link {
     }
 
     public void close() {
+        synchronized (lock) {
+            if (late > 0) Log.i(TAG, "recorder: " + late + " data packets came when no read was waiting");
+        }
         connected = false;
         BluetoothGatt current = gatt;
         gatt = null;
@@ -457,8 +470,11 @@ public final class RecorderBle implements RecorderRelay.Link {
                 }
                 fragments.reset();
                 lock.notifyAll();
+            } else if (DATA.equals(characteristic.getUuid()) && collected == null) {
+                late++;
             } else if (DATA.equals(characteristic.getUuid()) && collected != null && value.length >= 4) {
                 long at = (value[0] & 0xffL) | (value[1] & 0xffL) << 8 | (value[2] & 0xffL) << 16 | (value[3] & 0xffL) << 24;
+                if (packets++ == 0) firstAt = at;
                 // A gap means a notification got lost: keep what came before it; the relay asks again.
                 if (at != next) gap = true;
                 if (gap) return;

@@ -445,6 +445,9 @@ static void handle_read(uint16_t to, const String &id, uint32_t offset, uint32_t
     }
     f.close();
     sending = false;
+    Serial.printf("[ble] read %s: %u of %u bytes from %u sent in packets of %u (MTU %u)%s\n", id.c_str(),
+                  (unsigned)sent, (unsigned)n, (unsigned)offset, (unsigned)payload, (unsigned)mtu,
+                  ok ? "" : ", stopped");
     if (conn != to) return;  // gone; the app asks again from where it got to
     if (!ok && sent == 0) {
         respond_error(to, "read", "io", "Cannot read the audio file");
