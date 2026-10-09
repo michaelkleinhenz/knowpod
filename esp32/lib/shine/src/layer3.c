@@ -86,9 +86,17 @@ shine_global_config *shine_initialise(shine_config_t *pub_config) {
       0)
     return NULL;
 
+#ifdef SHINE_STATIC_STATE
+  /* One encoder at a time, in memory set aside at link time: without PSRAM the
+     heap may no longer have a block this large once Wi-Fi or Bluetooth ran. */
+  static shine_global_config static_config;
+  config = &static_config;
+  memset(config, 0, sizeof(*config));
+#else
   config = calloc(1, sizeof(shine_global_config));
   if (config == NULL)
     return config;
+#endif
 
   shine_subband_initialise(config);
   shine_mdct_initialise(config);
@@ -204,5 +212,7 @@ unsigned char *shine_flush(shine_global_config *config, int *written) {
 
 void shine_close(shine_global_config *config) {
   shine_close_bit_stream(&config->bs);
+#ifndef SHINE_STATIC_STATE
   free(config);
+#endif
 }

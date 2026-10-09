@@ -1,5 +1,6 @@
 #include "audio.h"
 #include <Wire.h>
+#include <esp_heap_caps.h>
 #include "board.h"
 #include "es8311.h"
 #ifdef EXIO_PA_CTRL
@@ -25,6 +26,9 @@ static es8311_handle_t codec = nullptr;
 // ============================================================
 // Codec & I2S
 // ============================================================
+
+static bool rec_stream_init();
+static void log_heap(const char *when);
 
 bool audio_begin()
 {
@@ -56,6 +60,10 @@ bool audio_begin()
     speaker_off();
 
     Serial.println("ES8311 codec initialized");
+    // The recording buffer is taken now, before Wi-Fi or Bluetooth leave the heap in
+    // pieces, and kept: later a block this large may no longer be free
+    if (!rec_stream_init()) Serial.println("Failed to allocate recording buffer");
+    log_heap("after audio setup");
     return audio_i2s_begin();
 }
 
@@ -229,9 +237,17 @@ static bool rec_stream_init()
     return rec_stream != nullptr;
 }
 
+static void log_heap(const char *when)
+{
+    Serial.printf("Heap %s: %u free, largest block %u\n", when,
+                  (unsigned)heap_caps_get_free_size(MALLOC_CAP_8BIT),
+                  (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+}
+
 bool recorder_start(fs::FS &fs, const char *path)
 {
     if (rec_active) return false;
+    log_heap("at recording start");
     if (!rec_stream_init()) {
         Serial.println("Failed to allocate recording buffer");
         return false;
