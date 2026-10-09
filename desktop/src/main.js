@@ -15,6 +15,7 @@ const pkg = require('../package.json');
 const { startPocketSync } = require('./pocket');
 const { createPocketBluetooth } = require('./pocket-bluetooth');
 const { startPocketWifiSync } = require('./pocket-wifi-sync');
+const { createSystemAudio } = require('./system-audio');
 
 // Must match build.appId in package.json; electron-builder drops the build section from the
 // packaged package.json, so it can't be read from pkg at runtime.
@@ -68,6 +69,11 @@ let pocket = null;
 let pocketBluetooth = null;
 // pocketWifi copies recordings from the recorder over its WiFi (see pocket-wifi-sync.js).
 let pocketWifi = null;
+// systemAudio records what the computer plays, for the meeting recorder (see system-audio.js).
+const systemAudio = createSystemAudio({
+  onData: (id, chunk) => mainWindow?.webContents.send('knowpod:system-audio-data', id, chunk),
+  onEnd: (id) => mainWindow?.webContents.send('knowpod:system-audio-end', id),
+});
 // usbStatus says how switching the USB drive on went, for the tray menu.
 let usbStatus = '';
 // quitting is set once the app is really quitting, so closing the window doesn't just hide it.
@@ -154,8 +160,14 @@ function createWindow() {
     quitting = true;
   });
   mainWindow.on('closed', () => {
+    systemAudio.stopAll();
     mainWindow = null;
   });
+  // A page that goes away stops recording what the computer plays.
+  mainWindow.webContents.on('did-start-navigation', ({ isMainFrame, isSameDocument }) => {
+    if (isMainFrame && !isSameDocument) systemAudio.stopAll();
+  });
+  mainWindow.webContents.on('render-process-gone', () => systemAudio.stopAll());
   mainWindow.on('enter-full-screen', () => mainWindow.webContents.send('knowpod:fullscreen', true));
   mainWindow.on('leave-full-screen', () => mainWindow.webContents.send('knowpod:fullscreen', false));
   mainWindow.webContents.on('dom-ready', () => {
@@ -488,6 +500,24 @@ ipcMain.handle('knowpod:pocket-bluetooth', (event, request) => {
   }
 });
 
+// The meeting recorder of the server's pages (frontend/src/components/MeetingRecorder.tsx)
+// records what the computer plays: request is {action: 'list'} | {action: 'start', sink, rate}
+// | {action: 'stop', id}.
+ipcMain.handle('knowpod:system-audio', (event, request) => {
+  if (!fromApp(event) || !request || typeof request !== 'object') return { ok: false, error: 'failed' };
+  switch (request.action) {
+    case 'list':
+      return systemAudio.list();
+    case 'start':
+      return systemAudio.start(request.sink, request.rate);
+    case 'stop':
+      systemAudio.stop(request.id);
+      return { ok: true };
+    default:
+      return { ok: false, error: 'failed' };
+  }
+});
+
 ipcMain.handle('knowpod:set-server', (event, input) => {
   // Only the bundled setup page may change the server, never a page the server sent.
   if (!event.senderFrame?.url.startsWith('file:')) return { ok: false };
@@ -784,6 +814,7 @@ if (!app.requestSingleInstanceLock()) {
   let quitWhenStopped = false;
   app.on('before-quit', (event) => {
     quitting = true;
+    systemAudio.stopAll();
     if (!pocketWifi?.state().running || quitWhenStopped) return;
     event.preventDefault();
     quitWhenStopped = true;

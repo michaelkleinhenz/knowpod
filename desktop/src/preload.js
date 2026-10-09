@@ -1,7 +1,7 @@
 // Runs in every page of the window with no Node access (sandboxed). It tells the web app it
 // runs in the desktop app (window.knowpodDesktop), lets it show notifications and open the
 // page of a clicked one (see frontend/src/lib/desktop.ts), set up the Pocket recorder's
-// Bluetooth connection, and gives the setup page its call.
+// Bluetooth connection, record what the computer plays (Linux) and gives the setup page its call.
 // It also fits the window's title bar to the page (see titlebar.css).
 const { contextBridge, ipcRenderer, webFrame } = require('electron');
 
@@ -17,6 +17,21 @@ contextBridge.exposeInMainWorld('knowpodDesktop', {
   // (pocket-wifi-sync.js): request is {action: 'settings' | 'save' | 'check' | 'usb-on' |
   // 'state' | 'sync' | 'eject' | 'wifi-sync' | 'wifi-cancel', address?, sessionKey?}.
   pocketBluetooth: (request) => ipcRenderer.invoke('knowpod:pocket-bluetooth', request),
+  // systemAudio records what the computer plays, for the meeting recorder (Linux, see
+  // system-audio.js): request is {action: 'list'} | {action: 'start', sink, rate} |
+  // {action: 'stop', id}. onSystemAudio gets the recordings' chunks of float samples and
+  // hears when one stops by itself.
+  systemAudio: process.platform === 'linux' ? (request) => ipcRenderer.invoke('knowpod:system-audio', request) : undefined,
+  onSystemAudio: (onData, onEnd) => {
+    const data = (_event, id, chunk) => onData(id, chunk);
+    const end = (_event, id) => onEnd(id);
+    ipcRenderer.on('knowpod:system-audio-data', data);
+    ipcRenderer.on('knowpod:system-audio-end', end);
+    return () => {
+      ipcRenderer.removeListener('knowpod:system-audio-data', data);
+      ipcRenderer.removeListener('knowpod:system-audio-end', end);
+    };
+  },
   onOpen: (listener) => {
     const handler = (_event, url) => listener(url);
     ipcRenderer.on('knowpod:open', handler);

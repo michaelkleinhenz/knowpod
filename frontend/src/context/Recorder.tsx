@@ -5,23 +5,30 @@ import { api } from '../api/client';
 import { CheckIcon, ChevronDownIcon, FlagIcon, MicIcon, PauseIcon, PlayIcon, StopIcon, TrashIcon } from '../components/Icons';
 import { errorText } from '../lib/errors';
 import { formatBytes, formatClock, formatTime } from '../lib/recordings';
-import { RecorderUnsupportedError, SAMPLE_RATE, WavRecorder } from '../lib/wavRecorder';
+import { SystemAudioError, systemAudioErrorText } from '../lib/systemAudio';
+import { InputOpener, RecorderUnsupportedError, SAMPLE_RATE, WavRecorder } from '../lib/wavRecorder';
 
 // MAX_MS is the longest voice memo; the recording is saved when it is reached.
 const MAX_MS = 2 * 60 * 60 * 1000;
 
 type Phase = 'idle' | 'starting' | 'recording' | 'uploading' | 'done' | 'error';
 
+// Kind is what is recorded: a voice memo, or a meeting (the microphone and what the computer
+// plays, see MeetingRecorder.tsx).
+type Kind = 'memo' | 'meeting';
+
 interface RecorderState {
   // start starts recording a voice memo (asking for the microphone first).
   start: () => void;
+  // startMeeting starts recording a meeting from the inputs given (one channel each).
+  startMeeting: (inputs: InputOpener[]) => void;
   active: boolean;
   // recording says a memo is being recorded; expand shows the phone's recording screen again.
   recording: boolean;
   expand: () => void;
 }
 
-const RecorderContext = createContext<RecorderState>({ start: () => undefined, active: false, recording: false, expand: () => undefined });
+const RecorderContext = createContext<RecorderState>({ start: () => undefined, startMeeting: () => undefined, active: false, recording: false, expand: () => undefined });
 
 export const useRecorder = () => useContext(RecorderContext);
 
@@ -66,6 +73,8 @@ export function RecorderProvider({ children }: { children: ReactNode }) {
   const [expanded, setExpanded] = useState(true);
   const [interrupted, setInterrupted] = useState(false);
   const [flash, setFlash] = useState(0);
+  const [kind, setKind] = useState<Kind>('memo');
+  const [channels, setChannels] = useState(1);
   const recorder = useRef<WavRecorder | null>(null);
   const startedAt = useRef<Date>(new Date());
   const wakeLock = useRef<WakeLock | null>(null);
@@ -102,11 +111,11 @@ export function RecorderProvider({ children }: { children: ReactNode }) {
     recorder.current = null;
     releaseWakeLock();
     const blob = r.stop();
-    const file = new File([blob], memoName(t('recorder.memoName'), startedAt.current), { type: 'audio/wav' });
+    const file = new File([blob], memoName(kind === 'meeting' ? t('meeting.name') : t('recorder.memoName'), startedAt.current), { type: 'audio/wav' });
     void upload(file, marks);
-  }, [marks, t, upload]);
+  }, [kind, marks, t, upload]);
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (inputs?: InputOpener[]) => {
     if (recorder.current || phase === 'starting' || phase === 'uploading') return;
     setPhase('starting');
     setError(null);
@@ -116,8 +125,10 @@ export function RecorderProvider({ children }: { children: ReactNode }) {
     setSavedId(null);
     setExpanded(true);
     setInterrupted(false);
+    setKind(inputs ? 'meeting' : 'memo');
+    setChannels(inputs?.length ?? 1);
     try {
-      recorder.current = await WavRecorder.start();
+      recorder.current = await WavRecorder.start(inputs);
       startedAt.current = new Date();
       setPhase('recording');
       wakeLock.current = await requestWakeLock();
@@ -126,11 +137,13 @@ export function RecorderProvider({ children }: { children: ReactNode }) {
       setError(
         err instanceof RecorderUnsupportedError
           ? t('recorder.unsupported')
-          : err instanceof DOMException && (err.name === 'NotAllowedError' || err.name === 'SecurityError')
-            ? t('recorder.denied')
-            : err instanceof DOMException && err.name === 'NotFoundError'
-              ? t('recorder.noMicrophone')
-              : errorText(err, t),
+          : err instanceof SystemAudioError
+            ? systemAudioErrorText(err, t)
+            : err instanceof DOMException && (err.name === 'NotAllowedError' || err.name === 'SecurityError')
+              ? t('recorder.denied')
+              : err instanceof DOMException && err.name === 'NotFoundError'
+                ? t('recorder.noMicrophone')
+                : errorText(err, t),
       );
       setPhase('error');
     }
@@ -196,7 +209,7 @@ export function RecorderProvider({ children }: { children: ReactNode }) {
   }
 
   function discard() {
-    if ((recorder.current || failedUpload.current) && !window.confirm(t('recorder.discardConfirm'))) return;
+    if ((recorder.current || failedUpload.current) && !window.confirm(kind === 'meeting' ? t('meeting.discardConfirm') : t('recorder.discardConfirm'))) return;
     recorder.current?.cancel();
     recorder.current = null;
     failedUpload.current = null;
@@ -205,9 +218,10 @@ export function RecorderProvider({ children }: { children: ReactNode }) {
     setError(null);
   }
 
+  const title = kind === 'meeting' ? t('meeting.recordingTitle') : t('recorder.title');
   const bar =
     phase === 'idle' ? null : (
-      <div className={`recorder-bar ${phase}${paused ? ' paused' : ''}${expanded && (phase === 'starting' || phase === 'recording') ? ' expanded' : ''}`} role="region" aria-label={t('recorder.title')}>
+      <div className={`recorder-bar ${phase}${paused ? ' paused' : ''}${expanded && (phase === 'starting' || phase === 'recording') ? ' expanded' : ''}`} role="region" aria-label={title}>
         {phase === 'starting' && <span className="muted">{t('recorder.starting')}</span>}
         {phase === 'recording' && (
           <>
@@ -238,14 +252,14 @@ export function RecorderProvider({ children }: { children: ReactNode }) {
         {phase === 'uploading' && (
           <>
             <MicIcon />
-            <span>{t('recorder.uploading')}</span>
+            <span>{kind === 'meeting' ? t('meeting.uploading') : t('recorder.uploading')}</span>
             <progress max={1} value={progress} />
           </>
         )}
         {phase === 'done' && (
           <>
             <MicIcon />
-            <span>{t('recorder.saved')}</span>
+            <span>{kind === 'meeting' ? t('meeting.saved') : t('recorder.saved')}</span>
             {savedId && (
               <button
                 type="button"
@@ -279,12 +293,12 @@ export function RecorderProvider({ children }: { children: ReactNode }) {
   // The phone's recording screen; styles hide it on wide screens, which keep the bar.
   const screen =
     expanded && (phase === 'starting' || phase === 'recording') ? (
-      <div className={`recorder-screen${paused ? ' paused' : ''}`} role="dialog" aria-modal="true" aria-label={t('recorder.title')}>
+      <div className={`recorder-screen${paused ? ' paused' : ''}`} role="dialog" aria-modal="true" aria-label={title}>
         <div className="recorder-screen-top">
           <button type="button" className="recorder-screen-small" onClick={() => setExpanded(false)} aria-label={t('recorder.minimize')} title={t('recorder.minimize')}>
             <ChevronDownIcon size={22} />
           </button>
-          <span className="recorder-screen-title">{t('recorder.title')}</span>
+          <span className="recorder-screen-title">{title}</span>
           <button type="button" className="recorder-screen-small danger" onClick={discard} aria-label={t('recorder.discard')} title={t('recorder.discard')} disabled={phase !== 'recording'}>
             <TrashIcon />
           </button>
@@ -318,7 +332,7 @@ export function RecorderProvider({ children }: { children: ReactNode }) {
             </div>
             <div>
               <dt>{t('recorder.size')}</dt>
-              <dd>{formatBytes((elapsed / 1000) * SAMPLE_RATE * 2)}</dd>
+              <dd>{formatBytes((elapsed / 1000) * SAMPLE_RATE * 2 * channels)}</dd>
             </div>
           </dl>
           {interrupted ? (
@@ -350,6 +364,7 @@ export function RecorderProvider({ children }: { children: ReactNode }) {
     <RecorderContext.Provider
       value={{
         start: () => void start(),
+        startMeeting: (inputs) => void start(inputs),
         active: phase === 'starting' || phase === 'recording' || phase === 'uploading',
         recording: phase === 'starting' || phase === 'recording',
         expand: () => setExpanded(true),
