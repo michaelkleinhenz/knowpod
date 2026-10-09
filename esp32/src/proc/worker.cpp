@@ -202,10 +202,11 @@ static void worker_task(void *)
         RecordingInfo next;
         bool has_file;
         bool has_work = find_work(next, has_file);
-        if (!has_file) ble_set_wanted(false);
         if (!has_work) {
             set_status("", "");
             if (millis() - idle_since > WIFI_IDLE_OFF_MS) wifi_off();  // unless held by the web server
+            // Nothing to upload; without Wi-Fi a paired app's "Copy" still finds the recorder
+            ble_offer(wifi_connected() ? BLE_OFFER_NONE : BLE_OFFER_IDLE);
             wait = IDLE_WAIT_MS;
             continue;
         }
@@ -224,10 +225,10 @@ static void worker_task(void *)
         if (!wifi_connect()) {
             backoff("no Wi-Fi");
             // Offer the waiting recordings to the knowpod app over Bluetooth instead
-            if (has_file) ble_set_wanted(true);
+            ble_offer(has_file ? BLE_OFFER_WAITING : BLE_OFFER_IDLE);
             continue;
         }
-        ble_set_wanted(false);
+        ble_offer(BLE_OFFER_NONE);
         upload(next);
     }
 }

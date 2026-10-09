@@ -4,7 +4,10 @@ The ESP32 recorder (`esp32/`) uploads its recordings to the backend over Wi-Fi w
 [device upload protocol](device-protocol.md). Where none of its Wi-Fi networks is in range, the
 knowpod desktop or mobile app can take them over Bluetooth LE instead and upload them for it:
 
-1. The recorder's upload fails for lack of Wi-Fi, so it starts advertising its transfer service.
+1. The recorder's upload fails for lack of Wi-Fi, so it advertises its transfer service (every
+   100-200 ms, and it stays awake for up to 20 minutes). While an app is paired and the recorder
+   has no Wi-Fi but nothing waits, it advertises too, slowly (every 1-1.5 s), so the app's "Copy"
+   still connects and reports that nothing waits.
 2. The app, paired with the recorder once, finds it, reads the recordings that wait for an upload
    and uploads each one to the backend with the device's own token, using the same device upload
    protocol as the recorder would.

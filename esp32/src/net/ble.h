@@ -6,19 +6,24 @@
 // when no known Wi-Fi network is in range: the app reads the recordings that
 // wait for an upload and relays them to the backend with the device token
 // (docs/ble-transfer.md). Wi-Fi uploads stay the first choice; the worker asks
-// for Bluetooth only while uploads wait and Wi-Fi can't be reached.
+// for Bluetooth while uploads wait and Wi-Fi can't be reached, and (slowly) while
+// an app is paired and there is no Wi-Fi.
 //
 // Only apps paired with the device may connect: pairing uses LE Secure
 // Connections with a passkey that the device shows while the user has pairing
 // switched on (Settings > Bluetooth), and every request needs the encrypted,
-// authenticated link. The stack runs only while it is wanted, paired for, or an
+// authenticated link. The stack runs only while it is offered, paired for, or an
 // app is connected, so it costs no power otherwise.
 //
 // All functions are thread-safe.
 
 void ble_begin();
 
-void ble_set_wanted(bool wanted);   // uploads wait and Wi-Fi is unavailable
+// What the recorder offers a paired app while it has no Wi-Fi: nothing (Wi-Fi works), IDLE
+// (nothing waits: slow advertising, so the app's "Copy" still finds the recorder) or WAITING
+// (recordings wait for an upload: fast advertising, and the device stays awake a while).
+enum BleOffer { BLE_OFFER_NONE, BLE_OFFER_IDLE, BLE_OFFER_WAITING };
+void ble_offer(BleOffer offer);
 void ble_pause(bool paused);        // while recording (drops a connection)
 
 bool ble_running();                 // the stack is on (advertising or connected)
