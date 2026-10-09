@@ -370,13 +370,20 @@ recordings from a Pocket recorder, plugged in by USB (switching the recorder's U
 over Bluetooth first when needed) or over the recorder's own WiFi on Linux and Windows (see
 [Operations](docs/operations.md#desktop-app)).
 
-**Recording meetings (Linux).** The video camera button beside Pocket Sync records a video
-meeting held on the same computer (e.g. Google Meet in the browser): the microphone and what
-the computer plays, as a stereo recording (you left, the others right) that is transcribed
-and summarized like a voice memo. Its dialog picks both devices and shows a loudness meter for
-each. Chromium doesn't offer the outputs' monitors, so the app records them itself with
-`parec` (`desktop/src/system-audio.js`); it needs `pactl` and `parec` from **pulseaudio-utils**,
-which work with PulseAudio and PipeWire alike.
+**Recording meetings.** The video camera button beside Pocket Sync records a video meeting
+held on the same computer (e.g. Google Meet in the browser): the microphone and what the
+computer plays, as a stereo recording (you left, the others right) that is transcribed and
+summarized like a voice memo. Its dialog picks both devices and shows a loudness meter for
+each (`desktop/src/system-audio.js`):
+
+- **Linux:** Chromium doesn't offer the outputs' monitors, so the app records the chosen one
+  itself with `parec`; it needs `pactl` and `parec` from **pulseaudio-utils**, which work with
+  PulseAudio and PipeWire alike.
+- **Windows:** Chromium records the default output as the loopback audio of a screen capture
+  (of the app's own page, which is dropped); nothing to install or allow.
+- **macOS 13 and later:** the same, recording everything the computer plays. macOS asks once
+  for the permission to record the system audio (System Settings → Privacy & Security →
+  Screen & System Audio Recording).
 
 ## Android app
 

@@ -18,11 +18,11 @@ contextBridge.exposeInMainWorld('knowpodDesktop', {
   // (pocket-wifi-sync.js): request is {action: 'settings' | 'save' | 'check' | 'usb-on' |
   // 'state' | 'sync' | 'eject' | 'wifi-sync' | 'wifi-cancel', address?, sessionKey?}.
   pocketBluetooth: (request) => ipcRenderer.invoke('knowpod:pocket-bluetooth', request),
-  // systemAudio records what the computer plays, for the meeting recorder (Linux, see
-  // system-audio.js): request is {action: 'list'} | {action: 'start', sink, rate} |
-  // {action: 'stop', id}. onSystemAudio gets the recordings' chunks of float samples and
-  // hears when one stops by itself.
-  systemAudio: process.platform === 'linux' ? (request) => ipcRenderer.invoke('knowpod:system-audio', request) : undefined,
+  // systemAudio records what the computer plays, for the meeting recorder (Linux, Windows and
+  // macOS, see system-audio.js): request is {action: 'list'} | {action: 'start', sink, rate} |
+  // {action: 'stop', id}. onSystemAudio gets the recordings' chunks of float samples (Linux)
+  // and hears when one stops by itself.
+  systemAudio: ['linux', 'win32', 'darwin'].includes(process.platform) ? (request) => ipcRenderer.invoke('knowpod:system-audio', request) : undefined,
   onSystemAudio: (onData, onEnd) => {
     const data = (_event, id, chunk) => onData(id, chunk);
     const end = (_event, id) => onEnd(id);

@@ -68,6 +68,7 @@
       "icon": "build/icon.png",
       "extendInfo": {
         "NSMicrophoneUsageDescription": "knowpod records voice memos with the microphone.",
+        "NSAudioCaptureUsageDescription": "knowpod records what the computer plays when you record a video meeting.",
         "NSBluetoothAlwaysUsageDescription": "knowpod switches on the USB drive of your Pocket recorder and copies recordings from your knowpod recorder over Bluetooth."
       }
     },

@@ -22,8 +22,9 @@ interface DesktopBridge {
   onOpen?: (listener: (url: string) => void) => () => void;
   // pocketBluetooth is missing in older desktop and iOS apps.
   pocketBluetooth?: (request: PocketBluetoothRequest) => Promise<PocketBluetoothResult>;
-  // systemAudio and onSystemAudio record what the computer plays (desktop app on Linux only,
-  // desktop/src/system-audio.js; missing elsewhere and in older desktop apps).
+  // systemAudio and onSystemAudio record what the computer plays (desktop app,
+  // desktop/src/system-audio.js; missing elsewhere and in older desktop apps, which had it on
+  // Linux only).
   systemAudio?: (request: SystemAudioRequest) => Promise<SystemAudioResult>;
   onSystemAudio?: (onData: (id: number, chunk: Uint8Array) => void, onEnd: (id: number) => void) => () => void;
   // recorderBluetooth is missing in older apps.
@@ -124,7 +125,8 @@ export interface PocketBluetoothResult {
 
 // What the desktop app records of the computer's outputs (desktop/src/system-audio.js): list
 // names the outputs (sinks), start records one's monitor as float mono samples at rate,
-// streamed to onSystemAudio by id, stop ends it.
+// streamed to onSystemAudio by id, stop ends it. On Windows and macOS (loopback) the one
+// output is 'loopback' and start lets the page capture it with getDisplayMedia instead.
 export type SystemAudioRequest = { action: 'list' } | { action: 'start'; sink: string; rate: number } | { action: 'stop'; id: number };
 
 export interface SystemAudioSink {
@@ -140,10 +142,12 @@ export interface SystemAudioResult {
   message?: string;
   sinks?: SystemAudioSink[];
   id?: number;
+  // The page captures what the computer plays itself (Windows, macOS).
+  loopback?: boolean;
 }
 
 // systemAudioBridge returns the desktop app's calls to record what the computer plays, or
-// undefined where it can't (outside the desktop app on Linux).
+// undefined where it can't (outside the desktop app).
 export function systemAudioBridge() {
   const b = bridge();
   return b?.systemAudio && b.onSystemAudio ? { call: b.systemAudio, listen: b.onSystemAudio } : undefined;
