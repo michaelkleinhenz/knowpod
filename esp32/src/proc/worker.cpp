@@ -32,6 +32,7 @@ static SemaphoreHandle_t mutex = xSemaphoreCreateMutex();
 static volatile bool paused = false;
 static volatile bool step_running = false;
 static volatile int pending = 0;   // recordings that still need uploading
+static volatile int progress = -1; // percent of the file being sent, -1 when not uploading
 static volatile uint32_t retry_at = 0;
 static uint32_t backoff_ms = 0;
 static std::atomic<uint32_t> generation{0};
@@ -54,6 +55,7 @@ static void set_status(const String &full, const String &brief, const String &id
     status = full;
     status_short = brief;
     current_id = id;
+    if (id.isEmpty()) progress = -1;
     generation++;
     if (!full.isEmpty()) Serial.printf("[worker] %s\n", full.c_str());
 }
@@ -154,12 +156,17 @@ static void upload(const RecordingInfo &info)
     JsonDocument meta;
     if (!recording_load_meta(info.id, meta)) return;
     String title = recording_display_title(info);
-    set_status("Uploading " + title + " (" + String(info.upload_percent) + "%)",
-               "Upload " + String(info.upload_percent) + "%", info.id);
+    auto show = [&](int percent) {
+        progress = percent;
+        set_status("Uploading " + title + " (" + String(percent) + "%)", "Upload " + String(percent) + "%",
+                   info.id);
+    };
+    show(info.upload_percent);
 
     int percent = 0;
     step_running = true;
-    Step step = info.upload == "done" ? upload_highlights(info.id, meta) : upload_next(info.id, meta, percent);
+    Step step = info.upload == "done" ? upload_highlights(info.id, meta)
+                                      : upload_next(info.id, meta, percent, show);
     step_running = false;
 
     if (paused && step.result != STEP_OK) return;  // Wi-Fi switched off for a recording
@@ -167,6 +174,7 @@ static void upload(const RecordingInfo &info)
     switch (step.result) {
     case STEP_OK:
         backoff_ms = 0;
+        if (info.upload != "done") show(percent);
         if (meta["upload"]["status"] == "done") Serial.printf("[worker] %s uploaded\n", info.id.c_str());
         break;
     case STEP_RETRY:
@@ -261,6 +269,7 @@ String worker_status()        { Lock l; return status; }
 String worker_status_short()  { Lock l; return status_short; }
 String worker_current_id()    { Lock l; return current_id; }
 int worker_pending_uploads()  { return pending; }
+int worker_progress()         { return progress; }
 uint32_t worker_generation()  { return generation + recordings_generation() + ble_generation(); }
 
 bool worker_busy()

@@ -28,5 +28,6 @@ String worker_status();                 // "Uploading <title> (40%)", "" when id
 String worker_status_short();           // for the status bar
 String worker_current_id();             // recording being uploaded right now
 int worker_pending_uploads();           // recordings waiting to be uploaded to the backend
+int worker_progress();                  // percent of the recording being uploaded, -1 when none
 uint32_t worker_generation();           // changes whenever the status changes
 bool worker_busy();                     // has work it can do right now (don't sleep)
