@@ -2,11 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRecorder } from '../context/Recorder';
 import type { SystemAudioSink } from '../lib/desktop';
-import { listOutputs, outputInput, SystemAudioError, systemAudioAvailable, systemAudioErrorText } from '../lib/systemAudio';
+import { listOutputs, LOOPBACK, outputInput, SystemAudioError, systemAudioAvailable, systemAudioErrorText } from '../lib/systemAudio';
 import { InputOpener, microphoneInput, RecorderInput, WORKLET } from '../lib/wavRecorder';
 
 // meetingRecorderAvailable says whether the meeting recorder's button is shown: in the desktop
-// app on Linux, which can record what the computer plays.
+// app, which can record what the computer plays.
 export const meetingRecorderAvailable = () => systemAudioAvailable();
 
 // The devices picked last, kept in this browser ('' is none).
@@ -168,7 +168,7 @@ export function MeetingRecorderDialog({ onClose }: { onClose: () => void }) {
             {!speakers && <option value={speaker}>{t('common.loading')}</option>}
             {speakers?.map((s) => (
               <option key={s.name} value={s.name}>
-                {s.default ? t('meeting.defaultOutput', { name: s.description }) : s.description}
+                {s.name === LOOPBACK ? t('meeting.systemOutput') : s.default ? t('meeting.defaultOutput', { name: s.description }) : s.description}
               </option>
             ))}
             <option value="">{t('meeting.none')}</option>
@@ -183,7 +183,7 @@ export function MeetingRecorderDialog({ onClose }: { onClose: () => void }) {
         />
         {speakerError && <p className="error">{speakerError}</p>}
 
-        <p className="field-hint">{t('meeting.hint')}</p>
+        <p className="field-hint">{t(speakers?.some((s) => s.name === LOOPBACK) ? 'meeting.hintLoopback' : 'meeting.hint')}</p>
         <p className="meeting-consent">{t('meeting.consent')}</p>
         {busy && <p className="field-hint">{t('meeting.busy')}</p>}
 

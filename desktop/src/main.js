@@ -506,7 +506,7 @@ ipcMain.handle('knowpod:pocket-bluetooth', (event, request) => {
 
 // The meeting recorder of the server's pages (frontend/src/components/MeetingRecorder.tsx)
 // records what the computer plays: request is {action: 'list'} | {action: 'start', sink, rate}
-// | {action: 'stop', id}.
+// | {action: 'stop', id}. On Windows and macOS start only lets the page capture it itself.
 ipcMain.handle('knowpod:system-audio', (event, request) => {
   if (!fromApp(event) || !request || typeof request !== 'object') return { ok: false, error: 'failed' };
   switch (request.action) {
@@ -855,6 +855,17 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     app.setAboutPanelOptions({ applicationName: 'knowpod', applicationVersion: app.getVersion() });
     applySpellChecker();
+    // Screen captures are only for the meeting recorder on Windows and macOS: what the computer
+    // plays (loopback audio), with the page itself as the video it drops, so it needs no
+    // permission to record the screen. Only right after it asked the app (see system-audio.js).
+    session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+      const frame = request.frame;
+      if (frame && frame === frame.top && isAppUrl(frame.url) && request.audioRequested && systemAudio.takeLoopback()) {
+        callback({ video: frame, audio: 'loopback' });
+      } else {
+        callback(null);
+      }
+    });
     buildMenu();
     createTray();
     createWindow();

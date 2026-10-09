@@ -21,7 +21,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const [newKind, setNewKind] = useState<'note' | 'task' | null>(null);
   // pocketSync shows the Pocket Sync dialog (desktop and Android apps only).
   const [pocketSync, setPocketSync] = useState(false);
-  // meeting shows the meeting recorder (desktop app on Linux only).
+  // meeting shows the meeting recorder (desktop app only).
   const [meeting, setMeeting] = useState(false);
   const onConversations = pathname === '/' || pathname === '/briefing' || pathname.startsWith('/conversations/');
   // The time log, the done tasks, Ask and shared items are shown next to the notes list, like a note.

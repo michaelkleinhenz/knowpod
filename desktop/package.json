@@ -2,7 +2,7 @@
   "name": "knowpod-desktop",
   "productName": "knowpod",
   "private": true,
-  "version": "0.14.1",
+  "version": "0.15.0",
   "description": "Your recorded conversations, transcribed and summarized.",
   "author": "knowpod",
   "homepage": "https://github.com/michaelkleinhenz/knowpod-service",
@@ -68,6 +68,7 @@
       "icon": "build/icon.png",
       "extendInfo": {
         "NSMicrophoneUsageDescription": "knowpod records voice memos with the microphone.",
+        "NSAudioCaptureUsageDescription": "knowpod records what the computer plays when you record a video meeting.",
         "NSBluetoothAlwaysUsageDescription": "knowpod switches on the USB drive of your Pocket recorder and copies recordings from your knowpod recorder over Bluetooth."
       }
     },

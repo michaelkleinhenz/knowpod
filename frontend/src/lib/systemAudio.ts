@@ -1,13 +1,14 @@
-// Recording what the computer plays, in the desktop app on Linux: the app records an output's
-// monitor (desktop/src/system-audio.js) and streams it here, where it is played into the
-// recorder's audio graph by the knowpod-pcm-source worklet (public/recorder-worklet.js), so
-// it can be recorded beside the microphone (see MeetingRecorder.tsx).
+// Recording what the computer plays, in the desktop app, so it can be recorded beside the
+// microphone (see MeetingRecorder.tsx). On Linux the app records an output's monitor
+// (desktop/src/system-audio.js) and streams it here, where it is played into the recorder's
+// audio graph by the knowpod-pcm-source worklet (public/recorder-worklet.js). On Windows and
+// macOS the app lets this page capture it itself, as the loopback audio of getDisplayMedia.
 import type { TFunction } from 'i18next';
 import { systemAudioBridge } from './desktop';
-import type { InputOpener, RecorderInput } from './wavRecorder';
+import { type InputOpener, type RecorderInput, streamInput } from './wavRecorder';
 
 // SystemAudioError says why what the computer plays can't be recorded: unsupported,
-// missing-tools, no-server or failed (see systemAudioErrorText).
+// missing-tools, no-server, denied or failed (see systemAudioErrorText).
 export class SystemAudioError extends Error {
   constructor(
     readonly code: string,
@@ -22,6 +23,7 @@ export function systemAudioErrorText(err: SystemAudioError, t: TFunction): strin
     case 'unsupported':
     case 'missing-tools':
     case 'no-server':
+    case 'denied':
       return t(`meeting.errors.${err.code}`);
     default:
       return t('meeting.errors.failed', { detail: err.detail || err.code });
@@ -30,6 +32,10 @@ export function systemAudioErrorText(err: SystemAudioError, t: TFunction): strin
 
 // systemAudioAvailable says whether this app can record what the computer plays.
 export const systemAudioAvailable = () => !!systemAudioBridge();
+
+// LOOPBACK is the one output where the app can only record everything the computer plays
+// (Windows, macOS); it has no description of its own.
+export const LOOPBACK = 'loopback';
 
 // listOutputs returns the computer's outputs (speakers, headsets), the default one marked.
 export async function listOutputs() {
@@ -65,12 +71,10 @@ export function outputInput(sink: string): InputOpener {
     const b = systemAudioBridge();
     if (!b) throw new SystemAudioError('unsupported');
     listen();
-    const node = new AudioWorkletNode(ctx, 'knowpod-pcm-source', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1] });
     const r = await b.call({ action: 'start', sink, rate: ctx.sampleRate });
-    if (!r.ok || r.id === undefined) {
-      node.disconnect();
-      throw new SystemAudioError(r.error || 'failed', r.message);
-    }
+    if (r.ok && r.loopback) return streamInput(ctx, await loopbackStream());
+    if (!r.ok || r.id === undefined) throw new SystemAudioError(r.error || 'failed', r.message);
+    const node = new AudioWorkletNode(ctx, 'knowpod-pcm-source', { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [1] });
     const id = r.id;
     let ended = false;
     const onEnded: (() => void)[] = [];
@@ -94,4 +98,28 @@ export function outputInput(sink: string): InputOpener {
       },
     };
   };
+}
+
+// loopbackStream captures what the computer plays (Windows, macOS): the app grants this page's
+// next screen capture the loopback audio, with the page itself as the video, which isn't needed.
+async function loopbackStream(): Promise<MediaStream> {
+  let stream: MediaStream;
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia({
+      video: true,
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+    });
+  } catch (err) {
+    const denied = err instanceof DOMException && (err.name === 'NotAllowedError' || err.name === 'SecurityError');
+    throw new SystemAudioError(denied ? 'denied' : 'failed', err instanceof Error ? err.message : String(err));
+  }
+  for (const track of stream.getVideoTracks()) {
+    track.stop();
+    stream.removeTrack(track);
+  }
+  if (stream.getAudioTracks().length === 0) {
+    stream.getTracks().forEach((track) => track.stop());
+    throw new SystemAudioError('failed', 'no audio');
+  }
+  return stream;
 }

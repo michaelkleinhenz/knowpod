@@ -5,7 +5,7 @@
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
 
-const { parseSinks } = require('../src/system-audio');
+const { loopback, parseSinks, supported } = require('../src/system-audio');
 
 test('parseSinks reads names and descriptions of pactl list sinks', () => {
   const text = `Sink #52
@@ -32,4 +32,15 @@ Sink #61
 test('parseSinks names an output without description by its name', () => {
   assert.deepEqual(parseSinks('Sink #1\n\tName: null\n'), [{ name: 'null', description: 'null' }]);
   assert.deepEqual(parseSinks(''), []);
+});
+
+test('loopback: Chromium records on Windows and macOS 13 and later, parec on Linux', () => {
+  assert.equal(loopback('win32', '10.0.22631'), true);
+  assert.equal(loopback('darwin', '23.2.0'), true);
+  assert.equal(loopback('darwin', '22.1.0'), true);
+  assert.equal(loopback('darwin', '21.6.0'), false);
+  assert.equal(loopback('linux', '6.8.0'), false);
+  assert.equal(supported('linux', '6.8.0'), true);
+  assert.equal(supported('darwin', '21.6.0'), false);
+  assert.equal(supported('freebsd', '14.0'), false);
 });
