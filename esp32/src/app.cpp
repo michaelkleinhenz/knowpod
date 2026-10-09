@@ -17,14 +17,15 @@
 
 // 3.97" buttons (HAS_ROCKER):
 //   rocker up/down  scroll             rocker press  open/choose
-//   hold rocker     back               BOOT click    back (highlight while recording)
-//   hold BOOT       start/stop recording             PWR click   sleep
+//   hold rocker     back               BOOT click    back (stop while recording)
+//   hold BOOT       start recording                  PWR click   sleep
+//   rocker press while recording: highlight
 //   hold PWR        power off
 //
 // 1.54" buttons:
-//   BOOT click      next / highlight while recording
-//   BOOT hold       back (sleep on home screen) / stop recording
-//   PWR click       select (ignored while recording)
+//   BOOT click      next / stop recording
+//   BOOT hold       back (sleep on home screen)
+//   PWR click       select / highlight while recording
 //   PWR hold 2s     power off
 
 #define SAVED_HOME_MS  10000   // "Saved" message returns to the home screen
@@ -163,8 +164,8 @@ static void handle_event(const ButtonEvent &ev)
     }
 
     if (session_active()) {
-        if (ev.id == BTN_BOOT && ev.action == BTN_CLICK) { session_highlight(); ui_dirty(); }
-        else if (ev.id == BTN_BOOT && ev.action == BTN_LONG) stop_recording();
+        if (ev.id == BTN_BOOT && ev.action == BTN_CLICK) stop_recording();
+        else if (ev.id == BTN_OK && ev.action == BTN_CLICK) { session_highlight(); ui_dirty(); }
         return;
     }
 
@@ -181,7 +182,7 @@ static void handle_event(const ButtonEvent &ev)
 
 #else
     // ── 1.54" (BOOT + PWR) ─────────────────────────────────────
-    // BOOT: click = next/highlight, hold = back/stop; PWR: click = select, hold 2 s = power off
+    // BOOT: click = next/stop, hold = back; PWR: click = select/highlight, hold 2 s = power off
 
     if (ev.id == BTN_PWR && ev.action == BTN_VLONG) {
         power_off_now();
@@ -189,8 +190,8 @@ static void handle_event(const ButtonEvent &ev)
     }
 
     if (session_active()) {
-        if (ev.id == BTN_BOOT && ev.action == BTN_CLICK) { session_highlight(); ui_dirty(); }
-        else if (ev.id == BTN_BOOT && ev.action == BTN_LONG) stop_recording();
+        if (ev.id == BTN_BOOT && ev.action == BTN_CLICK) stop_recording();
+        else if (ev.id == BTN_PWR && ev.action == BTN_CLICK) { session_highlight(); ui_dirty(); }
         return;
     }
 

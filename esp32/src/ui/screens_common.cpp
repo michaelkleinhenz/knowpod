@@ -7,6 +7,16 @@
 #include "store/config.h"
 #include "store/recordings.h"
 
+#define UPLOAD_REFRESH_MS  5000   // e-ink refresh interval while an upload is running
+
+static void draw_progress_bar(int x, int y, int w, int h, int percent)
+{
+    GFXcanvas1 &g = gfx();
+    g.drawRect(x, y, w, h, INK);
+    int fill = (w - 4) * constrain(percent, 0, 100) / 100;
+    if (fill > 0) g.fillRect(x + 2, y + 2, fill, h - 4, INK);
+}
+
 // ============================================================
 // Message
 // ============================================================
@@ -216,6 +226,7 @@ public:
         String status = worker_status();
         if (!status.isEmpty())
             y = draw_paragraph(MARGIN, y + 6, SCREEN_W - 2 * MARGIN, status, FONT_SMALL, CONTENT_BOTTOM);
+        if (worker_progress() >= 0) draw_progress_bar(MARGIN, y + 8, SCREEN_W - 2 * MARGIN, 14, worker_progress());
 
         int ny = CONTENT_BOTTOM - 2 * line_height(FONT_SMALL) - 8;
         gfx().fillRect(MARGIN, ny - 10, SCREEN_W - 2 * MARGIN, 1, INK);
@@ -238,6 +249,12 @@ public:
         String info = String(recs.size()) + (recs.size() == 1 ? " recording" : " recordings");
         int uploads = worker_pending_uploads();
         if (uploads) info += " · " + String(uploads) + " to upload";
+        int percent = worker_progress();
+        if (percent >= 0) {
+            info = "Uploading " + String(percent) + "%";
+            if (uploads > 1) info += " · " + String(uploads - 1) + " more";
+            draw_progress_bar(MARGIN, CONTENT_BOTTOM - 26, SCREEN_W - 2 * MARGIN, 8, percent);
+        }
         draw_text_centered(CONTENT_BOTTOM - 4, info.c_str(), FONT_SMALL);
 #endif
         seen_generation = worker_generation();
@@ -261,8 +278,9 @@ public:
     void tick() override
     {
         // Show upload progress, but don't refresh the e-ink too often
+        uint32_t interval = worker_progress() >= 0 ? UPLOAD_REFRESH_MS : 15000;
         if (web_active() != seen_web) ui_dirty();  // URLs appear/disappear
-        else if (worker_generation() != seen_generation && millis() - last_refresh > 15000) {
+        else if (worker_generation() != seen_generation && millis() - last_refresh > interval) {
             last_refresh = millis();
             ui_dirty();
         }

@@ -87,7 +87,7 @@ public:
 
     void draw() override
     {
-        if (generation != recordings_generation()) load();
+        if (reload || generation != recordings_generation()) load();
         String sub = recording_state_label(info);
         if (view.pages() > 1) sub += " · page " + String(view.page() + 1) + "/" + String(view.pages());
         draw_title(recording_display_title(info, COMPACT_DATES), sub);
@@ -103,7 +103,13 @@ public:
     void tick() override
     {
         // Follow the upload of this recording
-        if (generation != recordings_generation() && millis() - last_refresh > 10000) {
+        if (worker_current_id() == id && worker_progress() >= 0) {
+            if (worker_progress() != shown_progress && millis() - last_refresh > 5000) {
+                last_refresh = millis();
+                reload = true;  // the upload line
+                ui_dirty();
+            }
+        } else if (generation != recordings_generation() && millis() - last_refresh > 10000) {
             RecordingInfo now;
             if (recording_info(id, now) && (now.upload != info.upload || now.upload_percent != info.upload_percent)) {
                 last_refresh = millis();
@@ -126,9 +132,12 @@ private:
     TextView view;
     uint32_t generation = 0;
     uint32_t last_refresh = 0;
+    int shown_progress = -1;
+    bool reload = false;
 
     void load()
     {
+        reload = false;
         generation = recordings_generation();
         int page = view.page();
         if (!recording_info(id, info)) {
@@ -164,7 +173,10 @@ private:
         if (info.upload == "done") view.add("Uploaded. Transcript and summary are in knowpod.");
         else if (info.upload == "failed") view.add("Failed: " + info.upload_error + "\n\nUse the menu to retry.");
         else if (!config_backend_enabled()) view.add("Add the backend token to config.json to upload.");
-        else if (worker_current_id() == id) view.add(worker_status());
+        else if (worker_current_id() == id) {
+            shown_progress = worker_progress();
+            view.add(worker_status());
+        }
         else if (info.upload == "uploading") view.add("Uploading: " + String(info.upload_percent) + "%");
         else view.add("Waiting for Wi-Fi or other recordings.");
 

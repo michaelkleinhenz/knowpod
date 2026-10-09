@@ -84,9 +84,9 @@ public:
     // No periodic cleanup flashes while recording; a clean refresh follows when it stops
     bool auto_clean() override { return false; }
 #ifdef HAS_ROCKER
-    const char *hint() override { return "BOOT: highlight · Hold BOOT: stop"; }
+    const char *hint() override { return "BOOT: stop · Rocker press: highlight"; }
 #else
-    const char *hint() override { return "BOOT: highlight · Hold: stop"; }
+    const char *hint() override { return "BOOT: stop · PWR: highlight"; }
 #endif
 
 private:

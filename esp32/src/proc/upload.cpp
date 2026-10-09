@@ -90,7 +90,7 @@ static bool apply_state(JsonObject up, const JsonDocument &body, const HttpRespo
     return true;
 }
 
-Step upload_next(const String &id, JsonDocument &meta, int &percent)
+Step upload_next(const String &id, JsonDocument &meta, int &percent, const UploadProgress &progress)
 {
     File f = recordings_fs().open(recording_audio_path(id), FILE_READ);
     if (!f) return {STEP_FAILED, "Audio file missing"};
@@ -174,6 +174,8 @@ Step upload_next(const String &id, JsonDocument &meta, int &percent)
                 size_t got = f.read(buf, min<size_t>(left, sizeof(buf)));
                 if (got == 0 || out.write(buf, got) != got) return false;
                 left -= got;
+                int sent = (int)(100.0 * (offset + (long)(n - left)) / size);
+                if (progress && sent != percent) progress(percent = sent);
             }
             return true;
         }, CHUNK_TIMEOUT_MS);
