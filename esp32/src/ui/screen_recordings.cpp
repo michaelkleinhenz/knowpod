@@ -103,8 +103,9 @@ public:
     void tick() override
     {
         // Follow the upload of this recording
-        if (worker_current_id() == id && worker_progress() >= 0) {
-            if (worker_progress() != shown_progress && millis() - last_refresh > 5000) {
+        Transfer transfer = current_transfer();
+        if (transfer.id == id && transfer.percent >= 0) {
+            if (transfer.percent != shown_progress && millis() - last_refresh > 5000) {
                 last_refresh = millis();
                 reload = true;  // the upload line
                 ui_dirty();
@@ -170,13 +171,15 @@ private:
         if (meta["recovered"] | false) view.add("Recovered after a power loss.", FONT_SMALL);
 
         view.add("Upload", FONT_SMALL);
+        Transfer transfer = current_transfer();
         if (info.upload == "done") view.add("Uploaded. Transcript and summary are in knowpod.");
         else if (info.upload == "failed") view.add("Failed: " + info.upload_error + "\n\nUse the menu to retry.");
         else if (!config_backend_enabled()) view.add("Add the backend token to config.json to upload.");
-        else if (worker_current_id() == id) {
-            shown_progress = worker_progress();
-            view.add(worker_status());
+        else if (transfer.percent >= 0 && transfer.id == id) {
+            shown_progress = transfer.percent;
+            view.add(transfer.status);
         }
+        else if (worker_current_id() == id) view.add(worker_status());
         else if (info.upload == "uploading") view.add("Uploading: " + String(info.upload_percent) + "%");
         else view.add("Waiting for Wi-Fi or other recordings.");
 

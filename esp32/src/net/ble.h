@@ -31,6 +31,8 @@ bool ble_running();                 // the stack is on (advertising or connected
 bool ble_offering();                // advertising recordings for the app; keeps the device awake a while
 bool ble_connected();               // an app is connected: keep the device awake
 bool ble_sending();                 // a recording is being read right now
+int ble_progress();                 // percent of the recording the app has read, -1 when none
+String ble_current_id();            // the recording the app is reading, "" when none
 
 void ble_start_pairing();           // accept a new app for a few minutes
 void ble_stop_pairing();
