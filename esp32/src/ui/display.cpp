@@ -14,10 +14,6 @@ static U8G2_FOR_ADAFRUIT_GFX u8g2;
 static bool has_base = false;
 static int partials = 0;
 
-#ifdef BOARD_EPAPER_154G
-static GFXcanvas1 *color_canvas;
-#endif
-
 static const uint8_t *font_data(Font font)
 {
 #if defined(BOARD_EPAPER_397)
@@ -29,13 +25,13 @@ static const uint8_t *font_data(Font font)
     case FONT_DIGITS: return u8g2_font_fub42_tn;
     }
     return u8g2_font_luRS18_te;
-#elif defined(BOARD_EPAPER_154G)
+#elif defined(BOARD_EPAPER_154)
     switch (font) {
-    case FONT_SMALL:  return u8g2_font_luBS08_te;
+    case FONT_SMALL:  return u8g2_font_luRS08_te;
     case FONT_BODY:   return u8g2_font_luRS10_te;
     case FONT_BOLD:   return u8g2_font_luBS10_te;
-    case FONT_TITLE:  return u8g2_font_luBS14_te;
-    case FONT_DIGITS: return u8g2_font_fub20_tn;
+    case FONT_TITLE:  return u8g2_font_luBS12_te;
+    case FONT_DIGITS: return u8g2_font_fub25_tn;
     }
     return u8g2_font_luRS10_te;
 #endif
@@ -45,14 +41,9 @@ void display_begin()
 {
     if (canvas) return;
     epd_begin();
+    canvas = new GFXcanvas1(EPD_WIDTH, EPD_HEIGHT);
 #if defined(BOARD_EPAPER_397)
-    canvas = new GFXcanvas1(EPD_WIDTH, EPD_HEIGHT);
     canvas->setRotation(3);  // portrait, as in the factory firmware
-#elif defined(BOARD_EPAPER_154G)
-    canvas = new GFXcanvas1(EPD_WIDTH, EPD_HEIGHT);
-    canvas->setRotation(0);
-    color_canvas = new GFXcanvas1(EPD_WIDTH, EPD_HEIGHT);
-    color_canvas->setRotation(0);
 #endif
     u8g2.begin(*canvas);
     u8g2.setFontMode(1);
@@ -67,15 +58,7 @@ GFXcanvas1 &gfx()
 void display_clear()
 {
     canvas->fillScreen(PAPER);
-#ifdef BOARD_EPAPER_154G
-    color_canvas->fillScreen(0);
-#endif
 }
-
-#ifdef BOARD_EPAPER_154G
-GFXcanvas1 &gfx_color() { return *color_canvas; }
-void color_clear()       { color_canvas->fillScreen(0); }
-#endif
 
 int draw_text(int x, int y, const char *text, Font font, uint16_t color)
 {
@@ -190,9 +173,6 @@ std::vector<String> wrap_text(const String &text, Font font, int width)
 void display_update(bool clean, bool auto_clean)
 {
     const uint8_t *fb = canvas->getBuffer();
-#ifdef BOARD_EPAPER_154G
-    epd_set_color_plane(color_canvas->getBuffer());
-#endif
     if (!has_base) {
         epd_show(fb, EPD_REFRESH_FULL);
         has_base = true;

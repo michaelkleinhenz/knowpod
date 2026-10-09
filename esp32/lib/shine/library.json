@@ -1,0 +1,11 @@
+{
+  "name": "shine",
+  "version": "3.1.1",
+  "description": "Shine fixed-point MP3 encoder, vendored from github.com/toots/shine (src/lib at ab5e352)",
+  "license": "LGPL-2.0-only",
+  "frameworks": "*",
+  "platforms": "*",
+  "build": {
+    "flags": ["-O2", "-w"]
+  }
+}

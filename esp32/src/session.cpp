@@ -1,9 +1,10 @@
 #include "session.h"
-#include <SD_MMC.h>
+#include "store/sdcard.h"
 #include <ArduinoJson.h>
 #include "audio/audio.h"
 #include "hw/clock.h"
 #include "hw/power.h"
+#include "net/ble.h"
 #include "net/web.h"
 #include "net/wifi.h"
 #include "proc/worker.h"
@@ -35,8 +36,8 @@ bool session_start(String &error)
 {
     if (active) return true;
 
-    uint64_t total = SD_MMC.totalBytes();
-    free_bytes_at_start = total - SD_MMC.usedBytes();
+    uint64_t total = SDCARD.totalBytes();
+    free_bytes_at_start = total - SDCARD.usedBytes();
     if (free_bytes_at_start < 10ull * 1024 * 1024) {
         error = "SD card is full.";
         return false;
@@ -48,8 +49,9 @@ bool session_start(String &error)
         return false;
     }
 
-    // Wi-Fi draws a lot of power and adds noise; it is not needed while recording
+    // Wi-Fi and Bluetooth draw a lot of power and add noise; not needed while recording
     worker_set_paused(true);
+    ble_pause(true);
     web_stop();
     wifi_off(true);
 
@@ -68,12 +70,13 @@ bool session_start(String &error)
     // Audible confirmation; finishes before the mic starts so it isn't recorded
     if (config_sound_cues()) play_cue(CUE_START);
 
-    if (!recorder_start(SD_MMC, recording_audio_path(id).c_str())) {
+    if (!recorder_start(SDCARD, recording_path(id, REC_AUDIO_FILE).c_str())) {
         error = "Cannot start recording.";
         meta["state"] = "error";
         meta["error"] = error;
         recording_save_meta(id, meta);
         worker_set_paused(false);
+        ble_pause(false);
         return false;
     }
 
@@ -132,9 +135,9 @@ SessionInfo session_info()
     JsonArrayConst hl = meta["highlights"];
     info.highlights = hl.size();
     info.last_highlight = hl.size() ? hl[hl.size() - 1].as<float>() : -1;
-    uint64_t written = (uint64_t)(info.seconds * BYTES_PER_SEC);
+    uint64_t written = (uint64_t)(info.seconds * REC_FILE_BYTES_PER_SEC);
     uint64_t left = free_bytes_at_start > written ? free_bytes_at_start - written : 0;
-    info.hours_left = (float)left / BYTES_PER_SEC / 3600;
+    info.hours_left = (float)left / REC_FILE_BYTES_PER_SEC / 3600;
     info.dropped_seconds = recorder_dropped_seconds();
     return info;
 }
@@ -147,7 +150,8 @@ void session_stop(SessionInfo &info)
     info = session_info();
     save_meta("recorded");
     active = false;
-    worker_set_paused(false);  // start transcribing
+    worker_set_paused(false);  // start uploading
+    ble_pause(false);
     Serial.printf("Session %s saved: %.1f s, %d highlights\n", id.c_str(), info.seconds, info.highlights);
 }
 

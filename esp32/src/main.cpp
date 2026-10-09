@@ -1,6 +1,5 @@
 #include <Arduino.h>
 #include <Wire.h>
-#include <SD_MMC.h>
 #include "board.h"
 #include "app.h"
 #include "debug.h"
@@ -8,27 +7,12 @@
 #include "hw/buttons.h"
 #include "hw/clock.h"
 #include "hw/power.h"
+#include "net/ble.h"
 #include "proc/worker.h"
 #include "store/config.h"
 #include "store/recordings.h"
-#include "store/templates.h"
+#include "store/sdcard.h"
 #include "ui/display.h"
-
-static bool init_sd_card()
-{
-#ifdef SD_4BIT
-    SD_MMC.setPins(PIN_SD_CLK, PIN_SD_CMD, PIN_SD_D0, PIN_SD_D1, PIN_SD_D2, PIN_SD_D3);
-#else
-    SD_MMC.setPins(PIN_SD_CLK, PIN_SD_CMD, PIN_SD_D0);
-#endif
-    if (!SD_MMC.begin("/sdcard", true)) {
-        Serial.println("SD card mount FAILED");
-        return false;
-    }
-    Serial.printf("SD card: %llu MB total, %llu MB used\n",
-                  SD_MMC.totalBytes() / (1024 * 1024), SD_MMC.usedBytes() / (1024 * 1024));
-    return true;
-}
 
 void setup()
 {
@@ -61,15 +45,12 @@ void setup()
     }
 
     Serial.println("Init SD card...");
-    bool sd_ok = init_sd_card();
-    if (sd_ok) config_load(SD_MMC);
+    bool sd_ok = sdcard_begin();
+    if (sd_ok) config_load(SDCARD);
 
     Serial.println("Init clock...");
     clock_begin(config_timezone().c_str());
-    if (sd_ok) {
-        recordings_begin(SD_MMC);
-        templates_begin(SD_MMC);
-    }
+    if (sd_ok) recordings_begin(SDCARD);
     Serial.println("Init audio...");
     bool codec_ok = audio_begin();
     Serial.println("Init buttons...");
@@ -77,7 +58,10 @@ void setup()
 
     Serial.println("Init app (display + UI)...");
     app_begin(sd_ok, codec_ok);
-    if (sd_ok) worker_begin();
+    if (sd_ok) {
+        worker_begin();
+        ble_begin();
+    }
     debug_begin();
     Serial.println("Setup complete.");
 }

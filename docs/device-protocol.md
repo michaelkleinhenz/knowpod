@@ -15,6 +15,10 @@ The gadget uploads each finished recording as a WAV file in three steps:
 Every step can be retried safely. After any network error, ask the service where the
 upload stands (`GET /api/v1/uploads/{uploadId}`) and continue from there.
 
+Without Wi-Fi, the knowpod recorder hands its recordings to the desktop or mobile app over
+Bluetooth instead, and the app runs these same steps with the recorder's token
+([Bluetooth transfer](ble-transfer.md)).
+
 ## Authentication
 
 Each gadget has its own token, created in the web UI under **Settings → Devices** (see

@@ -18,13 +18,13 @@
 #define HINT_Y          (SCREEN_H - 18)
 #define CONTENT_BOTTOM  (HINT_Y - 34)
 #else
-// 1.54G (200 × 200)
-#define MARGIN          6
-#define STATUS_H        16
-#define TITLE_Y         30
-#define CONTENT_TOP     38
-#define HINT_Y          (SCREEN_H - 10)
-#define CONTENT_BOTTOM  (HINT_Y - 14)
+// 1.54" (200 × 200)
+#define MARGIN          8
+#define STATUS_H        20
+#define TITLE_Y         42
+#define CONTENT_TOP     60
+#define HINT_Y          (SCREEN_H - 6)
+#define CONTENT_BOTTOM  (HINT_Y - 18)
 #endif
 
 class Screen {
@@ -38,7 +38,7 @@ public:
 #ifdef HAS_ROCKER
     virtual const char *hint() { return "Press: open · Hold press: back"; }
 #else
-    virtual const char *hint() { return "Hold: open · 2s: back"; }
+    virtual const char *hint() { return "PWR: open · Hold BOOT: back"; }
 #endif
 };
 
@@ -56,6 +56,7 @@ void ui_collect_garbage();
 // ---- Widgets ----
 
 void draw_title(const String &title, const String &subtitle = String());
+String fit_text(const String &text, Font font, int width);   // shortened with "..." to fit
 int draw_paragraph(int x, int y, int width, const String &text, Font font, int max_y);
 
 class ListView {

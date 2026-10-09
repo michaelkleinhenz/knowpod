@@ -30,7 +30,7 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
 
   | Source | What arrives in knowpod |
   |---|---|
-  | knowpod recorders and other gadgets | Recordings over a resumable [upload API](docs/device-protocol.md), transcribed and summarized, with highlights |
+  | knowpod recorders and other gadgets | Recordings over a resumable [upload API](docs/device-protocol.md), transcribed and summarized, with highlights; without Wi-Fi, the knowpod recorder hands them to the desktop or mobile app over [Bluetooth](docs/ble-transfer.md) |
   | [Pocket](https://heypocket.com) recorders | Recordings through a personal webhook |
   | [reMarkable](https://remarkable.com) tablets | Notebooks, PDFs and EPUBs, with handwriting read into text |
   | The app itself | Voice memos recorded in the browser, with highlights |
@@ -284,6 +284,7 @@ Supported gadget input: integer PCM WAV, 8/16/24 bit, 1–8 channels, up to 4 Gi
 | Document | For |
 |---|---|
 | [Device upload protocol](docs/device-protocol.md) | Implementing the upload client on the gadget: requests, error handling, retry logic |
+| [Bluetooth transfer](docs/ble-transfer.md) | How the knowpod recorder hands recordings to the desktop and mobile apps over Bluetooth when it has no Wi-Fi: pairing, GATT protocol, relay |
 | [Architecture](docs/architecture.md) | Backend developers: components, recording lifecycle, worker, data model, adding processing stages |
 | [Operations](docs/operations.md) | Deploying and running: Railway, AWS/IAM setup, users and sign-in, Pocket, reMarkable, uploads, installing the app, desktop app, AI settings, devices, monitoring, recovery, limitations |
 | [OpenAPI spec](backend/api/openapi.yaml) | The formal API definition. The service serves it at `/api/v1/openapi.yaml` and `/api/v1/openapi.json`, and the Devices tab links to it. |

@@ -26,6 +26,8 @@ interface DesktopBridge {
   // desktop/src/system-audio.js; missing elsewhere and in older desktop apps).
   systemAudio?: (request: SystemAudioRequest) => Promise<SystemAudioResult>;
   onSystemAudio?: (onData: (id: number, chunk: Uint8Array) => void, onEnd: (id: number) => void) => () => void;
+  // recorderBluetooth is missing in older apps.
+  recorderBluetooth?: (request: RecorderBluetoothRequest) => Promise<RecorderBluetoothState>;
   // showSetup shows the mobile app's page for the server's address (mobile apps only).
   showSetup?: () => void;
 }
@@ -146,6 +148,61 @@ export function systemAudioBridge() {
   const b = bridge();
   return b?.systemAudio && b.onSystemAudio ? { call: b.systemAudio, listen: b.onSystemAudio } : undefined;
 }
+
+// The app's Bluetooth link to the knowpod recorder (the ESP32 gadget, esp32/): where the recorder
+// has no Wi-Fi, it hands its recordings to the app, which uploads them with the recorder's device
+// token (docs/ble-transfer.md; desktop/src/recorder-bluetooth.js, mobile/android/…/recorder/
+// RecorderController.java, mobile/ios/App/App/Recorder/RecorderController.swift). Pairing is asked
+// for here once; afterwards the app looks for the recorder by itself.
+export type RecorderBluetoothRequest =
+  | { action: 'state' | 'sync' | 'cancel' | 'forget' }
+  | { action: 'pair'; name?: string }
+  | { action: 'pin'; pin: string }
+  | { action: 'enable'; enabled: boolean };
+
+// RecorderBluetoothPhase is how pairing or copying goes: '' (idle), searching, choose (several
+// recorders are in pairing mode: devices), connecting, pin (the app waits for the passkey the
+// recorder shows), listing, preparing, uploading (recording current of total, bytes of
+// totalBytes), done (copied, failed) or failed (error, message).
+export type RecorderBluetoothPhase =
+  | ''
+  | 'searching'
+  | 'choose'
+  | 'connecting'
+  | 'pin'
+  | 'listing'
+  | 'preparing'
+  | 'uploading'
+  | 'done'
+  | 'failed';
+
+export interface RecorderBluetoothState {
+  ok: boolean;
+  // Why a call or the last run failed: not-found, unsupported, permission, auth, busy, timeout,
+  // disconnected, no-token, other-server, token, recorder, http, no-server, invalid-pin,
+  // not-paired or failed.
+  error?: string;
+  message?: string;
+  paired?: boolean;
+  name?: string;
+  enabled?: boolean;
+  busy?: boolean;
+  phase?: RecorderBluetoothPhase;
+  current?: number;
+  total?: number;
+  title?: string;
+  bytes?: number;
+  totalBytes?: number;
+  copied?: number;
+  failed?: number;
+  devices?: string[];
+  // The system asks for the passkey itself (the mobile apps): no 'pin' call.
+  systemPin?: boolean;
+}
+
+// recorderBluetooth returns the app's knowpod recorder call, or undefined outside the apps (and
+// in older ones).
+export const recorderBluetooth = () => bridge()?.recorderBluetooth;
 
 // pocketBluetooth returns the app's Pocket Bluetooth call, or undefined outside the desktop
 // and mobile apps (and in older desktop and iOS apps).

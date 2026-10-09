@@ -16,7 +16,11 @@ public:
     MessageScreen(const String &title, const String &body, bool markdown, uint32_t home_after_ms)
         : title(title), home_after_ms(home_after_ms)
     {
+#ifdef HAS_ROCKER
         if (home_after_ms) home_hint = "Press: close · Home in " + String(home_after_ms / 1000) + " s";
+#else
+        if (home_after_ms) home_hint = "PWR: close · home in " + String(home_after_ms / 1000) + " s";
+#endif
         if (markdown) view.add_markdown(body);
         else {
             int pos = 0;
@@ -60,7 +64,7 @@ public:
 #ifdef HAS_ROCKER
         return view.pages() > 1 ? "Rocker: scroll · Press: close" : "Press: close";
 #else
-        return view.pages() > 1 ? "Tap: scroll · Hold: close" : "Hold: close";
+        return view.pages() > 1 ? "BOOT: scroll · PWR: close" : "PWR: close";
 #endif
     }
 
@@ -119,7 +123,7 @@ public:
 #ifdef HAS_ROCKER
     const char *hint() override { return "Press: choose · Hold press: back"; }
 #else
-    const char *hint() override { return "Hold: pick · 2s: back"; }
+    const char *hint() override { return "BOOT: next · PWR: pick"; }
 #endif
 
 private:
@@ -161,7 +165,7 @@ public:
 #ifdef HAS_ROCKER
     const char *hint() override { return "Press: confirm · BOOT: cancel"; }
 #else
-    const char *hint() override { return "Hold: yes · 2s: cancel"; }
+    const char *hint() override { return "PWR: yes · Hold BOOT: no"; }
 #endif
 
 private:
@@ -182,13 +186,13 @@ class HomeScreen : public Screen {
 public:
     HomeScreen()
     {
-        for (const char *item : {"Record", "Recordings", "Ask", "Settings"}) list.items.push_back({item, ""});
+        for (const char *item : {"Record", "Recordings", "Settings"}) list.items.push_back({item, ""});
 #if SCREEN_H >= 400
         list.top = 150;
-        list.bottom = 150 + 4 * 66;
+        list.bottom = 150 + 3 * 66;
 #else
         list.top = CONTENT_TOP;
-        list.bottom = CONTENT_TOP + 4 * 20;
+        list.bottom = CONTENT_TOP + 3 * 26;
 #endif
     }
 
@@ -197,7 +201,7 @@ public:
 #if SCREEN_H >= 400
         draw_logo(SCREEN_W / 2, TITLE_Y - 5);
 #else
-        draw_logo(SCREEN_W / 2, TITLE_Y - 2, 18);
+        draw_logo(SCREEN_W / 2, TITLE_Y - 4, 20);
 #endif
         list.draw();
 
@@ -205,8 +209,6 @@ public:
         int y = list.bottom + 30;
         std::vector<RecordingInfo> recs = recordings_list();
         String info = String(recs.size()) + (recs.size() == 1 ? " recording" : " recordings");
-        int pending = worker_pending();
-        if (pending) info += " · " + String(pending) + " to process";
         int uploads = worker_pending_uploads();
         if (uploads) info += " · " + String(uploads) + " to upload";
         y = draw_paragraph(MARGIN, y, SCREEN_W - 2 * MARGIN, info, FONT_BODY, CONTENT_BOTTOM);
@@ -215,7 +217,7 @@ public:
         if (!status.isEmpty())
             y = draw_paragraph(MARGIN, y + 6, SCREEN_W - 2 * MARGIN, status, FONT_SMALL, CONTENT_BOTTOM);
 
-        int ny = CONTENT_BOTTOM - 3 * line_height(FONT_SMALL) - 8;
+        int ny = CONTENT_BOTTOM - 2 * line_height(FONT_SMALL) - 8;
         gfx().fillRect(MARGIN, ny - 10, SCREEN_W - 2 * MARGIN, 1, INK);
         int lh = line_height(FONT_SMALL);
         int asc = font_ascent(FONT_SMALL);
@@ -224,22 +226,19 @@ public:
             draw_text(x, ny + asc, wifi_ip().c_str(), FONT_SMALL);
             x = draw_text(MARGIN, ny + lh + asc, "Web  ", FONT_BOLD);
             draw_text(x, ny + lh + asc, web_url().c_str(), FONT_SMALL);
-            x = draw_text(MARGIN, ny + 2 * lh + asc, "MCP  ", FONT_BOLD);
-            draw_text(x, ny + 2 * lh + asc, web_mcp_url().c_str(), FONT_SMALL);
         } else {
             String net = wifi_connected() ? "IP " + wifi_ip() : String("Wi-Fi off");
             draw_text(MARGIN, ny + asc, net.c_str(), FONT_SMALL);
             draw_paragraph(MARGIN, ny + lh, SCREEN_W - 2 * MARGIN,
-                           config_wifi().empty() ? "Add Wi-Fi in /config.json for web access and MCP."
-                                                 : "Web access & MCP: Settings", FONT_SMALL, CONTENT_BOTTOM);
+                           config_wifi().empty() ? "Add Wi-Fi in /config.json to upload recordings."
+                                                 : "Web access: Settings", FONT_SMALL, CONTENT_BOTTOM);
         }
 #else
-        int y = list.bottom + 4;
         std::vector<RecordingInfo> recs = recordings_list();
-        String info = String(recs.size()) + (recs.size() == 1 ? " rec" : " recs");
-        int pending = worker_pending();
-        if (pending) info += " · " + String(pending) + " pending";
-        draw_text(MARGIN, y + font_ascent(FONT_SMALL), info.c_str(), FONT_SMALL);
+        String info = String(recs.size()) + (recs.size() == 1 ? " recording" : " recordings");
+        int uploads = worker_pending_uploads();
+        if (uploads) info += " · " + String(uploads) + " to upload";
+        draw_text_centered(CONTENT_BOTTOM - 4, info.c_str(), FONT_SMALL);
 #endif
         seen_generation = worker_generation();
         seen_web = web_active();
@@ -255,14 +254,13 @@ public:
         switch (list.selected) {
         case 0: start_recording_from_ui(); break;
         case 1: ui_push(make_recordings()); break;
-        case 2: ui_push(make_ask("")); break;
-        case 3: ui_push(make_settings()); break;
+        case 2: ui_push(make_settings()); break;
         }
     }
 
     void tick() override
     {
-        // Show processing progress, but don't refresh the e-ink too often
+        // Show upload progress, but don't refresh the e-ink too often
         if (web_active() != seen_web) ui_dirty();  // URLs appear/disappear
         else if (worker_generation() != seen_generation && millis() - last_refresh > 15000) {
             last_refresh = millis();
@@ -274,7 +272,7 @@ public:
 #ifdef HAS_ROCKER
     const char *hint() override { return "Hold BOOT to record"; }
 #else
-    const char *hint() override { return "Hold: select · 2s: sleep"; }
+    const char *hint() override { return "PWR: select · Hold BOOT: sleep"; }
 #endif
 
 private:
@@ -300,10 +298,10 @@ public:
 #if SCREEN_H >= 400
         draw_logo(SCREEN_W / 2, SCREEN_H / 2 - 50, 72);
         draw_text_centered(SCREEN_H / 2 + 20, "Sleeping", FONT_BODY);
-        int pending = worker_pending();
+        int pending = worker_pending_uploads();
         if (pending)
             draw_text_centered(SCREEN_H / 2 + 50,
-                               (String(pending) + " recording(s) waiting for Wi-Fi").c_str(), FONT_SMALL);
+                               (String(pending) + " recording(s) waiting for upload").c_str(), FONT_SMALL);
 #else
         draw_logo(SCREEN_W / 2, SCREEN_H / 2 - 20, 22);
         draw_text_centered(SCREEN_H / 2 + 14, "Sleeping", FONT_SMALL);
@@ -313,7 +311,7 @@ public:
 #ifdef HAS_ROCKER
     const char *hint() override { return "Press PWR or rocker to wake"; }
 #else
-    const char *hint() override { return "Press BOOT to wake"; }
+    const char *hint() override { return "Press PWR to wake"; }
 #endif
 };
 

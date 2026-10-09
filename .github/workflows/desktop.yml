@@ -173,8 +173,10 @@ jobs:
         include:
           - env: esp32-s3-epaper-397
             label: epaper-397
-          - env: esp32-s3-epaper-154g
-            label: epaper-154g
+            chip: esp32s3
+          - env: esp32-c6-epaper-154
+            label: epaper-154
+            chip: esp32c6
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -192,7 +194,9 @@ jobs:
           VERSION="${{ needs.version.outputs.version }}"
           BUILD=".pio/build/${{ matrix.env }}"
           FLASH_SIZE=$(grep -A5 '\[env:${{ matrix.env }}\]' platformio.ini | grep flash_size | awk -F= '{print $2}' | tr -d ' ')
-          python -m esptool --chip esp32s3 merge_bin -o "../dist/knowpod-$VERSION-${{ matrix.label }}.bin" \
+          mkdir -p ../dist
+          # Both chips boot from 0x0 (bootloader), 0x8000 (partition table), 0x10000 (app)
+          python -m esptool --chip ${{ matrix.chip }} merge_bin -o "../dist/knowpod-$VERSION-${{ matrix.label }}.bin" \
             --flash_mode dio --flash_size "$FLASH_SIZE" \
             0x0 "$BUILD/bootloader.bin" \
             0x8000 "$BUILD/partitions.bin" \

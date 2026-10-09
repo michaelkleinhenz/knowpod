@@ -11,7 +11,7 @@
 #if defined(BOARD_EPAPER_397)
 #define SCREEN_W  480
 #define SCREEN_H  800
-#elif defined(BOARD_EPAPER_154G)
+#elif defined(BOARD_EPAPER_154)
 #define SCREEN_W  200
 #define SCREEN_H  200
 #endif
@@ -44,12 +44,3 @@ std::vector<String> wrap_text(const String &text, Font font, int width);
 
 void display_update(bool clean = false, bool auto_clean = true);
 
-#ifdef BOARD_EPAPER_154G
-// Color plane for the 4-color display. Pixels set in this canvas are
-// rendered in color: combined with the B/W canvas, {bw, color} bits map
-// to 00=black, 01=white, 10=yellow, 11=red. Drawing on gfx_color() marks
-// areas for colorization: where a color pixel is set, the B/W pixel
-// selects the accent color (INK → yellow, PAPER → red).
-GFXcanvas1 &gfx_color();
-void color_clear();
-#endif
