@@ -158,6 +158,7 @@ std::vector<RecordingInfo> recordings_list()
     if (cached_generation == generation) return cache;
     cached_generation = generation;
     cache.clear();
+    if (!rec_fs) return cache;  // no SD card
 
     File dir = rec_fs->open(RECS_DIR);
     File entry;

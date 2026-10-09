@@ -245,6 +245,23 @@ public final class RecorderBle implements RecorderRelay.Link {
         }
     }
 
+    // unpair drops the phone's bond with the recorder at address, so pairing starts fresh: a bond
+    // the recorder no longer has (it forgot its apps, or was erased) makes Android connect as
+    // paired, and the recorder's passkey then interrupts the first request. A hidden call; best
+    // effort, waiting briefly until Android has dropped it.
+    public static void unpair(Context context, String address) throws InterruptedException {
+        BluetoothDevice device;
+        try {
+            device = adapter(context).getRemoteDevice(address);
+            if (device.getBondState() == BluetoothDevice.BOND_NONE) return;
+            device.getClass().getMethod("removeBond").invoke(device);
+        } catch (RecorderException | ReflectiveOperationException | RuntimeException e) {
+            return;
+        }
+        long end = System.currentTimeMillis() + 3_000;
+        while (device.getBondState() != BluetoothDevice.BOND_NONE && System.currentTimeMillis() < end) Thread.sleep(100);
+    }
+
     // bond pairs with the recorder: the recorder asks for it right after connecting, so Android
     // may already be at it; else it is started here. Android shows the passkey dialog.
     private void bond(BluetoothDevice device) throws IOException, InterruptedException {

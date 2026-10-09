@@ -87,5 +87,8 @@ void wifi_off(bool force)
     xSemaphoreGive(mutex);
 }
 
+void wifi_radio_lock()   { xSemaphoreTake(mutex, portMAX_DELAY); }
+void wifi_radio_unlock() { xSemaphoreGive(mutex); }
+
 void wifi_hold(bool hold) { held = hold; }
 bool wifi_held()          { return held; }

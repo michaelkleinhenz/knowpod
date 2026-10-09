@@ -232,6 +232,8 @@ public final class RecorderController {
                     return;
                 }
                 if (chosen == null) throw new RecorderBle.RecorderException("not-found", "No recorder in pairing mode was found");
+                // Pairing starts fresh: an old bond the recorder no longer has would get in the way.
+                RecorderBle.unpair(context, chosen.address);
                 set("phase", "pin");
                 JSONObject info = new JSONObject();
                 put(info, "op", "info");
