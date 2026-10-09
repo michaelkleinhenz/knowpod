@@ -100,7 +100,8 @@ a while (allow two or three minutes):
 ### `read`
 
 A range of the file (at most 256 KiB per request). The bytes come as DATA notifications, each
-`[offset: uint32, little-endian][bytes]`, in order, followed by the response on CONTROL:
+`[offset: uint32, little-endian][bytes]` of at most 244 bytes, so each fits one LE data packet
+(Android lost most of the larger, fragmented ones), in order, followed by the response on CONTROL:
 
 ```json
 {"op": "read", "id": "20260926-101500", "offset": 0, "length": 262144}

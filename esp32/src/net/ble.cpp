@@ -35,6 +35,7 @@
 #define MAX_LISTED          50
 #define FILE_BUF_BYTES      8192
 #define NOTIFY_TIMEOUT_MS   5000
+#define DATA_PACKET_MAX     244      // one LE data PDU (251) less L2CAP and ATT headers: never fragmented
 #define IDLE_DISCONNECT_MS  300000   // an app that stays connected without asking anything
 #define ADV_INTERVAL_MIN    160      // × 0.625 ms: 100 ms
 #define ADV_INTERVAL_MAX    320      // 200 ms
@@ -226,11 +227,14 @@ class ControlCallbacks : public NimBLECharacteristicCallbacks {
 
 // Notifies `to`, waiting while the stack has no buffers free. False once the
 // app is gone or the stack stays stuck.
+static uint32_t notify_waits;  // times the stack had no room for a notification (BLE task only)
+
 static bool notify(NimBLECharacteristic *c, const uint8_t *buf, size_t n, uint16_t to)
 {
     uint32_t start = millis();
     while (conn == to && !paused) {
         if (c->notify(buf, n, to)) return true;
+        notify_waits++;
         if (millis() - start > NOTIFY_TIMEOUT_MS) return false;
         vTaskDelay(pdMS_TO_TICKS(3));
     }
@@ -421,7 +425,8 @@ static void handle_read(uint16_t to, const String &id, uint32_t offset, uint32_t
     static uint8_t *file_buf = (uint8_t *)malloc(FILE_BUF_BYTES);
 #endif
     static uint8_t packet[520];
-    size_t payload = min<size_t>(max<int>(mtu - 3 - 4, 16), sizeof(packet) - 4);
+    size_t payload = min<size_t>(max<int>(mtu - 3 - 4, 16), DATA_PACKET_MAX - 4);
+    notify_waits = 0;
     sending = true;
     uint32_t sent = 0;
     bool ok = file_buf && f.seek(offset);
@@ -445,9 +450,9 @@ static void handle_read(uint16_t to, const String &id, uint32_t offset, uint32_t
     }
     f.close();
     sending = false;
-    Serial.printf("[ble] read %s: %u of %u bytes from %u sent in packets of %u (MTU %u)%s\n", id.c_str(),
-                  (unsigned)sent, (unsigned)n, (unsigned)offset, (unsigned)payload, (unsigned)mtu,
-                  ok ? "" : ", stopped");
+    Serial.printf("[ble] read %s: %u of %u bytes from %u sent in packets of %u (MTU %u), %u waits%s\n",
+                  id.c_str(), (unsigned)sent, (unsigned)n, (unsigned)offset, (unsigned)payload, (unsigned)mtu,
+                  (unsigned)notify_waits, ok ? "" : ", stopped");
     if (conn != to) return;  // gone; the app asks again from where it got to
     if (!ok && sent == 0) {
         respond_error(to, "read", "io", "Cannot read the audio file");
