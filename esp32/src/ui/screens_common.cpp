@@ -1,5 +1,6 @@
 #include "screens.h"
 #include "app.h"
+#include "net/ble.h"
 #include "net/web.h"
 #include "net/wifi.h"
 #include "proc/worker.h"
@@ -8,6 +9,23 @@
 #include "store/recordings.h"
 
 #define UPLOAD_REFRESH_MS  5000   // e-ink refresh interval while an upload is running
+
+Transfer current_transfer()
+{
+    Transfer t;
+    // Wi-Fi and Bluetooth take turns, so at most one of them sends
+    if (worker_progress() >= 0) {
+        t.id = worker_current_id();
+        t.status = worker_status();
+        t.percent = worker_progress();
+    } else if (ble_progress() >= 0) {
+        t.id = ble_current_id();
+        t.status = ble_status();
+        t.percent = ble_progress();
+        t.bluetooth = true;
+    }
+    return t;
+}
 
 static void draw_progress_bar(int x, int y, int w, int h, int percent)
 {
@@ -223,10 +241,11 @@ public:
         if (uploads) info += " · " + String(uploads) + " to upload";
         y = draw_paragraph(MARGIN, y, SCREEN_W - 2 * MARGIN, info, FONT_BODY, CONTENT_BOTTOM);
 
-        String status = worker_status();
+        Transfer transfer = current_transfer();
+        String status = transfer.percent >= 0 ? transfer.status : worker_status();
         if (!status.isEmpty())
             y = draw_paragraph(MARGIN, y + 6, SCREEN_W - 2 * MARGIN, status, FONT_SMALL, CONTENT_BOTTOM);
-        if (worker_progress() >= 0) draw_progress_bar(MARGIN, y + 8, SCREEN_W - 2 * MARGIN, 14, worker_progress());
+        if (transfer.percent >= 0) draw_progress_bar(MARGIN, y + 8, SCREEN_W - 2 * MARGIN, 14, transfer.percent);
 
         int ny = CONTENT_BOTTOM - 2 * line_height(FONT_SMALL) - 8;
         gfx().fillRect(MARGIN, ny - 10, SCREEN_W - 2 * MARGIN, 1, INK);
@@ -249,9 +268,10 @@ public:
         String info = String(recs.size()) + (recs.size() == 1 ? " recording" : " recordings");
         int uploads = worker_pending_uploads();
         if (uploads) info += " · " + String(uploads) + " to upload";
-        int percent = worker_progress();
+        Transfer transfer = current_transfer();
+        int percent = transfer.percent;
         if (percent >= 0) {
-            info = "Uploading " + String(percent) + "%";
+            info = (transfer.bluetooth ? "BT sending " : "Uploading ") + String(percent) + "%";
             if (uploads > 1) info += " · " + String(uploads - 1) + " more";
             draw_progress_bar(MARGIN, CONTENT_BOTTOM - 26, SCREEN_W - 2 * MARGIN, 8, percent);
         }
@@ -278,7 +298,7 @@ public:
     void tick() override
     {
         // Show upload progress, but don't refresh the e-ink too often
-        uint32_t interval = worker_progress() >= 0 ? UPLOAD_REFRESH_MS : 15000;
+        uint32_t interval = current_transfer().percent >= 0 ? UPLOAD_REFRESH_MS : 15000;
         if (web_active() != seen_web) ui_dirty();  // URLs appear/disappear
         else if (worker_generation() != seen_generation && millis() - last_refresh > interval) {
             last_refresh = millis();

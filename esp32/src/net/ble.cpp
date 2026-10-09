@@ -77,7 +77,9 @@ static volatile int paired_count = -1;        // -1: not known yet
 static volatile uint32_t last_request = 0;
 static volatile uint32_t offer_since = 0;     // millis() the recordings were last offered from
 static std::atomic<uint32_t> generation{0};
+static volatile int progress = -1;            // percent of `sending_id` the app has read
 static String activity, activity_short;       // guarded by mutex
+static String sending_id;                     // guarded by mutex
 static String name;
 
 // Stack objects, BLE task only (the NimBLE callbacks only read the volatile state)
@@ -115,6 +117,22 @@ static void set_activity(const String &full, const String &brief)
     activity_short = brief;
     changed();
     if (!full.isEmpty()) Serial.printf("[ble] %s\n", full.c_str());
+}
+
+// Follows a recording through the app's reads; percent -1 ends it
+static void set_progress(const String &id, int percent)
+{
+    Lock lock;
+    if (id == sending_id && percent == progress) return;
+    sending_id = percent >= 0 ? id : String();
+    progress = percent;
+    changed();
+}
+
+static void show_sending(const String &id, const String &title, int percent)
+{
+    set_progress(id, percent);
+    set_activity("Sending " + title + " (" + String(percent) + "%)", "BT " + String(percent) + "%");
 }
 
 // ============================================================
@@ -382,6 +400,7 @@ static void handle_open(uint16_t to, const String &id)
     RecordingInfo info;
     JsonDocument meta;
     if (!load(to, "open", id, info, meta)) return;
+    set_progress("", -1);
     set_activity("Preparing " + recording_display_title(info), "BT");
     size_t size;
     String sha256;
@@ -415,9 +434,9 @@ static void handle_read(uint16_t to, const String &id, uint32_t offset, uint32_t
         return;
     }
     uint32_t n = min<uint32_t>(min<uint32_t>(length, MAX_READ), size - offset);
-    int percent = size ? (int)(100.0 * (offset + n) / size) : 100;
-    set_activity("Sending " + recording_display_title(info) + " (" + String(percent) + "%)",
-                 "BT " + String(percent) + "%");
+    String title = recording_display_title(info);
+    auto percent_at = [&](uint32_t at) { return size ? (int)(100.0 * at / size) : 100; };
+    show_sending(id, title, percent_at(offset));
 
 #ifdef BOARD_HAS_PSRAM
     static uint8_t *file_buf = (uint8_t *)ps_malloc(FILE_BUF_BYTES);
@@ -446,7 +465,10 @@ static void handle_read(uint16_t to, const String &id, uint32_t offset, uint32_t
             memcpy(packet + 4, file_buf + pos, len);
             ok = notify(data_chr, packet, len + 4, to);
         }
-        if (ok) sent += got;
+        if (ok) {
+            sent += got;
+            show_sending(id, title, percent_at(offset + sent));
+        }
     }
     f.close();
     sending = false;
@@ -489,6 +511,7 @@ static void handle_done(uint16_t to, const String &id, const String &upload_id, 
     }
     worker_ble_uploaded(id, upload_id, sha256, size, status);
     checksums.erase(id);
+    set_progress("", -1);
     set_activity("Sent " + recording_display_title(info) + " to the app", "BT");
 
     JsonDocument doc;
@@ -579,6 +602,7 @@ static void stop()
     conn = BLE_HS_CONN_HANDLE_NONE;
     running = false;
     set_activity("", "");
+    set_progress("", -1);
     Serial.println("[ble] off");
     changed();
 }
@@ -633,7 +657,10 @@ static void ble_task(void *)
 
         bool connected = conn != BLE_HS_CONN_HANDLE_NONE;
         if (connected && server && millis() - last_request > IDLE_DISCONNECT_MS) server->disconnect(conn);
-        if (!connected) set_activity("", "");
+        if (!connected) {
+            set_activity("", "");
+            set_progress("", -1);
+        }
 
         bool enabled = config_bluetooth_enabled();
         bool offered = offer == BLE_OFFER_WAITING || (offer == BLE_OFFER_IDLE && paired_count > 0);
@@ -689,6 +716,13 @@ void ble_pause(bool p)
 bool ble_running()   { return running; }
 bool ble_connected() { return conn != BLE_HS_CONN_HANDLE_NONE; }
 bool ble_sending()   { return sending; }
+int ble_progress()   { return progress; }
+
+String ble_current_id()
+{
+    Lock lock;
+    return sending_id;
+}
 
 bool ble_offering()
 {

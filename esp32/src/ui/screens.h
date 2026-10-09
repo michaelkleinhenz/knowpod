@@ -23,5 +23,14 @@ Screen *make_menu(const String &title, const std::vector<String> &options, int s
 // Press confirms, back cancels; `on_confirm` runs after the screen closed.
 Screen *make_confirm(const String &title, const String &body, std::function<void()> on_confirm);
 
+// The recording being uploaded over Wi-Fi or read by the app over Bluetooth right now.
+struct Transfer {
+    String id;           // "" when nothing is sent
+    String status;       // "Uploading <title> (40%)", "Sending <title> (40%)"
+    int percent = -1;    // -1 when nothing is sent
+    bool bluetooth = false;
+};
+Transfer current_transfer();
+
 // Shows a message immediately, before a blocking operation.
 void show_progress(const String &title, const String &body);
