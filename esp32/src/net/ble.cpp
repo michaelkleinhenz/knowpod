@@ -167,6 +167,8 @@ class ServerCallbacks : public NimBLEServerCallbacks {
     {
         if (info.getConnHandle() != conn) return;
         bool encrypted = info.isEncrypted();
+        Serial.printf("[ble] security: encrypted %d, authenticated %d, bonded %d\n",
+                      encrypted, info.isAuthenticated(), info.isBonded());
         if (!encrypted || !info.isAuthenticated() || refuse_pairing) {
             // A bond made outside pairing mode, or without a passkey (Just Works), is not kept
             if (refuse_pairing || (encrypted && !info.isAuthenticated()))
@@ -192,7 +194,11 @@ class ControlCallbacks : public NimBLECharacteristicCallbacks {
     void onWrite(NimBLECharacteristic *c, NimBLEConnInfo &info) override
     {
         // The stack already refuses writes without an authenticated link; this is a second check
-        if (info.getConnHandle() != conn || !info.isEncrypted() || !info.isAuthenticated()) return;
+        if (info.getConnHandle() != conn || !info.isEncrypted() || !info.isAuthenticated()) {
+            Serial.printf("[ble] request ignored (current %d, encrypted %d, authenticated %d)\n",
+                          info.getConnHandle() == conn, info.isEncrypted(), info.isAuthenticated());
+            return;
+        }
         static Request req;  // host task only; too large for its stack
         NimBLEAttValue value = c->getValue();
         req.conn = info.getConnHandle();
@@ -200,6 +206,12 @@ class ControlCallbacks : public NimBLECharacteristicCallbacks {
         memcpy(req.data, value.data(), req.len);
         req.data[req.len] = 0;
         if (xQueueSend(requests, &req, 0) != pdTRUE) Serial.println("[ble] request dropped: still busy");
+    }
+
+    void onSubscribe(NimBLECharacteristic *c, NimBLEConnInfo &, uint16_t value) override
+    {
+        Serial.printf("[ble] app %s %s\n", value ? "subscribed to" : "unsubscribed from",
+                      c == control ? "control" : "data");
     }
 };
 
@@ -232,7 +244,10 @@ static void respond(uint16_t to, const JsonDocument &doc)
         size_t n = min(fragment, json.length() - pos);
         buf[0] = pos + n < json.length() ? 1 : 0;
         memcpy(buf + 1, json.c_str() + pos, n);
-        if (!notify(control, buf, n + 1, to)) return;
+        if (!notify(control, buf, n + 1, to)) {
+            Serial.printf("[ble] response to %s not sent\n", doc["op"].as<const char *>());
+            return;
+        }
         pos += n;
     } while (pos < json.length());
 }
@@ -479,6 +494,7 @@ static void handle(const Request &req)
     }
     String op = in["op"] | "";
     String id = in["id"] | "";
+    Serial.printf("[ble] request %s %s\n", op.c_str(), id.c_str());
     if (op == "info") handle_info(req.conn);
     else if (op == "list") handle_list(req.conn);
     else if (op == "open") handle_open(req.conn, id);
@@ -509,6 +525,7 @@ static void start()
     static ControlCallbacks control_callbacks;
     control->setCallbacks(&control_callbacks);
     data_chr = service->createCharacteristic(DATA_UUID, NIMBLE_PROPERTY::NOTIFY);
+    data_chr->setCallbacks(&control_callbacks);  // for the subscribe log
     server->start();
 
     NimBLEAdvertisementData adv_data, scan_data;
