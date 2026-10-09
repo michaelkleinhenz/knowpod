@@ -5,6 +5,7 @@
 #include <map>
 #include <esp_random.h>
 #include "proc/upload.h"
+#include "net/wifi.h"
 #include "proc/worker.h"
 #include "store/config.h"
 #include "store/recordings.h"
@@ -509,7 +510,9 @@ static void handle(const Request &req)
 
 static void start()
 {
+    wifi_radio_lock();
     NimBLEDevice::init(name.c_str());
+    wifi_radio_unlock();
     NimBLEDevice::setMTU(517);
     // Bonding, MITM protection (passkey) and LE Secure Connections
     NimBLEDevice::setSecurityAuth(true, true, true);
@@ -549,7 +552,9 @@ static void start()
 static void stop()
 {
     if (conn != BLE_HS_CONN_HANDLE_NONE && server) server->disconnect(conn);
+    wifi_radio_lock();
     NimBLEDevice::deinit(true);  // frees the stack's memory; bonds stay in NVS
+    wifi_radio_unlock();
     server = nullptr;
     control = data_chr = nullptr;
     conn = BLE_HS_CONN_HANDLE_NONE;
@@ -562,9 +567,11 @@ static void stop()
 static void ble_task(void *)
 {
     // Read the number of paired apps once; the stack needs to run for that
+    wifi_radio_lock();
     NimBLEDevice::init(name.c_str());
     paired_count = NimBLEDevice::getNumBonds();
     NimBLEDevice::deinit(true);
+    wifi_radio_unlock();
 
     for (;;) {
         Request req;
@@ -584,11 +591,19 @@ static void ble_task(void *)
         if (forget_requested) {
             forget_requested = false;
             bool was_running = running;
-            if (!was_running) NimBLEDevice::init(name.c_str());
+            if (!was_running) {
+                wifi_radio_lock();
+                NimBLEDevice::init(name.c_str());
+                wifi_radio_unlock();
+            }
             if (conn != BLE_HS_CONN_HANDLE_NONE && server) server->disconnect(conn);
             NimBLEDevice::deleteAllBonds();
             paired_count = NimBLEDevice::getNumBonds();
-            if (!was_running) NimBLEDevice::deinit(true);
+            if (!was_running) {
+                wifi_radio_lock();
+                NimBLEDevice::deinit(true);
+                wifi_radio_unlock();
+            }
             checksums.clear();
             Serial.println("[ble] forgot all paired apps");
             changed();
