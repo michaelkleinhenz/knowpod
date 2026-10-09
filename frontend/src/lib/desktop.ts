@@ -22,6 +22,10 @@ interface DesktopBridge {
   onOpen?: (listener: (url: string) => void) => () => void;
   // pocketBluetooth is missing in older desktop and iOS apps.
   pocketBluetooth?: (request: PocketBluetoothRequest) => Promise<PocketBluetoothResult>;
+  // systemAudio and onSystemAudio record what the computer plays (desktop app on Linux only,
+  // desktop/src/system-audio.js; missing elsewhere and in older desktop apps).
+  systemAudio?: (request: SystemAudioRequest) => Promise<SystemAudioResult>;
+  onSystemAudio?: (onData: (id: number, chunk: Uint8Array) => void, onEnd: (id: number) => void) => () => void;
   // recorderBluetooth is missing in older apps.
   recorderBluetooth?: (request: RecorderBluetoothRequest) => Promise<RecorderBluetoothState>;
   // showSetup shows the mobile app's page for the server's address (mobile apps only).
@@ -116,6 +120,33 @@ export interface PocketBluetoothResult {
   // in older desktop apps)
   wifiSupported?: boolean;
   wifi?: PocketWifiState | null;
+}
+
+// What the desktop app records of the computer's outputs (desktop/src/system-audio.js): list
+// names the outputs (sinks), start records one's monitor as float mono samples at rate,
+// streamed to onSystemAudio by id, stop ends it.
+export type SystemAudioRequest = { action: 'list' } | { action: 'start'; sink: string; rate: number } | { action: 'stop'; id: number };
+
+export interface SystemAudioSink {
+  name: string;
+  description: string;
+  default: boolean;
+}
+
+export interface SystemAudioResult {
+  ok: boolean;
+  // Why it failed: unsupported, missing-tools, no-server or failed.
+  error?: string;
+  message?: string;
+  sinks?: SystemAudioSink[];
+  id?: number;
+}
+
+// systemAudioBridge returns the desktop app's calls to record what the computer plays, or
+// undefined where it can't (outside the desktop app on Linux).
+export function systemAudioBridge() {
+  const b = bridge();
+  return b?.systemAudio && b.onSystemAudio ? { call: b.systemAudio, listen: b.onSystemAudio } : undefined;
 }
 
 // The app's Bluetooth link to the knowpod recorder (the ESP32 gadget, esp32/): where the recorder

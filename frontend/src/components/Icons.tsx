@@ -306,6 +306,16 @@ export function UsbIcon({ size = 16 }: { size?: number }) {
   );
 }
 
+// MeetingIcon is a video camera, for recording a video meeting (the desktop app).
+export function MeetingIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="2" y="6" width="14" height="12" rx="2" />
+      <path d="M16 10.5l6-3.5v10l-6-3.5" />
+    </svg>
+  );
+}
+
 // WifiIcon is the WiFi waves, for copying from the Pocket over its WiFi (the Android app).
 export function WifiIcon({ size = 16 }: { size?: number }) {
   return (

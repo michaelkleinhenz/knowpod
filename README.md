@@ -370,6 +370,14 @@ recordings from a Pocket recorder, plugged in by USB (switching the recorder's U
 over Bluetooth first when needed) or over the recorder's own WiFi on Linux and Windows (see
 [Operations](docs/operations.md#desktop-app)).
 
+**Recording meetings (Linux).** The video camera button beside Pocket Sync records a video
+meeting held on the same computer (e.g. Google Meet in the browser): the microphone and what
+the computer plays, as a stereo recording (you left, the others right) that is transcribed
+and summarized like a voice memo. Its dialog picks both devices and shows a loudness meter for
+each. Chromium doesn't offer the outputs' monitors, so the app records them itself with
+`parec` (`desktop/src/system-audio.js`); it needs `pactl` and `parec` from **pulseaudio-utils**,
+which work with PulseAudio and PipeWire alike.
+
 ## Android app
 
 `mobile/` holds a [Capacitor](https://capacitorjs.com) app for Android (`mobile/android/`): like

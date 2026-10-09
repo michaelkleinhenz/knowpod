@@ -5,7 +5,8 @@ import { useOffline } from '../api/offline';
 import { useAuth } from '../auth';
 import { RecorderProvider, useRecorder } from '../context/Recorder';
 import { appContext, isMobileApp, useDesktopNotifications } from '../lib/desktop';
-import { MicIcon, SignOutIcon, UsbIcon, WifiIcon } from './Icons';
+import { MeetingIcon, MicIcon, SignOutIcon, UsbIcon, WifiIcon } from './Icons';
+import { MeetingRecorderDialog, meetingRecorderAvailable } from './MeetingRecorder';
 import { NewItemDialog } from './NewItemDialog';
 import { PocketUsbSyncDialog, pocketUsbSyncAvailable } from './PocketUsbSync';
 
@@ -20,6 +21,8 @@ export function Layout({ children }: { children: ReactNode }) {
   const [newKind, setNewKind] = useState<'note' | 'task' | null>(null);
   // pocketSync shows the Pocket Sync dialog (desktop and Android apps only).
   const [pocketSync, setPocketSync] = useState(false);
+  // meeting shows the meeting recorder (desktop app on Linux only).
+  const [meeting, setMeeting] = useState(false);
   const onConversations = pathname === '/' || pathname === '/briefing' || pathname.startsWith('/conversations/');
   // The time log, the done tasks, Ask and shared items are shown next to the notes list, like a note.
   const onTime = ['/time', '/done', '/ask', '/share'].includes(pathname);
@@ -103,6 +106,20 @@ export function Layout({ children }: { children: ReactNode }) {
                 <PocketSyncIcon size={22} />
               </button>
             )}
+            {meetingRecorderAvailable() && (
+              <button
+                type="button"
+                className="header-meeting"
+                title={t('meeting.button')}
+                aria-label={t('meeting.button')}
+                onClick={() => {
+                  setOpen(false);
+                  setMeeting(true);
+                }}
+              >
+                <MeetingIcon size={22} />
+              </button>
+            )}
             <button
               type="button"
               className="menu-button"
@@ -137,6 +154,20 @@ export function Layout({ children }: { children: ReactNode }) {
                     <PocketSyncIcon />
                   </button>
                 )}
+                {meetingRecorderAvailable() && (
+                  <button
+                    type="button"
+                    className="nav-icon-button nav-meeting"
+                    title={t('meeting.button')}
+                    aria-label={t('meeting.button')}
+                    onClick={() => {
+                      setOpen(false);
+                      setMeeting(true);
+                    }}
+                  >
+                    <MeetingIcon />
+                  </button>
+                )}
               </div>
               <span className="nav-divider" aria-hidden="true" />
               <NavLink to="/" className={() => (onConversations ? 'active' : '')}>
@@ -161,6 +192,7 @@ export function Layout({ children }: { children: ReactNode }) {
       <main className={`container${onConversations || onTime ? ' full' : ''}`}>{children}</main>
       {newKind && <NewItemDialog kind={newKind} onClose={() => setNewKind(null)} />}
       {pocketSync && <PocketUsbSyncDialog onClose={() => setPocketSync(false)} />}
+      {meeting && <MeetingRecorderDialog onClose={() => setMeeting(false)} />}
     </RecorderProvider>
   );
 }
