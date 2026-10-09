@@ -38,6 +38,8 @@
 #define IDLE_DISCONNECT_MS  300000   // an app that stays connected without asking anything
 #define ADV_INTERVAL_MIN    160      // × 0.625 ms: 100 ms
 #define ADV_INTERVAL_MAX    320      // 200 ms
+#define ADV_SLOW_MIN        1600     // 1 s, while nothing waits
+#define ADV_SLOW_MAX        2400     // 1.5 s
 
 struct Request {
     uint16_t conn;
@@ -56,8 +58,10 @@ struct Lock {
 };
 }
 
-static volatile bool wanted = false;
+static volatile int offer = BLE_OFFER_NONE;
+static bool adv_fast = false;                 // BLE task only: the interval advertising runs at
 static volatile bool paused = false;
+static volatile bool yielded = false;   // to Wi-Fi
 static volatile bool running = false;
 static volatile bool sending = false;
 static volatile bool forget_requested = false;
@@ -441,6 +445,9 @@ static void handle_read(uint16_t to, const String &id, uint32_t offset, uint32_t
     }
     f.close();
     sending = false;
+    Serial.printf("[ble] read %s: %u of %u bytes from %u sent in packets of %u (MTU %u)%s\n", id.c_str(),
+                  (unsigned)sent, (unsigned)n, (unsigned)offset, (unsigned)payload, (unsigned)mtu,
+                  ok ? "" : ", stopped");
     if (conn != to) return;  // gone; the app asks again from where it got to
     if (!ok && sent == 0) {
         respond_error(to, "read", "io", "Cannot read the audio file");
@@ -508,6 +515,12 @@ static void handle(const Request &req)
 // Stack (BLE task)
 // ============================================================
 
+// Quickly found while pairing or while recordings wait; slowly otherwise
+static bool fast_advertising()
+{
+    return offer == BLE_OFFER_WAITING || pairing_active() || just_paired();
+}
+
 static void start()
 {
     wifi_radio_lock();
@@ -539,8 +552,9 @@ static void start()
     adv->setAdvertisementData(adv_data);
     adv->setScanResponseData(scan_data);
     adv->enableScanResponse(true);
-    adv->setMinInterval(ADV_INTERVAL_MIN);
-    adv->setMaxInterval(ADV_INTERVAL_MAX);
+    adv_fast = fast_advertising();
+    adv->setMinInterval(adv_fast ? ADV_INTERVAL_MIN : ADV_SLOW_MIN);
+    adv->setMaxInterval(adv_fast ? ADV_INTERVAL_MAX : ADV_SLOW_MAX);
     adv->start();
 
     paired_count = NimBLEDevice::getNumBonds();
@@ -566,14 +580,17 @@ static void stop()
 
 static void ble_task(void *)
 {
-    // Read the number of paired apps once; the stack needs to run for that
-    wifi_radio_lock();
-    NimBLEDevice::init(name.c_str());
-    paired_count = NimBLEDevice::getNumBonds();
-    NimBLEDevice::deinit(true);
-    wifi_radio_unlock();
-
     for (;;) {
+        // The number of paired apps, read once; the stack must run for that, so not beside Wi-Fi
+        if (paired_count < 0 && !yielded && !running) {
+            wifi_radio_lock();
+            NimBLEDevice::init(name.c_str());
+            paired_count = NimBLEDevice::getNumBonds();
+            NimBLEDevice::deinit(true);
+            wifi_radio_unlock();
+            changed();
+        }
+
         Request req;
         if (xQueueReceive(requests, &req, pdMS_TO_TICKS(POLL_MS)) == pdTRUE) {
             last_request = millis();
@@ -588,7 +605,7 @@ static void ble_task(void *)
             passkey = 0;
             changed();
         }
-        if (forget_requested) {
+        if (forget_requested && (running || !yielded)) {  // the stack must not start beside Wi-Fi
             forget_requested = false;
             bool was_running = running;
             if (!was_running) {
@@ -614,9 +631,18 @@ static void ble_task(void *)
         if (!connected) set_activity("", "");
 
         bool enabled = config_bluetooth_enabled();
-        bool want = enabled && !paused && (wanted || pairing_active() || just_paired());
+        bool offered = offer == BLE_OFFER_WAITING || (offer == BLE_OFFER_IDLE && paired_count > 0);
+        bool want = enabled && !paused && !yielded && (offered || pairing_active() || just_paired());
         if (want && !running) start();
-        else if (running && (!enabled || paused || (!want && !connected))) stop();
+        else if (running && (!enabled || paused || yielded || (!want && !connected))) stop();
+        else if (running && !connected && fast_advertising() != adv_fast) {
+            NimBLEAdvertising *adv = NimBLEDevice::getAdvertising();
+            adv->stop();
+            adv_fast = !adv_fast;
+            adv->setMinInterval(adv_fast ? ADV_INTERVAL_MIN : ADV_SLOW_MIN);
+            adv->setMaxInterval(adv_fast ? ADV_INTERVAL_MAX : ADV_SLOW_MAX);
+            adv->start();
+        }
     }
 }
 
@@ -634,11 +660,18 @@ void ble_begin()
     xTaskCreatePinnedToCore(ble_task, "ble", BLE_STACK, nullptr, 1, &task, 0);
 }
 
-void ble_set_wanted(bool w)
+void ble_offer(BleOffer o)
 {
-    if (wanted == w) return;
-    if (w) offer_since = millis();
-    wanted = w;
+    if (offer == o) return;
+    if (o == BLE_OFFER_WAITING) offer_since = millis();
+    offer = o;
+    changed();
+}
+
+void ble_yield(bool y)
+{
+    if (yielded == y) return;
+    yielded = y;
     changed();
 }
 
@@ -654,7 +687,7 @@ bool ble_sending()   { return sending; }
 
 bool ble_offering()
 {
-    return wanted && running && !paused && millis() - offer_since < OFFER_AWAKE_MS;
+    return offer == BLE_OFFER_WAITING && running && !paused && millis() - offer_since < OFFER_AWAKE_MS;
 }
 
 void ble_start_pairing()

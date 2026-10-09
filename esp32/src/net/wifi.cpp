@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <set>
 #include "hw/clock.h"
+#include "net/ble.h"
 #include "store/config.h"
 
 static volatile bool held = false;
@@ -23,12 +24,29 @@ static bool try_network(const WifiNetwork &net, uint32_t timeout_ms)
     return false;
 }
 
+// Wi-Fi and Bluetooth take turns: without PSRAM the heap has no room for both
+// stacks, and running out of it in either one restarts the chip. Bluetooth stops
+// before Wi-Fi starts and comes back once Wi-Fi is off again.
+static void ble_out_of_the_way()
+{
+    ble_yield(true);
+    uint32_t start = millis();
+    while (ble_running() && millis() - start < 5000) delay(50);
+}
+
 // Tries the configured networks in their order and uses the first one that is
 // in range and accepts the connection. Hidden networks are tried even when the
-// scan doesn't list them.
+// scan doesn't list them. Without one, Wi-Fi is switched off again.
 bool wifi_connect(uint32_t timeout_ms)
 {
     if (WiFi.status() == WL_CONNECTED) return true;
+    if (config_wifi().empty()) {
+        Serial.println("No Wi-Fi networks configured");
+        return false;
+    }
+    // An app copying recordings or being paired keeps Bluetooth; Wi-Fi waits
+    if (ble_connected() || ble_pairing()) return false;
+    ble_out_of_the_way();  // before the lock: stopping Bluetooth takes it too
 
     xSemaphoreTake(mutex, portMAX_DELAY);
     bool ok = WiFi.status() == WL_CONNECTED;
@@ -54,9 +72,11 @@ bool wifi_connect(uint32_t timeout_ms)
             clock_start_ntp();
         } else {
             Serial.printf("Wi-Fi: no configured network available (%d networks in range)\n", found);
+            WiFi.mode(WIFI_OFF);
         }
     }
     xSemaphoreGive(mutex);
+    if (!ok) ble_yield(false);
     return ok;
 }
 
@@ -85,6 +105,7 @@ void wifi_off(bool force)
         Serial.println("Wi-Fi off");
     }
     xSemaphoreGive(mutex);
+    ble_yield(false);
 }
 
 void wifi_radio_lock()   { xSemaphoreTake(mutex, portMAX_DELAY); }

@@ -16,7 +16,12 @@
 
 /* open the device to write the bit stream into it */
 void shine_open_bit_stream(bitstream_t *bs, int size) {
+#ifdef SHINE_STATIC_STATE
+  static unsigned char static_data[BUFFER_SIZE];
+  bs->data = size <= BUFFER_SIZE ? static_data : NULL;
+#else
   bs->data = (unsigned char *)malloc(size * sizeof(unsigned char));
+#endif
   bs->data_size = size;
   bs->data_position = 0;
   bs->cache = 0;
@@ -25,8 +30,11 @@ void shine_open_bit_stream(bitstream_t *bs, int size) {
 
 /*close the device containing the bit stream */
 void shine_close_bit_stream(bitstream_t *bs) {
+#ifndef SHINE_STATIC_STATE
   if (bs->data)
     free(bs->data);
+#endif
+  bs->data = NULL;
 }
 
 /*
@@ -50,9 +58,13 @@ void shine_putbits(bitstream_t *bs, unsigned int val, unsigned int N) {
     bs->cache |= val << bs->cache_bits;
   } else {
     if (bs->data_position + sizeof(unsigned int) >= bs->data_size) {
+#ifdef SHINE_STATIC_STATE
+      return; /* fixed buffer; a frame is reset long before it fills */
+#else
       bs->data = (unsigned char *)realloc(bs->data,
                                           bs->data_size + (bs->data_size / 2));
       bs->data_size += (bs->data_size / 2);
+#endif
     }
 
     N -= bs->cache_bits;
