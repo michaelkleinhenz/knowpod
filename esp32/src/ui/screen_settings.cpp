@@ -53,7 +53,12 @@ static String web_access_info()
 // for it; a new one is made for every attempt.
 class BlePairingScreen : public Screen {
 public:
-    BlePairingScreen() { ble_start_pairing(); }
+    BlePairingScreen()
+    {
+        ble_start_pairing();  // Wi-Fi waits meanwhile; it can't run beside Bluetooth
+        web_stop();
+        wifi_off(true);
+    }
     ~BlePairingScreen() override { ble_stop_pairing(); }
 
     void draw() override

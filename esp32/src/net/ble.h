@@ -25,6 +25,7 @@ void ble_begin();
 enum BleOffer { BLE_OFFER_NONE, BLE_OFFER_IDLE, BLE_OFFER_WAITING };
 void ble_offer(BleOffer offer);
 void ble_pause(bool paused);        // while recording (drops a connection)
+void ble_yield(bool yield);         // while Wi-Fi is on (C6: no memory for both stacks)
 
 bool ble_running();                 // the stack is on (advertising or connected)
 bool ble_offering();                // advertising recordings for the app; keeps the device awake a while

@@ -61,6 +61,7 @@ struct Lock {
 static volatile int offer = BLE_OFFER_NONE;
 static bool adv_fast = false;                 // BLE task only: the interval advertising runs at
 static volatile bool paused = false;
+static volatile bool yielded = false;   // to Wi-Fi
 static volatile bool running = false;
 static volatile bool sending = false;
 static volatile bool forget_requested = false;
@@ -576,14 +577,17 @@ static void stop()
 
 static void ble_task(void *)
 {
-    // Read the number of paired apps once; the stack needs to run for that
-    wifi_radio_lock();
-    NimBLEDevice::init(name.c_str());
-    paired_count = NimBLEDevice::getNumBonds();
-    NimBLEDevice::deinit(true);
-    wifi_radio_unlock();
-
     for (;;) {
+        // The number of paired apps, read once; the stack must run for that, so not beside Wi-Fi
+        if (paired_count < 0 && !yielded && !running) {
+            wifi_radio_lock();
+            NimBLEDevice::init(name.c_str());
+            paired_count = NimBLEDevice::getNumBonds();
+            NimBLEDevice::deinit(true);
+            wifi_radio_unlock();
+            changed();
+        }
+
         Request req;
         if (xQueueReceive(requests, &req, pdMS_TO_TICKS(POLL_MS)) == pdTRUE) {
             last_request = millis();
@@ -598,7 +602,7 @@ static void ble_task(void *)
             passkey = 0;
             changed();
         }
-        if (forget_requested) {
+        if (forget_requested && (running || !yielded)) {  // the stack must not start beside Wi-Fi
             forget_requested = false;
             bool was_running = running;
             if (!was_running) {
@@ -625,9 +629,9 @@ static void ble_task(void *)
 
         bool enabled = config_bluetooth_enabled();
         bool offered = offer == BLE_OFFER_WAITING || (offer == BLE_OFFER_IDLE && paired_count > 0);
-        bool want = enabled && !paused && (offered || pairing_active() || just_paired());
+        bool want = enabled && !paused && !yielded && (offered || pairing_active() || just_paired());
         if (want && !running) start();
-        else if (running && (!enabled || paused || (!want && !connected))) stop();
+        else if (running && (!enabled || paused || yielded || (!want && !connected))) stop();
         else if (running && !connected && fast_advertising() != adv_fast) {
             NimBLEAdvertising *adv = NimBLEDevice::getAdvertising();
             adv->stop();
@@ -658,6 +662,13 @@ void ble_offer(BleOffer o)
     if (offer == o) return;
     if (o == BLE_OFFER_WAITING) offer_since = millis();
     offer = o;
+    changed();
+}
+
+void ble_yield(bool y)
+{
+    if (yielded == y) return;
+    yielded = y;
     changed();
 }
 
