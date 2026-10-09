@@ -27,6 +27,8 @@
 #define BLE_STACK           8192
 #define POLL_MS             1000
 #define PAIRING_MS          180000
+#define OFFER_AWAKE_MS      (20u * 60000)   // keeps the device awake while offering recordings
+#define AFTER_PAIRING_MS    60000    // stays reachable for the app's first connection after pairing
 #define MAX_REQUEST         512
 #define MAX_READ            (256u * 1024)
 #define MAX_LISTED          50
@@ -61,11 +63,13 @@ static volatile bool forget_requested = false;
 static volatile uint16_t conn = BLE_HS_CONN_HANDLE_NONE;   // the connected app (one at a time)
 static volatile uint16_t mtu = 23;
 static volatile uint32_t pairing_until = 0;   // millis(); 0: not pairing
+static volatile uint32_t paired_until = 0;    // millis(); 0: not just paired
 static volatile uint32_t passkey = 0;         // shown while pairing
 static volatile bool refuse_pairing = false;  // this connection tried to pair outside pairing mode
 static volatile bool paired_now = false;
 static volatile int paired_count = -1;        // -1: not known yet
 static volatile uint32_t last_request = 0;
+static volatile uint32_t offer_since = 0;     // millis() the recordings were last offered from
 static std::atomic<uint32_t> generation{0};
 static String activity, activity_short;       // guarded by mutex
 static String name;
@@ -86,6 +90,14 @@ static void changed() { generation++; }
 static bool pairing_active()
 {
     uint32_t until = pairing_until;
+    return until && (int32_t)(until - millis()) > 0;
+}
+
+// Just paired: Bluetooth stays on a while even with Wi-Fi, so an app that reconnects
+// right after bonding (Android may) still finds the recorder. No new pairing meanwhile.
+static bool just_paired()
+{
+    uint32_t until = paired_until;
     return until && (int32_t)(until - millis()) > 0;
 }
 
@@ -127,6 +139,7 @@ class ServerCallbacks : public NimBLEServerCallbacks {
     {
         if (info.getConnHandle() != conn) return;
         conn = BLE_HS_CONN_HANDLE_NONE;
+        offer_since = millis();
         Serial.printf("[ble] app disconnected (reason 0x%x)\n", reason);
         changed();
     }
@@ -154,6 +167,8 @@ class ServerCallbacks : public NimBLEServerCallbacks {
     {
         if (info.getConnHandle() != conn) return;
         bool encrypted = info.isEncrypted();
+        Serial.printf("[ble] security: encrypted %d, authenticated %d, bonded %d\n",
+                      encrypted, info.isAuthenticated(), info.isBonded());
         if (!encrypted || !info.isAuthenticated() || refuse_pairing) {
             // A bond made outside pairing mode, or without a passkey (Just Works), is not kept
             if (refuse_pairing || (encrypted && !info.isAuthenticated()))
@@ -166,6 +181,8 @@ class ServerCallbacks : public NimBLEServerCallbacks {
             Serial.println("[ble] paired with a new app");
             passkey = 0;
             pairing_until = 0;
+            paired_until = millis() + AFTER_PAIRING_MS;
+            if (!paired_until) paired_until = 1;
             paired_now = true;
             paired_count = NimBLEDevice::getNumBonds();
         }
@@ -177,7 +194,11 @@ class ControlCallbacks : public NimBLECharacteristicCallbacks {
     void onWrite(NimBLECharacteristic *c, NimBLEConnInfo &info) override
     {
         // The stack already refuses writes without an authenticated link; this is a second check
-        if (info.getConnHandle() != conn || !info.isEncrypted() || !info.isAuthenticated()) return;
+        if (info.getConnHandle() != conn || !info.isEncrypted() || !info.isAuthenticated()) {
+            Serial.printf("[ble] request ignored (current %d, encrypted %d, authenticated %d)\n",
+                          info.getConnHandle() == conn, info.isEncrypted(), info.isAuthenticated());
+            return;
+        }
         static Request req;  // host task only; too large for its stack
         NimBLEAttValue value = c->getValue();
         req.conn = info.getConnHandle();
@@ -185,6 +206,12 @@ class ControlCallbacks : public NimBLECharacteristicCallbacks {
         memcpy(req.data, value.data(), req.len);
         req.data[req.len] = 0;
         if (xQueueSend(requests, &req, 0) != pdTRUE) Serial.println("[ble] request dropped: still busy");
+    }
+
+    void onSubscribe(NimBLECharacteristic *c, NimBLEConnInfo &, uint16_t value) override
+    {
+        Serial.printf("[ble] app %s %s\n", value ? "subscribed to" : "unsubscribed from",
+                      c == control ? "control" : "data");
     }
 };
 
@@ -217,7 +244,10 @@ static void respond(uint16_t to, const JsonDocument &doc)
         size_t n = min(fragment, json.length() - pos);
         buf[0] = pos + n < json.length() ? 1 : 0;
         memcpy(buf + 1, json.c_str() + pos, n);
-        if (!notify(control, buf, n + 1, to)) return;
+        if (!notify(control, buf, n + 1, to)) {
+            Serial.printf("[ble] response to %s not sent\n", doc["op"].as<const char *>());
+            return;
+        }
         pos += n;
     } while (pos < json.length());
 }
@@ -464,6 +494,7 @@ static void handle(const Request &req)
     }
     String op = in["op"] | "";
     String id = in["id"] | "";
+    Serial.printf("[ble] request %s %s\n", op.c_str(), id.c_str());
     if (op == "info") handle_info(req.conn);
     else if (op == "list") handle_list(req.conn);
     else if (op == "open") handle_open(req.conn, id);
@@ -494,6 +525,7 @@ static void start()
     static ControlCallbacks control_callbacks;
     control->setCallbacks(&control_callbacks);
     data_chr = service->createCharacteristic(DATA_UUID, NIMBLE_PROPERTY::NOTIFY);
+    data_chr->setCallbacks(&control_callbacks);  // for the subscribe log
     server->start();
 
     NimBLEAdvertisementData adv_data, scan_data;
@@ -543,6 +575,7 @@ static void ble_task(void *)
             continue;
         }
 
+        if (paired_until && !just_paired()) paired_until = 0;
         if (pairing_until && !pairing_active()) {
             pairing_until = 0;
             passkey = 0;
@@ -566,7 +599,7 @@ static void ble_task(void *)
         if (!connected) set_activity("", "");
 
         bool enabled = config_bluetooth_enabled();
-        bool want = enabled && !paused && (wanted || pairing_active());
+        bool want = enabled && !paused && (wanted || pairing_active() || just_paired());
         if (want && !running) start();
         else if (running && (!enabled || paused || (!want && !connected))) stop();
     }
@@ -589,6 +622,7 @@ void ble_begin()
 void ble_set_wanted(bool w)
 {
     if (wanted == w) return;
+    if (w) offer_since = millis();
     wanted = w;
     changed();
 }
@@ -602,6 +636,11 @@ void ble_pause(bool p)
 bool ble_running()   { return running; }
 bool ble_connected() { return conn != BLE_HS_CONN_HANDLE_NONE; }
 bool ble_sending()   { return sending; }
+
+bool ble_offering()
+{
+    return wanted && running && !paused && millis() - offer_since < OFFER_AWAKE_MS;
+}
 
 void ble_start_pairing()
 {

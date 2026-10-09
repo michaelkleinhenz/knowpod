@@ -22,6 +22,7 @@ void ble_set_wanted(bool wanted);   // uploads wait and Wi-Fi is unavailable
 void ble_pause(bool paused);        // while recording (drops a connection)
 
 bool ble_running();                 // the stack is on (advertising or connected)
+bool ble_offering();                // advertising recordings for the app; keeps the device awake a while
 bool ble_connected();               // an app is connected: keep the device awake
 bool ble_sending();                 // a recording is being read right now
 

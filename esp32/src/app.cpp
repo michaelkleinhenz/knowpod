@@ -137,8 +137,9 @@ static bool may_sleep()
     if (minutes <= 0 || millis() - last_activity < (uint32_t)minutes * 60000) return false;
     // With web access on USB power, stay awake so the web page stays reachable
     if (web_active() && power_status().usb_connected) return false;
-    // An app reading recordings over Bluetooth, or one being paired, needs the device awake
-    if (ble_connected() || ble_pairing()) return false;
+    // An app reading recordings over Bluetooth, or one being paired, needs the device awake;
+    // so does one that may still come for the recordings offered without Wi-Fi
+    if (ble_connected() || ble_pairing() || ble_offering()) return false;
     return !session_active() && !recorder_active() && !worker_busy();
 }
 
