@@ -194,14 +194,20 @@ public final class RecorderBle implements RecorderRelay.Link {
             }
             Thread.sleep(500);
         }
-        if (device.getBondState() != BluetoothDevice.BOND_BONDED) bond(device);
+        boolean bondedNow = device.getBondState() != BluetoothDevice.BOND_BONDED;
+        if (bondedNow) bond(device);
         begin("mtu");
         if (gatt.requestMtu(517)) await("mtu", OP_TIMEOUT);
-        begin("services");
-        if (!gatt.discoverServices()) throw new RecorderException("failed", "Couldn't read the services");
-        Integer discovered = await("services", 15_000);
-        if (discovered == null || discovered != BluetoothGatt.GATT_SUCCESS) throw new RecorderException("failed", "Couldn't read the services");
-        BluetoothGattService service = gatt.getService(SERVICE);
+        // Right after bonding Android reads the services itself; asking at the same time can
+        // come back without them. Give it that time first.
+        if (bondedNow) Thread.sleep(1_600);
+        BluetoothGattService service = discover();
+        if (service == null) {
+            // A stale cache (from before the recorder's firmware or bond changed): drop it, ask again.
+            refreshCache();
+            Thread.sleep(500);
+            service = discover();
+        }
         control = service == null ? null : service.getCharacteristic(CONTROL);
         BluetoothGattCharacteristic data = service == null ? null : service.getCharacteristic(DATA);
         if (control == null || data == null) throw new RecorderException("failed", "This device isn't a knowpod recorder");
@@ -209,6 +215,34 @@ public final class RecorderBle implements RecorderRelay.Link {
         subscribe(data);
         // A short connection interval: recordings come several times faster.
         gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH);
+    }
+
+    // discover reads the recorder's services and returns the transfer service, null if missing.
+    private BluetoothGattService discover() throws IOException, InterruptedException {
+        if (!connected || gatt == null) throw new RecorderException("disconnected", "The recorder disconnected");
+        begin("services");
+        if (!gatt.discoverServices()) throw new RecorderException("failed", "Couldn't read the services");
+        Integer discovered = await("services", 15_000);
+        if (discovered == null || discovered != BluetoothGatt.GATT_SUCCESS) throw new RecorderException("failed", "Couldn't read the services");
+        return gatt.getService(SERVICE);
+    }
+
+    // refreshCache drops Android's cached services of the recorder (a hidden call; best effort).
+    private void refreshCache() {
+        try {
+            gatt.getClass().getMethod("refresh").invoke(gatt);
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            // not there on this phone: the next discovery may still read them fresh
+        }
+    }
+
+    // bonded tells whether the phone has a bond with the recorder at address.
+    public static boolean bonded(Context context, String address) {
+        try {
+            return adapter(context).getRemoteDevice(address).getBondState() == BluetoothDevice.BOND_BONDED;
+        } catch (RecorderException | RuntimeException e) {
+            return false;
+        }
     }
 
     // bond pairs with the recorder: the recorder asks for it right after connecting, so Android

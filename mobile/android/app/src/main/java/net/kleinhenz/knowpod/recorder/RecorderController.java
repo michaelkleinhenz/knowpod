@@ -233,13 +233,29 @@ public final class RecorderController {
                 }
                 if (chosen == null) throw new RecorderBle.RecorderException("not-found", "No recorder in pairing mode was found");
                 set("phase", "pin");
-                RecorderBle ble = RecorderBle.connect(context, chosen.address, true);
-                connection = ble;
+                JSONObject info = new JSONObject();
+                put(info, "op", "info");
+                RecorderBle ble = null;
+                JSONObject r;
+                for (int attempt = 1; ; attempt++) {
+                    try {
+                        ble = RecorderBle.connect(context, chosen.address, attempt == 1);
+                        connection = ble;
+                        set("phase", "connecting");
+                        r = ble.request(info, RecorderRelay.REQUEST_TIMEOUT);
+                        break;
+                    } catch (RecorderBle.RecorderException e) {
+                        if (ble != null) ble.close();
+                        ble = null;
+                        connection = null;
+                        // The pairing went through, but the connection didn't get further (Android
+                        // may reset it right after bonding): once more, now as a paired phone.
+                        if (attempt >= 2 || cancelled || !RecorderBle.bonded(context, chosen.address)) throw e;
+                        Log.w(TAG, "recorder bluetooth: paired, connecting again: " + e.code + ": " + e.getMessage());
+                        Thread.sleep(1_000);
+                    }
+                }
                 try {
-                    set("phase", "connecting");
-                    JSONObject info = new JSONObject();
-                    put(info, "op", "info");
-                    JSONObject r = ble.request(info, RecorderRelay.REQUEST_TIMEOUT);
                     String name = r.optString("name", chosen.name);
                     prefs.edit().putString("address", chosen.address).putString("name", name).putBoolean("enabled", true).apply();
                     Notifications.show(context, Notifications.CHANNEL_RECORDER, context.getString(R.string.recorder_paired_title, name),

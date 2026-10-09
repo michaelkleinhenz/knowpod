@@ -27,6 +27,7 @@
 #define BLE_STACK           8192
 #define POLL_MS             1000
 #define PAIRING_MS          180000
+#define AFTER_PAIRING_MS    60000    // stays reachable for the app's first connection after pairing
 #define MAX_REQUEST         512
 #define MAX_READ            (256u * 1024)
 #define MAX_LISTED          50
@@ -61,6 +62,7 @@ static volatile bool forget_requested = false;
 static volatile uint16_t conn = BLE_HS_CONN_HANDLE_NONE;   // the connected app (one at a time)
 static volatile uint16_t mtu = 23;
 static volatile uint32_t pairing_until = 0;   // millis(); 0: not pairing
+static volatile uint32_t paired_until = 0;    // millis(); 0: not just paired
 static volatile uint32_t passkey = 0;         // shown while pairing
 static volatile bool refuse_pairing = false;  // this connection tried to pair outside pairing mode
 static volatile bool paired_now = false;
@@ -86,6 +88,14 @@ static void changed() { generation++; }
 static bool pairing_active()
 {
     uint32_t until = pairing_until;
+    return until && (int32_t)(until - millis()) > 0;
+}
+
+// Just paired: Bluetooth stays on a while even with Wi-Fi, so an app that reconnects
+// right after bonding (Android may) still finds the recorder. No new pairing meanwhile.
+static bool just_paired()
+{
+    uint32_t until = paired_until;
     return until && (int32_t)(until - millis()) > 0;
 }
 
@@ -166,6 +176,8 @@ class ServerCallbacks : public NimBLEServerCallbacks {
             Serial.println("[ble] paired with a new app");
             passkey = 0;
             pairing_until = 0;
+            paired_until = millis() + AFTER_PAIRING_MS;
+            if (!paired_until) paired_until = 1;
             paired_now = true;
             paired_count = NimBLEDevice::getNumBonds();
         }
@@ -543,6 +555,7 @@ static void ble_task(void *)
             continue;
         }
 
+        if (paired_until && !just_paired()) paired_until = 0;
         if (pairing_until && !pairing_active()) {
             pairing_until = 0;
             passkey = 0;
@@ -566,7 +579,7 @@ static void ble_task(void *)
         if (!connected) set_activity("", "");
 
         bool enabled = config_bluetooth_enabled();
-        bool want = enabled && !paused && (wanted || pairing_active());
+        bool want = enabled && !paused && (wanted || pairing_active() || just_paired());
         if (want && !running) start();
         else if (running && (!enabled || paused || (!want && !connected))) stop();
     }
