@@ -1,6 +1,7 @@
 #include "http.h"
 #include <NetworkClient.h>
 #include <NetworkClientSecure.h>
+#include <esp_heap_caps.h>
 #include <memory>
 #include "net/wifi.h"
 
@@ -153,7 +154,18 @@ HttpResponse http_request(const String &url, const char *method, const HttpHeade
         client.reset(new NetworkClient());
     }
     client->setTimeout(timeout_ms);
-    if (!client->connect(u.host.c_str(), u.port)) return fail("Connection to " + u.host + " failed");
+    if (!client->connect(u.host.c_str(), u.port)) {
+        // TLS needs two ~17 KB record buffers in one piece each; without PSRAM
+        // that is what usually fails
+        Serial.printf("Connection to %s failed; heap %u free, largest block %u\n", u.host.c_str(),
+                      (unsigned)heap_caps_get_free_size(MALLOC_CAP_8BIT),
+                      (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
+        String error = "Connection to " + u.host + " failed";
+        char reason[100];
+        if (u.https && static_cast<NetworkClientSecure *>(client.get())->lastError(reason, sizeof(reason)))
+            error += String(" (") + reason + ")";
+        return fail(error);
+    }
 
     String head = String(method) + " " + u.path + " HTTP/1.1\r\nHost: " + u.host;
     if (u.port != (u.https ? 443 : 80)) head += ":" + String(u.port);

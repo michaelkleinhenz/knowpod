@@ -2,6 +2,7 @@
 #include <ArduinoJson.h>
 #include <atomic>
 #include "net/ble.h"
+#include "net/web.h"
 #include "net/wifi.h"
 #include "upload.h"
 #include "store/config.h"
@@ -165,6 +166,14 @@ static void upload(const RecordingInfo &info)
 
     int percent = 0;
     step_running = true;
+#ifndef BOARD_HAS_PSRAM
+    // Without PSRAM the heap has no room for the web server beside a TLS
+    // connection; web_poll() starts it again once uploads are done or wait
+    if (web_active()) {
+        Serial.println("[worker] web access paused for the upload");
+        web_stop();
+    }
+#endif
     wifi_full_power(true);
     Step step = info.upload == "done" ? upload_highlights(info.id, meta)
                                       : upload_next(info.id, meta, percent, show);

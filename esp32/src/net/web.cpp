@@ -310,6 +310,9 @@ static void starter_task(void *)
 void web_poll()
 {
     if (session_active()) return;
+#ifndef BOARD_HAS_PSRAM
+    if (worker_busy()) return;  // uploading: TLS needs the memory (see worker.cpp)
+#endif
     suspended = false;
     if (running || starting || !config_web_enabled() || config_wifi().empty()) return;
     if (last_attempt && millis() - last_attempt < AUTOSTART_RETRY_MS) return;
