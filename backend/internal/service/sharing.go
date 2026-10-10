@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/domain"
@@ -348,7 +349,26 @@ func (s *RecordingService) inFolderMembers(ctx context.Context, rec *recording.R
 	if rec.FolderID == "" || rec.IsBoard() || s.Folders == nil {
 		return nil, nil
 	}
-	return folderMembers(ctx, s.Folders.repo, rec.OwnerID, rec.FolderID)
+	f, err := s.Folders.repo.Get(ctx, rec.FolderID)
+	if errors.Is(err, ErrNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if f.OwnerID == rec.OwnerID {
+		return folderMembers(ctx, s.Folders.repo, rec.OwnerID, rec.FolderID)
+	}
+	// The note is placed in a folder shared with its owner by someone else: the folder's
+	// owner and the others it is shared with get the note, the note's owner keeps it.
+	members, err := folderMembers(ctx, s.Folders.repo, f.OwnerID, f.ID)
+	if err != nil {
+		return nil, err
+	}
+	members = slices.DeleteFunc(members, func(m recording.Member) bool { return m.UserID == rec.OwnerID })
+	members = append(members, recording.Member{UserID: f.OwnerID, Role: recording.RoleEditor})
+	slices.SortFunc(members, func(a, b recording.Member) int { return strings.Compare(a.UserID, b.UserID) })
+	return members, nil
 }
 
 // childIDs lists the sub-notes of a note (also those in the trash).

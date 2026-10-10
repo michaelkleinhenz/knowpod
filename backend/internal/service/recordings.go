@@ -577,7 +577,14 @@ func (s *RecordingService) SetFolder(ctx context.Context, acc *Account, id, fold
 			return nil
 		}
 		if !s.Folders.Usable(ctx, rec.OwnerID, folderID) {
-			return invalid("unknown folder %q", folderID)
+			// A folder someone else shared with the owner for editing takes the note too:
+			// the note stays the owner's and is shared like the folder.
+			if _, _, err := s.loadFolder(ctx, acc, folderID, recording.RoleEditor); folderID == "" || err != nil {
+				if errors.Is(err, ErrForbidden) {
+					return err
+				}
+				return invalid("unknown folder %q", folderID)
+			}
 		}
 		if rec.FolderID != folderID || rec.ParentID != "" {
 			// A note moved elsewhere goes after the ordered notes there.

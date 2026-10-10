@@ -443,3 +443,49 @@ func TestEditorsMakeFoldersInASharedFolder(t *testing.T) {
 		t.Error("bob doesn't see the note")
 	}
 }
+
+func TestOwnerPlacesOwnNoteInFolderSharedWithThem(t *testing.T) {
+	f := newFolderFixture(t)
+	ctx := context.Background()
+	mine, err := f.s.CreateText(ctx, f.bob, TextNoteInput{SummaryEdit: SummaryEdit{Title: "Mine"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A folder shared for viewing takes no notes.
+	f.shareFolder(t, f.work.ID, recording.RoleViewer)
+	if _, err := f.s.SetFolder(ctx, f.bob, mine.ID, f.projects.ID); !errors.Is(err, ErrForbidden) {
+		t.Fatalf("move into a view-only folder: %v", err)
+	}
+	// Neither does a folder bob can't see.
+	if _, err := f.s.SetFolder(ctx, f.bob, mine.ID, f.home.ID); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("move into an unseen folder: %v", err)
+	}
+
+	// Made an editor, bob places the note in the folder; it stays his and the folder's owner gets it.
+	if _, err := f.s.SetFolderShareRole(ctx, f.acc, f.work.ID, "u2", recording.RoleEditor); err != nil {
+		t.Fatal(err)
+	}
+	got, err := f.s.SetFolder(ctx, f.bob, mine.ID, f.projects.ID)
+	if err != nil || got.FolderID != f.projects.ID || got.OwnerID != "u2" {
+		t.Fatalf("move: %+v, %v", got, err)
+	}
+	if seen, err := f.s.Get(ctx, f.acc, mine.ID); err != nil || seen.FolderID != f.projects.ID || seen.Access != recording.RoleEditor {
+		t.Fatalf("the folder owner's view: %+v, %v", seen, err)
+	}
+	if !slices.Contains(f.bobSees(t), mine.ID) {
+		t.Fatal("bob lost his note")
+	}
+
+	// Moving it back out takes it away from the folder's owner again.
+	bobs, err := f.folders.Create(ctx, f.bob, FolderInput{Name: "Bob's"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := f.s.SetFolder(ctx, f.bob, mine.ID, bobs.ID); err != nil || got.FolderID != bobs.ID {
+		t.Fatalf("move out: %+v, %v", got, err)
+	}
+	if _, err := f.s.Get(ctx, f.acc, mine.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("the folder owner still has it: %v", err)
+	}
+}
