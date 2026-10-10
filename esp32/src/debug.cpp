@@ -1,4 +1,5 @@
 #include "debug.h"
+#include "app.h"
 #include "store/sdcard.h"
 #include "audio/audio.h"
 #include "net/wifi.h"
@@ -117,6 +118,7 @@ void debug_loop()
 
     char cmd = Serial.read();
     while (Serial.available()) Serial.read();  // drop the rest (e.g. newline)
+    app_activity();  // a test recording needs the full clock for the MP3 encoder
 
     if (session_active() && strchr("rpt", tolower(cmd))) {
         Serial.println("A recording is in progress; stop it with BOOT first.");

@@ -55,7 +55,7 @@ bool wifi_connect(uint32_t timeout_ms)
         Serial.println("No Wi-Fi networks configured");
     } else if (!ok) {
         WiFi.mode(WIFI_STA);
-        WiFi.setSleep(false);
+        WiFi.setSleep(true);  // modem sleep; uploads switch it off (wifi_full_power)
 
         std::set<String> visible;
         int found = WiFi.scanNetworks();
@@ -85,6 +85,11 @@ bool wifi_connected()
     return WiFi.status() == WL_CONNECTED;
 }
 
+bool wifi_on()
+{
+    return WiFi.getMode() != WIFI_OFF;
+}
+
 String wifi_ssid()
 {
     return wifi_connected() ? WiFi.SSID() : String();
@@ -110,6 +115,13 @@ void wifi_off(bool force)
 
 void wifi_radio_lock()   { xSemaphoreTake(mutex, portMAX_DELAY); }
 void wifi_radio_unlock() { xSemaphoreGive(mutex); }
+
+void wifi_full_power(bool on)
+{
+    xSemaphoreTake(mutex, portMAX_DELAY);
+    if (WiFi.getMode() != WIFI_OFF) WiFi.setSleep(!on);
+    xSemaphoreGive(mutex);
+}
 
 void wifi_hold(bool hold) { held = hold; }
 bool wifi_held()          { return held; }

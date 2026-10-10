@@ -165,8 +165,10 @@ static void upload(const RecordingInfo &info)
 
     int percent = 0;
     step_running = true;
+    wifi_full_power(true);
     Step step = info.upload == "done" ? upload_highlights(info.id, meta)
                                       : upload_next(info.id, meta, percent, show);
+    wifi_full_power(false);
     step_running = false;
 
     if (paused && step.result != STEP_OK) return;  // Wi-Fi switched off for a recording

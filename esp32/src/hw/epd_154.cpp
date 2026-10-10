@@ -214,6 +214,15 @@ void epd_begin()
     SPI.begin(PIN_SPI_SCK, PIN_SPI_MISO, PIN_SPI_MOSI, -1);  // no-op if the SD card started it
 }
 
+void epd_power_off()
+{
+    // Released first, so the unpowered controller isn't fed through its inputs
+    pinMode(PIN_EPD_CS, INPUT);
+    pinMode(PIN_EPD_DC, INPUT);
+    pinMode(PIN_EPD_RST, INPUT);
+    exio_set(EXIO_EPD_PWR, false);
+}
+
 void epd_show(const uint8_t *fb, EpdRefresh mode)
 {
     uint32_t start = millis();

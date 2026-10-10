@@ -26,3 +26,7 @@ void epd_begin();
 
 // Shows `fb` on the panel and puts the controller into deep sleep afterwards.
 void epd_show(const uint8_t *fb, EpdRefresh mode);
+
+// Before the chip's deep sleep: switches the panel's supply off where the board
+// can (1.54"). The image stays; the next boot starts with a full refresh.
+void epd_power_off();
