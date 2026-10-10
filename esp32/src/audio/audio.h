@@ -46,7 +46,8 @@ struct WavHeader {
 extern I2SClass i2s;
 
 bool audio_begin();          // ES8311 codec (Wire must be started)
-bool audio_i2s_begin();      // (re)starts I2S for recording and playback
+bool audio_i2s_begin();      // (re)starts I2S for recording and playback, waking the codec
+void audio_sleep();          // stops I2S and powers the codec down until the next audio_i2s_begin()
 void speaker_on();
 void speaker_off();
 

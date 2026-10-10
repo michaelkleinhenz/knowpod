@@ -37,10 +37,11 @@ bool exio_read(uint8_t &outputs, uint8_t &config)
 
 bool exio_begin()
 {
-    // Everything on except the speaker amplifier: the battery hold must be set
-    // right away, or the board switches off once PWR is released. Set the
-    // levels before the direction so the outputs never glitch low.
-    out_state = OUTPUTS & ~(1 << EXIO_PA_CTRL);
+    // Everything on except the speaker amplifier and the LED (it would only draw
+    // current): the battery hold must be set right away, or the board switches
+    // off once PWR is released. Set the levels before the direction so the
+    // outputs never glitch low.
+    out_state = OUTPUTS & ~((1 << EXIO_PA_CTRL) | (1 << EXIO_LED));
     ok = write_reg(REG_OUTPUT, out_state) && write_reg(REG_CONFIG, (uint8_t)~OUTPUTS);
     if (!ok) Serial.println("TCA9554 init FAILED");
     return ok;

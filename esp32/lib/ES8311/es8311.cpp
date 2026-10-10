@@ -285,6 +285,30 @@ esp_err_t es8311_init(es8311_handle_t dev, const es8311_clock_config_t *const cl
     return ESP_OK;
 }
 
+// Power-down sequence of Espressif's esp_codec_dev ES8311 driver (es8311_suspend)
+esp_err_t es8311_suspend(es8311_handle_t dev)
+{
+    static const uint8_t seq[][2] = {
+        {ES8311_DAC_REG32, 0x00},          // DAC volume off
+        {ES8311_ADC_REG17, 0x00},          // ADC volume off
+        {ES8311_SYSTEM_REG0E, 0xFF},       // PGA and ADC modulator off
+        {ES8311_SYSTEM_REG12, 0x02},       // DAC off
+        {ES8311_SYSTEM_REG14, 0x00},       // no microphone input
+        {ES8311_SYSTEM_REG0D, 0xFA},       // analog circuits off
+        {ES8311_ADC_REG15, 0x00},
+        {ES8311_CLK_MANAGER_REG02, 0x10},
+        {ES8311_RESET_REG00, 0x00},
+        {ES8311_RESET_REG00, 0x1F},        // reset, CSM off
+        {ES8311_CLK_MANAGER_REG01, 0x30},
+        {ES8311_CLK_MANAGER_REG01, 0x00},  // all clocks off
+        {ES8311_GP_REG45, 0x00},
+        {ES8311_SYSTEM_REG0D, 0xFC},       // analog off, reference off
+        {ES8311_CLK_MANAGER_REG02, 0x00},
+    };
+    for (const auto &w : seq) ESP_RETURN_ON_ERROR(es8311_write_reg(dev, w[0], w[1]), TAG, "");
+    return ESP_OK;
+}
+
 void es8311_delete(es8311_handle_t dev)
 {
     free(dev);

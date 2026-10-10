@@ -20,8 +20,11 @@ extern "C" {
 #define CUE_FADE_MS      8       // fade in/out against clicks
 #define CUE_GAP_MS       60
 
+#define CODEC_WAKE_MS    50      // the codec's references settle before the first samples
+
 I2SClass i2s;
 static es8311_handle_t codec = nullptr;
+static bool codec_awake = false;
 
 // ============================================================
 // Codec & I2S
@@ -30,14 +33,8 @@ static es8311_handle_t codec = nullptr;
 static bool rec_stream_init();
 static void log_heap(const char *when);
 
-bool audio_begin()
+static bool codec_init()
 {
-    es8311_handle_t es = codec = es8311_create(I2C_NUM_0, ES8311_ADDRRES_0);
-    if (!es) {
-        Serial.println("ES8311 create FAILED");
-        return false;
-    }
-
     const es8311_clock_config_t clk = {
         .mclk_inverted      = false,
         .sclk_inverted      = false,
@@ -46,13 +43,25 @@ bool audio_begin()
         .sample_frequency   = SAMPLE_RATE
     };
 
-    if (es8311_init(es, &clk, ES8311_RESOLUTION_16, ES8311_RESOLUTION_16) != ESP_OK) {
+    if (es8311_init(codec, &clk, ES8311_RESOLUTION_16, ES8311_RESOLUTION_16) != ESP_OK) return false;
+    es8311_voice_volume_set(codec, VOICE_VOLUME, NULL);
+    es8311_microphone_config(codec, false);
+    es8311_microphone_gain_set(codec, ES8311_MIC_GAIN_42DB);
+    return true;
+}
+
+bool audio_begin()
+{
+    codec = es8311_create(I2C_NUM_0, ES8311_ADDRRES_0);
+    if (!codec) {
+        Serial.println("ES8311 create FAILED");
+        return false;
+    }
+    if (!codec_init()) {
         Serial.println("ES8311 init FAILED");
         return false;
     }
-    es8311_voice_volume_set(es, VOICE_VOLUME, NULL);
-    es8311_microphone_config(es, false);
-    es8311_microphone_gain_set(es, ES8311_MIC_GAIN_42DB);
+    codec_awake = true;
 
 #ifdef PIN_PA_CTRL
     pinMode(PIN_PA_CTRL, OUTPUT);
@@ -64,11 +73,21 @@ bool audio_begin()
     // pieces, and kept: later a block this large may no longer be free
     if (!rec_stream_init()) Serial.println("Failed to allocate recording buffer");
     log_heap("after audio setup");
-    return audio_i2s_begin();
+    bool ok = audio_i2s_begin();  // checks that I2S works, then sleeps until needed
+    audio_sleep();
+    return ok;
 }
 
 bool audio_i2s_begin()
 {
+    bool woken = !codec_awake;
+    if (woken) {
+        if (!codec || !codec_init()) {
+            Serial.println("ES8311 wake-up FAILED");
+            return false;
+        }
+        codec_awake = true;
+    }
     i2s.end();
     i2s.setPins(PIN_I2S_BCK, PIN_I2S_LRCK, PIN_I2S_DOUT, PIN_I2S_DIN, PIN_I2S_MCK);
     if (!i2s.begin(I2S_MODE_STD, SAMPLE_RATE, I2S_DATA_BIT_WIDTH_16BIT,
@@ -76,7 +95,18 @@ bool audio_i2s_begin()
         Serial.println("I2S init FAILED");
         return false;
     }
+    if (woken) delay(CODEC_WAKE_MS);  // the codec starts once its clock (MCLK) runs
     return true;
+}
+
+// The I2S clocks and DMA would otherwise keep running, and the codec's ADC and
+// DAC stay powered, for as long as the device is on
+void audio_sleep()
+{
+    speaker_off();
+    i2s.end();
+    if (codec && codec_awake) es8311_suspend(codec);
+    codec_awake = false;
 }
 
 #ifdef EXIO_PA_CTRL
@@ -257,6 +287,7 @@ bool recorder_start(fs::FS &fs, const char *path)
 #ifdef REC_MP3
     if (!mp3_open()) {
         Serial.println("Failed to start the MP3 encoder (out of memory?)");
+        audio_sleep();
         return false;
     }
 #endif
@@ -268,6 +299,7 @@ bool recorder_start(fs::FS &fs, const char *path)
         shine_close(mp3);
         mp3 = nullptr;
 #endif
+        audio_sleep();
         return false;
     }
 
@@ -358,6 +390,7 @@ void recorder_stop()
 #endif
     rec_file.close();
     rec_active = false;
+    audio_sleep();
 
     Serial.printf("Recording complete: %.1f s, %u bytes\n", recorder_seconds(), (unsigned)rec_bytes);
     if (rec_dropped)
@@ -435,7 +468,7 @@ void play_wav(fs::FS &fs, const char *path, const std::function<bool()> &should_
     }
 
     Serial.printf("Playback complete (%.1f s)\n", (millis() - start) / 1000.0f);
-    speaker_off();
+    audio_sleep();
     f.close();
 }
 
@@ -475,7 +508,7 @@ void play_test_tone(float freq_hz, int duration_ms)
     Serial.printf("  I2S accepted %u of %u bytes in %lu ms\n", (unsigned)accepted,
                   (unsigned)(total_samples * sizeof(int16_t)), (unsigned long)(millis() - start));
     delay(50);
-    speaker_off();
+    audio_sleep();
     Serial.println("Tone complete");
 }
 
@@ -524,4 +557,5 @@ void play_cue(Cue cue)
     write_tone(0, 60);  // flush the DMA buffers before muting
     speaker_off();
     es8311_voice_volume_set(codec, VOICE_VOLUME, NULL);
+    audio_sleep();
 }

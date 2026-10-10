@@ -142,6 +142,8 @@ void epd_begin()
     epd_spi.begin(PIN_EPD_SCK, -1, PIN_EPD_MOSI, -1);
 }
 
+void epd_power_off() {}  // the panel's supply can't be switched on this board
+
 void epd_show(const uint8_t *fb, EpdRefresh mode)
 {
     // A partial refresh drives only the pixels that differ between RAM 0x24

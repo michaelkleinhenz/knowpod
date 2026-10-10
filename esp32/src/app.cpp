@@ -5,6 +5,7 @@
 #include "debug.h"
 #include "hw/buttons.h"
 #include "hw/clock.h"
+#include "hw/epd.h"
 #include "hw/power.h"
 #include "net/ble.h"
 #include "net/web.h"
@@ -29,10 +30,13 @@
 //   PWR hold 2s     power off
 
 #define SAVED_HOME_MS  10000   // "Saved" message returns to the home screen
+#define CPU_IDLE_MHZ   80      // the lowest clock Wi-Fi and Bluetooth can start at
+#define CPU_IDLE_MS    10000   // full speed for this long after a button press
 
 static bool sd_ok, codec_ok;
 static int last_minute = -1;
 static uint32_t last_activity = 0;
+static uint32_t cpu_full_mhz = 0;  // the clock the chip boots with
 
 // ============================================================
 // Recording
@@ -128,6 +132,9 @@ static void enter_deep_sleep()
 
     int hours = config_power_off_hours();
     if (hours > 0) esp_sleep_enable_timer_wakeup((uint64_t)hours * 3600ULL * 1000000ULL);
+    // The board stays powered in deep sleep: nothing else may keep drawing current
+    audio_sleep();
+    epd_power_off();
     Serial.flush();
     esp_deep_sleep_start();
 }
@@ -142,6 +149,24 @@ static bool may_sleep()
     // so does one that may still come for the recordings offered without Wi-Fi
     if (ble_connected() || ble_pairing() || ble_offering()) return false;
     return !session_active() && !recorder_active() && !worker_busy();
+}
+
+// Most of the time the device only shows a screen and waits for a button: the
+// CPU then runs at a lower clock. Anything that needs the speed (recording,
+// MP3 encoding, Wi-Fi, an app connected over Bluetooth, the web server, a user paging
+// through screens) runs at the full clock.
+static void update_cpu_clock()
+{
+    bool busy = session_active() || recorder_active() || worker_busy() || wifi_on() || ble_connected() ||
+                web_active() || millis() - last_activity < CPU_IDLE_MS;
+    uint32_t mhz = busy ? cpu_full_mhz : min<uint32_t>(CPU_IDLE_MHZ, cpu_full_mhz);
+    if (getCpuFrequencyMhz() != mhz) setCpuFrequencyMhz(mhz);
+}
+
+void app_activity()
+{
+    last_activity = millis();
+    update_cpu_clock();
 }
 
 // ============================================================
@@ -221,6 +246,7 @@ void app_begin(bool sd, bool codec)
     sd_ok = sd;
     codec_ok = codec;
     last_activity = millis();
+    cpu_full_mhz = getCpuFrequencyMhz();
     display_begin();
     ui_push(make_home());
     ui_render(true);
@@ -242,6 +268,8 @@ void app_loop()
     debug_stage = "buttons";
     ButtonEvent ev;
     while (buttons_get(ev)) handle_event(ev);
+    debug_stage = "cpu clock";
+    update_cpu_clock();
 
     debug_stage = "web_poll";
     web_poll();

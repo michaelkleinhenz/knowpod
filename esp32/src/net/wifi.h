@@ -7,6 +7,7 @@
 // `timeout_ms` applies per network.
 bool wifi_connect(uint32_t timeout_ms = 10000);
 bool wifi_connected();
+bool wifi_on();  // the radio is on (connecting, connected or scanning)
 String wifi_ssid();
 String wifi_ip();
 
@@ -19,3 +20,7 @@ void wifi_radio_unlock();
 void wifi_off(bool force = false);
 void wifi_hold(bool hold);
 bool wifi_held();
+
+// Wi-Fi sleeps between the access point's beacons while idle (modem sleep);
+// full power keeps the radio awake for the throughput of an upload.
+void wifi_full_power(bool on);

@@ -64,6 +64,8 @@ typedef struct es8311_clock_config_t {
 
 esp_err_t es8311_init(es8311_handle_t dev, const es8311_clock_config_t *const clk_cfg,
                       const es8311_resolution_t res_in, const es8311_resolution_t res_out);
+// Powers the analog and digital blocks down; es8311_init() brings it back
+esp_err_t es8311_suspend(es8311_handle_t dev);
 esp_err_t es8311_voice_volume_set(es8311_handle_t dev, int volume, int *volume_set);
 esp_err_t es8311_voice_volume_get(es8311_handle_t dev, int *volume);
 void es8311_register_dump(es8311_handle_t dev);
