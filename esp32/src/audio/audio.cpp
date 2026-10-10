@@ -15,10 +15,10 @@ extern "C" {
 #define MCLK_MULTIPLE    256
 #define MCLK_FREQ_HZ     (SAMPLE_RATE * MCLK_MULTIPLE)
 #define VOICE_VOLUME     70
-#define CUE_VOLUME       95      // codec volume for signal tones (0-100)
-#define CUE_AMPLITUDE    30000   // near full scale
+#define CUE_AMPLITUDE    8000    // about -12 dBFS at the voice volume
+#define CUE_FREQ_HZ      1500
+#define CUE_MS           120
 #define CUE_FADE_MS      8       // fade in/out against clicks
-#define CUE_GAP_MS       60
 
 #define CODEC_WAKE_MS    50      // the codec's references settle before the first samples
 
@@ -537,25 +537,13 @@ static void write_tone(float freq_hz, int ms)
     }
 }
 
-void play_cue(Cue cue)
+void play_cue(Cue)
 {
     if (!codec || !audio_i2s_begin()) return;
-    es8311_voice_volume_set(codec, CUE_VOLUME, NULL);
     speaker_on();
     write_tone(0, 20);  // let the amplifier settle
-    if (cue == CUE_START) {
-        write_tone(1500, 110);
-        write_tone(0, CUE_GAP_MS);
-        write_tone(2000, 160);
-    } else {
-        write_tone(2000, 110);
-        write_tone(0, CUE_GAP_MS);
-        write_tone(1500, 110);
-        write_tone(0, CUE_GAP_MS);
-        write_tone(1000, 220);
-    }
+    write_tone(CUE_FREQ_HZ, CUE_MS);
     write_tone(0, 60);  // flush the DMA buffers before muting
     speaker_off();
-    es8311_voice_volume_set(codec, VOICE_VOLUME, NULL);
     audio_sleep();
 }

@@ -68,8 +68,8 @@ float recorder_dropped_seconds();      // audio lost because the SD card was too
 bool record_wav(fs::FS &fs, const char *path, int duration_sec,
                 const std::function<bool()> &should_stop);
 
-// Loud signal tones: rising two-note beep for start, falling three-note
-// beep for stop. Blocking (~0.4 s).
+// Short, quiet beep signalling recording start/stop (both cues sound the
+// same). Blocking (~0.2 s).
 enum Cue { CUE_START, CUE_STOP };
 void play_cue(Cue cue);
 
