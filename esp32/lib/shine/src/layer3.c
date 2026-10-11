@@ -85,6 +85,8 @@ shine_global_config *shine_initialise(shine_config_t *pub_config) {
   if (shine_check_config(pub_config->wave.samplerate, pub_config->mpeg.bitr) <
       0)
     return NULL;
+  if (pub_config->wave.channels > MAX_CHANNELS)
+    return NULL;
 
 #ifdef SHINE_STATIC_STATE
   /* One encoder at a time, in memory set aside at link time: without PSRAM the

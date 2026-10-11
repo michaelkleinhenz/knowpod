@@ -154,10 +154,13 @@ HttpResponse http_request(const String &url, const char *method, const HttpHeade
         client.reset(new NetworkClient());
     }
     client->setTimeout(timeout_ms);
+    unsigned heap_free = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+    unsigned heap_block = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
     if (!client->connect(u.host.c_str(), u.port)) {
-        // TLS needs two ~17 KB record buffers in one piece each; without PSRAM
-        // that is what usually fails
-        Serial.printf("Connection to %s failed; heap %u free, largest block %u\n", u.host.c_str(),
+        // The TLS handshake needs some 40 KB, its record buffers in one piece
+        // each; without PSRAM that is what usually fails
+        Serial.printf("Connection to %s failed; heap before %u free, largest block %u; after %u, %u\n",
+                      u.host.c_str(), heap_free, heap_block,
                       (unsigned)heap_caps_get_free_size(MALLOC_CAP_8BIT),
                       (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_8BIT));
         String error = "Connection to " + u.host + " failed";
