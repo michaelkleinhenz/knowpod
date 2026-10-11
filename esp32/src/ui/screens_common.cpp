@@ -346,6 +346,7 @@ public:
 #endif
     }
     void on_button(const ButtonEvent &) override {}
+    bool status_bar() override { return false; }
 #ifdef HAS_ROCKER
     const char *hint() override { return "Press PWR or rocker to wake"; }
 #else

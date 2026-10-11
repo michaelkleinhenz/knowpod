@@ -35,6 +35,9 @@ public:
     virtual void on_back();
     virtual void tick() {}
     virtual bool auto_clean() { return true; }
+    // False for screens that stay on the e-paper while the device sleeps:
+    // a frozen clock and battery level would only be misleading there.
+    virtual bool status_bar() { return true; }
 #ifdef HAS_ROCKER
     virtual const char *hint() { return "Press: open · Hold press: back"; }
 #else
