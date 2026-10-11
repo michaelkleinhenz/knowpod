@@ -278,6 +278,7 @@ void web_stop()
     if (!running) return;
     stop_requested = true;
     while (running) delay(10);
+    delay(50);  // the task deletes itself; the idle task then frees its 16 KB stack
     wifi_hold(false);
     Serial.println("Web access stopped");
 }

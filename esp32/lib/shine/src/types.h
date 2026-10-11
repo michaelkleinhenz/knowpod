@@ -51,6 +51,11 @@
 #define SCALE 32768
 #define SBLIMIT 32
 
+/* Builds that only encode mono can pass -DSHINE_MAX_CHANNELS=1 to halve the
+ * per-channel state */
+#ifdef SHINE_MAX_CHANNELS
+#define MAX_CHANNELS SHINE_MAX_CHANNELS
+#endif
 #ifndef MAX_CHANNELS
 #define MAX_CHANNELS 2
 #endif
@@ -97,7 +102,8 @@ typedef struct {
   int32_t xrmaxl[MAX_GRANULES];
   double steptab[128];   /* 2**(-x/4)  for x = -127..0 */
   int32_t steptabi[128]; /* 2**(-x/4)  for x = -127..0 */
-  int int2idx[10000];    /* x**(3/4)   for x = 0..9999 */
+  int16_t int2idx[10000]; /* x**(3/4)   for x = 0..9999 (at most 1000: 16 bits
+                             save 20 KB of RAM) */
 } l3loop_t;
 
 typedef struct {
