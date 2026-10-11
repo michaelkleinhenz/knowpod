@@ -16,6 +16,8 @@ final class IOSBle: NSObject, PocketLink, CBCentralManagerDelegate, CBPeripheral
     static let commandUUID = CBUUID(string: "001120a3-2233-4455-6677-889912345678")
     // The recording data of a Bluetooth transfer (see PocketLink.subscribeAudio).
     static let audioUUID = CBUUID(string: "001120a1-2233-4455-6677-889912345678")
+    // Where the Pocket app writes (see PocketLink.usePocketAppWrites).
+    static let writeUUID = CBUUID(string: "001120a2-2233-4455-6677-889912345678")
 
     // How long to look for the recorder before giving up (it may be asleep), ms.
     private static let scanTimeout: Int64 = 20_000
@@ -33,6 +35,9 @@ final class IOSBle: NSObject, PocketLink, CBCentralManagerDelegate, CBPeripheral
     private var peripheral: CBPeripheral?
     private var command: CBCharacteristic?
     private var audio: CBCharacteristic?
+    private var pocketAppWrite: CBCharacteristic?
+    // Writes go to pocketAppWrite, with response (usePocketAppWrites); else to command.
+    private var pocketAppWrites = false
     private var audioListener: ((Data) -> Void)?
 
     // Guarded by condition: the operation waited for and its outcome (nil: ok, else why it
@@ -107,10 +112,11 @@ final class IOSBle: NSObject, PocketLink, CBCentralManagerDelegate, CBPeripheral
             throw PocketError("failed", "This device isn't a Pocket")
         }
         begin("characteristics")
-        queue.sync { device.discoverCharacteristics([Self.commandUUID, Self.audioUUID], for: service) }
+        queue.sync { device.discoverCharacteristics([Self.commandUUID, Self.audioUUID, Self.writeUUID], for: service) }
         if try waitDone("characteristics", 15_000) != .some(nil) { throw PocketError("failed", "Couldn't read the services") }
         command = service.characteristics?.first(where: { $0.uuid == Self.commandUUID })
         audio = service.characteristics?.first(where: { $0.uuid == Self.audioUUID })
+        pocketAppWrite = service.characteristics?.first(where: { $0.uuid == Self.writeUUID })
         guard let command else { throw PocketError("failed", "This device isn't a Pocket") }
         try subscribe(command)
         return device.identifier
@@ -232,10 +238,11 @@ final class IOSBle: NSObject, PocketLink, CBCentralManagerDelegate, CBPeripheral
         defer { writeLock.unlock() }
         condition.lock()
         let target = connected ? peripheral : nil
-        let characteristic = command
+        let characteristic = pocketAppWrites ? pocketAppWrite : command
+        let withResponse = pocketAppWrites
         condition.unlock()
         guard let target, let characteristic else { throw PocketError("disconnected", "The recorder disconnected") }
-        if characteristic.properties.contains(.writeWithoutResponse) {
+        if !withResponse && characteristic.properties.contains(.writeWithoutResponse) {
             let end = Clock.now() + Self.opTimeout
             // Asked on Bluetooth's queue, never while holding the condition its callbacks take.
             while !queue.sync(execute: { target.canSendWriteWithoutResponse }) {
@@ -264,6 +271,17 @@ final class IOSBle: NSObject, PocketLink, CBCentralManagerDelegate, CBPeripheral
         audioListener = listener
         condition.unlock()
         try subscribe(audio)
+    }
+
+    func usePocketAppWrites() throws {
+        guard pocketAppWrite != nil else { throw PocketError("failed", "The recorder has no write characteristic") }
+        condition.lock()
+        let subscribed = audioListener != nil
+        condition.unlock()
+        if !subscribed { try subscribeAudio { _ in } }
+        condition.lock()
+        pocketAppWrites = true
+        condition.unlock()
     }
 
     func close() {

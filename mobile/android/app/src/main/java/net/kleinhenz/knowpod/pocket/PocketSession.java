@@ -2,12 +2,16 @@ package net.kleinhenz.knowpod.pocket;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.TimeZone;
 import java.util.TreeMap;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
@@ -19,7 +23,7 @@ import java.util.function.Predicate;
 // answered "MCU&SK&OK"). The commands used here:
 //   BAT         → MCU&BAT&58              battery, percent
 //   FW          → MCU&FW&1.8              firmware version
-//   SPACE       → MCU&SPA&060846&061032   storage used and total, KB
+//   SPACE       → MCU&SPA&060846&061032   storage free and total, MB
 //   GET&USB     → MCU&USB&1               whether the recorder is a USB drive when plugged in
 //   LIST_DIRS   → MCU&DIRS&<date>… MCU&DIRS_SUM&<n>                 days with recordings
 //   LIST&<date> → MCU&F&<date>&<timestamp>&<seconds>… MCU&LIST&<n>   a day's recordings
@@ -37,6 +41,12 @@ public class PocketSession {
         // runs while it's subscribed to, and the WiFi transfer switches a running Bluetooth
         // transfer over.
         void subscribeAudio(Consumer<byte[]> listener) throws IOException;
+
+        // usePocketAppWrites makes the writes go the Pocket app's way: to 001120a2 as write
+        // requests with response, with the audio subscribed to. A factory-reset recorder answers
+        // its first key only then (tools/pocket-wifi-probe/RESEARCH.md).
+        default void usePocketAppWrites() throws IOException {
+        }
 
         void close();
     }
@@ -140,6 +150,54 @@ public class PocketSession {
         }
     }
 
+    // activate gives a factory-reset recorder its session key (as desktop/src/bluetooth.js:
+    // activate does): it takes the first key it gets and from then on only that one. Returns
+    // "OK" (taken), "ERR" (it has another key: it isn't reset) or null (no answer). A few seconds
+    // after taking the key the recorder drops the connection; after "OK" this waits for that.
+    public String activate(String sessionKey) throws PocketException, InterruptedException {
+        try {
+            link.usePocketAppWrites();
+        } catch (IOException e) {
+            throw new PocketException("failed", e.getMessage(), e);
+        }
+        int since = log.mark();
+        try {
+            link.write(("APP&SK&" + sessionKey).getBytes(StandardCharsets.US_ASCII));
+        } catch (IOException e) {
+            // The recorder may hang up before it acknowledges the write (after refusing a key):
+            // what it answered still counts.
+        }
+        String answer;
+        try {
+            answer = log.waitFor("SK", since, ANSWER_TIMEOUT, ANY);
+        } catch (PocketException e) {
+            List<String> got = log.values("SK", since);
+            answer = got.isEmpty() ? null : got.get(0);
+        }
+        if (answer == null) return null;
+        answer = answer.trim();
+        if (answer.equals("OK")) {
+            long end = System.currentTimeMillis() + 8_000;
+            while (!log.isDisconnected() && System.currentTimeMillis() < end) Thread.sleep(100);
+        }
+        return answer;
+    }
+
+    // activated finishes an activation on a new, unlocked connection: sets the clock (UTC, as
+    // the Pocket app does), checks, and switches off the WiFi the recorder raised.
+    public Map<String, Object> activated() throws PocketException, InterruptedException {
+        SimpleDateFormat format = new SimpleDateFormat("yyyyMMddHHmmss", Locale.ROOT);
+        format.setTimeZone(TimeZone.getTimeZone("UTC"));
+        optional("T&" + format.format(new Date()), "T");
+        Map<String, Object> info = check();
+        try {
+            waitFor("WIFIC", send("WIFIC"), 3_000, ANY);
+        } catch (PocketException e) {
+            // nice to have
+        }
+        return info;
+    }
+
     // unlock unlocks the connection with the session key.
     public void unlock(String sessionKey) throws PocketException, InterruptedException {
         if (!"OK".equals(optional("SK&" + sessionKey, "SK"))) {
@@ -159,12 +217,12 @@ public class PocketSession {
         Map<String, Object> storage = null;
         if (space != null) {
             String[] parts = space.split("&");
-            Integer used = parts.length > 0 ? parseInt(parts[0]) : null;
+            Integer free = parts.length > 0 ? parseInt(parts[0]) : null;
             Integer total = parts.length > 1 ? parseInt(parts[1]) : null;
-            if (used != null && total != null) {
+            if (free != null && total != null) {
                 storage = new LinkedHashMap<>();
-                storage.put("usedKB", used);
-                storage.put("totalKB", total);
+                storage.put("usedKB", Math.max(0, total - free) * 1024);
+                storage.put("totalKB", total * 1024);
             }
         }
         info.put("storage", storage);

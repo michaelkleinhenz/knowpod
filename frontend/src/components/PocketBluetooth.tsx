@@ -4,7 +4,22 @@ import { useTranslation } from 'react-i18next';
 import { appContext, pocketBluetooth, PocketBluetoothResult } from '../lib/desktop';
 
 // errorKeys are the explained failures of the app's Pocket Bluetooth call.
-const errorKeys = ['not-configured', 'not-found', 'auth', 'unsupported', 'permission', 'usb-refused', 'busy', 'timeout', 'invalid-address', 'invalid-key'];
+const errorKeys = [
+  'not-configured',
+  'not-found',
+  'auth',
+  'unsupported',
+  'permission',
+  'usb-refused',
+  'busy',
+  'timeout',
+  'invalid-address',
+  'invalid-key',
+  'activated-elsewhere',
+  'activate-no-answer',
+  'address-needed',
+  'several',
+];
 
 // bluetoothErrorText explains a failed Pocket Bluetooth call.
 export function bluetoothErrorText(r: PocketBluetoothResult, t: TFunction): string {
@@ -17,7 +32,8 @@ export function bluetoothErrorText(r: PocketBluetoothResult, t: TFunction): stri
 // a USB drive only until it's unplugged once, so the desktop app switches the drive on again
 // over Bluetooth before copying from it; over Bluetooth, the desktop and Android apps also
 // raise the Pocket's WiFi to copy over it. Only in the apps; the address and session key stay
-// there.
+// there. A factory-reset Pocket can be activated here with a new key, as the Pocket app does;
+// Remove forgets it (the Pocket keeps its key until it's reset again).
 export function PocketBluetooth() {
   const { t } = useTranslation();
   // Looked up once: the effect below must not run again on every render.
@@ -25,7 +41,8 @@ export function PocketBluetooth() {
   const [settings, setSettings] = useState<PocketBluetoothResult | null>(null);
   const [address, setAddress] = useState('');
   const [sessionKey, setSessionKey] = useState('');
-  const [busy, setBusy] = useState<'save' | 'check' | 'usb-on' | null>(null);
+  const [activateAddress, setActivateAddress] = useState('');
+  const [busy, setBusy] = useState<'save' | 'check' | 'usb-on' | 'activate' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [info, setInfo] = useState<PocketBluetoothResult | null>(null);
@@ -68,6 +85,34 @@ export function PocketBluetooth() {
     }
   }
 
+  async function activate() {
+    if (!window.confirm(t('pocketBluetooth.activateConfirm', { context: appContext() }))) return;
+    setBusy('activate');
+    setError(null);
+    setNotice(null);
+    setInfo(null);
+    try {
+      const r = await call!({ action: 'activate', address: activateAddress.trim() });
+      if (!r.ok) {
+        setError(bluetoothErrorText(r, t));
+        // Without an answer the new key stays saved: show it as set.
+        const s = await call!({ action: 'settings' });
+        setSettings(s);
+        setAddress(s.address ?? '');
+        return;
+      }
+      setSettings(r);
+      setAddress(r.address ?? '');
+      setActivateAddress('');
+      setNotice(r.verified ? t('pocketBluetooth.activated') : t('pocketBluetooth.activatedUnchecked'));
+      if (r.verified) setInfo(r);
+    } catch (err) {
+      setError(t('pocketBluetooth.errors.failed', { detail: err instanceof Error ? err.message : String(err) }));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     const update: { address?: string; sessionKey?: string } = {};
@@ -81,11 +126,42 @@ export function PocketBluetooth() {
   const context = appContext();
   const changed = address.trim() !== (settings.address ?? '') || !!sessionKey.trim();
   const mb = (kb: number) => (kb / 1024).toLocaleString(undefined, { maximumFractionDigits: 0 });
+  const canActivate = !!settings.activateSupported && !settings.address && !settings.sessionKeySet;
+  const findsAddress = settings.activateFindsAddress !== false;
 
   return (
     <>
       <h3 className="subheading">{t('pocketBluetooth.title', { context })}</h3>
       <p className="muted">{t('pocketBluetooth.intro', { context })}</p>
+      {canActivate && (
+        <div className="form">
+          <h4 className="subheading">{t('pocketBluetooth.activateTitle')}</h4>
+          <p className="muted">{t('pocketBluetooth.activateIntro')}</p>
+          <p className="muted">{t('pocketBluetooth.activateSteps')}</p>
+          <label>
+            {findsAddress ? t('pocketBluetooth.activateAddress') : t('pocketBluetooth.activateAddressRequired')}
+            <input
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="AA:BB:CC:DD:EE:FF"
+              value={activateAddress}
+              onChange={(e) => setActivateAddress(e.target.value)}
+            />
+          </label>
+          {findsAddress && <p className="muted">{t('pocketBluetooth.activateAddressHint')}</p>}
+          <div className="button-row">
+            <button
+              type="button"
+              className="primary-button"
+              disabled={!!busy || (!findsAddress && !activateAddress.trim())}
+              onClick={() => void activate()}
+            >
+              {busy === 'activate' ? t('pocketBluetooth.activating') : t('pocketBluetooth.activate')}
+            </button>
+          </div>
+          <h4 className="subheading">{t('pocketBluetooth.manualTitle')}</h4>
+        </div>
+      )}
       <form onSubmit={handleSubmit} className="form">
         <label>
           {t('pocketBluetooth.address')}

@@ -7,8 +7,6 @@ import { BriefingSetup } from '../components/BriefingSetup';
 import { CalendarSetup } from '../components/CalendarSetup';
 import { McpSetup } from '../components/McpSetup';
 import { NotificationSettings } from '../components/NotificationSettings';
-import { PocketBluetooth } from '../components/PocketBluetooth';
-import { PocketSetup } from '../components/PocketSetup';
 import { RemarkableSetup } from '../components/RemarkableSetup';
 import { errorText } from '../lib/errors';
 
@@ -116,11 +114,6 @@ export function Account() {
       <section className="card" id="mcp">
         <h2 className="card-title">{t('mcp.title')}</h2>
         <McpSetup />
-      </section>
-      <section className="card" id="pocket">
-        <h2 className="card-title">{t('account.pocketTitle')}</h2>
-        <PocketSetup />
-        <PocketBluetooth />
       </section>
       <section className="card">
         <h2 className="card-title">{t('account.remarkableTitle')}</h2>

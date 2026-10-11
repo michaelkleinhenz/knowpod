@@ -174,11 +174,11 @@ export function RecorderBluetooth() {
         ) : (
           <>
             {state.paired && state.enabled && (
-              <button type="button" onClick={() => void run({ action: 'sync' })}>
+              <button type="button" className="primary-button" onClick={() => void run({ action: 'sync' })}>
                 {t('recorderBluetooth.syncNow')}
               </button>
             )}
-            <button type="button" className={state.paired ? 'secondary-button' : undefined} onClick={() => void run({ action: 'pair' })}>
+            <button type="button" className={state.paired ? 'secondary-button' : 'primary-button'} onClick={() => void run({ action: 'pair' })}>
               {state.paired ? t('recorderBluetooth.pairAgain') : t('recorderBluetooth.pair')}
             </button>
             {state.paired && (

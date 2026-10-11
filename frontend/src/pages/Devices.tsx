@@ -1,7 +1,10 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
+import { useLocation } from 'react-router-dom';
 import { api, Device } from '../api/client';
 import { CopyButton } from '../components/CopyButton';
+import { PocketBluetooth } from '../components/PocketBluetooth';
+import { PocketSetup } from '../components/PocketSetup';
 import { RecorderBluetooth } from '../components/RecorderBluetooth';
 import { recorderBluetooth } from '../lib/desktop';
 import { errorText } from '../lib/errors';
@@ -11,9 +14,14 @@ const DATE_TIME: Intl.DateTimeFormatOptions = { dateStyle: 'medium', timeStyle: 
 
 // Devices lists the user's recorders and lets them add and remove them. Tokens are only
 // available right after they are issued, so they are kept in page state and shown in the
-// device's row until the user leaves the page.
+// device's row until the user leaves the page. The Pocket recorder is set up here too.
 export function Devices() {
   const { t } = useTranslation();
+  // A link to a section ("#pocket") scrolls to it.
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (hash) document.getElementById(decodeURIComponent(hash.slice(1)))?.scrollIntoView();
+  }, [hash]);
   const [devices, setDevices] = useState<Device[] | null>(null);
   const [tokens, setTokens] = useState<Record<string, string>>({});
   const [name, setName] = useState('');
@@ -161,6 +169,12 @@ export function Devices() {
           <RecorderBluetooth />
         </section>
       )}
+
+      <section className="card" id="pocket">
+        <h2 className="card-title">{t('devices.pocketTitle')}</h2>
+        <PocketSetup />
+        <PocketBluetooth />
+      </section>
     </>
   );
 }

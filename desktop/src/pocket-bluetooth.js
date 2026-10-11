@@ -10,7 +10,9 @@
 // recorder's WiFi password), so it's encrypted with the system's keychain where there is one,
 // and never handed to a page.
 const { BrowserWindow, safeStorage } = require('electron');
+const crypto = require('node:crypto');
 const path = require('node:path');
+const { connectLe } = require('./bluez-le');
 
 // How long to look for the recorder before giving up (it may be asleep).
 const scanTimeout = 20_000;
@@ -32,21 +34,38 @@ function normalizeAddress(input) {
 // A session key is 16 characters; "&" would end the command it's sent in.
 const validSessionKey = (key) => /^[\x21-\x25\x27-\x7e]{8,64}$/.test(key);
 
+// generateSessionKey makes a key for activating a recorder: 16 letters and digits, the form
+// the Pocket app uses.
+function generateSessionKey() {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let key = '';
+  for (let i = 0; i < 16; i++) key += alphabet[crypto.randomInt(alphabet.length)];
+  return key;
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// After activating, the recorder drops the connection; reconnect after this long, this often.
+const reconnectDelay = 2_000;
+const reconnectAttempts = 3;
+
 // pickDevice finds the recorder among the devices found so far. Windows and Linux give each
-// device's real address. macOS hides addresses (it gives a made-up one), so there the
-// recorder is the only device found whose name is a Pocket's ("PKT01_GREY_…").
+// device's real address. macOS hides addresses (it gives a made-up one), so there, and when
+// no address is given (to find one), the recorder is the only device found whose name is a
+// Pocket's ("PKT01_GREY_…").
 function pickDevice(devices, address) {
   const wanted = hex(address);
-  const byAddress = devices.find((d) => hex(d.deviceId) === wanted);
-  if (byAddress || process.platform !== 'darwin') return byAddress;
+  const byAddress = wanted ? devices.find((d) => hex(d.deviceId) === wanted) : undefined;
+  if (byAddress || (wanted && process.platform !== 'darwin')) return byAddress;
   const pockets = devices.filter((d) => /^PKT01/i.test(d.deviceName || ''));
   return pockets.length === 1 ? pockets[0] : undefined;
 }
 
 // openWindow opens the hidden Bluetooth page and picks the recorder at address when the page
-// asks for a device. Returns {exec(code), found(), close()}; exec runs code in the page as a
-// user gesture (Web Bluetooth asks for a device only on one).
-async function openWindow(address) {
+// asks for a device. Returns {exec(code), found(), picked(), close()}; exec runs code in the
+// page as a user gesture (Web Bluetooth asks for a device only on one). pickOnly: note the
+// device (picked() is its ID, the address on Windows and Linux) and cancel the request.
+async function openWindow(address, { pickOnly = false } = {}) {
   const win = new BrowserWindow({
     show: false,
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
@@ -55,6 +74,7 @@ async function openWindow(address) {
   let answered = false; // the page's request for a device was answered
   let gaveUp = false; // the scan took too long
   let cancel = null;
+  let picked = null;
   // Called again and again while devices are found; the request waits until the callback of
   // one of them is called, with a device or with '' (none).
   win.webContents.on('select-bluetooth-device', (event, devices, callback) => {
@@ -64,7 +84,8 @@ async function openWindow(address) {
     if (device) found = true;
     if (device || gaveUp) {
       answered = true;
-      callback(device ? device.deviceId : '');
+      if (device) picked = device.deviceId;
+      callback(device && !pickOnly ? device.deviceId : '');
     } else {
       cancel = () => callback('');
     }
@@ -82,9 +103,16 @@ async function openWindow(address) {
     win.destroy();
     throw err;
   }
+  // On Linux, Web Bluetooth's own connect pages the recorder over classic Bluetooth and fails;
+  // connect it over LE first, which it then uses (see bluez-le.js). The page is loaded by now,
+  // so the unlock follows quickly: the recorder drops a link that isn't unlocked in a few seconds.
+  if (process.platform === 'linux' && address && !pickOnly) {
+    await connectLe(address, (text) => console.log(`pocket bluetooth: ${text}`));
+  }
   return {
     exec: (code) => win.webContents.executeJavaScript(code, true),
     found: () => found,
+    picked: () => picked,
     close: () => {
       clearTimeout(scanTimer);
       // Closing the page also drops the Bluetooth connection.
@@ -102,17 +130,37 @@ function withTimeout(promise, ms, error) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-// runInWindow does action ('check' or 'usb-on', see bluetooth.js) on the recorder.
-async function runInWindow(address, sessionKey, action) {
+// runInWindow does action ('check', 'activated' or 'usb-on', see bluetooth.js) on the recorder.
+const runInWindow = (address, sessionKey, action) =>
+  inWindow(address, `window.pocketBluetooth.run(${JSON.stringify(action)}, ${JSON.stringify(sessionKey)})`);
+
+// inWindow runs code (a call of window.pocketBluetooth) in a page for the recorder at address.
+async function inWindow(address, code) {
   let page = null;
   try {
     page = await openWindow(address);
-    const call = page.exec(`window.pocketBluetooth.run(${JSON.stringify(action)}, ${JSON.stringify(sessionKey)})`);
-    const result = await withTimeout(call, callTimeout, 'timeout');
+    const result = await withTimeout(page.exec(code), callTimeout, 'timeout');
     if (!result.ok && result.error === 'timeout' && !page.found()) return { ok: false, error: 'not-found' };
     return result;
   } catch (err) {
     return { ok: false, error: 'failed', message: String(err?.message || err) };
+  } finally {
+    page?.close();
+  }
+}
+
+// discoverAddress finds the address of the one Pocket nearby: {address} or {error}
+// (not-found, or address-needed on macOS, which hides addresses).
+async function discoverAddress() {
+  let page = null;
+  try {
+    page = await openWindow('', { pickOnly: true });
+    await withTimeout(page.exec('window.pocketBluetooth.discover()'), scanTimeout + stepSlack, 'timeout');
+    if (!page.picked()) return { error: 'not-found' };
+    const address = normalizeAddress(page.picked());
+    return address ? { address } : { error: 'address-needed' };
+  } catch (err) {
+    return { error: 'failed', message: String(err?.message || err) };
   } finally {
     page?.close();
   }
@@ -191,6 +239,67 @@ function createPocketBluetooth({ readConfig, writeConfig, onChange }) {
 
   const configured = () => !!stored().address && !!sessionKey();
 
+  // settings is what the settings page shows: never the key itself. The recorder can be
+  // activated here; without an address given, it's found by name, except on macOS.
+  const settings = () => ({
+    address: stored().address || '',
+    sessionKeySet: !!sessionKey(),
+    busy,
+    activateSupported: true,
+    activateFindsAddress: process.platform !== 'darwin',
+  });
+
+  // activate gives a factory-reset recorder (at address, or the one nearby) a new session key,
+  // the way pocket-libre's `pair` does (and tools/pocket-wifi-probe/pair_test.py tried): the
+  // address and key are saved before the key is sent, so a key the recorder took isn't lost;
+  // a refused key (the recorder has another one: it isn't reset) restores the settings before.
+  // Then it reconnects with the key, sets the clock and checks. Resolves to {ok, ...settings,
+  // and check's values (verified: whether the check after it worked)} or {ok: false, error}.
+  async function activate(input) {
+    let address = null;
+    if (input) {
+      address = normalizeAddress(input);
+      if (!address) return { ok: false, error: 'invalid-address' };
+    } else {
+      const found = await discoverAddress();
+      if (found.error) return { ok: false, error: found.error, message: found.message };
+      address = found.address;
+    }
+    const previous = readConfig().pocketBluetooth;
+    const restore = () => {
+      const config = readConfig();
+      if (previous) config.pocketBluetooth = previous;
+      else delete config.pocketBluetooth;
+      writeConfig(config);
+    };
+    const key = generateSessionKey();
+    const config = readConfig();
+    config.pocketBluetooth = { address, sessionKey: encryptKey(key) };
+    writeConfig(config);
+
+    const sent = await inWindow(address, `window.pocketBluetooth.activate(${JSON.stringify(key)})`);
+    if (!sent.ok) {
+      restore();
+      return sent;
+    }
+    if (sent.answer === 'ERR') {
+      restore();
+      return { ok: false, error: 'activated-elsewhere' };
+    }
+    // No answer: the recorder may have taken the key all the same; it stays saved.
+    if (sent.answer !== 'OK') return { ok: false, error: 'activate-no-answer' };
+
+    let checked = { ok: false };
+    for (let attempt = 1; attempt <= reconnectAttempts; attempt++) {
+      await sleep(reconnectDelay);
+      checked = await runInWindow(address, key, 'activated');
+      if (checked.ok || checked.error === 'auth') break;
+    }
+    if (!checked.ok) console.error('pocket bluetooth activate: check failed:', checked.error, checked.message || '');
+    const { ok: _ok, ...values } = checked.ok ? checked : {};
+    return { ok: true, ...settings(), busy: false, ...values, verified: checked.ok };
+  }
+
   let busy = false;
   // call does one action at a time.
   async function call(action) {
@@ -211,8 +320,7 @@ function createPocketBluetooth({ readConfig, writeConfig, onChange }) {
   }
 
   return {
-    // settings is what the settings page shows: never the key itself.
-    settings: () => ({ address: stored().address || '', sessionKeySet: !!sessionKey(), busy }),
+    settings,
     // save changes the settings: address '' and sessionKey '' remove them, a missing
     // sessionKey keeps it. Returns {ok, error, settings}.
     save: ({ address, sessionKey: key } = {}) => {
@@ -240,6 +348,20 @@ function createPocketBluetooth({ readConfig, writeConfig, onChange }) {
     check: () => call('check'),
     // usbOn makes the recorder a USB drive again.
     usbOn: () => call('usb-on'),
+    // activate activates a factory-reset recorder (see activate above); address may be ''.
+    activate: async (address) => {
+      if (busy) return { ok: false, error: 'busy' };
+      busy = true;
+      onChange();
+      try {
+        const result = await activate(address);
+        if (!result.ok) console.error('pocket bluetooth activate:', result.error, result.message || '');
+        return result;
+      } finally {
+        busy = false;
+        onChange();
+      }
+    },
     // session opens a Bluetooth session for the WiFi transfer (see openSession), holding the
     // connection (busy) until its close(). Rejects with a SessionError (not-configured, busy,
     // not-found, auth, unsupported, …) when it can't.
@@ -275,4 +397,4 @@ function createPocketBluetooth({ readConfig, writeConfig, onChange }) {
   };
 }
 
-module.exports = { createPocketBluetooth, normalizeAddress, SessionError };
+module.exports = { createPocketBluetooth, normalizeAddress, generateSessionKey, SessionError };

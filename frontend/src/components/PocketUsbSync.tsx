@@ -99,7 +99,7 @@ export function PocketUsbSyncDialog({ onClose }: { onClose: () => void }) {
   } else if (!ready) {
     body = (
       <p>
-        <Trans i18nKey="pocketUsbSync.notConfigured" components={{ 1: <Link to="/settings?tab=account#pocket" onClick={onClose} /> }} />
+        <Trans i18nKey="pocketUsbSync.notConfigured" components={{ 1: <Link to="/settings?tab=devices#pocket" onClick={onClose} /> }} />
       </p>
     );
   } else if (method === 'wifi') {
