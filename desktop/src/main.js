@@ -468,6 +468,8 @@ ipcMain.handle('knowpod:pocket-bluetooth', (event, request) => {
     }
     case 'check':
       return pocketBluetooth.check();
+    case 'activate':
+      return pocketBluetooth.activate(typeof request.address === 'string' ? request.address : '');
     case 'usb-on':
       return turnOnUsbDrive();
     // state, sync and eject are for the Pocket Sync dialog (frontend/src/components/PocketUsbSync.tsx);
@@ -589,9 +591,9 @@ const startAtLoginAvailable = () => app.isPackaged;
 
 // usbErrors explain why the recorder's USB drive couldn't be switched on.
 const usbErrors = {
-  'not-configured': 'Set up the Pocket under Settings → Account first.',
+  'not-configured': 'Set up the Pocket under Settings → Devices first.',
   'not-found': 'The Pocket wasn’t found. Press its button to wake it and keep it close.',
-  auth: 'The Pocket refused the session key. Check it under Settings → Account.',
+  auth: 'The Pocket refused the session key. Check it under Settings → Devices.',
   unsupported: 'Bluetooth isn’t available on this computer.',
   'usb-refused': 'The Pocket didn’t switch its USB drive on.',
   busy: 'The Pocket is busy, try again in a moment.',

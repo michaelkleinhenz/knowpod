@@ -5,7 +5,7 @@ import WebKit
 // PocketController answers the web app's Pocket calls (window.knowpodIOS.pocketBluetooth, see
 // frontend/src/lib/desktop.ts), the same requests the desktop and Android apps answer
 // (mobile/android/…/pocket/PocketController.java): {action: 'settings' | 'save' | 'check' |
-// 'state' | 'wifi-sync' | 'wifi-cancel', address?, sessionKey?}. The iPhone copies over
+// 'activate' | 'state' | 'wifi-sync' | 'wifi-cancel', address?, sessionKey?}. The iPhone copies over
 // Bluetooth and the Pocket's WiFi (WifiSync); there is no USB drive to switch on.
 final class PocketController: WifiSyncEnv {
     static let shared = PocketController()
@@ -48,6 +48,8 @@ final class PocketController: WifiSyncEnv {
             }
         case "check":
             check(reply)
+        case "activate":
+            activate(request["address"] as? String ?? "", reply)
         case "state":
             reply(state())
         case "wifi-sync":
@@ -81,6 +83,10 @@ final class PocketController: WifiSyncEnv {
         result["sessionKeySet"] = !settings.sessionKey.isEmpty
         result["busy"] = busy
         result["usbSupported"] = false
+        // The recorder can be activated here; iOS hides Bluetooth addresses, so its address has
+        // to be given.
+        result["activateSupported"] = true
+        result["activateFindsAddress"] = false
         return result
     }
 
@@ -131,6 +137,95 @@ final class PocketController: WifiSyncEnv {
             session?.close()
         }
         thread.name = "pocket-check"
+        thread.start()
+    }
+
+    // After activating, the recorder drops the connection; reconnect after this long, this often.
+    private static let reconnectDelay: Int64 = 2_000
+    private static let reconnectAttempts = 3
+
+    // generateSessionKey makes a key for activating a recorder: 16 letters and digits, the form
+    // the Pocket app uses.
+    static func generateSessionKey() -> String {
+        let alphabet = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+        var generator = SystemRandomNumberGenerator()
+        return String((0..<16).map { _ in alphabet.randomElement(using: &generator)! })
+    }
+
+    // activate gives a factory-reset recorder at address a new session key, as the desktop app
+    // does (desktop/src/pocket-bluetooth.js: activate): the address and key are saved before the
+    // key is sent; a refused key restores the settings before. Then it reconnects with the key,
+    // sets the clock and checks.
+    private func activate(_ input: String, _ reply: @escaping ([String: Any]) -> Void) {
+        guard let address = PocketSettings.normalizeAddress(input) else {
+            reply(Self.failure("invalid-address"))
+            return
+        }
+        lock.lock()
+        if checking || sync.isRunning {
+            lock.unlock()
+            reply(Self.failure("busy"))
+            return
+        }
+        checking = true
+        lock.unlock()
+        let thread = Thread { [self] in
+            defer {
+                lock.lock()
+                checking = false
+                lock.unlock()
+            }
+            let previousAddress = settings.address
+            let previousKey = settings.sessionKey
+            let restore = { _ = self.settings.save(address: previousAddress, sessionKey: previousKey) }
+            do {
+                let key = Self.generateSessionKey()
+                if let error = settings.save(address: address, sessionKey: key) {
+                    reply(Self.failure(error))
+                    return
+                }
+                let answer: String?
+                do {
+                    let opened = try IOSBle.connect(address: address, known: nil)
+                    defer { opened.session.close() }
+                    answer = try opened.session.activate(key)
+                } catch {
+                    restore()
+                    throw error
+                }
+                if answer == "ERR" {
+                    restore()
+                    reply(Self.failure("activated-elsewhere"))
+                    return
+                }
+                // No answer: the recorder may have taken the key all the same; it stays saved.
+                if answer != "OK" {
+                    reply(Self.failure("activate-no-answer"))
+                    return
+                }
+                var info: [String: Any]?
+                for _ in 1...Self.reconnectAttempts {
+                    try Interrupt.sleep(Self.reconnectDelay)
+                    do {
+                        let session = try openSession()
+                        defer { session.close() }
+                        info = try session.activated()
+                        break
+                    } catch let error as PocketError {
+                        NSLog("pocket bluetooth: check after activating: \(error.code) \(error.message)")
+                        if error.code == "auth" { break }
+                    }
+                }
+                var result = settingsResult()
+                for (name, value) in info ?? [:] { result[name] = value }
+                result["busy"] = false
+                result["verified"] = info != nil
+                reply(result)
+            } catch {
+                reply(Self.failure(PocketError.codeOf(error, fallback: "failed"), PocketError.messageOf(error)))
+            }
+        }
+        thread.name = "pocket-activate"
         thread.start()
     }
 

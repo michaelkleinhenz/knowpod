@@ -11,7 +11,7 @@
 // PROTOCOL.md); the commands used here:
 //   BAT         → MCU&BAT&58              battery, percent
 //   FW          → MCU&FW&1.8              firmware version
-//   SPACE       → MCU&SPA&060846&061032   storage used and total, KB
+//   SPACE       → MCU&SPA&060846&061032   storage free and total, MB
 //   GET&USB     → MCU&USB&1               whether the recorder is a USB drive when plugged in
 //   USB&1       → MCU&USB&1               be one (the recorder switches it off when unplugged)
 //   LIST_DIRS   → MCU&DIRS&<date>… MCU&DIRS_SUM&<n>                 days with recordings
@@ -26,6 +26,11 @@ const COMMAND = '001120a3-2233-4455-6677-889912345678';
 // to, and the WiFi transfer switches a running Bluetooth transfer over, so a session
 // subscribes and throws the data away.
 const AUDIO = '001120a1-2233-4455-6677-889912345678';
+// Where the Pocket app writes its commands, as write requests with response (after
+// subscribing to COMMAND and AUDIO). A factory-reset recorder answers its first key only when
+// written to like this (tools/pocket-wifi-probe/RESEARCH.md); once activated it takes the
+// writes to COMMAND too.
+const WRITE = '001120a2-2233-4455-6677-889912345678';
 
 // How long to wait for an answer.
 const answerTimeout = 5_000;
@@ -58,8 +63,8 @@ function valueOf(text, answer) {
 
 // connect opens a connection to the recorder the main process picks. Every answer is kept in
 // order, so answers that come on their own (WIFIS changes, MCU&OFF) can be waited for after a
-// mark(): see waitFor.
-async function connect() {
+// mark(): see waitFor. pocketAppWrites: write like the Pocket app (see WRITE).
+async function connect({ pocketAppWrites = false } = {}) {
   if (!navigator.bluetooth) throw new BluetoothError('unsupported', 'Web Bluetooth is not available');
   let device;
   try {
@@ -87,14 +92,23 @@ async function connect() {
   });
   await characteristic.startNotifications();
 
+  let target = characteristic;
+  let audio = null;
+  if (pocketAppWrites) {
+    audio = await service.getCharacteristic(AUDIO);
+    audio.addEventListener('characteristicvaluechanged', () => undefined);
+    await audio.startNotifications();
+    target = await service.getCharacteristic(WRITE);
+  }
+
   // Writes go one at a time: a heartbeat may be sent while another command waits.
   let writing = Promise.resolve();
   const write = (text) => {
     const bytes = new TextEncoder().encode(text);
     const next = writing.then(() =>
-      characteristic.properties.writeWithoutResponse
-        ? characteristic.writeValueWithoutResponse(bytes)
-        : characteristic.writeValueWithResponse(bytes),
+      target.properties.writeWithoutResponse && !pocketAppWrites
+        ? target.writeValueWithoutResponse(bytes)
+        : target.writeValueWithResponse(bytes),
     );
     writing = next.catch(() => undefined);
     return next;
@@ -148,7 +162,6 @@ async function connect() {
       .map((text) => valueOf(text, answer))
       .filter((value) => value !== null);
 
-  let audio = null;
   async function subscribeAudio() {
     if (audio) return;
     audio = await service.getCharacteristic(AUDIO);
@@ -200,6 +213,36 @@ async function unlock(sessionKey) {
   return pocket;
 }
 
+// utcStamp is the time as the recorder's clock takes it (APP&T&<yyyymmddHHMMSS>, UTC, as the
+// Pocket app sets it).
+const utcStamp = (date = new Date()) => date.toISOString().replace(/\D/g, '').slice(0, 14);
+
+// activate gives a factory-reset recorder its session key. It takes the first key it gets
+// (MCU&SK&OK, then MCU&WIFIO on its own) and from then on only that one: any other gets
+// MCU&SK&ERR and a dropped connection. A few seconds after taking it (1-7 s seen), it drops
+// the connection; activate waits for that. Resolves to {ok: true, answer: 'OK' | 'ERR' | null
+// (none)} once the key went out, or {ok: false, error, message} when it couldn't be sent.
+async function activate(sessionKey) {
+  let pocket = null;
+  try {
+    pocket = await connect({ pocketAppWrites: true });
+    const since = pocket.mark();
+    // The recorder may hang up before it acknowledges the write (after refusing a key): what
+    // it answered still counts.
+    await pocket.send(`SK&${sessionKey}`).catch(() => undefined);
+    const answer = (await pocket.waitFor('SK', since, answerTimeout).catch(() => null)) ?? pocket.values('SK', since)[0] ?? null;
+    if (answer === 'OK') {
+      const end = Date.now() + 8_000;
+      while (pocket.connected() && Date.now() < end) await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return { ok: true, answer: answer === null ? null : answer.trim() };
+  } catch (err) {
+    return failure(err);
+  } finally {
+    pocket?.close();
+  }
+}
+
 const failure = (err) => ({
   ok: false,
   error: err instanceof BluetoothError ? err.code : 'failed',
@@ -207,24 +250,31 @@ const failure = (err) => ({
 });
 
 // run connects to the recorder, unlocks it with the session key and does action:
-//   'check'   reads the battery, firmware, storage and USB state
-//   'usb-on'  makes the recorder a USB drive again
+//   'check'     reads the battery, firmware, storage and USB state
+//   'activated' sets the clock (as the Pocket app does after activating), then checks; the
+//               WiFi the recorder raised on activation is switched off
+//   'usb-on'    makes the recorder a USB drive again
 // It resolves to {ok: true, ...} or {ok: false, error: code, message}, never rejects.
 async function run(action, sessionKey) {
   let pocket = null;
   try {
     pocket = await unlock(sessionKey);
-    if (action === 'check') {
+    if (action === 'activated') await optional(pocket.command(`T&${utcStamp()}`, 'T'));
+    if (action === 'check' || action === 'activated') {
       const battery = parseInt(await pocket.command('BAT', 'BAT'), 10);
       const firmware = await optional(pocket.command('FW', 'FW'));
       const space = await optional(pocket.command('SPACE', 'SPA'));
       const usb = await optional(pocket.command('GET&USB', 'USB'));
-      const [used, total] = (space || '').split('&').map((n) => parseInt(n, 10));
+      const [free, total] = (space || '').split('&').map((n) => parseInt(n, 10));
+      if (action === 'activated') await optional(pocket.command('WIFIC', 'WIFIC', 3_000));
       return {
         ok: true,
         battery: Number.isFinite(battery) ? battery : null,
         firmware: firmware ? firmware.trim() : null,
-        storage: Number.isFinite(used) && Number.isFinite(total) ? { usedKB: used, totalKB: total } : null,
+        storage:
+          Number.isFinite(free) && Number.isFinite(total)
+            ? { usedKB: Math.max(0, total - free) * 1024, totalKB: total * 1024 }
+            : null,
         usb: usbState(usb),
       };
     }
@@ -366,4 +416,15 @@ function close() {
   return { ok: true };
 }
 
-window.pocketBluetooth = { run, open, call, close };
+// discover asks for a device so the main process can see the Pockets nearby; it picks one
+// and cancels the request (see pocket-bluetooth.js: discoverAddress).
+async function discover() {
+  try {
+    await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: [SERVICE] });
+  } catch {
+    // cancelled, as expected
+  }
+  return { ok: true };
+}
+
+window.pocketBluetooth = { run, open, call, close, activate, discover };

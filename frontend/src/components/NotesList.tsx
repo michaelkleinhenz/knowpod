@@ -449,10 +449,10 @@ export function NotesList({ activeId }: { activeId?: string }) {
           <div className="empty">
             <p className="muted">{t('conversations.empty')}</p>
             <p className="muted">
-              <Trans i18nKey="conversations.emptyHint" components={{ 1: <Link to="/settings?tab=devices" />, 3: <Link to="/settings?tab=account" /> }} />
+              <Trans i18nKey="conversations.emptyHint" components={{ 1: <Link to="/settings?tab=devices" />, 3: <Link to="/settings?tab=devices#pocket" /> }} />
             </p>
             <div className="empty-actions">
-              <button type="button" onClick={() => void createText()} disabled={creating}>
+              <button type="button" className="primary-button" onClick={() => void createText()} disabled={creating}>
                 {t('conversations.newNote')}
               </button>
               <button type="button" className="secondary-button" onClick={() => fileInput.current?.click()}>

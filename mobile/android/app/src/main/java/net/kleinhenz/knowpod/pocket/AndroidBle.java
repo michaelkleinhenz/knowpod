@@ -23,6 +23,9 @@ import androidx.annotation.NonNull;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 
@@ -37,6 +40,8 @@ public final class AndroidBle implements PocketSession.Link {
     static final UUID COMMAND = UUID.fromString("001120a3-2233-4455-6677-889912345678");
     // The recording data of a Bluetooth transfer (see PocketSession.Link.subscribeAudio).
     static final UUID AUDIO = UUID.fromString("001120a1-2233-4455-6677-889912345678");
+    // Where the Pocket app writes (see PocketSession.Link.usePocketAppWrites).
+    static final UUID WRITE = UUID.fromString("001120a2-2233-4455-6677-889912345678");
     private static final UUID CCCD = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
 
     // How long to look for the recorder before giving up (it may be asleep).
@@ -54,6 +59,10 @@ public final class AndroidBle implements PocketSession.Link {
     private BluetoothGatt gatt;
     private BluetoothGattCharacteristic command;
     private BluetoothGattCharacteristic audio;
+    private BluetoothGattCharacteristic pocketAppWrite;
+    // Where writes go: command, or pocketAppWrite with response (usePocketAppWrites).
+    private BluetoothGattCharacteristic target;
+    private boolean withResponse;
     private volatile Consumer<byte[]> audioListener;
 
     private AndroidBle(Context context) {
@@ -108,7 +117,9 @@ public final class AndroidBle implements PocketSession.Link {
         BluetoothGattService service = gatt.getService(SERVICE);
         command = service == null ? null : service.getCharacteristic(COMMAND);
         audio = service == null ? null : service.getCharacteristic(AUDIO);
+        pocketAppWrite = service == null ? null : service.getCharacteristic(WRITE);
         if (command == null) throw new PocketException("failed", "This device isn't a Pocket");
+        target = command;
         subscribe(command);
         // A short connection interval, as the Pocket app has: recordings come over Bluetooth
         // several times faster.
@@ -220,7 +231,8 @@ public final class AndroidBle implements PocketSession.Link {
     @SuppressWarnings("deprecation") // the calls before Android 13
     public synchronized void write(byte[] bytes) throws IOException {
         if (!connected || gatt == null) throw new IOException("The recorder disconnected");
-        int type = (command.getProperties() & BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0
+        BluetoothGattCharacteristic command = target;
+        int type = !withResponse && (command.getProperties() & BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0
                 ? BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
                 : BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT;
         try {
@@ -263,6 +275,82 @@ public final class AndroidBle implements PocketSession.Link {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("Interrupted");
+        }
+    }
+
+    @Override
+    public void usePocketAppWrites() throws IOException {
+        if (pocketAppWrite == null) throw new IOException("The recorder has no write characteristic");
+        if (audioListener == null) subscribeAudio(bytes -> { });
+        synchronized (this) {
+            target = pocketAppWrite;
+            withResponse = true;
+        }
+    }
+
+    // findAddress finds the address of the one Pocket nearby, by its name ("PKT01_…"); it
+    // answers only while it advertises (awake, and not connected to another phone).
+    public static String findAddress(Context context) throws PocketException, InterruptedException {
+        BluetoothManager manager = (BluetoothManager) context.getSystemService(Context.BLUETOOTH_SERVICE);
+        BluetoothAdapter adapter = manager == null ? null : manager.getAdapter();
+        if (adapter == null) throw new PocketException("unsupported", "This phone has no Bluetooth");
+        if (!adapter.isEnabled()) throw new PocketException("unsupported", "Bluetooth is off");
+        BluetoothLeScanner scanner = adapter.getBluetoothLeScanner();
+        if (scanner == null) throw new PocketException("unsupported", "Bluetooth is off");
+        final Set<String> found = new LinkedHashSet<>();
+        final int[] failed = {0};
+        ScanCallback scanCallback = new ScanCallback() {
+            @Override
+            public void onScanResult(int callbackType, ScanResult result) {
+                String name = result.getScanRecord() == null ? null : result.getScanRecord().getDeviceName();
+                if (name == null) {
+                    try {
+                        name = result.getDevice().getName();
+                    } catch (SecurityException e) {
+                        name = null;
+                    }
+                }
+                if (name == null || !name.toUpperCase(Locale.ROOT).startsWith("PKT01")) return;
+                synchronized (found) {
+                    found.add(result.getDevice().getAddress());
+                    found.notifyAll();
+                }
+            }
+
+            @Override
+            public void onScanFailed(int errorCode) {
+                synchronized (found) {
+                    failed[0] = errorCode;
+                    found.notifyAll();
+                }
+            }
+        };
+        ScanSettings settings = new ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build();
+        scanner.startScan(null, settings, scanCallback);
+        try {
+            long end = System.currentTimeMillis() + SCAN_TIMEOUT;
+            synchronized (found) {
+                while (found.isEmpty() && failed[0] == 0 && System.currentTimeMillis() < end) {
+                    found.wait(Math.max(1, end - System.currentTimeMillis()));
+                }
+                // Once one is seen, give others nearby a moment to show up.
+                long settle = System.currentTimeMillis() + 2_000;
+                while (found.size() == 1 && failed[0] == 0 && System.currentTimeMillis() < settle) {
+                    found.wait(Math.max(1, settle - System.currentTimeMillis()));
+                }
+            }
+        } finally {
+            try {
+                scanner.stopScan(scanCallback);
+            } catch (IllegalStateException e) {
+                // Bluetooth went off meanwhile
+            }
+        }
+        synchronized (found) {
+            if (failed[0] != 0) throw new PocketException("failed", "Scanning failed (" + failed[0] + ")");
+            if (found.isEmpty()) throw new PocketException("not-found", "No Pocket was found");
+            if (found.size() > 1) throw new PocketException("several", "Several Pockets are nearby");
+            return found.iterator().next();
         }
     }
 

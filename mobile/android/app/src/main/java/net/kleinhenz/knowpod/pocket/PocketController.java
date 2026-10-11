@@ -6,7 +6,9 @@ import android.os.Build;
 import android.util.Log;
 import android.webkit.CookieManager;
 import java.io.File;
+import java.security.SecureRandom;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -22,7 +24,7 @@ import org.json.JSONObject;
 // PocketController answers the web app's Pocket calls (window.knowpodAndroid.pocketBluetooth,
 // see frontend/src/lib/desktop.ts), the same requests the desktop app answers
 // (desktop/src/main.js: knowpod:pocket-bluetooth): {action: 'settings' | 'save' | 'check' |
-// 'state' | 'wifi-sync' | 'wifi-cancel', address?, sessionKey?}. The phone copies over
+// 'activate' | 'state' | 'wifi-sync' | 'wifi-cancel', address?, sessionKey?}. The phone copies over
 // Bluetooth and the Pocket's WiFi (WifiSync); there is no USB drive to switch on.
 public final class PocketController {
     private static final String TAG = "knowpod";
@@ -69,6 +71,9 @@ public final class PocketController {
             }
             case "check":
                 check(activity, reply);
+                break;
+            case "activate":
+                activate(activity, request.optString("address", ""), reply);
                 break;
             case "state":
                 reply.send(state());
@@ -119,6 +124,9 @@ public final class PocketController {
         put(r, "sessionKeySet", !settings.sessionKey().isEmpty());
         put(r, "busy", busy());
         put(r, "usbSupported", false);
+        // The recorder can be activated here, and found by name without an address.
+        put(r, "activateSupported", true);
+        put(r, "activateFindsAddress", true);
         return r;
     }
 
@@ -191,6 +199,105 @@ public final class PocketController {
                 reply.send(failure("failed", String.valueOf(e.getMessage())));
             } finally {
                 if (session != null) session.close();
+                checking = false;
+            }
+        }));
+    }
+
+    // After activating, the recorder drops the connection; reconnect after this long, this often.
+    private static final long RECONNECT_DELAY = 2_000;
+    private static final int RECONNECT_ATTEMPTS = 3;
+    private static final String KEY_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
+    // generateSessionKey makes a key for activating a recorder: 16 letters and digits, the
+    // form the Pocket app uses.
+    static String generateSessionKey() {
+        SecureRandom random = new SecureRandom();
+        StringBuilder key = new StringBuilder();
+        for (int i = 0; i < 16; i++) key.append(KEY_ALPHABET.charAt(random.nextInt(KEY_ALPHABET.length())));
+        return key.toString();
+    }
+
+    // activate gives a factory-reset recorder (at address, or the one nearby) a new session
+    // key, as the desktop app does (desktop/src/pocket-bluetooth.js: activate): the address and
+    // key are saved before the key is sent; a refused key restores the settings before. Then
+    // it reconnects with the key, sets the clock and checks.
+    private void activate(MainActivity activity, String input, Reply reply) {
+        String given = input.trim();
+        if (!given.isEmpty() && PocketSettings.normalizeAddress(given) == null) {
+            reply.send(failure("invalid-address", null));
+            return;
+        }
+        if (busy()) {
+            reply.send(failure("busy", null));
+            return;
+        }
+        withPermissions(activity, new ArrayList<>(), reply, () -> worker.execute(() -> {
+            if (busy()) {
+                reply.send(failure("busy", null));
+                return;
+            }
+            checking = true;
+            String previousAddress = settings.address();
+            String previousKey = settings.sessionKey();
+            try {
+                String address = given.isEmpty() ? AndroidBle.findAddress(context) : PocketSettings.normalizeAddress(given);
+                String key = generateSessionKey();
+                String error = settings.save(address, key);
+                if (error != null) {
+                    reply.send(failure(error, null));
+                    return;
+                }
+                String answer;
+                PocketSession session = null;
+                try {
+                    session = AndroidBle.connect(context, address);
+                    answer = session.activate(key);
+                } catch (PocketException | RuntimeException e) {
+                    settings.save(previousAddress, previousKey);
+                    throw e;
+                } finally {
+                    if (session != null) session.close();
+                }
+                if ("ERR".equals(answer)) {
+                    settings.save(previousAddress, previousKey);
+                    reply.send(failure("activated-elsewhere", null));
+                    return;
+                }
+                // No answer: the recorder may have taken the key all the same; it stays saved.
+                if (!"OK".equals(answer)) {
+                    reply.send(failure("activate-no-answer", null));
+                    return;
+                }
+                JSONObject r = null;
+                for (int attempt = 1; attempt <= RECONNECT_ATTEMPTS && r == null; attempt++) {
+                    Thread.sleep(RECONNECT_DELAY);
+                    PocketSession checked = null;
+                    try {
+                        checked = openSession();
+                        r = new JSONObject(checked.activated());
+                    } catch (PocketException e) {
+                        Log.w(TAG, "pocket bluetooth: check after activating: " + e.code + " " + e.getMessage());
+                        if (e.code.equals("auth")) break;
+                    } finally {
+                        if (checked != null) checked.close();
+                    }
+                }
+                JSONObject result = settingsResult();
+                if (r != null) {
+                    for (Iterator<String> keys = r.keys(); keys.hasNext(); ) {
+                        String name = keys.next();
+                        put(result, name, r.opt(name));
+                    }
+                }
+                put(result, "busy", false);
+                put(result, "verified", r != null);
+                reply.send(result);
+            } catch (PocketException e) {
+                reply.send(failure(e.code, e.getMessage()));
+            } catch (Exception e) {
+                reply.send(failure("failed", String.valueOf(e.getMessage())));
+            } finally {
                 checking = false;
             }
         }));

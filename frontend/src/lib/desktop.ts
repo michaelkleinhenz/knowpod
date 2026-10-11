@@ -41,7 +41,10 @@ interface DesktopBridge {
 // stay in the app; the session key is never handed back.
 export type PocketBluetoothRequest =
   | { action: 'settings' | 'check' | 'usb-on' | 'state' | 'sync' | 'eject' | 'wifi-sync' | 'wifi-cancel' }
-  | { action: 'save'; address?: string; sessionKey?: string };
+  | { action: 'save'; address?: string; sessionKey?: string }
+  // activate activates a factory-reset Pocket with a new session key (address: '' finds the
+  // one nearby where activateFindsAddress); missing in older apps (activateSupported).
+  | { action: 'activate'; address?: string };
 
 // PocketWifiPhase is how the copy over the Pocket's WiFi goes: '' (not run yet), connecting
 // (Bluetooth), listing (the Pocket's recordings), checking (which are new), wifi-starting
@@ -90,12 +93,18 @@ export interface PocketWifiState {
 export interface PocketBluetoothResult {
   ok: boolean;
   // Why it failed: not-configured, not-found, auth, unsupported, usb-refused, busy, timeout,
-  // invalid-address, invalid-key, disconnected, no-answer or failed.
+  // invalid-address, invalid-key, disconnected, no-answer or failed; activate also
+  // activated-elsewhere, activate-no-answer, address-needed or several.
   error?: string;
   message?: string;
-  // settings and save
+  // settings, save and activate
   address?: string;
   sessionKeySet?: boolean;
+  // settings: whether a Pocket can be activated, and found without its address
+  activateSupported?: boolean;
+  activateFindsAddress?: boolean;
+  // activate: whether the check after activating worked (then check's values are set too)
+  verified?: boolean;
   // check
   battery?: number | null;
   firmware?: string | null;

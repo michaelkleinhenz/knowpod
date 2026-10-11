@@ -54,6 +54,52 @@ public class PocketSessionTest {
         }
     }
 
+    // activationLink answers APP&SK&<key> like a recorder: answer, then (after "OK") drops the
+    // connection, or (failing) hangs up before acknowledging the write.
+    private static PocketSession.Link activationLink(MessageLog log, String answer, boolean failWrite, boolean[] pocketAppWrites) {
+        return new PocketSession.Link() {
+            @Override
+            public void write(byte[] bytes) throws IOException {
+                if (answer != null) log.add("MCU&SK&" + answer);
+                if ("OK".equals(answer)) log.add("MCU&WIFIO");
+                if (failWrite || "OK".equals(answer)) log.disconnect();
+                if (failWrite) throw new IOException("GATT error");
+            }
+
+            @Override
+            public void usePocketAppWrites() {
+                pocketAppWrites[0] = true;
+            }
+
+            @Override
+            public void subscribeAudio(java.util.function.Consumer<byte[]> listener) { }
+
+            @Override
+            public void close() { }
+        };
+    }
+
+    @Test
+    public void activatesWithThePocketAppsWrites() throws Exception {
+        MessageLog log = new MessageLog();
+        boolean[] appWrites = {false};
+        assertEquals("OK", new PocketSession(activationLink(log, "OK", false, appWrites), log).activate("ABCDEFGH12345678"));
+        assertTrue(appWrites[0]);
+    }
+
+    @Test
+    public void aRefusalCountsThoughTheWriteFails() throws Exception {
+        MessageLog log = new MessageLog();
+        assertEquals("ERR", new PocketSession(activationLink(log, "ERR", true, new boolean[1]), log).activate("ABCDEFGH12345678"));
+    }
+
+    @Test
+    public void generatesSessionKeysLikeThePocketApp() {
+        String key = PocketController.generateSessionKey();
+        assertTrue(key, key.matches("[A-Z0-9]{16}"));
+        assertTrue(PocketSettings.validSessionKey(key));
+    }
+
     @Test
     public void listsRecordingsOnceThoughNotificationsRepeat() throws Exception {
         FakeRecorder recorder = new FakeRecorder().withDefaultFiles();

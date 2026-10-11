@@ -74,7 +74,7 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
 - Each gadget authenticates with its own revocable token, created on the web UI's
   **Settings → Devices** tab.
 - Each user can connect their own [Pocket](https://heypocket.com) recorder on the
-  **Settings → Account** tab: recordings arrive through the user's personal webhook and their audio is
+  **Settings → Devices** tab: recordings arrive through the user's personal webhook and their audio is
   downloaded with the user's Pocket API key.
 - WAV and MP3 files, photos and PDFs can be uploaded from the browser on **Workspace**.
   Markdown files (`.md`) become text notes, titled by their first heading (or front matter

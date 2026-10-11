@@ -10,7 +10,16 @@ protocol PocketLink: AnyObject {
     // it's subscribed to, and the WiFi transfer switches a running Bluetooth transfer over.
     func subscribeAudio(_ listener: @escaping (Data) -> Void) throws
 
+    // usePocketAppWrites makes the writes go the Pocket app's way: to 001120a2 as write
+    // requests with response, with the audio subscribed to. A factory-reset recorder answers
+    // its first key only then (tools/pocket-wifi-probe/RESEARCH.md).
+    func usePocketAppWrites() throws
+
     func close()
+}
+
+extension PocketLink {
+    func usePocketAppWrites() throws {}
 }
 
 // PocketSession talks to a Pocket recorder (heypocketai.com) over a Bluetooth connection: the
@@ -20,7 +29,7 @@ protocol PocketLink: AnyObject {
 // answered "MCU&SK&OK"). The commands used here:
 //   BAT         → MCU&BAT&58              battery, percent
 //   FW          → MCU&FW&1.8              firmware version
-//   SPACE       → MCU&SPA&060846&061032   storage used and total, KB
+//   SPACE       → MCU&SPA&060846&061032   storage free and total, MB
 //   GET&USB     → MCU&USB&1               whether the recorder is a USB drive when plugged in
 //   LIST_DIRS   → MCU&DIRS&<date>… MCU&DIRS_SUM&<n>                 days with recordings
 //   LIST&<date> → MCU&F&<date>&<timestamp>&<seconds>… MCU&LIST&<n>   a day's recordings
@@ -141,6 +150,49 @@ final class PocketSession {
         }
     }
 
+    // activate gives a factory-reset recorder its session key (as desktop/src/bluetooth.js:
+    // activate does): it takes the first key it gets and from then on only that one. Returns
+    // "OK" (taken), "ERR" (it has another key: it isn't reset) or nil (no answer). A few seconds
+    // after taking the key the recorder drops the connection; after "OK" this waits for that.
+    func activate(_ sessionKey: String) throws -> String? {
+        do {
+            try link.usePocketAppWrites()
+        } catch let error as PocketError {
+            throw error
+        } catch {
+            throw PocketError("failed", PocketError.messageOf(error))
+        }
+        let since = log.mark()
+        // The recorder may hang up before it acknowledges the write (after refusing a key):
+        // what it answered still counts.
+        try? link.write(Data(("APP&SK&" + sessionKey).utf8))
+        var answer: String?
+        do {
+            answer = try log.waitFor("SK", since: since, timeout: Self.answerTimeout, accept: { _ in true })
+        } catch let error as PocketError where error.code == "disconnected" {
+            answer = log.values("SK", since: since).first
+        }
+        guard let reply = answer?.trimmingCharacters(in: .whitespacesAndNewlines) else { return nil }
+        if reply == "OK" {
+            let end = Clock.now() + 8_000
+            while !log.isDisconnected && Clock.now() < end { try Interrupt.sleep(100) }
+        }
+        return reply
+    }
+
+    // activated finishes an activation on a new, unlocked connection: sets the clock (UTC, as
+    // the Pocket app does), checks, and switches off the WiFi the recorder raised.
+    func activated() throws -> [String: Any] {
+        let format = DateFormatter()
+        format.locale = Locale(identifier: "en_US_POSIX")
+        format.timeZone = TimeZone(identifier: "UTC")
+        format.dateFormat = "yyyyMMddHHmmss"
+        _ = try optional("T&" + format.string(from: Date()), "T")
+        let info = try check()
+        _ = try? optional("WIFIC", "WIFIC")
+        return info
+    }
+
     // check reads the battery, firmware, storage and USB state, as the settings page shows them.
     func check() throws -> [String: Any] {
         let battery = try Self.parseInt(command("BAT", "BAT"))
@@ -153,8 +205,8 @@ final class PocketSession {
         var storage: Any = NSNull()
         if let space {
             let parts = space.components(separatedBy: "&")
-            if parts.count > 1, let used = Self.parseInt(parts[0]), let total = Self.parseInt(parts[1]) {
-                storage = ["usedKB": used, "totalKB": total]
+            if parts.count > 1, let free = Self.parseInt(parts[0]), let total = Self.parseInt(parts[1]) {
+                storage = ["usedKB": max(0, total - free) * 1024, "totalKB": total * 1024]
             }
         }
         info["storage"] = storage

@@ -153,7 +153,7 @@ user's personal webhook whenever something happens to a recording; knowpod then 
 the audio with that user's Pocket API key and archives it in S3 like the other recordings.
 The recordings belong to that user.
 
-**Setup** (each user, **Settings → Account** → Pocket integration):
+**Setup** (each user, **Settings → Devices** → Pocket recorder):
 
 1. Copy **Your webhook URL** (`https://<your domain>/api/v1/webhooks/pocket/<random id>`).
 2. In the Pocket app's integrations settings, add a webhook with that URL. Pocket shows the
@@ -213,11 +213,21 @@ files named by when they started, in UTC (`RECORD/2026-10-2/20261002090356.mp3`)
   has **Copy Recordings from Pocket** (turns it off) and **Copy from Pocket Now**.
 - The recorder is a USB drive only until it's unplugged once; after that it has to be
   told over Bluetooth to be one again. The desktop app does this when given the recorder's
-  **Bluetooth address** and **session key** under **Settings → Account → Pocket integration**
+  **Bluetooth address** and **session key** under **Settings → Devices → Pocket recorder**
   (only shown in the desktop app; both stay in its `config.json`, the key encrypted with the
   system's keychain where there is one, and are never sent to the server). The session key
   (16 characters) comes from a Bluetooth capture of the Pocket app, see
-  [pocket-libre](https://github.com/shahcolate/pocket-libre). **Check connection** reads the
+  [pocket-libre](https://github.com/shahcolate/pocket-libre), or the app makes one:
+  **Activate** (shown while no Pocket is set up, in the desktop, Android and iOS apps) gives a
+  factory-reset Pocket (side button three times, then hold it until the red light stops
+  blinking) a new random key. A reset Pocket takes the first key it gets (`APP&SK&<key>`, written
+  the Pocket app's way to `001120a2`) and from then on only that one; the app saves address and
+  key before sending it, reconnects, sets the clock (`APP&T&<UTC>`) and checks. Without an
+  address the desktop (not on macOS) and Android apps look for the one `PKT01_…` nearby; iOS
+  needs the address. Afterwards the Pocket app can't connect until the Pocket is reset again,
+  so the webhook integration above gets no new recordings. **Remove** forgets address and key in
+  the app; the Pocket keeps its key, so adding it again takes that key or a reset and a new
+  activation. **Check connection** reads the
   battery, firmware, storage and USB state; **Turn on USB drive** (also in the tray menu as
   **Turn On Pocket USB Drive** while no recorder is plugged in) switches the drive on
   (`APP&USB&1`), after which the plugged-in recorder mounts and is copied as above.
@@ -227,7 +237,11 @@ files named by when they started, in UTC (`RECORD/2026-10-2/20261002090356.mp3`)
   notes list's top row, desktop app only) walks through this on its **USB** tab: unplug, switch the drive on, plug in, then shows the copying. The app
   talks to the recorder with Web Bluetooth in a hidden window (`desktop/src/bluetooth.js`);
   on Linux it needs BlueZ, on macOS (which hides Bluetooth addresses) it uses the one Pocket
-  nearby (`PKT01_…`).
+  nearby (`PKT01_…`). On Linux, BlueZ takes the recorder for a classic Bluetooth device and
+  Web Bluetooth's own connect fails, so the app first connects it over Bluetooth LE through
+  BlueZ (`desktop/src/bluez-le.js`, with `busctl`). That needs `Experimental = true` in the
+  `[General]` section of `/etc/bluetooth/main.conf` (then `sudo systemctl restart bluetooth`).
+  Windows, macOS and the mobile apps connect over LE anyway.
 - **Over the recorder's WiFi** (the **WiFi** tab of **Pocket Sync**, or **Copy from Pocket
   over WiFi** in the tray menu), no cable is needed and it runs at about 1 MB/s. It needs
   the same Bluetooth settings, Pocket firmware **1.8**, more than 10 % battery, and the
