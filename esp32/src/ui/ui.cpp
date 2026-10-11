@@ -157,8 +157,10 @@ void ui_render(bool force)
     if (!dirty && !force) return;
     Screen *top = ui_top();
     display_clear();
-    debug_stage = "render: status bar";
-    draw_status_bar();
+    if (!top || top->status_bar()) {
+        debug_stage = "render: status bar";
+        draw_status_bar();
+    }
     if (top) {
         debug_stage = "render: screen";
         top->draw();
