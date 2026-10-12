@@ -134,11 +134,17 @@ func TestSummarize(t *testing.T) {
 }
 
 func TestSummarySystemPromptLanguage(t *testing.T) {
-	auto := summarySystemPrompt("Use \"## Key points\".", "auto", nil)
+	auto := summarySystemPrompt("Use \"## Key points\".", "auto", "", nil)
 	if !strings.Contains(auto, "language of the transcript") || !strings.Contains(auto, "translate the headings") {
 		t.Fatalf("auto prompt = %q", auto)
 	}
-	german := summarySystemPrompt("Use \"## Key points\".", "de-DE", nil)
+	if strings.Contains(auto, "cannot tell") {
+		t.Fatalf("auto prompt without fallback = %q", auto)
+	}
+	if p := summarySystemPrompt("x", "auto", "de-DE", nil); !strings.Contains(p, "cannot tell the language of the transcript, write in German") {
+		t.Fatalf("auto prompt with fallback = %q", p)
+	}
+	german := summarySystemPrompt("Use \"## Key points\".", "de-DE", "", nil)
 	if !strings.Contains(german, "in German, regardless") || !strings.Contains(german, "headings given above into German") {
 		t.Fatalf("German prompt = %q", german)
 	}
@@ -278,7 +284,8 @@ func TestOwnerLanguage(t *testing.T) {
 		t.Fatalf("transcription prompt = %q, %v", lastPrompt(), err)
 	}
 	rec.Transcript.Text = "Speaker 1: hello"
-	if err := s.Summarize(ctx, rec); err != nil || rec.Summary.Language != "de-DE" || !strings.Contains(lastPrompt(), "in German, regardless") {
+	if err := s.Summarize(ctx, rec); err != nil || rec.Summary.Language != "auto" ||
+		!strings.Contains(lastPrompt(), "language of the transcript") || !strings.Contains(lastPrompt(), "cannot tell the language of the transcript, write in German") {
 		t.Fatalf("summary language %q, prompt %q, %v", rec.Summary.Language, lastPrompt(), err)
 	}
 

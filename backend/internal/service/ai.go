@@ -166,13 +166,18 @@ func emptySummary(language string, document bool) (title, text string) {
 const maxActionItems = 30
 
 // summarySystemPrompt builds the instructions for a theme, a language ("auto" or a key of
-// SummaryLanguages) and the highlights the user marked.
-func summarySystemPrompt(instructions, language string, highlights []recording.Highlight) string {
+// SummaryLanguages) and the highlights the user marked. With "auto" the summary follows the
+// transcript's language; fallback (a key of SummaryLanguages, may be empty) is only used when
+// that language can't be told.
+func summarySystemPrompt(instructions, language, fallback string, highlights []recording.Highlight) string {
 	// These instructions are in English; without a firm rule the model tends to answer in
 	// English too, even for a transcript in another language.
 	lang := "Write the title and the summary in the language of the transcript (the language most of it is spoken in), " +
 		"even though these instructions are in English: translate the headings given above into that language. " +
 		"Only write in English if the transcript is in English."
+	if name, ok := SummaryLanguages[fallback]; ok && language == "auto" {
+		lang += " Only if you cannot tell the language of the transcript, write in " + name + "."
+	}
 	if name, ok := SummaryLanguages[language]; ok {
 		lang = "Write the title and the summary in " + name + ", regardless of the transcript's language, " +
 			"translating the headings given above into " + name + "."
@@ -536,10 +541,6 @@ func (s *AIService) Summarize(ctx context.Context, rec *recording.Recording) err
 	}
 	language := opts.Language
 	if language == "" {
-		// Auto: the language the owner chose for the app, else the transcript's.
-		language = s.ownerLanguage(ctx, rec.OwnerID).Summary
-	}
-	if language == "" {
 		language = "auto"
 	}
 	model := st.SummaryModel
@@ -570,7 +571,13 @@ func (s *AIService) Summarize(ctx context.Context, rec *recording.Recording) err
 	if rec.Title != "" {
 		fmt.Fprintf(&meta, "Source title: %s\n", rec.Title)
 	}
-	system, label := summarySystemPrompt(th.Instructions, language, rec.Highlights), "Transcript"
+	// Auto follows the transcript's language; the owner's app language only applies when
+	// that can't be told.
+	fallback := ""
+	if language == "auto" {
+		fallback = s.ownerLanguage(ctx, rec.OwnerID).Summary
+	}
+	system, label := summarySystemPrompt(th.Instructions, language, fallback, rec.Highlights), "Transcript"
 	if rec.IsDocument() {
 		system, label = documentSummaryIntro+strings.TrimPrefix(system, summaryIntro), "Document text"
 		system = strings.Replace(system, "title for the conversation", "title for the notes", 1)
