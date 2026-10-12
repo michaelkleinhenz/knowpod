@@ -368,8 +368,8 @@ and **Delete**.
 
 **Summary details** sets:
 
-- **Language**: auto-detect (default: the app language chosen under **Settings → General**,
-  or the transcript's language when none is chosen) or one of 23 languages.
+- **Language**: auto-detect (default: the transcript's language; the app language chosen
+  under **Settings → General** is used only when the language can't be told) or one of 23 languages.
 - **Model**: the default summary model from the admin settings, or any OpenRouter text model.
 - **Theme**: a built-in or own theme.
 

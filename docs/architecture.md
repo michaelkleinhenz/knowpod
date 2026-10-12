@@ -432,8 +432,8 @@ model calls.
   OpenRouter. `POST /admin/settings/elevenlabs/test` checks a key by transcribing a second
   of silence.
 - **summarize** (`transcribed → summarized`): sends the transcript with a prompt that asks
-  for a JSON object with `title`, a Markdown `summary` in the chosen summary language (auto: the owner's app language, else
-  the transcript's language) and
+  for a JSON object with `title`, a Markdown `summary` in the chosen summary language (auto: the transcript's language, the owner's
+  app language only when that can't be told) and
   `actionItems` (`response_format: json_object`). `parseSummary` tolerates code fences and
   surrounding text; `parseActionItems` keeps items with text, drops due dates that aren't
   `YYYY-MM-DD` and gives each an ID. Empty transcripts get "No speech detected" without a
