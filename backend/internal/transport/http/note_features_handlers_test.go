@@ -124,3 +124,38 @@ func TestAIWriteAPI(t *testing.T) {
 		t.Fatalf("signed out: %d", res.StatusCode)
 	}
 }
+
+func TestAssistantAPI(t *testing.T) {
+	f := newAPIFixture(t)
+	admin := f.signedIn(adminEmail, adminPassword)
+	edit := map[string]string{"title": "List", "markdown": "- Milk", "prompt": "Add where to buy it"}
+	if res := admin.do("POST", "/api/v1/me/assistant/edit", edit, nil, nil); res.StatusCode != 409 {
+		t.Fatalf("edit without a model: %d", res.StatusCode)
+	}
+	var st struct {
+		Configured bool   `json:"configured"`
+		APIKeyHint string `json:"apiKeyHint"`
+		APIKey     string `json:"apiKey"`
+		Model      string `json:"model"`
+	}
+	if res := admin.do("PUT", "/api/v1/me/assistant", map[string]any{"apiKey": "sk-or-12345678", "model": "test/full", "webSearch": true}, nil, &st); res.StatusCode != 200 || !st.Configured || st.APIKeyHint != "…5678" || st.APIKey != "" {
+		t.Fatalf("save: %d %+v", res.StatusCode, st)
+	}
+	var out struct {
+		Title    string `json:"title"`
+		Markdown string `json:"markdown"`
+		Model    string `json:"model"`
+	}
+	if res := admin.do("POST", "/api/v1/me/assistant/edit", edit, nil, &out); res.StatusCode != 200 || out.Markdown != "Written" || out.Model != "test/full" {
+		t.Fatalf("edit: %d %+v", res.StatusCode, out)
+	}
+	if res := admin.do("POST", "/api/v1/me/assistant/create", map[string]string{"prompt": "A packing list"}, nil, &out); res.StatusCode != 200 || out.Title != "A packing list" || out.Markdown != "Written" {
+		t.Fatalf("create: %d %+v", res.StatusCode, out)
+	}
+	if res := admin.do("POST", "/api/v1/me/assistant/create", map[string]string{"prompt": " "}, nil, nil); res.StatusCode != 400 {
+		t.Fatalf("empty prompt: %d", res.StatusCode)
+	}
+	if res := f.browser().do("GET", "/api/v1/me/assistant", nil, nil, nil); res.StatusCode != 401 {
+		t.Fatalf("signed out: %d", res.StatusCode)
+	}
+}

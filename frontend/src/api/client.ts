@@ -675,6 +675,27 @@ export interface RemarkableSettings {
   ignoredNames: string[];
 }
 
+// AssistantSettings are the user's own AI model for working on notes (see /me/assistant);
+// the API key itself is never returned.
+export interface AssistantSettings {
+  configured: boolean;
+  apiKeyConfigured: boolean;
+  apiKeyHint?: string;
+  model: string;
+  systemPrompt: string;
+  webSearch: boolean;
+}
+
+// AssistantUpdate changes the settings; fields left out stay, an empty apiKey removes it.
+export type AssistantUpdate = Partial<{ apiKey: string; model: string; systemPrompt: string; webSearch: boolean }>;
+
+// AssistantAnswer is what the user's AI model wrote: a note's text, and for a new note its title.
+export interface AssistantAnswer {
+  title?: string;
+  markdown: string;
+  model: string;
+}
+
 export interface ModelOption {
   id: string;
   name: string;
@@ -907,6 +928,13 @@ export const api = {
   nameSpeakers: (id: string, names: { from: string; to: string }[], resummarize: boolean) =>
     request<Recording>('PUT', `/recordings/${encodeURIComponent(id)}/speakers`, { names, resummarize }),
   ask: (question: string, history: AskTurn[] = []) => request<AskAnswer>('POST', '/ask', { question, history }),
+  assistant: () => request<AssistantSettings>('GET', '/me/assistant'),
+  saveAssistant: (u: AssistantUpdate) => request<AssistantSettings>('PUT', '/me/assistant', u),
+  // assistantEdit has the user's AI model work on a note; nothing is saved.
+  assistantEdit: (title: string, markdown: string, prompt: string) =>
+    request<AssistantAnswer>('POST', '/me/assistant/edit', { title, markdown, prompt }),
+  // assistantCreate has the user's AI model write a new note; nothing is saved.
+  assistantCreate: (prompt: string, context?: string) => request<AssistantAnswer>('POST', '/me/assistant/create', { prompt, context }),
   briefing: () => request<BriefingSettings>('GET', '/me/briefing'),
   saveBriefing: (b: BriefingSettings) => request<BriefingSettings>('PUT', '/me/briefing', b),
   // Briefings are written in the language chosen in the settings, else in the one shown.

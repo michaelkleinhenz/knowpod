@@ -4,9 +4,12 @@ import { useNavigate } from 'react-router-dom';
 import { api, Recording } from '../api/client';
 import { errorText } from '../lib/errors';
 import { builtInTemplates, fillTemplate, loadTemplate, ownTemplates } from '../lib/templates';
+import { AssistantCreateDialog, useAssistantReady } from './Assistant';
+import { SparkleIcon } from './Icons';
 
 // NewItemDialog asks for the title of a new note or task, and optionally a template whose
-// title and text it starts with; it creates the item at the top level and opens it.
+// title and text it starts with; it creates the item at the top level and opens it. With the
+// user's own AI model set up, the AI can write the item instead.
 export function NewItemDialog({ kind, onClose }: { kind: 'note' | 'task'; onClose: () => void }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -16,6 +19,8 @@ export function NewItemDialog({ kind, onClose }: { kind: 'note' | 'task'; onClos
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  const assistantReady = useAssistantReady();
+  const [withAI, setWithAI] = useState(false);
 
   useEffect(() => input.current?.focus(), []);
 
@@ -28,10 +33,11 @@ export function NewItemDialog({ kind, onClose }: { kind: 'note' | 'task'; onClos
   const template = [...own, ...builtIn].find((tpl) => tpl.id === templateId);
 
   useEffect(() => {
+    if (withAI) return; // the AI's dialog handles it
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, withAI]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -50,6 +56,19 @@ export function NewItemDialog({ kind, onClose }: { kind: 'note' | 'task'; onClos
       setError(errorText(err, t));
       setBusy(false);
     }
+  }
+
+  if (withAI) {
+    return (
+      <AssistantCreateDialog
+        onCreate={async (name, markdown) => {
+          const rec = await api.createTextNote(name, markdown, undefined, kind === 'task' ? { task: true } : undefined);
+          onClose();
+          navigate(`/conversations/${rec.id}`);
+        }}
+        onClose={onClose}
+      />
+    );
   }
 
   const heading = t(kind === 'task' ? 'nav.newTask' : 'nav.newNote');
@@ -83,6 +102,11 @@ export function NewItemDialog({ kind, onClose }: { kind: 'note' | 'task'; onClos
         </label>
         {error && <p className="error">{error}</p>}
         <div className="new-item-actions">
+          {assistantReady && (
+            <button type="button" className="pill-button new-item-ai" onClick={() => setWithAI(true)}>
+              <SparkleIcon size={14} /> {t('assistant.create.button')}
+            </button>
+          )}
           <button type="button" className="pill-button" onClick={onClose}>
             {t('nav.cancel')}
           </button>

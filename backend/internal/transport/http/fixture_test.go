@@ -155,6 +155,7 @@ func newAPIFixture(t *testing.T) *apiFixture {
 		Filters: filters, Times: service.NewTimeService(timeRepo, recs, users), Calendar: service.NewCalendarService(users, recs),
 		MCP: mcp, OAuth: oauthSvc, Events: events,
 		Ask: service.NewAskService(ai, actions, log), Briefings: briefings,
+		Assistant: service.NewAssistantService(users, writer, log),
 	})
 	srv := httptest.NewServer(s.Router())
 	t.Cleanup(srv.Close)

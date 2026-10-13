@@ -38,6 +38,16 @@ func TestComplete(t *testing.T) {
 	if got["response_format"].(map[string]any)["type"] != "json_object" {
 		t.Fatalf("response_format = %v", got["response_format"])
 	}
+	if _, ok := got["plugins"]; ok {
+		t.Fatalf("plugins without web search = %v", got["plugins"])
+	}
+
+	if _, err := NewClient(srv.URL, "").Complete(context.Background(), "sk-test", Request{Model: "m", WebSearch: true}); err != nil {
+		t.Fatal(err)
+	}
+	if plugins, _ := got["plugins"].([]any); len(plugins) != 1 || plugins[0].(map[string]any)["id"] != "web" {
+		t.Fatalf("plugins = %v", got["plugins"])
+	}
 }
 
 func TestCompleteErrors(t *testing.T) {

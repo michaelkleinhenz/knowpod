@@ -67,8 +67,10 @@ type Server struct {
 	backup *service.BackupService
 	// personalBackup makes and restores a user's own backup.
 	personalBackup *service.PersonalBackupService
-	version        string
-	now            func() time.Time
+	// assistant runs the users' own AI models on their notes.
+	assistant *service.AssistantService
+	version   string
+	now       func() time.Time
 }
 
 // Deps are the server's constructor dependencies. Handlers of missing services are still
@@ -112,6 +114,8 @@ type Deps struct {
 	Backup *service.BackupService
 	// PersonalBackup is optional in tests that don't use it.
 	PersonalBackup *service.PersonalBackupService
+	// Assistant is optional in tests that don't use it.
+	Assistant *service.AssistantService
 	// Version is the app version, reported by the MCP server.
 	Version string
 }
@@ -127,7 +131,7 @@ func NewServer(d Deps) *Server {
 		manual: d.Manual, actions: d.Actions, objects: d.Objects, pocket: d.Pocket, ai: d.AI, themes: d.Themes,
 		labels: d.Labels, folders: d.Folders, remarkable: d.Remarkable, notifications: d.Notifications,
 		filters: d.Filters, times: d.Times, calendar: d.Calendar, mcp: d.MCP, oauth: d.OAuth, events: d.Events,
-		email: d.Email, ask: d.Ask, briefings: d.Briefings, backup: d.Backup, personalBackup: d.PersonalBackup, version: cmp.Or(d.Version, "dev"),
+		email: d.Email, ask: d.Ask, briefings: d.Briefings, backup: d.Backup, personalBackup: d.PersonalBackup, assistant: d.Assistant, version: cmp.Or(d.Version, "dev"),
 		now: time.Now,
 	}
 }
@@ -248,6 +252,10 @@ func (s *Server) Router() http.Handler {
 			u.Get("/ai/languages", s.handleSummaryLanguages)
 			u.With(httprate.LimitByIP(30, time.Minute)).Post("/ask", s.handleAsk)
 			u.With(httprate.LimitByIP(30, time.Minute)).Post("/ai/write", s.handleAIWrite)
+			u.Get("/me/assistant", s.handleGetAssistant)
+			u.Put("/me/assistant", s.handleUpdateAssistant)
+			u.With(httprate.LimitByIP(30, time.Minute)).Post("/me/assistant/edit", s.handleAssistantEdit)
+			u.With(httprate.LimitByIP(30, time.Minute)).Post("/me/assistant/create", s.handleAssistantCreate)
 
 			u.Get("/themes", s.handleListThemes)
 			u.Post("/themes", s.handleCreateTheme)

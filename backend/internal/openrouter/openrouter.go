@@ -178,6 +178,8 @@ type Request struct {
 	Messages []Message `json:"messages"`
 	// JSON asks the model to answer with a JSON object (where the model supports it).
 	JSON bool `json:"-"`
+	// WebSearch lets the model search the web (OpenRouter's web plugin), at extra cost.
+	WebSearch bool `json:"-"`
 }
 
 // Complete runs a chat completion and returns the text of the first choice.
@@ -185,6 +187,9 @@ func (c *Client) Complete(ctx context.Context, apiKey string, r Request) (string
 	body := map[string]any{"model": r.Model, "messages": r.Messages}
 	if r.JSON {
 		body["response_format"] = map[string]string{"type": "json_object"}
+	}
+	if r.WebSearch {
+		body["plugins"] = []map[string]string{{"id": "web"}}
 	}
 	data, err := json.Marshal(body)
 	if err != nil {

@@ -79,6 +79,7 @@ export const en = {
     invalid_pairing_code: "The reMarkable cloud didn't accept the code. Codes are valid for a few minutes; get a new one and try again.",
     pairing_revoked: 'The reMarkable cloud no longer accepts the pairing (the app was removed from your account). Unpair and pair again.',
     not_paired: 'No reMarkable account is paired.',
+    assistant_failed: 'Your AI model failed: {{detail}}',
     remarkable_unavailable: "The reMarkable cloud couldn't be reached. Please try again later.",
   },
   login: {
@@ -444,6 +445,40 @@ export const en = {
     status: 'Status',
     edited: 'Edited',
     summaryModel: 'Model',
+  },
+  assistant: {
+    run: 'Ask the AI',
+    again: 'Ask again',
+    working: 'Your AI model is working…',
+    settings: {
+      title: 'Your AI model',
+      intro: 'Your own AI model works on your notes and writes new ones as you ask — for example “add where I can buy each item” or “the steps to repair a radio”. It runs through your own OpenRouter account, separate from the models that transcribe and summarize recordings. Create an API key at <1>openrouter.ai/settings/keys</1>; usage is billed to that account.',
+      active: 'Ready',
+      notConfigured: 'Not set up',
+      apiKey: 'OpenRouter API key',
+      removeKeyConfirm: 'Remove your OpenRouter API key? The AI can no longer work on your notes.',
+      model: 'Model',
+      modelHint: 'A capable model gives the best results for longer notes and research.',
+      systemPrompt: 'System prompt',
+      systemPromptPlaceholder: 'e.g. I live in Munich and prefer local shops. Keep answers short and practical.',
+      systemPromptHint: 'Your own instructions, added to every request: who you are, where you live, how you like answers written.',
+      webSearch: 'Let the model search the web',
+      webSearchHint: 'For up-to-date facts such as shops, prices or opening hours. OpenRouter charges extra for each request with web search.',
+    },
+    edit: {
+      button: 'Work on this note with AI',
+      title: 'Work on this note',
+      hint: 'Your AI model gets the whole note and changes it as you ask. You see the result before it replaces the text, and can undo it.',
+      placeholder: 'What should the AI do with this note? e.g. Add where I can get each of the items',
+      apply: 'Replace the note’s text',
+    },
+    create: {
+      button: 'Write with AI',
+      title: 'Write a note with AI',
+      hint: 'Your AI model writes a new note as you ask. You see it before it is created.',
+      placeholder: 'What should the note be about? e.g. The steps to repair a tube radio',
+      apply: 'Create the note',
+    },
   },
   editor: {
     title: 'Title',
@@ -1045,7 +1080,7 @@ export const en = {
   },
   settings: {
     title: 'Settings',
-    tabs: { general: 'General', account: 'Account', devices: 'Devices', themes: 'Themes', labels: 'Labels', filters: 'Filters', backup: 'Backup' },
+    tabs: { general: 'General', account: 'Account', devices: 'Devices', assistant: 'AI model', themes: 'Themes', labels: 'Labels', filters: 'Filters', backup: 'Backup' },
     language: {
       title: 'Language',
       hint: 'The language of the app. It is saved with your account, and new transcripts and summaries are written in it.',

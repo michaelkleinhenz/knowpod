@@ -205,6 +205,7 @@ func main() {
 	emailSvc := service.NewEmailService(settingsRepo, ses.Sender{})
 	briefingSvc.Emails = emailSvc
 	briefingSvc.TimeEntries = timeRepo
+	assistantSvc := service.NewAssistantService(users, openrouter.NewClient(cfg.OpenRouterAPIURL, cfg.FrontendURL), log)
 
 	backupSvc := service.NewBackupService(backupRepo, objects)
 	backupSvc.TempDir = cfg.UploadDir
@@ -230,7 +231,7 @@ func main() {
 		Manual: manualSvc, Actions: actions, Objects: objects, Pocket: pocketSvc, AI: aiSvc, Themes: themeSvc,
 		Labels: labelSvc, Folders: folderSvc, Remarkable: remarkableSvc, Notifications: notifySvc,
 		Filters: filterSvc, Times: timeSvc, Calendar: calendarSvc, MCP: mcpSvc, OAuth: oauthSvc, Events: events,
-		Email: emailSvc, Ask: askSvc, Briefings: briefingSvc, Backup: backupSvc, PersonalBackup: personalBackupSvc, Version: version,
+		Email: emailSvc, Ask: askSvc, Briefings: briefingSvc, Backup: backupSvc, PersonalBackup: personalBackupSvc, Assistant: assistantSvc, Version: version,
 	})
 	httpServer := &http.Server{
 		Addr:              ":" + cfg.Port,
