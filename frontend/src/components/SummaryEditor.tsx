@@ -57,6 +57,9 @@ interface Props {
   title?: string;
   // people are the user and those they share notes with; the others are offered after "@".
   people?: Person[];
+  // onReplaceReady hands over a function that replaces the whole text with Markdown, as an
+  // edit (it can be undone).
+  onReplaceReady?: (replace: (markdown: string) => void) => void;
 }
 
 // cleanMarkdown drops the "&nbsp;" lines that empty paragraphs become: Markdown has no
@@ -736,7 +739,7 @@ const MultilineTaskList = TaskList.extend({
 // at the start of a line opens a block menu, and selecting text shows a formatting bubble.
 // The text is loaded from and read as Markdown, which is how summaries are stored; saving
 // is done by the caller (useAutosave). It is loaded on demand (see Conversation.tsx).
-export default function SummaryEditor({ markdown, onReady, onChange, onSaveShortcut, notes, noteId, onOpenNote, readOnly = false, onConvertTask, aiEnabled = false, templates, title: noteTitle, people }: Props) {
+export default function SummaryEditor({ markdown, onReady, onChange, onSaveShortcut, notes, noteId, onOpenNote, readOnly = false, onConvertTask, aiEnabled = false, templates, title: noteTitle, people, onReplaceReady }: Props) {
   const { t } = useTranslation();
   const slash = useMenuBridge<SlashItem>();
   const noteMenu = useMenuBridge<Recording>();
@@ -863,7 +866,13 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
         return false;
       },
     },
-    onCreate: ({ editor: e }) => onReady(() => cleanMarkdown(e.getMarkdown())),
+    onCreate: ({ editor: e }) => {
+      onReady(() => cleanMarkdown(e.getMarkdown()));
+      onReplaceReady?.((md) => {
+        if (e.isDestroyed || !e.isEditable) return;
+        e.chain().focus().insertContentAt({ from: 0, to: e.state.doc.content.size }, md, { contentType: 'markdown' }).run();
+      });
+    },
     onUpdate: () => onChange(),
   });
 

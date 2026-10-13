@@ -81,6 +81,7 @@ export const de: Translation = {
     invalid_pairing_code: 'Die reMarkable-Cloud hat den Code nicht angenommen. Codes gelten nur wenige Minuten; hol dir einen neuen und versuche es noch einmal.',
     pairing_revoked: 'Die reMarkable-Cloud akzeptiert die Kopplung nicht mehr (die App wurde aus deinem Konto entfernt). Entkopple und kopple erneut.',
     not_paired: 'Es ist kein reMarkable-Konto gekoppelt.',
+    assistant_failed: 'Dein KI-Modell hat keine Antwort geliefert: {{detail}}',
     remarkable_unavailable: 'Die reMarkable-Cloud ist nicht erreichbar. Bitte versuche es später noch einmal.',
   },
   login: {
@@ -446,6 +447,40 @@ export const de: Translation = {
     status: 'Status',
     edited: 'Bearbeitet',
     summaryModel: 'Modell',
+  },
+  assistant: {
+    run: 'KI fragen',
+    again: 'Erneut fragen',
+    working: 'Dein KI-Modell arbeitet…',
+    settings: {
+      title: 'Dein KI-Modell',
+      intro: 'Dein eigenes KI-Modell bearbeitet deine Notizen und schreibt neue, wie du es möchtest – zum Beispiel „ergänze, wo ich die Sachen jeweils bekomme“ oder „die Schritte, um ein Radio zu reparieren“. Es läuft über dein eigenes OpenRouter-Konto, getrennt von den Modellen, die Aufnahmen transkribieren und zusammenfassen. Erstelle einen API-Schlüssel unter <1>openrouter.ai/settings/keys</1>; die Nutzung wird diesem Konto berechnet.',
+      active: 'Bereit',
+      notConfigured: 'Nicht eingerichtet',
+      apiKey: 'OpenRouter-API-Schlüssel',
+      removeKeyConfirm: 'Deinen OpenRouter-API-Schlüssel entfernen? Die KI kann dann nicht mehr an deinen Notizen arbeiten.',
+      model: 'Modell',
+      modelHint: 'Ein leistungsfähiges Modell liefert bei längeren Notizen und Recherchen die besten Ergebnisse.',
+      systemPrompt: 'System-Prompt',
+      systemPromptPlaceholder: 'z. B. Ich wohne in München und kaufe gern in lokalen Geschäften. Antworte kurz und praktisch.',
+      systemPromptHint: 'Deine eigenen Anweisungen, die jeder Anfrage mitgegeben werden: wer du bist, wo du wohnst, wie Antworten geschrieben sein sollen.',
+      webSearch: 'Das Modell darf im Web suchen',
+      webSearchHint: 'Für aktuelle Fakten wie Geschäfte, Preise oder Öffnungszeiten. OpenRouter berechnet für jede Anfrage mit Websuche einen Aufpreis.',
+    },
+    edit: {
+      button: 'Notiz mit KI bearbeiten',
+      title: 'Diese Notiz bearbeiten',
+      hint: 'Dein KI-Modell bekommt die ganze Notiz und ändert sie, wie du es möchtest. Du siehst das Ergebnis, bevor es den Text ersetzt, und kannst es rückgängig machen.',
+      placeholder: 'Was soll die KI mit dieser Notiz tun? z. B. Ergänze, wo ich die Sachen jeweils bekomme',
+      apply: 'Text der Notiz ersetzen',
+    },
+    create: {
+      button: 'Mit KI schreiben',
+      title: 'Notiz mit KI schreiben',
+      hint: 'Dein KI-Modell schreibt eine neue Notiz, wie du es möchtest. Du siehst sie, bevor sie angelegt wird.',
+      placeholder: 'Worum soll es in der Notiz gehen? z. B. Die Schritte, um ein Röhrenradio zu reparieren',
+      apply: 'Notiz anlegen',
+    },
   },
   editor: {
     title: 'Titel',
@@ -1047,7 +1082,7 @@ export const de: Translation = {
   },
   settings: {
     title: 'Einstellungen',
-    tabs: { general: 'Allgemein', account: 'Konto', devices: 'Geräte', themes: 'Vorlagen', labels: 'Labels', filters: 'Filter', backup: 'Backup' },
+    tabs: { general: 'Allgemein', account: 'Konto', devices: 'Geräte', assistant: 'KI-Modell', themes: 'Vorlagen', labels: 'Labels', filters: 'Filter', backup: 'Backup' },
     language: {
       title: 'Sprache',
       hint: 'Die Sprache der App. Sie wird mit deinem Konto gespeichert, und neue Transkripte und Zusammenfassungen werden in ihr geschrieben.',

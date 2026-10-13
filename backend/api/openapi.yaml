@@ -2499,6 +2499,105 @@ paths:
           content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
         "429": { description: Too many requests }
 
+  /me/assistant:
+    get:
+      tags: ["Ask"]
+      summary: Get your AI assistant settings
+      description: |
+        Your own AI model, through your own OpenRouter account, to work on notes and write new
+        ones (separate from the models the administrator set up for transcripts and summaries).
+        The API key itself is never returned.
+      security: [{ sessionCookie: [] }]
+      responses:
+        "200":
+          description: Settings
+          content: { application/json: { schema: { $ref: "#/components/schemas/AssistantSettings" } } }
+    put:
+      tags: ["Ask"]
+      summary: Change your AI assistant settings
+      description: Fields left out stay as they are; an empty `apiKey` removes the key.
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                apiKey: { type: string, description: Your OpenRouter API key }
+                model: { type: string, example: anthropic/claude-sonnet-4 }
+                systemPrompt: { type: string, maxLength: 8000, description: Your own instructions, added to every request }
+                webSearch: { type: boolean, description: Let the model search the web (OpenRouter's web plugin, at extra cost) }
+      responses:
+        "200":
+          description: Saved
+          content: { application/json: { schema: { $ref: "#/components/schemas/AssistantSettings" } } }
+        "400": { $ref: "#/components/responses/Error" }
+
+  /me/assistant/edit:
+    post:
+      tags: ["Ask"]
+      summary: Have your AI assistant work on a note
+      description: |
+        Your AI model works on a note as `prompt` asks and answers with the note's complete new
+        text as Markdown; nothing is saved. Limited to 30 requests per minute.
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prompt]
+              properties:
+                title: { type: string }
+                markdown: { type: string, maxLength: 100000 }
+                prompt: { type: string, maxLength: 4000, example: "Add where I can buy each item" }
+      responses:
+        "200":
+          description: The new text
+          content: { application/json: { schema: { $ref: "#/components/schemas/AssistantAnswer" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "409":
+          description: Your AI model is not set up
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "429": { description: Too many requests }
+        "502":
+          description: The AI model failed
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
+  /me/assistant/create:
+    post:
+      tags: ["Ask"]
+      summary: Have your AI assistant write a new note
+      description: |
+        Your AI model writes a note as `prompt` asks and answers with its title and text;
+        nothing is saved (create the note with POST /recordings/text). `context` is the text
+        of a related note, optional. Limited to 30 requests per minute.
+      security: [{ sessionCookie: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prompt]
+              properties:
+                prompt: { type: string, maxLength: 4000, example: "The steps to repair a tube radio" }
+                context: { type: string, description: A related note (the first 8000 characters are used) }
+      responses:
+        "200":
+          description: The note written
+          content: { application/json: { schema: { $ref: "#/components/schemas/AssistantAnswer" } } }
+        "400": { $ref: "#/components/responses/Error" }
+        "409":
+          description: Your AI model is not set up
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+        "429": { description: Too many requests }
+        "502":
+          description: The AI model failed
+          content: { application/json: { schema: { $ref: "#/components/schemas/Error" } } }
+
   /me/briefing:
     get:
       tags: ["Briefings"]
@@ -3615,6 +3714,21 @@ components:
               quote: { type: string, description: A short passage of the note the answer draws on }
               offsetMs: { type: integer, format: int64, description: Where the quote is said in a recording }
 
+    AssistantSettings:
+      type: object
+      properties:
+        configured: { type: boolean, description: An API key and a model are set }
+        apiKeyConfigured: { type: boolean }
+        apiKeyHint: { type: string, example: "…a1b2" }
+        model: { type: string }
+        systemPrompt: { type: string }
+        webSearch: { type: boolean }
+    AssistantAnswer:
+      type: object
+      properties:
+        title: { type: string, description: The title of a new note }
+        markdown: { type: string }
+        model: { type: string }
     BriefingSettings:
       type: object
       properties:

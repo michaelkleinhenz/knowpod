@@ -155,6 +155,12 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
   translate) or say what to do in your own words; at the cursor, the AI continues the text
   or writes what you ask for. The answer is shown first, to replace the selection with,
   insert below it, try again or discard. It uses the summary model.
+- **Your own AI model**: under **Settings → AI model**, each user sets up their own
+  OpenRouter API key and model (separate from the transcription and summary models), a system
+  prompt added to every request, and optionally web search. The ✨ button on a note has it work
+  on the whole note as asked ("add where I can buy each item"); the result is shown first and
+  replaces the text as an edit that can be undone. **Write with AI** in the new note and new
+  task dialogs has it write a new note from a prompt ("the steps to repair a radio").
 - **Saved filters**: the search box understands a filter language like Todoist's, e.g.
   `label:Task & due:week & !done`, `@Work | folder:"Side projects"` or `(p1 | p2) overdue`
   (plain words still search the titles). In shared notes, `task & from:me` finds the tasks you

@@ -46,7 +46,24 @@ type User struct {
 	MCP MCP `bson:"mcp"`
 	// Briefing is when the user gets a daily briefing and a weekly review.
 	Briefing Briefing `bson:"briefing"`
+	// Assistant is the user's own AI model for working on notes and writing new ones.
+	Assistant Assistant `bson:"assistant,omitempty"`
 }
+
+// Assistant is a user's own AI model, through their own OpenRouter account: unlike the
+// models the administrator sets up for transcripts and summaries, the user chooses it to
+// work on notes and to write new ones as asked.
+type Assistant struct {
+	APIKey string `bson:"apiKey,omitempty"`
+	Model  string `bson:"model,omitempty"`
+	// SystemPrompt is the user's own instructions, added to every request.
+	SystemPrompt string `bson:"systemPrompt,omitempty"`
+	// WebSearch lets the model search the web for its answers (OpenRouter's web plugin).
+	WebSearch bool `bson:"webSearch,omitempty"`
+}
+
+// Configured reports whether the assistant can be used.
+func (a Assistant) Configured() bool { return a.APIKey != "" && a.Model != "" }
 
 // Briefing sets up a user's briefings: a daily briefing with the day's tasks and what came
 // in since the day before, shown on the home page, and a weekly review, a note; each is

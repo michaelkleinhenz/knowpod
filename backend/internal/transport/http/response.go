@@ -52,6 +52,7 @@ var errorCodes = []struct {
 	{service.ErrPairingRevoked, http.StatusConflict, "pairing_revoked"},
 	{service.ErrNotPaired, http.StatusConflict, "not_paired"},
 	{service.ErrCloudUnavailable, http.StatusBadGateway, "remarkable_unavailable"},
+	{service.ErrAssistantFailed, http.StatusBadGateway, "assistant_failed"},
 	{service.ErrEmailTaken, http.StatusConflict, "email_taken"},
 	{service.ErrBackupBusy, http.StatusConflict, "backup_busy"},
 	{service.ErrNotReady, http.StatusConflict, "not_ready"},

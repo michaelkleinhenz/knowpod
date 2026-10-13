@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api } from '../api/client';
+import { AssistantSettings } from '../components/Assistant';
 import { useAuth } from '../auth';
 import { DesktopAppSetup } from '../components/DesktopAppSetup';
 import { LabelSettings } from '../components/LabelSettings';
@@ -17,7 +18,7 @@ import { FONT_SIZES, applyFontSize, currentFontSize } from '../lib/fontSize';
 import { appContext, isIOSApp } from '../lib/desktop';
 import { APP_VERSION, desktopVersion } from '../lib/version';
 
-const TABS = ['general', 'account', 'devices', 'themes', 'labels', 'filters', 'backup'] as const;
+const TABS = ['general', 'account', 'devices', 'assistant', 'themes', 'labels', 'filters', 'backup'] as const;
 
 // LanguageSettings changes the app language; it is saved with the user.
 function LanguageSettings() {
@@ -184,6 +185,11 @@ export function Settings() {
       )}
       {tab === 'account' && <Account />}
       {tab === 'devices' && <Devices />}
+      {tab === 'assistant' && (
+        <section className="card">
+          <AssistantSettings />
+        </section>
+      )}
       {tab === 'themes' && (
         <section className="card">
           <h2 className="card-title">{t('settings.themes.title')}</h2>

@@ -19,7 +19,7 @@ function usePrice() {
 }
 
 // ModelPicker is a filterable select of OpenRouter models.
-function ModelPicker(props: {
+export function ModelPicker(props: {
   id: string;
   label: string;
   hint: string;

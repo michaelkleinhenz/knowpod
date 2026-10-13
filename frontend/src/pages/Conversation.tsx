@@ -5,7 +5,8 @@ import { api, Recording } from '../api/client';
 import { purgeDate } from '../lib/trash';
 import { Board, boardLanes } from '../components/Board';
 import { CopyButton } from '../components/CopyButton';
-import { BackIcon, CalendarIcon, CopyIcon, DownloadIcon, FullscreenIcon, NewNoteIcon, PrintIcon, RetranscribeIcon, TrashIcon } from '../components/Icons';
+import { BackIcon, CalendarIcon, CopyIcon, DownloadIcon, FullscreenIcon, NewNoteIcon, PrintIcon, RetranscribeIcon, SparkleIcon, TrashIcon } from '../components/Icons';
+import { AssistantEditDialog, useAssistantReady } from '../components/Assistant';
 import { inline, Markdown } from '../components/Markdown';
 import { NoteDone, NoteLabels } from '../components/Labels';
 import { Attachments } from '../components/Attachments';
@@ -292,6 +293,13 @@ function NoteBody({ rec, aiReady, aiWriting, tab, setTab, setRec, reload, create
   async function convertToTask(title: string, markdown: string) {
     notes.upsert(await api.createTextNote(title, markdown, rec.parentId, { task: true }, rec.folderId));
   }
+
+  // The user's own AI model works on the whole text: its answer replaces the text in the
+  // editor, as an edit that can be undone and is saved like any other.
+  const assistantReady = useAssistantReady();
+  const [assistantOpen, setAssistantOpen] = useState(false);
+  const replaceText = useRef<((markdown: string) => void) | null>(null);
+  const canAssist = assistantReady && !!summary && !isBoard && !textReadOnly && !rec.deletedAt;
 
   // createSub makes an empty text note under this one and opens it, ready to type its title.
   async function createSub() {
@@ -596,6 +604,11 @@ function NoteBody({ rec, aiReady, aiWriting, tab, setTab, setRec, reload, create
           <RetranscribeIcon />
         </button>
       )}
+      {canAssist && (
+        <button type="button" className="icon-button" disabled={busy} title={t('assistant.edit.button')} aria-label={t('assistant.edit.button')} onClick={() => setAssistantOpen(true)}>
+          <SparkleIcon size={20} />
+        </button>
+      )}
       {!readOnly && (
         <button type="button" className="icon-button" disabled={busy} title={t('subNotes.new')} aria-label={t('subNotes.newLabel', { title: titleOf(rec) })} onClick={() => void createSub()}>
           <NewNoteIcon />
@@ -616,6 +629,17 @@ function NoteBody({ rec, aiReady, aiWriting, tab, setTab, setRec, reload, create
   return (
     <div className={withAside ? 'note-layout' : undefined}>
       <PrintSheet doc={printing} onDone={() => setPrinting(null)} />
+      {assistantOpen && (
+        <AssistantEditDialog
+          title={autosave.title}
+          markdown={() => autosave.markdown() ?? summary?.markdown ?? ''}
+          onApply={(markdown) => {
+            setTab('summary');
+            replaceText.current?.(markdown);
+          }}
+          onClose={() => setAssistantOpen(false)}
+        />
+      )}
       <div className="note-main">
         {editable && !fromRemarkable && (
           <div className="note-sync">
@@ -789,6 +813,7 @@ function NoteBody({ rec, aiReady, aiWriting, tab, setTab, setRec, reload, create
                     templates={templates}
                     title={autosave.title}
                     people={notes.people}
+                    onReplaceReady={(replace) => (replaceText.current = replace)}
                   />
                 </Suspense>
                 </div>

@@ -7475,3 +7475,49 @@ a.state-pill.public-pill {
 .tree-row {
   -webkit-touch-callout: none;
 }
+
+/* --- The user's own AI model: working on a note, writing a new one --- */
+
+.assistant-dialog {
+  max-width: 40rem;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.new-item-backdrop:has(.assistant-dialog) {
+  padding-top: 8vh;
+}
+
+.assistant-dialog h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.assistant-hint {
+  margin: 0;
+  font-size: 0.88rem;
+}
+
+.assistant-ask {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.assistant-ask textarea {
+  width: 100%;
+  resize: vertical;
+  font: inherit;
+}
+
+.assistant-preview {
+  max-height: 45vh;
+}
+
+.new-item-ai {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-right: auto;
+}
