@@ -51,7 +51,7 @@ interface Props {
   meta: (r: Recording, depth: number) => string;
   // taskDate shows the due date on the tasks of list (their sub-notes always show it).
   taskDate?: boolean;
-  onSetDone: (r: Recording, done: boolean) => void;
+  onSetDone: (r: Recording, done: boolean) => void | Promise<void>;
   onNewSub?: (parent: Recording) => void;
   onTrash?: (r: Recording) => void;
   // rowProps adds to each row, e.g. to drag it or drop notes onto it.

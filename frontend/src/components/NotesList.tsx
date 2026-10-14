@@ -407,7 +407,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
       </div>
 
       <div className="notes-list-items">
-        {showTrash && recordings && <TrashView search={search} activeId={activeId} aiReady={aiReady} onSetDone={(r, d) => void setDone(r, d)} />}
+        {showTrash && recordings && <TrashView search={search} activeId={activeId} aiReady={aiReady} onSetDone={setDone} />}
 
         {uploads.length > 0 && (
           <ul className="upload-list" aria-live="polite">
@@ -462,10 +462,10 @@ export function NotesList({ activeId }: { activeId?: string }) {
           </div>
         )}
         {!showTrash && view === 'due' && recordings && (recordings.length === 0 || matches.length > 0) && (
-        <DueView notes={matches} activeId={activeId} aiReady={aiReady} onSetDone={(r, d) => void setDone(r, d)} onNewSub={creating ? undefined : (r) => void createSub(r)} onTrash={(r) => void trashNote(r)} />
+        <DueView notes={matches} activeId={activeId} aiReady={aiReady} onSetDone={setDone} onNewSub={creating ? undefined : (r) => void createSub(r)} onTrash={(r) => void trashNote(r)} />
       )}
       {!showTrash && view === 'tasks' && recordings && (
-          <TasksView notes={matches} activeId={activeId} aiReady={aiReady} onSetDone={(r, d) => void setDone(r, d)} onNewSub={creating ? undefined : (r) => void createSub(r)} onTrash={(r) => void trashNote(r)} />
+          <TasksView notes={matches} activeId={activeId} aiReady={aiReady} onSetDone={setDone} onNewSub={creating ? undefined : (r) => void createSub(r)} onTrash={(r) => void trashNote(r)} />
         )}
 
         {!showTrash && search && recordings && recordings.length > 0 && matches.length === 0 && view !== 'tasks' && (
@@ -478,7 +478,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
             search={search}
             activeId={activeId}
             aiReady={aiReady}
-            onSetDone={(r, d) => void setDone(r, d)}
+            onSetDone={setDone}
             onNewSub={creating ? undefined : (r) => void createSub(r)}
             onTrash={(r) => void trashNote(r)}
             onNewInFolder={creating ? undefined : (id) => void createText(id)}
@@ -503,7 +503,7 @@ export function NotesList({ activeId }: { activeId?: string }) {
                     activeId={activeId}
                     aiReady={aiReady}
                     meta={(r, depth) => (depth === 0 ? formatTime(when(r)) : shortDate(when(r)))}
-                    onSetDone={(r, d) => void setDone(r, d)}
+                    onSetDone={setDone}
                     onNewSub={creating ? undefined : (r) => void createSub(r)}
                     onTrash={(r) => void trashNote(r)}
                   />

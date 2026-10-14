@@ -48,7 +48,7 @@ export function SubNotes({ rec }: { rec: Recording }) {
           active={false}
           aiReady={aiReady}
           meta={formatDate(when(r))}
-          onSetDone={(r, d) => void setDone(r, d)}
+          onSetDone={setDone}
           sub={
             below.length > 0
               ? { count: below.length, open: isOpen, onToggle: (e) => setOpen(e.altKey ? withSubNotes(r.id, subs) : [r.id], !isOpen) }

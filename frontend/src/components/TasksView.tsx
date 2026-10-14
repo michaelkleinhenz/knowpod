@@ -86,7 +86,7 @@ export function TasksView({
   notes: Recording[];
   activeId?: string;
   aiReady: boolean;
-  onSetDone: (r: Recording, done: boolean) => void;
+  onSetDone: (r: Recording, done: boolean) => void | Promise<void>;
   onNewSub?: (parent: Recording) => void;
   onTrash?: (r: Recording) => void;
 }) {
