@@ -13,13 +13,13 @@ import { BellIcon, CalendarIcon, ClockIcon, FlagIcon, RepeatIcon } from './Icons
 
 export const PRIORITIES: Priority[] = [1, 2, 3];
 
-// PriorityFlag shows a task's priority as a colored flag.
+// PriorityFlag shows a task's priority as a small colored "P1"-style badge.
 export function PriorityFlag({ priority }: { priority?: Priority }) {
   const { t } = useTranslation();
   if (!priority) return null;
   return (
     <span className={`priority-flag p${priority}`} title={t('tasks.priorityN', { n: priority })} role="img" aria-label={t('tasks.priorityN', { n: priority })}>
-      <FlagIcon size={13} filled />
+      P{priority}
     </span>
   );
 }

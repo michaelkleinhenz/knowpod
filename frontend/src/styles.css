@@ -3562,30 +3562,6 @@ html:has(.notes-layout) {
   --icon-w: 22px;
 }
 
-/* A prioritized task's check box is ringed in its priority's color (P4, none, stays plain). */
-.task-check.p1 {
-  --priority: var(--color-error);
-}
-
-.task-check.p2 {
-  --priority: var(--color-orange);
-}
-
-.task-check.p3 {
-  --priority: var(--color-primary);
-}
-
-.task-check:is(.p1, .p2, .p3) {
-  border-radius: 4px;
-  outline: 2px solid var(--priority);
-  outline-offset: 0;
-  accent-color: var(--priority);
-}
-
-.task-check:is(.p1, .p2, .p3):focus-visible {
-  outline-offset: 2px;
-}
-
 .task-item .doc-icon > :not(rect:first-child) {
   opacity: 0.15;
 }
@@ -4574,7 +4550,17 @@ p.due-line {
 }
 
 .priority-flag {
-  color: var(--priority);
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--priority);
+  color: #fff;
+  font-size: 7px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
 }
 
 .due-chip {
