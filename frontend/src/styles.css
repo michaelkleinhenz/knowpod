@@ -3562,30 +3562,6 @@ html:has(.notes-layout) {
   --icon-w: 22px;
 }
 
-/* A prioritized task's check box is ringed in its priority's color (P4, none, stays plain). */
-.task-check.p1 {
-  --priority: var(--color-error);
-}
-
-.task-check.p2 {
-  --priority: var(--color-orange);
-}
-
-.task-check.p3 {
-  --priority: var(--color-primary);
-}
-
-.task-check:is(.p1, .p2, .p3) {
-  border-radius: 4px;
-  outline: 2px solid var(--priority);
-  outline-offset: 0;
-  accent-color: var(--priority);
-}
-
-.task-check:is(.p1, .p2, .p3):focus-visible {
-  outline-offset: 2px;
-}
-
 .task-item .doc-icon > :not(rect:first-child) {
   opacity: 0.15;
 }
@@ -3593,6 +3569,70 @@ html:has(.notes-layout) {
 .task-item.done .conversation-title {
   color: var(--color-muted);
   text-decoration: line-through;
+}
+
+/* Checking a task off: the check mark pops, then the row slides out and folds away; a
+   repeating task's row unfolds again at its next date (NoteRow plays the steps). */
+.task-item.checked .task-check {
+  animation: task-check-pop 250ms ease-out;
+}
+
+.task-item.checked .conversation-title {
+  transition: color 200ms;
+}
+
+.task-item.leaving {
+  overflow: hidden;
+  animation: task-leave 300ms ease-in forwards;
+}
+
+.task-item.entering {
+  overflow: hidden;
+  animation: task-enter 350ms ease-out;
+}
+
+@keyframes task-check-pop {
+  50% {
+    transform: translateY(-50%) scale(1.3);
+  }
+}
+
+@keyframes task-leave {
+  from {
+    max-height: var(--row-h, 4rem);
+    opacity: 1;
+    transform: none;
+  }
+  60% {
+    opacity: 0;
+    transform: translateX(1.5rem);
+  }
+  to {
+    max-height: 0;
+    opacity: 0;
+    transform: translateX(1.5rem);
+  }
+}
+
+@keyframes task-enter {
+  from {
+    max-height: 0;
+    opacity: 0;
+    transform: translateY(-0.5rem);
+  }
+  to {
+    max-height: var(--row-h, 4rem);
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .task-item.checked .task-check,
+  .task-item.leaving,
+  .task-item.entering {
+    animation: none;
+  }
 }
 
 /* --- Sidebar views and folders --- */
@@ -4574,7 +4614,17 @@ p.due-line {
 }
 
 .priority-flag {
-  color: var(--priority);
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--priority);
+  color: #fff;
+  font-size: 7px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
 }
 
 .due-chip {

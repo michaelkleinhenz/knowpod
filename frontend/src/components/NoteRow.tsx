@@ -1,4 +1,4 @@
-import { DragEvent, HTMLAttributes, MouseEvent, ReactNode } from 'react';
+import { DragEvent, HTMLAttributes, MouseEvent, ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { Recording } from '../api/client';
@@ -19,7 +19,9 @@ interface Props {
   aiReady: boolean;
   // meta is shown at the end of the row (the time or date; none in the folder view).
   meta: string;
-  onSetDone: (r: Recording, done: boolean) => void;
+  // onSetDone stores the check mark; when it returns a promise, a checked-off row waits for it
+  // before it comes back (a repeating task with its next date).
+  onSetDone: (r: Recording, done: boolean) => void | Promise<void>;
   // taskDate shows a task's due date on the row (off where the list is grouped by it).
   taskDate?: boolean;
   // onNewSub, when set, shows a button (and a menu item) that adds a sub-note to the note.
@@ -39,6 +41,22 @@ interface Props {
   children?: ReactNode;
 }
 
+// Checking a task off plays out in steps, so it's clear the click took: the check mark and the
+// struck-through title show (CHECK_MS), then the row folds away (LEAVE_MS). Once it's stored,
+// a row still listed (a repeating task at its next date) unfolds again as a new one (ENTER_MS).
+const CHECK_MS = 450;
+const LEAVE_MS = 300;
+const ENTER_MS = 350;
+
+type CheckPhase = 'idle' | 'checked' | 'leaving' | 'entering';
+
+// renewing holds the tasks checked off and being stored: a row that comes back for one in a
+// new place (a repeating task moved to another date group) unfolds there as the new one.
+const renewing = new Set<string>();
+
+const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 // NoteRow is one note in the sidebar: in front, a toggle for its sub-notes if it has any (in a
 // gutter every row has, so the rows' icons line up); then its type icon (a check box for
 // tasks), title (shortened to fit, its number always shown, to link it with "#12"),
@@ -53,6 +71,41 @@ export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = t
   const fromOther = !!noteOrigin(r, notes?.filterContext.userId);
   const tabs = useNoteTabs();
   const tabLink = useTabLink();
+  const rowRef = useRef<HTMLLIElement>(null);
+  const [phase, setPhase] = useState<CheckPhase>(() => (renewing.has(r.id) ? 'entering' : 'idle'));
+
+  // checkOff plays the check-off steps around storing it; unchecking is stored right away.
+  async function checkOff(done: boolean) {
+    if (!done) {
+      void onSetDone(r, false);
+      return;
+    }
+    const motion = !reducedMotion();
+    setPhase('checked');
+    if (motion) await wait(CHECK_MS);
+    setPhase('leaving');
+    if (motion) await wait(LEAVE_MS);
+    renewing.add(r.id);
+    await onSetDone(r, true);
+    // A row that's gone for good (a done task the list hides) leaves nothing behind.
+    setTimeout(() => renewing.delete(r.id), ENTER_MS);
+    setPhase('entering');
+  }
+
+  // The row folds from and unfolds to its own height.
+  useLayoutEffect(() => {
+    const el = rowRef.current;
+    if (el && (phase === 'leaving' || phase === 'entering')) el.style.setProperty('--row-h', `${el.scrollHeight}px`);
+  }, [phase]);
+
+  useEffect(() => {
+    if (phase !== 'entering') return;
+    renewing.delete(r.id);
+    const timer = setTimeout(() => setPhase('idle'), reducedMotion() ? 0 : ENTER_MS);
+    return () => clearTimeout(timer);
+  }, [phase]);
+
+  const checked = phase === 'checked' || phase === 'leaving' || (phase === 'idle' && !!r.done) || (phase === 'entering' && !!r.done);
   // Right click or long press opens a menu: the note opens in a new tab (where tabs are
   // shown), gets a sub-note, and only the owner can duplicate it; last it goes to the trash.
   const { handlers: menuHandlers, menu } = useContextMenu([
@@ -74,7 +127,7 @@ export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = t
     ...(onTrash ? [{ label: t('conversation.moveToTrash'), danger: true, onSelect: () => onTrash(r) }] : []),
   ]);
   return (
-    <li className={task ? `task-item${r.done ? ' done' : ''}` : undefined}>
+    <li ref={rowRef} className={task ? `task-item${checked ? ' done' : ''}${phase !== 'idle' ? ` ${phase}` : ''}` : undefined}>
       <div {...lineProps} {...menuHandlers} className={`note-line${drop === true ? ' drop' : drop ? ` drop-${drop}` : ''}`}>
         <span className="note-gutter">
           {sub && (
@@ -134,11 +187,11 @@ export function NoteRow({ rec: r, active, aiReady, meta, onSetDone, taskDate = t
         {task && (
           <input
             type="checkbox"
-            className={`task-check${r.priority ? ` p${r.priority}` : ''}`}
-            checked={!!r.done}
-            disabled={r.access === 'viewer'}
+            className="task-check"
+            checked={checked}
+            disabled={r.access === 'viewer' || phase !== 'idle'}
             title={r.access === 'viewer' ? t('labels.viewOnly') : r.due?.repeat && !r.done ? t('labels.repeatHint') : undefined}
-            onChange={(e) => onSetDone(r, e.target.checked)}
+            onChange={(e) => void checkOff(e.target.checked)}
             aria-label={t('labels.doneLabel', { title: title(r) })}
           />
         )}
