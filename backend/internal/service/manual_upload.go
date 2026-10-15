@@ -18,8 +18,8 @@ import (
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/ports"
 )
 
-// ErrUnsupportedMedia is returned for uploaded files that are not WAV, MP3, a photo or a PDF.
-var ErrUnsupportedMedia = errors.New("only audio (WAV, MP3), photos (JPEG, PNG, WebP, GIF) and PDF files can be uploaded")
+// ErrUnsupportedMedia is returned for uploaded files that are not audio, a photo or a PDF.
+var ErrUnsupportedMedia = errors.New("only audio (WAV, MP3, Ogg), photos (JPEG, PNG, WebP, GIF) and PDF files can be uploaded")
 
 // maxUploadImage limits uploaded photos: they are sent to the model in one piece.
 const maxUploadImage = 20 << 20
@@ -167,7 +167,10 @@ func (s *ManualUploadService) Upload(ctx context.Context, acc *Account, in Manua
 			return nil, fmt.Errorf("%w: %v", ErrInvalidAudio, werr)
 		}
 		format = info.Format()
-	case "audio/mpeg":
+	case "audio/mpeg", "audio/ogg":
+		// MP3 and Ogg (Opus) carry their own timing; the transcription pipeline reads it. Ogg
+		// is how the desktop app imports an AIREC recorder's recordings (desktop/src/
+		// airec-protocol.js wraps its raw Opus packets as Ogg).
 	default:
 		return nil, ErrUnsupportedMedia
 	}

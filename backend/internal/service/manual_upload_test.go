@@ -35,11 +35,17 @@ func TestManualUpload(t *testing.T) {
 		t.Fatalf("mp3: %+v, %v", rec, err)
 	}
 
+	// Ogg (Opus) is accepted, e.g. an AIREC recorder's recordings imported by the desktop app.
+	ogg := append([]byte("OggS\x00\x02"), make([]byte, 500)...)
+	if rec, err := s.Upload(ctx, alice, ManualUpload{Filename: "20261015183232.opus", Body: bytes.NewReader(ogg), Recorded: true}); err != nil ||
+		rec.SourceContentType != "audio/ogg" || rec.Source != recording.SourceRecorder {
+		t.Fatalf("ogg: %+v, %v", rec, err)
+	}
+
 	for name, tc := range map[string]struct {
 		body []byte
 		want error
 	}{
-		"ogg":       {[]byte("OggS\x00\x02 rest"), ErrUnsupportedMedia},
 		"text":      {[]byte("hello"), ErrUnsupportedMedia},
 		"empty":     {nil, ErrInvalidInput},
 		"too large": {make([]byte, 1<<20+1), ErrTooLarge},
@@ -49,7 +55,7 @@ func TestManualUpload(t *testing.T) {
 			t.Errorf("%s: err = %v, want %v", name, err, tc.want)
 		}
 	}
-	if list, _ := recs.List(ctx, recording.ListFilter{}); len(list) != 2 {
+	if list, _ := recs.List(ctx, recording.ListFilter{}); len(list) != 3 {
 		t.Fatalf("rejected uploads left recordings: %d", len(list))
 	}
 	if _, err := s.Upload(ctx, &Account{All: true}, ManualUpload{Body: bytes.NewReader(wav)}); !errors.Is(err, ErrForbidden) {
