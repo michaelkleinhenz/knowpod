@@ -17,6 +17,7 @@ const { createPocketBluetooth } = require('./pocket-bluetooth');
 const { startPocketWifiSync } = require('./pocket-wifi-sync');
 const { createSystemAudio } = require('./system-audio');
 const { startRecorderBluetooth } = require('./recorder-bluetooth');
+const { startAirecBluetooth } = require('./airec-bluetooth');
 
 // Must match build.appId in package.json; electron-builder drops the build section from the
 // packaged package.json, so it can't be read from pkg at runtime.
@@ -78,6 +79,8 @@ const systemAudio = createSystemAudio({
 // recorderBluetooth takes recordings from a knowpod recorder (ESP32) over Bluetooth while it has
 // no Wi-Fi, and uploads them for it (see recorder-bluetooth.js).
 let recorderBluetooth = null;
+// airecBluetooth reads recordings from an AIREC recorder over Bluetooth (see airec-bluetooth.js).
+let airecBluetooth = null;
 // usbStatus says how switching the USB drive on went, for the tray menu.
 let usbStatus = '';
 // quitting is set once the app is really quitting, so closing the window doesn't just hide it.
@@ -548,6 +551,28 @@ ipcMain.handle('knowpod:recorder-bluetooth', (event, request) => {
   }
 });
 
+// The Recorder Sync dialog's AIREC tab (frontend/src/components/RecorderSync.tsx) lists, downloads
+// and deletes an AIREC recorder's recordings over Bluetooth (see airec-bluetooth.js).
+ipcMain.handle('knowpod:airec-bluetooth', async (event, request) => {
+  if (!fromApp(event) || !airecBluetooth || !request || typeof request !== 'object') return { ok: false, error: 'failed' };
+  switch (request.action) {
+    case 'state':
+      return airecBluetooth.state();
+    case 'connect':
+      return airecBluetooth.connect();
+    case 'refresh':
+      return airecBluetooth.refresh();
+    case 'download':
+      return airecBluetooth.download(typeof request.name === 'string' ? request.name : '');
+    case 'delete':
+      return airecBluetooth.delete(typeof request.name === 'string' ? request.name : '');
+    case 'disconnect':
+      return airecBluetooth.disconnect();
+    default:
+      return { ok: false, error: 'failed' };
+  }
+});
+
 ipcMain.handle('knowpod:set-server', (event, input) => {
   // Only the bundled setup page may change the server, never a page the server sent.
   if (!event.senderFrame?.url.startsWith('file:')) return { ok: false };
@@ -875,6 +900,7 @@ if (!app.requestSingleInstanceLock()) {
     pocketBluetooth = createPocketBluetooth({ readConfig, writeConfig, onChange: updateTray });
     pocketWifi = startPocketWifiSync({ serverUrl, readConfig, writeConfig, notify: showNotification, pocketBluetooth, onChange: updateTray });
     recorderBluetooth = startRecorderBluetooth({ serverUrl, readConfig, writeConfig, notify: showNotification, onChange: updateTray });
+    airecBluetooth = startAirecBluetooth({ onChange: updateTray });
     updateTray();
     // macOS also activates the app when it launches; started at login, it stays in the tray.
     let skipActivate = startedHidden();

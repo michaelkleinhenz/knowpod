@@ -13,7 +13,11 @@ can leave the recorder unreachable until it's power-cycled.
 
 ## Findings so far
 
-Everything learned so far is in [RESEARCH.md](RESEARCH.md): the recorder's details, the AP
+A second recorder (AIREC, by a different manufacturer) was worked out with the `vendor-app`
+capture and `airec-probe`; its Bluetooth protocol is in [AIREC.md](AIREC.md). knowpod supports it
+in the desktop app's Recorder Sync dialog.
+
+Everything learned about the Pocket so far is in [RESEARCH.md](RESEARCH.md): the recorder's details, the AP
 sequence, port 8475, what the Android app's strings reveal, the working theory of the
 transfer, the next steps, and the plan for the desktop app. Keep it up to date after each run.
 
@@ -62,6 +66,27 @@ WiFi passwords): `timeline.log` (everything printed, unredacted, with full value
 example to its cloud during activation) is TLS from the phone and isn't captured; logcat is
 the window into it.
 
+### Another recorder and its app (`vendor-app`)
+
+The same capture works for other manufacturers' recorders. It records the live snoop log and
+logcat, with no WiFi unless you pass `--wifi` (plus `--bssid` or `--oui`):
+
+```sh
+adb shell pm list packages -3                       # find the app's package name
+python3 capture_app.py vendor-app --app com.vendor.recorder --device-name '^NameItAdvertises'
+```
+
+`--device-name` and `--device-addr` only decide whose advertising is shown before the
+connection. Any device the phone connects to is decoded anyway. Besides LE (GATT, SMP), the
+decoder handles classic Bluetooth too: SSP pairing (IO capabilities, the confirmation number,
+the link-key type), L2CAP channels by PSM (SDP, RFCOMM, vendor PSMs) and RFCOMM data. For a
+dual-mode device (it advertises over LE and also answers classic inquiries), both sides show up
+as `adv` lines (`advertises` with the flags in words, `inquiry` with its class of device). The
+LE pairing request lists which keys each side hands over; `link key (CTKD)` means the LE pairing
+also bonds the classic side. SMP on the classic link means it paired over classic. Logcat
+shows every line from the app's process and the phone's Bluetooth stack lines about pairing
+and bonding (`bt-stack`). The full log is in `logcat.txt`.
+
 To decode a btsnoop log again, or one from elsewhere, without a phone:
 
 ```sh
@@ -107,6 +132,26 @@ Each step opens its own connection, like the app does. Unlocking makes the recor
 At the end it prints a plain-language reading (first-key-wins, any key works, or not locked).
 Keys are redacted from the output and left out of the `--out` JSON report. Run it only against a
 recorder you own; for a clean first-key test, factory reset it first.
+
+## Testing the AIREC recorder's protocol (`airec-probe`)
+
+A different recorder (AIREC, by another manufacturer), worked out from a `vendor-app` capture.
+It speaks framed binary commands over Bluetooth LE (`55 AA <len> <cmd> <data>`, answers
+`AA 55 …`) with no pairing or unlock, and stores recordings as 80-byte Opus packets. Each check
+states one assumption from the capture and reports PASS, FAIL, INFO or SKIP;
+`airec-probe --list-checks` lists them.
+
+```sh
+airec-probe                                     # read-only: finds the recorder by name, leaves it as it was
+airec-probe --explore                           # also sends the commands we don't understand yet
+airec-probe --allow-write                       # also sets the clock, tries to delete a missing file
+airec-probe --allow-write --delete 20261015180213   # deletes that recording for real
+airec-probe --live 90                           # record on the recorder while it waits
+```
+
+Disconnect the phone first (close the app or turn off its Bluetooth): the recorder takes one
+connection. Output goes to `airec-<time>/` (gitignored): `report.json`, `frames.log` with every
+frame, and the downloaded recordings (`.bin` as received, `.wav` when libopus is installed).
 
 ## Install and run
 

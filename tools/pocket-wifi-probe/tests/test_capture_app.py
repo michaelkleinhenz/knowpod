@@ -67,7 +67,7 @@ def test_activation_like_session():
     ]
     lines = loud(decode(packets))
     assert lines[0] == "adv PKT01_TEST (F4:4C:26:17:17:FF) advertises: mfr=1234: name=PKT01_TEST"
-    assert "connected to PKT01_TEST (F4:4C:26:17:17:FF)" in lines[1]
+    assert "LE link to PKT01_TEST (F4:4C:26:17:17:FF)" in lines[1]
     assert "service 001120a0-2233-4455-6677-889912345678 at 0x0010-0x0016" in lines[2]
     assert lines[3].endswith("characteristic 001120a3-2233-4455-6677-889912345678 at 0x0012 [write-no-rsp,notify]")
     assert lines[4] == "phone> PKT01_TEST subscribe (notify) 001120a3"
@@ -90,8 +90,10 @@ def test_fragmented_acl_and_binary_notification_flood():
     events = decode([(DEVICE, first), (DEVICE, cont)])
     assert loud(events) == [f"device< link 0x041 notify 0x0020: {bytes(range(48)).hex()}… (100 B)"]
 
-    flood = decode([(DEVICE, att(h, b"\x1b\x20\x00\x00\xff"))] * 1000)
+    flood = decode([(DEVICE, att(h, b"\x1b\x20\x00" + bytes(range(100))))] * 1000)
     assert len(loud(flood)) == capture_app.NOTIFY_SHOWN + 2  # then the 500th and the 1000th
+    replies = decode([(DEVICE, att(h, b"\x1b\x20\x00\xaa\x55\x02\x0e\x64"))] * 100)
+    assert len(loud(replies)) == 100  # short values are commands: every one shows
 
 
 def test_btsnoop_file_round_trip(tmp_path):
@@ -184,3 +186,54 @@ def test_connect_snoop_streams_through_the_same_connection(tmp_path):
     stream.join(5)
     assert dec.packets == 1 and any("PKT01_LIVE" in e for e in events)
     assert (tmp_path / "live.btsnoop").read_bytes() == SNOOP_HEADER + record
+
+
+def test_classic_pairing_l2cap_and_rfcomm():
+    h = 0x0B
+    addr = ADDR
+    rfcomm_data = bytes([0x0B, 0xFF, (5 << 1) | 1, 0x01]) + b"HELLO" + b"\x00"  # DLCI 2, UIH+PF, 1 credit
+    packets = [
+        (DEVICE, event(0x07, b"\x00" + addr + b"VendorRec\x00" + bytes(238))),  # remote name
+        (DEVICE, event(0x03, b"\x00" + struct.pack("<H", h) + addr + b"\x01\x00")),  # connection complete
+        (DEVICE, event(0x32, addr + bytes([0x03, 0x00, 0x04]))),  # IO capability response
+        (DEVICE, event(0x33, addr + struct.pack("<I", 123456))),  # user confirmation request
+        (DEVICE, event(0x36, b"\x00" + addr)),  # simple pairing complete
+        (DEVICE, event(0x18, addr + bytes(16) + b"\x07")),  # link key notification
+        (PHONE, acl(h, b"\x02\x01\x04\x00\x03\x00\x40\x00", 0x0001)),  # connection request: RFCOMM, scid 0x40
+        (DEVICE, acl(h, b"\x03\x01\x08\x00\x41\x00\x40\x00\x00\x00\x00\x00", 0x0001)),  # response: dcid 0x41
+        (PHONE, acl(h, bytes([0x0B, 0x3F, 0x01, 0x1C]), 0x0041)),  # SABM on DLCI 2
+        (DEVICE, acl(h, rfcomm_data, 0x0040)),
+    ]
+    lines = loud(decode(packets))
+    assert lines[0] == "bt classic link to VendorRec (F4:4C:26:17:17:FF) (0x00b)"
+    assert lines[1] == "device< VendorRec (F4:4C:26:17:17:FF) pairing (classic SSP): io=NoInputNoOutput, general bonding, OOB=no"
+    assert lines[2].startswith("pair VendorRec (F4:4C:26:17:17:FF) confirm number 123456")
+    assert lines[3] == "pair VendorRec (F4:4C:26:17:17:FF) pairing succeeded"
+    assert lines[4] == "pair VendorRec (F4:4C:26:17:17:FF) bonded: link key type unauthenticated P-256"
+    assert lines[5] == "l2cap phone> VendorRec opens channel RFCOMM (PSM 0x0003)"
+    assert lines[6] == "rfcomm phone> VendorRec opens RFCOMM channel 1"
+    assert lines[7] == "device< VendorRec data RFCOMM channel 1: HELLO"
+
+
+def test_dual_mode_advertising_inquiry_and_ctkd():
+    flags = bytes([2, 0x01, 0x1A])  # LE discoverable, LE+BR/EDR: dual mode
+    name = b"VendorRec"
+    ad = flags + bytes([len(name) + 1, 0x09]) + name
+    le_adv = event(0x3E, bytes([0x02, 1, 0x00, 0x00]) + ADDR + bytes([len(ad)]) + ad + b"\xc0")
+    eir = bytes([len(name) + 1, 0x09]) + name
+    inquiry = event(0x2F, b"\x01" + ADDR + b"\x01\x00" + bytes.fromhex("0c0424") + b"\x00\x00\xc0" + eir.ljust(240, b"\0"))
+    h = 0x40
+    conn = event(0x3E, bytes([0x01, 0x00]) + struct.pack("<H", h) + bytes([0x00, 0x01]) + bytes.fromhex("aabbccddee5f") + bytes(6))
+    out = []
+    dec = capture_app.HciDecoder(lambda kind, text, detail=None, quiet=False: out.append((kind, text, quiet)),
+                                 name_re="^VendorRec", addrs=())
+    for flags_, pkt in [(DEVICE, le_adv), (DEVICE, inquiry), (DEVICE, conn),
+                        (PHONE, acl(h, b"\x01\x03\x00\x0d\x10\x0f\x0f", 0x0006)),
+                        (DEVICE, acl(h, b"\x09\x00" + ADDR, 0x0006))]:
+        dec.packet(flags_, pkt)
+    lines = loud(out)
+    assert lines[0] == ("adv VendorRec (F4:4C:26:17:17:FF) advertises: "
+                        "flags=1a(LE discoverable, LE+BR/EDR controller, LE+BR/EDR host) name=VendorRec")
+    assert lines[1] == "adv VendorRec (F4:4C:26:17:17:FF) inquiry: cod=24040c name=VendorRec"
+    assert lines[3].endswith("keys from phone: LTK+IRK+CSRK+link key (CTKD), from device: LTK+IRK+CSRK+link key (CTKD)")
+    assert "identity address F4:4C:26:17:17:FF (public)" in lines[4]

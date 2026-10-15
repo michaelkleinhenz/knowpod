@@ -392,6 +392,65 @@ a {
   margin: 0;
 }
 
+/* The AIREC tab of the Recorder Sync dialog (frontend/src/components/RecorderSync.tsx). */
+.airec-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.airec-details-name {
+  font-weight: 600;
+}
+
+.airec-details-facts,
+.airec-details-serial {
+  font-size: 0.85rem;
+}
+
+.airec-recordings {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.airec-recording {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.airec-recording:first-child {
+  border-top: none;
+}
+
+.airec-recording-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.airec-recording-when {
+  font-variant-numeric: tabular-nums;
+}
+
+.airec-recording-meta {
+  font-size: 0.85rem;
+}
+
+.airec-recording-actions {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
 .pocket-wifi-notes {
   margin: 0;
   padding-left: 1.2rem;
