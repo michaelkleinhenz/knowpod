@@ -162,7 +162,7 @@ function AirecPane() {
   }
 
   async function remove(rec: AirecRecording) {
-    if (!window.confirm(t('recorderSync.airec.confirmDelete', { date: recordingLabel(rec, t) }))) return;
+    if (!window.confirm(t('recorderSync.airec.confirmDelete', { date: recordingLabel(rec) }))) return;
     setBusyName(rec.name);
     setError(null);
     try {
@@ -206,7 +206,7 @@ function AirecPane() {
             return (
               <li key={rec.name} className="airec-recording">
                 <div className="airec-recording-main">
-                  <span className="airec-recording-when">{recordingLabel(rec, t)}</span>
+                  <span className="airec-recording-when">{recordingLabel(rec)}</span>
                   <span className="muted airec-recording-meta">
                     {formatDuration(rec.seconds * 1000)} · {formatBytes(rec.size)}
                     {done && ` · ${t('recorderSync.airec.imported')}`}
@@ -260,7 +260,7 @@ function AirecDetails({ recorder }: { recorder: AirecRecorder }) {
   );
 }
 
-function recordingLabel(rec: AirecRecording, t: TFunction): string {
+function recordingLabel(rec: AirecRecording): string {
   return rec.recordedAt ? formatDate(rec.recordedAt, { dateStyle: 'medium', timeStyle: 'short' }) : rec.name;
 }
 
