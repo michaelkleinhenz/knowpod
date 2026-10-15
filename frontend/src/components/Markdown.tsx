@@ -155,6 +155,8 @@ const HEADING = /^(#{1,6})\s+(.*)$/;
 const LIST = /^(\s*)([-*+•]|\d+[.)])\s+(.*)$/;
 const FENCE = /^\s*(```|~~~)/;
 const TASK = /^\[([ xX])\]\s+(.*)$/;
+// A heading can start with a checkbox too ("## [ ] Title"; the editor wrote "\[ \]" before).
+const HEADING_TASK = /^\\?\[([ xX])\\?\]\s+(.*)$/;
 const RULE = /^\s*([-*_])(\s*\1){2,}\s*$/;
 const TABLE_RULE = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/;
 const indentOf = (line: string) => line.length - line.trimStart().length;
@@ -310,6 +312,16 @@ function render(blocks: Block[], noteLinks: boolean, cite?: Cite): ReactNode[] {
       case 'h': {
         const level = Math.min(b.level + 1, 4); // the page title is the only h1
         const Tag = `h${level}` as 'h2' | 'h3' | 'h4';
+        const task = HEADING_TASK.exec(b.text);
+        if (task) {
+          const done = task[1] !== ' ';
+          return (
+            <Tag key={i} className={done ? 'heading-task done' : 'heading-task'}>
+              <input type="checkbox" className="heading-task-box" checked={done} disabled aria-label={task[2]} />
+              {inline(task[2], noteLinks, cite)}
+            </Tag>
+          );
+        }
         return <Tag key={i}>{inline(b.text, noteLinks, cite)}</Tag>;
       }
       case 'hr':

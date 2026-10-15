@@ -2637,6 +2637,32 @@ button.sync-state:focus-visible {
   vertical-align: -0.15em;
 }
 
+/* A checkbox at the start of a heading ("## [ ] Title"). */
+.prose .heading-task-box {
+  width: 1rem;
+  height: 1rem;
+  margin: 0 0.5rem 0 0;
+  vertical-align: -0.1em;
+  accent-color: var(--color-primary);
+}
+
+.editor-content .heading-task-box {
+  cursor: pointer;
+}
+
+.editor-content .heading-task-box:disabled {
+  cursor: default;
+}
+
+.editor-content .heading-task-marker {
+  display: none;
+}
+
+.prose .heading-task.done {
+  color: var(--color-muted);
+  text-decoration: line-through;
+}
+
 .editor-content blockquote {
   margin: 0.75rem 0;
   padding-left: 1rem;

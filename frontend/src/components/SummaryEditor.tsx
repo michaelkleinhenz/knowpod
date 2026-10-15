@@ -1,7 +1,8 @@
 import { Editor, Extension, InputRule, isTextSelection, Range } from '@tiptap/core';
 import { Node as PMNode } from '@tiptap/pm/model';
 import { EditorState, NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state';
-import { Decoration, DecorationSet } from '@tiptap/pm/view';
+import { Decoration, DecorationSet, EditorView } from '@tiptap/pm/view';
+import Heading from '@tiptap/extension-heading';
 import Image from '@tiptap/extension-image';
 import { TaskItem, TaskList } from '@tiptap/extension-list';
 import { TableKit } from '@tiptap/extension-table';
@@ -520,6 +521,107 @@ const DueMarks = Extension.create({
   },
 });
 
+const headingTasksKey = new PluginKey<HeadingTasksState>('headingTasks');
+// HEADING_TASK is a checkbox at the start of a heading ("## [ ] Title", "## [x] Title").
+const HEADING_TASK = /^\[([ xX])\] /;
+
+interface HeadingTasksState {
+  focused: boolean;
+  decorations: DecorationSet;
+}
+
+// toggleHeadingTask checks or unchecks the checkbox of the heading whose text starts at pos.
+function toggleHeadingTask(view: EditorView, pos: number) {
+  const { doc } = view.state;
+  const char = doc.textBetween(pos + 1, pos + 2);
+  if (doc.textBetween(pos, pos + 1) !== '[' || !/^[ xX]$/.test(char)) return;
+  view.dispatch(view.state.tr.insertText(char === ' ' ? 'x' : ' ', pos + 1, pos + 2));
+}
+
+// headingTaskDecorations shows the checkbox of each heading starting with one, and the heading
+// as done when checked. The "[ ] " is hidden, unless the cursor is in the heading while the
+// text is being edited, so it can be changed.
+function headingTaskDecorations(state: EditorState, focused: boolean): DecorationSet {
+  const decorations: Decoration[] = [];
+  const { from, to } = state.selection;
+  state.doc.descendants((node, pos) => {
+    if (node.type.name !== 'heading') return !node.isTextblock;
+    const first = node.firstChild;
+    const task = first?.isText ? HEADING_TASK.exec(first.text ?? '') : null;
+    if (!task) return false;
+    const start = pos + 1;
+    const checked = task[1] !== ' ';
+    decorations.push(Decoration.node(pos, pos + node.nodeSize, { class: checked ? 'heading-task done' : 'heading-task' }));
+    decorations.push(
+      Decoration.widget(
+        start,
+        (view, getPos) => {
+          const box = document.createElement('input');
+          box.type = 'checkbox';
+          box.className = 'heading-task-box';
+          box.checked = checked;
+          box.disabled = !view.editable;
+          box.contentEditable = 'false';
+          // Checked without the cursor going into the heading.
+          box.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            const at = getPos();
+            if (view.editable && at !== undefined) toggleHeadingTask(view, at);
+          });
+          box.addEventListener('click', (e) => e.preventDefault()); // the text sets its state
+          return box;
+        },
+        { side: -1, key: `heading-task-${checked}`, ignoreSelection: true, stopEvent: () => true },
+      ),
+    );
+    const editing = focused && from <= pos + node.nodeSize - 1 && to >= start;
+    if (!editing) decorations.push(Decoration.inline(start, start + task[0].length, { class: 'heading-task-marker' }));
+    return false;
+  });
+  return DecorationSet.create(state.doc, decorations);
+}
+
+// HeadingTasks shows "[ ]" / "[x]" at the start of a heading as a checkbox that can be
+// checked, like a checklist item's; the Markdown keeps "## [x] Title".
+const HeadingTasks = Extension.create({
+  name: 'headingTasks',
+  addProseMirrorPlugins() {
+    return [
+      new Plugin<HeadingTasksState>({
+        key: headingTasksKey,
+        state: {
+          init: (_, state) => ({ focused: false, decorations: headingTaskDecorations(state, false) }),
+          apply: (tr, old, _oldState, state) => {
+            const focus = tr.getMeta(headingTasksKey) as boolean | undefined;
+            const focused = focus ?? old.focused;
+            if (focus === undefined && !tr.docChanged && !tr.selectionSet) return old;
+            return { focused, decorations: headingTaskDecorations(state, focused) };
+          },
+        },
+        props: {
+          decorations: (state) => headingTasksKey.getState(state)?.decorations,
+          handleDOMEvents: {
+            focus: (view) => {
+              view.dispatch(view.state.tr.setMeta(headingTasksKey, true));
+              return false;
+            },
+            blur: (view) => {
+              view.dispatch(view.state.tr.setMeta(headingTasksKey, false));
+              return false;
+            },
+          },
+        },
+      }),
+    ];
+  },
+});
+
+// TaskHeading is the heading, written with its checkbox unescaped ("## [ ] Title", not
+// "## \[ \] Title").
+const TaskHeading = Heading.extend({
+  renderMarkdown: (node, h, ctx) => Heading.config.renderMarkdown!(node, h, ctx).replace(/^(#+ )\\\[([ xX])\\\] /, '$1[$2] '),
+});
+
 // NoteMenu lists the notes offered after typing "#": their type, number and title.
 function NoteMenu({ state, onHover }: { state: MenuState<Recording>; onHover: (i: number) => void }) {
   const { t } = useTranslation();
@@ -779,10 +881,11 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
-        heading: { levels: [1, 2, 3, 4] },
+        heading: false,
         underline: false, // not representable in Markdown
         link: { openOnClick: false, autolink: true, protocols: ['http', 'https', 'mailto'] },
       }),
+      TaskHeading.configure({ levels: [1, 2, 3, 4] }),
       MultilineTaskList,
       taskItemWithConvert((item, getPos) => convertItemRef.current(item, getPos), t('editor.convertTask')).configure({ nested: true }),
       Placeholder.configure({ placeholder: t('editor.placeholder'), showOnlyCurrent: true }),
@@ -795,6 +898,7 @@ export default function SummaryEditor({ markdown, onReady, onChange, onSaveShort
       AiTargetExtension,
       slashCommands(slash.bridge, (id) => t(`editor.slash.${id}`), () => slashUI.current),
       DueMarks,
+      HeadingTasks,
       PersonMention,
       DateMention,
       atMentions(atMenu.bridge, { people: () => peopleRef.current, dateLabel: () => t('mentions.date'), chooseDate: (pos) => openDateRef.current(pos, true) }),
