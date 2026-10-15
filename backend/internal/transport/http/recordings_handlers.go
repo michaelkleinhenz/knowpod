@@ -51,9 +51,14 @@ func (s *Server) handleGetRecording(w http.ResponseWriter, r *http.Request) {
 // photo or a PDF. The file name comes in X-Filename (URL-encoded) and optionally the
 // recording time in X-Recorded-At (RFC 3339). A voice memo recorded in the web app sends
 // X-Recorder: 1, and the moments marked while recording in X-Highlights (comma-separated
-// offsets in milliseconds).
+// offsets in milliseconds). An OPS file from a Pocket recorder ("20261015180213.ops") is
+// stored like one copied off the recorder: into the folder "Pocket AI", once.
 func (s *Server) handleUploadRecording(w http.ResponseWriter, r *http.Request) {
 	name, _ := url.QueryUnescape(r.Header.Get("X-Filename"))
+	if strings.EqualFold(path.Ext(name), ".ops") {
+		s.importPocketDeviceFile(w, r, path.Base(strings.ReplaceAll(name, "\\", "/")))
+		return
+	}
 	in := service.ManualUpload{Filename: name, Body: r.Body, Recorded: r.Header.Get("X-Recorder") == "1"}
 	if h := strings.TrimSpace(r.Header.Get("X-Highlights")); h != "" {
 		for _, part := range strings.Split(h, ",") {

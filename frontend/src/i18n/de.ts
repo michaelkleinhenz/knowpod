@@ -67,6 +67,7 @@ export const de: Translation = {
     not_archived: 'Die Audiodatei ist noch nicht gespeichert.',
     unsupported_media: 'Es können nur Audio (WAV, MP3), Fotos (JPEG, PNG, WebP, GIF) und PDF-Dateien hochgeladen werden. HEIC-Fotos müssen erst als JPEG gespeichert werden.',
     invalid_audio: 'Die Datei ist keine unterstützte Audiodatei.',
+    duplicate: 'Diese Aufnahme ist schon eine Notiz.',
     too_large: 'Die Datei ist zu groß.',
     invalid_input: 'Bitte prüfe deine Eingabe: {{detail}}',
     invalid_request: 'Die Anfrage war ungültig.',

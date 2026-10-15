@@ -65,6 +65,7 @@ export const en = {
     not_archived: "The audio hasn't been stored yet.",
     unsupported_media: 'Only audio (WAV, MP3), photos (JPEG, PNG, WebP, GIF) and PDF files can be uploaded. HEIC photos have to be saved as JPEG first.',
     invalid_audio: "The file isn't a supported audio file.",
+    duplicate: 'This recording is already a note.',
     too_large: 'The file is too large.',
     invalid_input: 'Please check your input: {{detail}}',
     invalid_request: 'The request was invalid.',

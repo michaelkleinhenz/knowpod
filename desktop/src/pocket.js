@@ -1,8 +1,9 @@
 // Copies recordings from a Pocket recorder (heypocketai.com) plugged in by USB, so the Pocket
 // app isn't needed. The recorder shows up as a drive named "Pocket" that the OS mounts by
 // itself; its recordings are MP3 files in RECORD/<date>/, named by when they started in UTC
-// (RECORD/2026-10-2/20261002090356.mp3). Electron has no event for new drives, so the mounted
-// drives are looked at every few seconds. When a recorder appears, the server is asked which
+// (RECORD/2026-10-2/20261002090356.mp3), or OPS files (raw Opus, "20261015180213.ops") on
+// recorders built on a Jieli chip, which the server decodes. Electron has no event for new
+// drives, so the mounted drives are looked at every few seconds. When a recorder appears, the server is asked which
 // of its files aren't notes yet, and those are uploaded; the server puts them into the folder
 // "Pocket AI" (see backend/internal/service/pocket.go). Files are only read, never changed.
 // When asked (the Pocket USB Sync dialog was closed), the drive is ejected so it can be
@@ -20,7 +21,7 @@ const retryInterval = 2 * 60_000;
 // How many file names the app remembers per server as copied (a few years of recordings).
 const maxRemembered = 20_000;
 
-const recordingName = /^\d{14}\.mp3$/i;
+const recordingName = /^\d{14}\.(mp3|ops)$/i;
 
 // decodeMountPath undoes the escapes of /proc/mounts ("\040" for a space).
 const decodeMountPath = (p) => p.replace(/\\([0-7]{3})/g, (_m, octal) => String.fromCharCode(parseInt(octal, 8)));
@@ -152,7 +153,7 @@ async function ejectDrive(root) {
   return run('umount', [root]);
 }
 
-// recordings lists the recorder's MP3 files, oldest first: [{name, file, size}].
+// recordings lists the recorder's MP3 and OPS files, oldest first: [{name, file, size}].
 function recordings(root) {
   const record = recordFolder(root);
   if (!record) return [];
@@ -307,7 +308,10 @@ function startPocketSync({ serverUrl, readConfig, writeConfig, notify, onChange 
         setStatus(`Pocket: copying ${i + 1} of ${todo.length}…`, { phase: 'copying', current: i + 1, total: todo.length });
         try {
           const rec = await request('POST', `${server}/api/v1/me/pocket/device/files`, {
-            headers: { 'Content-Type': 'audio/mpeg', 'X-Filename': encodeURIComponent(f.name) },
+            headers: {
+              'Content-Type': /\.ops$/i.test(f.name) ? 'application/octet-stream' : 'audio/mpeg',
+              'X-Filename': encodeURIComponent(f.name),
+            },
             file: f.file,
           });
           copied++;

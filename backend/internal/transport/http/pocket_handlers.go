@@ -101,11 +101,16 @@ func (s *Server) handleNewPocketDeviceFiles(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, map[string][]string{"files": fresh})
 }
 
-// handleImportPocketDeviceFile stores an MP3 file from a Pocket recorder, sent as the raw
-// request body with its name ("20261002090356.mp3") in X-Filename, as a note in the folder
-// "Pocket AI". A file that already is a note is refused with 409.
+// handleImportPocketDeviceFile stores an MP3 or OPS file from a Pocket recorder, sent as the
+// raw request body with its name ("20261002090356.mp3") in X-Filename, as a note in the
+// folder "Pocket AI". A file that already is a note is refused with 409.
 func (s *Server) handleImportPocketDeviceFile(w http.ResponseWriter, r *http.Request) {
 	name, _ := url.QueryUnescape(r.Header.Get("X-Filename"))
+	s.importPocketDeviceFile(w, r, name)
+}
+
+// importPocketDeviceFile stores the request body as the Pocket recorder's file of that name.
+func (s *Server) importPocketDeviceFile(w http.ResponseWriter, r *http.Request, name string) {
 	rec, err := s.pocket.ImportDeviceFile(r.Context(), accountFrom(r.Context()), name, r.Body)
 	if errors.Is(err, service.ErrDuplicateDeviceFile) {
 		writeCode(w, http.StatusConflict, "duplicate", err.Error())

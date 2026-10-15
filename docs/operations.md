@@ -194,6 +194,16 @@ so neither the Pocket app nor the webhook and API key are needed. Plugged in by 
 recorder is a drive named **Pocket** that the system mounts by itself; its recordings are MP3
 files named by when they started, in UTC (`RECORD/2026-10-2/20261002090356.mp3`).
 
+Recorders built on a Jieli chip (USB storage `BR28 UDISK`) write **OPS** files instead
+(`20261015180213.ops`): raw Opus packets one after another (SILK wideband, 16 kHz mono,
+20 ms, 32 kbit/s), with no container, header or timestamps. Every packet is padded to
+80 bytes except the last one before a pause or the end, which is shorter, so a pause shows
+only as a short packet and the length of the break isn't recorded. The server decodes OPS
+files to 16 kHz WAV (`backend/internal/audio/ops.go`, pure Go with `github.com/pion/opus`),
+which is then archived as FLAC and transcribed like any WAV. OPS files can be at most
+`MAX_UPLOAD_BYTES`/8 (about 36 hours with the default). Uploading an OPS file on
+**Workspace** (see [Uploading audio files](#uploading-audio-files)) stores it the same way.
+
 - The app looks for such a drive every few seconds (on Linux among the mounts in
   `/proc/mounts`, on macOS in `/Volumes`, on Windows a drive with a `RECORD` folder whose
   label is "Pocket"). When one appears, it sends the file names to the server
@@ -501,7 +511,10 @@ from the browser; several at a time are fine, each with a progress bar. The form
 detected from the file's content: WAV must be integer PCM (like device uploads) and is
 archived as FLAC, MP3 is archived as it is; other formats are refused. The file name becomes
 the title until the summary provides one, and the file's modification time is used as the
-recording time. The size limit is `MAX_UPLOAD_BYTES`; the proxy in front must allow bodies
+recording time. An OPS file from a Pocket recorder (named like `20261015180213.ops`) is
+treated like one copied off the recorder: it goes into the folder **Pocket AI**, recorded at
+the time in its name, and only once (see
+[Copying straight from the recorder](#copying-straight-from-the-recorder-desktop-app)). The size limit is `MAX_UPLOAD_BYTES`; the proxy in front must allow bodies
 that large.
 
 ## Installing the app
