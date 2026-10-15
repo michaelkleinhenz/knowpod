@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"os"
 	"path"
 	"strings"
@@ -246,7 +247,9 @@ func (s *PocketService) folder(ctx context.Context, u *user.User) (string, error
 // --- files copied from the Pocket recorder (desktop app) ---
 
 // A Pocket recorder plugged in by USB is a drive with its recordings as MP3 files in
-// RECORD/<date>/, named by when they started in UTC ("20261002090356.mp3"). The desktop app
+// RECORD/<date>/, named by when they started in UTC ("20261002090356.mp3"). Recorders built
+// on a Jieli chip write OPS files instead ("20261015180213.ops", raw Opus packets, see
+// audio.SplitOPS), which are decoded to WAV here and then stored like any WAV. The desktop app
 // asks which of them are new (NewDeviceFiles) and uploads those (ImportDeviceFile). They
 // become the user's Pocket recordings like the ones announced by webhook, in the same
 // folder. A file is known by its name (ClientID "file:<name>"), or when a recording from
@@ -265,8 +268,8 @@ func DeviceFileTime(name string) (time.Time, error) {
 	ext := path.Ext(name)
 	base := strings.TrimSuffix(name, ext)
 	t, err := time.Parse(deviceFileLayout, base)
-	if !strings.EqualFold(ext, ".mp3") || len(base) != len(deviceFileLayout) || strings.Trim(base, "0123456789") != "" || err != nil {
-		return time.Time{}, invalid("%q is not a Pocket recording (YYYYMMDDhhmmss.mp3)", name)
+	if !strings.EqualFold(ext, ".mp3") && !strings.EqualFold(ext, ".ops") || len(base) != len(deviceFileLayout) || strings.Trim(base, "0123456789") != "" || err != nil {
+		return time.Time{}, invalid("%q is not a Pocket recording (YYYYMMDDhhmmss.mp3 or .ops)", name)
 	}
 	return t.UTC(), nil
 }
@@ -340,8 +343,8 @@ func (s *PocketService) NewDeviceFiles(ctx context.Context, acc *Account, names 
 	return fresh, nil
 }
 
-// ImportDeviceFile stores a recorder's MP3 file as a note in the Pocket AI folder, unless it
-// is already one: then it returns the error ErrDuplicateDeviceFile.
+// ImportDeviceFile stores a recorder's MP3 or OPS file as a note in the Pocket AI folder,
+// unless it is already one: then it returns the error ErrDuplicateDeviceFile.
 func (s *PocketService) ImportDeviceFile(ctx context.Context, acc *Account, name string, body io.Reader) (*recording.Recording, error) {
 	if acc.ID == "" {
 		return nil, errors.Join(ErrForbidden, errors.New("Pocket recordings belong to a user; sign in"))
@@ -359,6 +362,14 @@ func (s *PocketService) ImportDeviceFile(ctx context.Context, acc *Account, name
 	}
 	if idx.has(started) {
 		return nil, ErrDuplicateDeviceFile
+	}
+	if isOPSFile(name) {
+		wav, err := s.deviceOPS(body)
+		if err != nil {
+			return nil, err
+		}
+		defer wav.Close() // stops the decoder if the upload ends early
+		body = wav
 	}
 	owner, err := s.users.Get(ctx, acc.ID)
 	if err != nil {
@@ -389,6 +400,37 @@ func (s *PocketService) ImportDeviceFile(ctx context.Context, acc *Account, name
 	}
 	s.log.Info("pocket file imported", "id", rec.ID, "owner", owner.ID, "file", name, "bytes", rec.Size)
 	return rec, nil
+}
+
+// isOPSFile says the recorder's file is an OPS file rather than MP3.
+func isOPSFile(name string) bool { return strings.EqualFold(path.Ext(name), ".ops") }
+
+// opsWAVRatio is how much larger the WAV decoded from an OPS file is (32 kbit/s Opus to
+// 16 kHz 16-bit PCM). OPS files are read into memory, up to the upload limit over this.
+const opsWAVRatio = 8
+
+// deviceOPS decodes a recorder's OPS file into WAV, streamed as it is read.
+func (s *PocketService) deviceOPS(body io.Reader) (io.ReadCloser, error) {
+	limit := s.maxSize / opsWAVRatio
+	data, err := io.ReadAll(io.LimitReader(body, limit+1))
+	switch {
+	case err != nil:
+		return nil, fmt.Errorf("receiving file: %w", err)
+	case int64(len(data)) > limit:
+		return nil, fmt.Errorf("%w: OPS files can be at most %d bytes", ErrTooLarge, limit)
+	case len(data) == 0:
+		return nil, invalid("the file is empty")
+	}
+	ops, err := audio.DecodeOPS(data)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidAudio, err)
+	}
+	if ops.WAVSize() > min(s.maxSize, math.MaxUint32) { // WAV sizes are 32-bit
+		return nil, fmt.Errorf("%w: maximum is %d bytes of audio", ErrTooLarge, s.maxSize)
+	}
+	pr, pw := io.Pipe()
+	go func() { pw.CloseWithError(ops.WriteWAV(pw)) }()
+	return pr, nil
 }
 
 // Fetch is the processing stage remote → received: it downloads the recording's audio from

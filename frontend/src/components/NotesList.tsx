@@ -23,7 +23,7 @@ import { isTask } from '../lib/labels';
 import { formatDue } from '../lib/tasks';
 
 // Audio files, and photos and PDFs, whose text is read (on phones, the picker offers the camera).
-const ACCEPT = `.wav,.mp3,audio/wav,audio/x-wav,audio/wave,audio/mpeg,image/jpeg,image/png,image/webp,image/gif,.pdf,application/pdf,${MARKDOWN_ACCEPT}`;
+const ACCEPT = `.wav,.mp3,.ops,audio/wav,audio/x-wav,audio/wave,audio/mpeg,image/jpeg,image/png,image/webp,image/gif,.pdf,application/pdf,${MARKDOWN_ACCEPT}`;
 
 // The list shows the notes by when they were created (grouped by day), the notes with a due
 // date by that date, the notes in their folders, like files, or the open tasks by when they

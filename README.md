@@ -77,6 +77,7 @@ lives in MongoDB, files in S3, and AI models are reached through OpenRouter.
   **Settings → Devices** tab: recordings arrive through the user's personal webhook and their audio is
   downloaded with the user's Pocket API key.
 - WAV and MP3 files, photos and PDFs can be uploaded from the browser on **Workspace**.
+  A Pocket recorder's OPS files (`20261015180213.ops`) go into the folder **Pocket AI**.
   Markdown files (`.md`) become text notes, titled by their first heading (or front matter
   `title`, or file name).
 - Each user can pair their **reMarkable** cloud account under **Settings → Account** with a

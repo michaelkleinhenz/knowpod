@@ -1,10 +1,12 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
 	"log/slog"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -142,6 +144,9 @@ func TestDeviceFileTime(t *testing.T) {
 	if _, err := DeviceFileTime("20261002090356.MP3"); err != nil {
 		t.Fatalf("upper case extension: %v", err)
 	}
+	if got, err := DeviceFileTime("20261015180213.ops"); err != nil || !got.Equal(time.Date(2026, 10, 15, 18, 2, 13, 0, time.UTC)) {
+		t.Fatalf("OPS file: %v, %v", got, err)
+	}
 	for _, name := range []string{"", "20261002090356", "20261002090356.wav", "2026100209035.mp3", "2026-10-02 0903.mp3", "20261332090356.mp3", "../20261002090356.mp3"} {
 		if _, err := DeviceFileTime(name); err == nil {
 			t.Errorf("%q: no error", name)
@@ -208,5 +213,46 @@ func TestPocketDeviceFilesImportedOnce(t *testing.T) {
 	_ = users.Create(ctx, &user.User{ID: "bob", Email: "bob@example.com"})
 	if fresh, _ := s.NewDeviceFiles(ctx, &Account{ID: "bob"}, files); len(fresh) != 3 {
 		t.Fatalf("bob: %v", fresh)
+	}
+}
+
+func TestPocketDeviceOPSFileImported(t *testing.T) {
+	ctx := context.Background()
+	s, recs, users := newPocket(t)
+	s.Uploads = NewManualUploadService(recs, s.spool, 1<<20)
+	_ = users.Create(ctx, &user.User{ID: "alice", Email: "alice@example.com"})
+	alice := &Account{ID: "alice"}
+	ops, err := os.ReadFile("../audio/testdata/recorder.ops")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if fresh, err := s.NewDeviceFiles(ctx, alice, []string{"20261015180213.ops"}); err != nil || len(fresh) != 1 {
+		t.Fatalf("new files = %v, %v", fresh, err)
+	}
+	rec, err := s.ImportDeviceFile(ctx, alice, "20261015180213.ops", bytes.NewReader(ops))
+	if err != nil {
+		t.Fatal(err)
+	}
+	folders, _ := s.folders.List(ctx, "alice")
+	if len(folders) != 1 || folders[0].Name != PocketFolder || rec.FolderID != folders[0].ID || rec.Source != recording.SourcePocket ||
+		rec.SourceContentType != "audio/wav" || rec.Format == nil || rec.Format.SampleRate != 16000 || rec.Format.Frames != 151*320 ||
+		rec.RecordedAt == nil || !rec.RecordedAt.Equal(time.Date(2026, 10, 15, 18, 2, 13, 0, time.UTC)) {
+		t.Fatalf("imported: %+v, format %+v (folders %+v)", rec, rec.Format, folders)
+	}
+	// The spooled file is the decoded WAV, archived as FLAC like any WAV.
+	if st, err := os.Stat(s.spool.DownloadPath(rec.ID)); err != nil || st.Size() != 44+151*320*2 {
+		t.Fatalf("spooled: %v, %v", st, err)
+	}
+	if _, err := s.ImportDeviceFile(ctx, alice, "20261015180213.ops", bytes.NewReader(ops)); !errors.Is(err, ErrDuplicateDeviceFile) {
+		t.Fatalf("second import: %v", err)
+	}
+
+	// Something else named .ops is refused, and nothing is stored.
+	if _, err := s.ImportDeviceFile(ctx, alice, "20261015183501.ops", strings.NewReader("ID3\x04\x00 not opus")); !errors.Is(err, ErrInvalidAudio) {
+		t.Fatalf("MP3 named .ops: %v", err)
+	}
+	if list, _ := recs.List(ctx, recording.ListFilter{OwnerID: "alice"}); len(list) != 1 {
+		t.Fatalf("%d notes", len(list))
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"os"
 	"strconv"
 	"testing"
 	"time"
@@ -108,5 +109,37 @@ func TestPocketDeviceFiles(t *testing.T) {
 	}
 	if res := admin.do("POST", "/api/v1/me/pocket/device/check", files, nil, &fresh); res.StatusCode != 200 || len(fresh.Files) != 1 || fresh.Files[0] != "20261002100000.mp3" {
 		t.Fatalf("check after import: %d %v", res.StatusCode, fresh.Files)
+	}
+}
+
+func TestPocketOPSFileUploaded(t *testing.T) {
+	f := newAPIFixture(t)
+	admin := f.signedIn(adminEmail, adminPassword)
+	ops, err := os.ReadFile("../../audio/testdata/recorder.ops")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Uploaded like any file in the web UI, an OPS file goes into the folder "Pocket AI".
+	var rec recording.Recording
+	res := admin.do("POST", "/api/v1/recordings", ops, map[string]string{"X-Filename": "20261015180213.ops"}, &rec)
+	if res.StatusCode != 201 || rec.Source != recording.SourcePocket || rec.FolderID == "" || rec.SourceContentType != "audio/wav" ||
+		rec.RecordedAt == nil || !rec.RecordedAt.Equal(time.Date(2026, 10, 15, 18, 2, 13, 0, time.UTC)) {
+		t.Fatalf("upload: %d %+v", res.StatusCode, rec)
+	}
+	var folders []struct{ ID, Name string }
+	admin.do("GET", "/api/v1/folders", nil, nil, &folders)
+	if len(folders) != 1 || folders[0].ID != rec.FolderID || folders[0].Name != service.PocketFolder {
+		t.Fatalf("folders: %+v", folders)
+	}
+	// Once only, whichever way it comes.
+	if res := admin.do("POST", "/api/v1/me/pocket/device/files", ops, map[string]string{"X-Filename": "20261015180213.ops"}, nil); res.StatusCode != 409 {
+		t.Fatalf("copied again: %d", res.StatusCode)
+	}
+	if res := admin.do("POST", "/api/v1/recordings", ops, map[string]string{"X-Filename": "memo.ops"}, nil); res.StatusCode != 400 {
+		t.Fatalf("not named like a recording: %d", res.StatusCode)
+	}
+	if res := admin.do("POST", "/api/v1/recordings", []byte("not opus at all"), map[string]string{"X-Filename": "20261015183232.ops"}, nil); res.StatusCode != 422 {
+		t.Fatalf("not OPS: %d", res.StatusCode)
 	}
 }
