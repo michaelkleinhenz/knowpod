@@ -9,3 +9,4 @@ __pycache__/
 qt-capture-*/
 capture-*/
 keybind-*.log
+airec-*/

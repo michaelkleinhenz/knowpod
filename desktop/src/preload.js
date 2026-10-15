@@ -37,6 +37,10 @@ contextBridge.exposeInMainWorld('knowpodDesktop', {
   // Bluetooth while it has no Wi-Fi (see recorder-bluetooth.js): request is {action: 'state' |
   // 'pair' | 'pin' | 'sync' | 'cancel' | 'enable' | 'forget', name?, pin?, enabled?}.
   recorderBluetooth: (request) => ipcRenderer.invoke('knowpod:recorder-bluetooth', request),
+  // airecBluetooth lists, downloads and deletes an AIREC recorder's recordings over Bluetooth
+  // (see airec-bluetooth.js): request is {action: 'state' | 'connect' | 'refresh' | 'disconnect'}
+  // or {action: 'download' | 'delete', name}.
+  airecBluetooth: (request) => ipcRenderer.invoke('knowpod:airec-bluetooth', request),
   onOpen: (listener) => {
     const handler = (_event, url) => listener(url);
     ipcRenderer.on('knowpod:open', handler);

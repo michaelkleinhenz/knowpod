@@ -29,6 +29,9 @@ interface DesktopBridge {
   onSystemAudio?: (onData: (id: number, chunk: Uint8Array) => void, onEnd: (id: number) => void) => () => void;
   // recorderBluetooth is missing in older apps.
   recorderBluetooth?: (request: RecorderBluetoothRequest) => Promise<RecorderBluetoothState>;
+  // airecBluetooth talks to an AIREC recorder over Bluetooth (desktop app only; missing
+  // elsewhere and in older desktop apps).
+  airecBluetooth?: (request: AirecRequest) => Promise<AirecResult>;
   // showSetup shows the mobile app's page for the server's address (mobile apps only).
   showSetup?: () => void;
 }
@@ -215,6 +218,53 @@ export interface RecorderBluetoothState {
 
 // recorderBluetooth returns the app's knowpod recorder call, or undefined outside the apps (and
 // in older ones).
+// The desktop app's Bluetooth connection to an AIREC recorder (desktop/src/airec-bluetooth.js):
+// it lists, downloads and deletes recordings. The recorder has no pairing. See
+// tools/pocket-wifi-probe/AIREC.md.
+export type AirecRequest =
+  | { action: 'state' | 'connect' | 'refresh' | 'disconnect' }
+  | { action: 'download' | 'delete'; name: string };
+
+export interface AirecRecording {
+  name: string;
+  size: number;
+  seconds: number;
+  // ISO time parsed from the name (YYYYMMDDHHMMSS), or null if the name isn't a time.
+  recordedAt: string | null;
+}
+
+export interface AirecRecorder {
+  name: string;
+  serial?: string;
+  firmware?: string;
+  model?: string;
+  battery?: number | null;
+  storageFreeMb?: number | null;
+  storageTotalMb?: number | null;
+}
+
+export interface AirecResult {
+  ok: boolean;
+  // not-found, unsupported, auth, busy, timeout, disconnected, recorder, transfer or failed.
+  error?: string;
+  message?: string;
+  supported?: boolean;
+  connected?: boolean;
+  busy?: boolean;
+  recorder?: AirecRecorder;
+  recordings?: AirecRecording[];
+  // From a download: the recording as an Ogg Opus file, base64-encoded, for the web app to import.
+  name?: string;
+  size?: number;
+  oggBase64?: string;
+  recordedAt?: string | null;
+  resyncs?: number;
+}
+
+// airecBluetooth returns the desktop app's AIREC recorder call, or undefined elsewhere (and in
+// older desktop apps).
+export const airecBluetooth = () => bridge()?.airecBluetooth;
+
 export const recorderBluetooth = () => bridge()?.recorderBluetooth;
 
 // pocketBluetooth returns the app's Pocket Bluetooth call, or undefined outside the desktop

@@ -8,7 +8,7 @@ import { appContext, isMobileApp, useDesktopNotifications } from '../lib/desktop
 import { MeetingIcon, MicIcon, SignOutIcon, UsbIcon, WifiIcon } from './Icons';
 import { MeetingRecorderDialog, meetingRecorderAvailable } from './MeetingRecorder';
 import { NewItemDialog } from './NewItemDialog';
-import { PocketUsbSyncDialog, pocketUsbSyncAvailable } from './PocketUsbSync';
+import { RecorderSyncDialog, recorderSyncAvailable } from './RecorderSync';
 
 // Layout is the app frame: a header with the navigation, which collapses into a menu
 // button on narrow screens.
@@ -19,8 +19,8 @@ export function Layout({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
   const [open, setOpen] = useState(false);
   const [newKind, setNewKind] = useState<'note' | 'task' | null>(null);
-  // pocketSync shows the Pocket Sync dialog (desktop and Android apps only).
-  const [pocketSync, setPocketSync] = useState(false);
+  // recorderSync shows the Recorder Sync dialog (desktop and Android apps only).
+  const [recorderSync, setRecorderSync] = useState(false);
   // meeting shows the meeting recorder (desktop app only).
   const [meeting, setMeeting] = useState(false);
   const onConversations = pathname === '/' || pathname === '/briefing' || pathname.startsWith('/conversations/');
@@ -91,19 +91,19 @@ export function Layout({ children }: { children: ReactNode }) {
         {account && (
           <>
             <HeaderRecordButton />
-            {/* On phones, Pocket Sync sits in the header right of the record button, not in the menu. */}
-            {pocketUsbSyncAvailable() && (
+            {/* On phones, Recorder Sync sits in the header right of the record button, not in the menu. */}
+            {recorderSyncAvailable() && (
               <button
                 type="button"
                 className="header-pocket-sync"
-                title={t('pocketUsbSync.button', { context: appContext() })}
-                aria-label={t('pocketUsbSync.button', { context: appContext() })}
+                title={t('recorderSync.button', { context: appContext() })}
+                aria-label={t('recorderSync.button', { context: appContext() })}
                 onClick={() => {
                   setOpen(false);
-                  setPocketSync(true);
+                  setRecorderSync(true);
                 }}
               >
-                <PocketSyncIcon size={22} />
+                <RecorderSyncIcon size={22} />
               </button>
             )}
             {meetingRecorderAvailable() && (
@@ -140,18 +140,18 @@ export function Layout({ children }: { children: ReactNode }) {
                 <button type="button" className="nav-new" onClick={() => startNew('task')}>
                   + {t('nav.newTask')}
                 </button>
-                {pocketUsbSyncAvailable() && (
+                {recorderSyncAvailable() && (
                   <button
                     type="button"
                     className="nav-icon-button nav-pocket-sync"
-                    title={t('pocketUsbSync.button', { context: appContext() })}
-                    aria-label={t('pocketUsbSync.button', { context: appContext() })}
+                    title={t('recorderSync.button', { context: appContext() })}
+                    aria-label={t('recorderSync.button', { context: appContext() })}
                     onClick={() => {
                       setOpen(false);
-                      setPocketSync(true);
+                      setRecorderSync(true);
                     }}
                   >
-                    <PocketSyncIcon />
+                    <RecorderSyncIcon />
                   </button>
                 )}
                 {meetingRecorderAvailable() && (
@@ -191,15 +191,15 @@ export function Layout({ children }: { children: ReactNode }) {
       </header>
       <main className={`container${onConversations || onTime ? ' full' : ''}`}>{children}</main>
       {newKind && <NewItemDialog kind={newKind} onClose={() => setNewKind(null)} />}
-      {pocketSync && <PocketUsbSyncDialog onClose={() => setPocketSync(false)} />}
+      {recorderSync && <RecorderSyncDialog onClose={() => setRecorderSync(false)} />}
       {meeting && <MeetingRecorderDialog onClose={() => setMeeting(false)} />}
     </RecorderProvider>
   );
 }
 
-// PocketSyncIcon is the Pocket Sync button's icon: WiFi in the Android and iOS apps, USB in the
-// desktop app.
-function PocketSyncIcon({ size }: { size?: number }) {
+// RecorderSyncIcon is the Recorder Sync button's icon: WiFi in the Android and iOS apps, USB in
+// the desktop app.
+function RecorderSyncIcon({ size }: { size?: number }) {
   return isMobileApp() ? <WifiIcon size={size} /> : <UsbIcon size={size} />;
 }
 

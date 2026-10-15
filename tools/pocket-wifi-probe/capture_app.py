@@ -1,18 +1,20 @@
 #!/usr/bin/env python3
-"""Captures the official Pocket app talking to a recorder, to work out its protocols.
+"""Captures a recorder's official app talking to its recorder, to work out its protocols.
 
 Runs on a Linux laptop with an Android phone attached over adb (USB debugging on). Scenarios:
 
-- `activation`: the app activating (setting up) a recorder, to work out how activation works
-  and where the session key comes from.
-- `quick-transfer`: the app's Quick Transfer (Wi-Fi), to work out the WiFi transfer.
+- `activation`: the Pocket app activating (setting up) a recorder, to work out how activation
+  works and where the session key comes from.
+- `quick-transfer`: the Pocket app's Quick Transfer (Wi-Fi), to work out the WiFi transfer.
+- `vendor-app`: any other recorder and its app (`--app <package>`): pairing it and using it.
+  Bluetooth and the app log only, unless `--wifi`.
 
 Each captures, all at once:
 
 - Bluetooth: the phone's HCI snoop log, streamed live from the phone's btsnoop socket (TCP 8872)
   through `adb forward`. It's decoded as it arrives: connections, pairing (SMP), encryption,
   the recorder's advertising, the GATT layout, and every ATT read, write, notification and
-  indication. A bug report at the end also pulls the log file kept on the phone, in case the
+  indication; for classic Bluetooth also the pairing (SSP), L2CAP channels and RFCOMM data. A bug report at the end also pulls the log file kept on the phone, in case the
   socket isn't there (release builds of Android often leave it out).
 - App log: `adb logcat`, for the app's own messages.
 - WiFi: this laptop's card in monitor mode. It hops the 2.4 GHz channels until a frame from the
@@ -28,6 +30,7 @@ system python3, not inside a sandbox.
 
     python3 capture_app.py activation
     python3 capture_app.py quick-transfer
+    python3 capture_app.py vendor-app --app com.vendor.app --device-name '^Rec'
     python3 capture_app.py decode capture-…/phone-live.btsnoop     # no phone needed
 """
 from __future__ import annotations
@@ -157,6 +160,7 @@ SMP_OPS = {
     0x09: "identity address", 0x0A: "signing information", 0x0B: "security request",
     0x0C: "public key", 0x0D: "DHKey check", 0x0E: "keypress",
 }
+SMP_KEYS = [(0x01, "LTK"), (0x02, "IRK"), (0x04, "CSRK"), (0x08, "link key (CTKD)")]
 SMP_FAILURES = {
     0x01: "passkey entry failed", 0x02: "OOB not available", 0x03: "authentication requirements",
     0x04: "confirm value failed", 0x05: "pairing not supported", 0x06: "encryption key size",
@@ -164,6 +168,18 @@ SMP_FAILURES = {
     0x0B: "DHKey check failed", 0x0C: "numeric comparison failed",
 }
 IO_CAPS = ["DisplayOnly", "DisplayYesNo", "KeyboardOnly", "NoInputNoOutput", "KeyboardDisplay"]
+AUTH_REQS = ["no bonding", "no bonding+MITM", "dedicated bonding", "dedicated bonding+MITM",
+             "general bonding", "general bonding+MITM"]  # classic (SSP) authentication requirements
+LINK_KEY_TYPES = {
+    0x00: "combination (legacy PIN)", 0x03: "debug", 0x04: "unauthenticated P-192",
+    0x05: "authenticated P-192", 0x06: "changed combination", 0x07: "unauthenticated P-256",
+    0x08: "authenticated P-256",
+}
+PSM_NAMES = {
+    0x0001: "SDP", 0x0003: "RFCOMM", 0x000F: "BNEP", 0x0011: "HID control", 0x0013: "HID interrupt",
+    0x0017: "AVCTP", 0x0019: "AVDTP", 0x001B: "AVCTP browsing", 0x001F: "ATT", 0x0027: "EATT",
+}
+QUIET_PSMS = {0x0019}  # AVDTP: audio streaming would flood the screen
 GATT_NAMES = {
     "2800": "primary service", "2801": "secondary service", "2803": "characteristic",
     "2902": "CCCD", "2a00": "device name", "2a19": "battery level", "2a24": "model number",
@@ -174,6 +190,7 @@ PROPS = [(0x02, "read"), (0x04, "write-no-rsp"), (0x08, "write"), (0x10, "notify
          (0x20, "indicate"), (0x40, "signed-write")]
 DISCOVERY = (0x04, 0x06, 0x08, 0x10)  # requests whose "not found" error just ends a search
 NOTIFY_SHOWN = 20  # binary notifications per characteristic shown one by one, then every 500th
+SHORT_VALUE = 32  # values up to this many bytes are always shown: commands, not a data stream
 
 Emit = Callable[..., None]  # emit(kind, text, detail=None, quiet=False)
 
@@ -213,6 +230,14 @@ def show(value: bytes, limit: int = 48) -> str:
     return f"{cut}{'…' if len(value) > limit else ''} ({len(value)} B)"
 
 
+def adv_flags(f: int) -> str:
+    """The advertising flags in words. The LE+BR/EDR bits mark a dual-mode device; many LE-only
+    devices leave out the 'LE only' bit, so its absence alone proves nothing."""
+    return ", ".join(w for bit, w in ((0x01, "LE limited discoverable"), (0x02, "LE discoverable"),
+                                      (0x04, "LE only"), (0x08, "LE+BR/EDR controller"),
+                                      (0x10, "LE+BR/EDR host")) if f & bit) or "none"
+
+
 def parse_ad(data: bytes) -> dict[str, list[str]]:
     """Advertising data structures: names, UUIDs, manufacturer and service data, flags."""
     out: dict[str, list[str]] = {}
@@ -234,7 +259,7 @@ def parse_ad(data: bytes) -> dict[str, list[str]]:
         elif t == 0x16 and len(v) >= 2:
             out.setdefault("svcdata", []).append(f"{u16(v):04x}:{v[2:].hex()}")
         elif t == 0x01 and v:
-            out.setdefault("flags", []).append(f"{v[0]:02x}")
+            out.setdefault("flags", []).append(f"{v[0]:02x}({adv_flags(v[0])})")
     return out
 
 
@@ -247,16 +272,20 @@ class Conn:
     chars: dict[int, str] = field(default_factory=dict)  # characteristic value handle -> UUID
     pending: dict[bool, tuple] = field(default_factory=dict)  # request outstanding, per sender
     prepared: dict[int, bytearray] = field(default_factory=dict)  # queued (long) writes
-    notifies: dict[int, int] = field(default_factory=dict)  # binary notifications per handle
+    notifies: dict = field(default_factory=dict)  # binary values shown, per handle or channel
+    cids: dict[tuple[bool, int], int] = field(default_factory=dict)  # (phone's cid?, cid) -> PSM
+    sig: dict[tuple[bool, int], tuple[int, int]] = field(default_factory=dict)  # L2CAP requests
 
 
 class HciDecoder:
     """Decodes H4 HCI packets from a btsnoop log into readable events."""
 
-    def __init__(self, emit: Emit, name_re: str = RECORDER_NAME, addrs: tuple[str, ...] = (RECORDER_BT_ADDR,)):
+    def __init__(self, emit: Emit, name_re: str | None = RECORDER_NAME,
+                 addrs: tuple[str, ...] = (RECORDER_BT_ADDR,)):
         self.emit = emit
-        self.name_re = re.compile(name_re)
-        self.recorders = {a.upper() for a in addrs}  # Bluetooth addresses known to be a recorder
+        self.name_re = re.compile(name_re) if name_re else None
+        # Bluetooth addresses known to be a recorder; a device the phone connects to counts too
+        self.recorders = {a.upper() for a in addrs}
         self.names: dict[str, str] = {}
         self.seen: set[str] = set()  # recorders seen advertising or connected
         self.conns: dict[int, Conn] = {}
@@ -323,14 +352,70 @@ class HciDecoder:
             self.emit("bt", f"phone starts encryption with a stored key on {self._tag(self._conn(u16(p) & 0xFFF))}")
         elif op in (0x200C, 0x2042):  # LE Set (Extended) Scan Enable
             self.emit("bt", f"phone scanning {'on' if p[0] else 'off'}", quiet=True)
+        elif op == 0x0405:  # Create Connection (classic)
+            self.emit("bt", f"phone connects (classic) to {self._who(bdaddr(p[0:6]))}")
+        elif op == 0x0411:  # Authentication Requested: pairs, or uses a stored link key
+            self.emit("bt", f"phone authenticates {self._tag(self._conn(u16(p) & 0xFFF))}")
+        elif op == 0x042B and len(p) >= 9:  # IO Capability Request Reply: the phone's side
+            self._io_caps("phone>", bdaddr(p[0:6]), p[6:9])
+        elif op == 0x0401:  # Inquiry: classic device discovery
+            self.emit("bt", "phone looks for classic devices (inquiry)", quiet=True)
+        elif op == 0x0419:  # Remote Name Request
+            self.emit("bt", f"phone asks {bdaddr(p[0:6])} for its name", quiet=True)
 
     def _event(self, b: bytes) -> None:
         code, p = b[0], b[2:2 + b[1]]
         if code == 0x3E:
             self._le_meta(p[0], p[1:])
-        elif code == 0x03 and len(p) >= 11 and p[0] == 0:  # classic Connection Complete
+        elif code == 0x03 and len(p) >= 11:  # classic Connection Complete
+            if p[0]:
+                self.emit("bt", f"classic connection to {self._who(bdaddr(p[3:9]))} failed (status 0x{p[0]:02x})")
+                return
             c = self.conns[u16(p[1:3]) & 0xFFF] = Conn(u16(p[1:3]) & 0xFFF, bdaddr(p[3:9]))
+            self.recorders.add(c.addr)
+            self.seen.add(c.addr)
             self.emit("bt", f"classic link to {self._who(c.addr)} (0x{c.handle:03x})")
+        elif code == 0x2F and len(p) >= 15:  # Extended Inquiry Result: a classic device and its EIR
+            self._adv(bdaddr(p[1:7]), p[15:], "inquiry", f"cod={int.from_bytes(p[9:12], 'little'):06x}")
+        elif code in (0x02, 0x22) and p:  # Inquiry Result (with RSSI): fields come as arrays
+            n = p[0]
+            cod_at = 1 + 6 * n + (3 * n if code == 0x02 else 2 * n)
+            for i in range(n):
+                cod = int.from_bytes(p[cod_at + 3 * i:cod_at + 3 * i + 3], "little")
+                self._adv(bdaddr(p[1 + 6 * i:7 + 6 * i]), b"", "inquiry", f"cod={cod:06x}")
+        elif code == 0x04 and len(p) >= 10:  # Connection Request: the device connects to the phone
+            self.emit("bt", f"{self._who(bdaddr(p[0:6]))} asks to connect (classic, class of device "
+                            f"{int.from_bytes(p[6:9], 'little'):06x})")
+        elif code == 0x07 and len(p) >= 7 and p[0] == 0:  # Remote Name Request Complete
+            addr, name = bdaddr(p[1:7]), p[7:].split(b"\0")[0].decode("utf-8", "replace")
+            if name:
+                self.names[addr] = name
+                if self.name_re and self.name_re.search(name):
+                    self.recorders.add(addr)
+            self.emit("bt", f"{addr} is called '{name}'", quiet=addr not in self.recorders)
+        elif code == 0x16 and len(p) >= 6:  # PIN Code Request: legacy pairing
+            self.emit("pair", f"{self._who(bdaddr(p[0:6]))} legacy pairing: the phone needs a PIN")
+        elif code == 0x17 and len(p) >= 6:  # Link Key Request
+            self.emit("pair", f"stack looks up a stored link key for {self._who(bdaddr(p[0:6]))}", quiet=True)
+        elif code == 0x18 and len(p) >= 23:  # Link Key Notification: a new bond
+            self.emit("pair", f"{self._who(bdaddr(p[0:6]))} bonded: link key type "
+                              f"{LINK_KEY_TYPES.get(p[22], hex(p[22]))}", p[6:22].hex())
+        elif code == 0x32 and len(p) >= 9:  # IO Capability Response: the device's side
+            self._io_caps("device<", bdaddr(p[0:6]), p[6:9])
+        elif code == 0x33 and len(p) >= 10:  # User Confirmation Request
+            self.emit("pair", f"{self._who(bdaddr(p[0:6]))} confirm number {int.from_bytes(p[6:10], 'little'):06d} "
+                              "(numeric comparison, or 'just works' if neither side can show it)")
+        elif code == 0x34 and len(p) >= 6:  # User Passkey Request
+            self.emit("pair", f"{self._who(bdaddr(p[0:6]))} the phone must enter a passkey")
+        elif code == 0x3B and len(p) >= 10:  # User Passkey Notification
+            self.emit("pair", f"{self._who(bdaddr(p[0:6]))} passkey to type on the device: "
+                              f"{int.from_bytes(p[6:10], 'little'):06d}")
+        elif code == 0x36 and len(p) >= 7:  # Simple Pairing Complete
+            state = "succeeded" if p[0] == 0 else f"failed (status 0x{p[0]:02x})"
+            self.emit("pair", f"{self._who(bdaddr(p[1:7]))} pairing {state}")
+        elif code == 0x06 and len(p) >= 3:  # Authentication Complete
+            state = "done" if p[0] == 0 else f"failed (status 0x{p[0]:02x})"
+            self.emit("bt", f"authentication {state} on {self._tag(self._conn(u16(p[1:3]) & 0xFFF))}")
         elif code == 0x05 and len(p) >= 4:  # Disconnection Complete
             c = self.conns.pop(u16(p[1:3]) & 0xFFF, None)
             name = self._tag(c) if c else f"link 0x{u16(p[1:3]) & 0xFFF:03x}"
@@ -347,42 +432,45 @@ class HciDecoder:
                 self.emit("bt", f"connection to {self._who(addr)} failed (status 0x{q[0]:02x})")
                 return
             self.conns[handle] = Conn(handle, addr)
-            if addr in self.recorders:
-                self.seen.add(addr)
+            self.recorders.add(addr)
+            self.seen.add(addr)
             role = "central" if q[3] == 0 else "peripheral"
-            self.emit("bt", f"connected to {self._who(addr)} (link 0x{handle:03x}, phone is {role})")
+            self.emit("bt", f"LE link to {self._who(addr)} (0x{handle:03x}, phone is {role})")
         elif sub == 0x02:  # LE Advertising Report
             i = 1
             for _ in range(q[0]):
                 n = q[i + 8]
-                self._adv(bdaddr(q[i + 2:i + 8]), q[i + 9:i + 9 + n], scan_rsp=q[i] == 0x04)
+                self._adv(bdaddr(q[i + 2:i + 8]), q[i + 9:i + 9 + n],
+                          "scan response" if q[i] == 0x04 else "advertises")
                 i += 10 + n
         elif sub == 0x0D:  # LE Extended Advertising Report
             i = 1
             for _ in range(q[0]):
                 n = q[i + 23]
-                self._adv(bdaddr(q[i + 3:i + 9]), q[i + 24:i + 24 + n], scan_rsp=bool(u16(q[i:i + 2]) & 0x08))
+                self._adv(bdaddr(q[i + 3:i + 9]), q[i + 24:i + 24 + n],
+                          "scan response" if u16(q[i:i + 2]) & 0x08 else "advertises")
                 i += 24 + n
 
-    def _adv(self, addr: str, data: bytes, scan_rsp: bool) -> None:
+    def _adv(self, addr: str, data: bytes, what: str, extra: str = "") -> None:
+        """LE advertising or a scan response, or a classic inquiry result (with its EIR)."""
         ad = parse_ad(data)
         name = (ad.get("name") or [None])[0]
-        if name and self.name_re.search(name):
+        if name and self.name_re and self.name_re.search(name):
             self.recorders.add(addr)
         if name:
             self.names.setdefault(addr, name)
         if addr not in self.recorders:
             return
         self.seen.add(addr)
-        summary = " ".join(f"{k}={','.join(v)}" for k, v in sorted(ad.items())) or "(no data)"
-        key = (addr, scan_rsp)
+        summary = " ".join(([extra] if extra else []) + [f"{k}={','.join(v)}" for k, v in sorted(ad.items())])
+        summary = summary or "(no data)"
+        key = (addr, what)
         last = self.adv_last.get(key)
         if last and last[0] == summary:
             return
         # Every change goes to the timeline; the screen gets at most one a second per device.
         loud = last is None or self.ts - last[1] >= 1
         self.adv_last[key] = (summary, self.ts if loud else last[1])
-        what = "scan response" if scan_rsp else "advertises"
         self.emit("adv", f"{self._who(addr)} {what}: {summary}", quiet=not loud)
 
     # --- ACL, L2CAP
@@ -405,10 +493,83 @@ class HciDecoder:
         cid, payload = u16(buf[2:4]), bytes(buf[4:4 + u16(buf)])
         if not payload:
             return
+        c = self._conn(handle)
         if cid == 0x0004:
-            self._att(self._conn(handle), sent, payload)
-        elif cid == 0x0006:
-            self._smp(self._conn(handle), sent, payload)
+            self._att(c, sent, payload)
+        elif cid in (0x0006, 0x0007):  # LE SMP, classic SMP (cross-transport keys)
+            self._smp(c, sent, payload, bredr=cid == 0x0007)
+        elif cid in (0x0001, 0x0005):  # L2CAP signalling (classic, LE)
+            self._signal(c, sent, payload)
+        elif cid >= 0x0040:  # a dynamic channel: its PSM says what runs on it
+            self._channel(c, sent, c.cids.get((not sent, cid)), cid, payload)
+
+    def _signal(self, c: Conn, sent: bool, s: bytes) -> None:
+        """L2CAP channel setup: which PSM (protocol or vendor service) gets which channel IDs."""
+        who = "phone>" if sent else "device<"
+        i = 0
+        while i + 4 <= len(s):
+            code, ident, n = s[i], s[i + 1], u16(s[i + 2:i + 4])
+            d = s[i + 4:i + 4 + n]
+            i += 4 + n
+            if code in (0x02, 0x14) and len(d) >= 4:  # (LE credit based) connection request
+                psm, scid = u16(d), u16(d[2:4])
+                c.cids[(sent, scid)] = psm
+                c.sig[(sent, ident)] = (psm, scid)
+                self.emit("l2cap", f"{who} {self._tag(c)} opens channel {self._psm(psm)}")
+            elif code in (0x03, 0x15) and len(d) >= 4:  # (LE credit based) connection response
+                psm, _ = c.sig.pop((not sent, ident), (None, 0))
+                dcid = u16(d)
+                result = u16(d[4:6]) if code == 0x03 and len(d) >= 6 else u16(d[8:10]) if len(d) >= 10 else 0
+                if code == 0x03 and result == 1:
+                    c.sig[(not sent, ident)] = (psm, 0)  # pending; the final answer follows
+                elif result:
+                    self.emit("l2cap", f"{who} {self._tag(c)} refuses channel {self._psm(psm)} "
+                                       f"(result 0x{result:04x})")
+                elif psm is not None:
+                    c.cids[(sent, dcid)] = psm
+
+    @staticmethod
+    def _psm(psm: int | None) -> str:
+        if psm is None:
+            return "?"
+        return f"{PSM_NAMES[psm]} (PSM 0x{psm:04x})" if psm in PSM_NAMES else f"PSM 0x{psm:04x} (vendor)"
+
+    def _channel(self, c: Conn, sent: bool, psm: int | None, cid: int, data: bytes) -> None:
+        who = "phone>" if sent else "device<"
+        if psm == 0x001F:
+            self._att(c, sent, data)
+        elif psm == 0x0003:
+            self._rfcomm(c, sent, data)
+        elif psm in QUIET_PSMS or psm == 0x0001:
+            self.emit(who, f"{self._tag(c)} {self._psm(psm)}: {show(data)}", data.hex(), quiet=True)
+        else:
+            what = self._psm(psm) if psm is not None else f"channel 0x{cid:04x}"
+            self._flood(c, who, ("l2cap", sent, cid), f"{what}", data, "data")
+
+    def _rfcomm(self, c: Conn, sent: bool, f: bytes) -> None:
+        """RFCOMM frames: channels opening and closing, and the data on them (serial port links)."""
+        who = "phone>" if sent else "device<"
+        if len(f) < 4:
+            return
+        dlci, ctrl, pf = f[0] >> 2, f[1] & 0xEF, f[1] & 0x10
+        if f[2] & 1:
+            n, i = f[2] >> 1, 3
+        else:
+            n, i = (f[2] >> 1) | (f[3] << 7), 4
+        if ctrl == 0xEF and pf and dlci:  # UIH with P/F set carries a credit byte first
+            i += 1
+        data = f[i:i + n]
+        chan = f"RFCOMM channel {dlci >> 1}"
+        if ctrl == 0x2F:
+            self.emit("rfcomm", f"{who} {self._tag(c)} opens {chan if dlci else 'RFCOMM'}")
+        elif ctrl == 0x43:
+            self.emit("rfcomm", f"{who} {self._tag(c)} closes {chan if dlci else 'RFCOMM'}")
+        elif ctrl == 0x0F:
+            self.emit("rfcomm", f"{who} {self._tag(c)} refuses {chan}")
+        elif ctrl == 0xEF and dlci and data:
+            self._flood(c, who, ("rfcomm", sent, dlci), chan, data, "data")
+        elif ctrl == 0xEF and data:  # multiplexer control (parameter negotiation, modem status)
+            self.emit(who, f"{self._tag(c)} RFCOMM control: {data.hex()}", quiet=True)
 
     # --- ATT (GATT)
 
@@ -483,20 +644,30 @@ class HciDecoder:
         self.emit(who, f"{self._tag(c)} {verb} {name}: {show(v)}", v.hex())
 
     def _notification(self, c: Conn, who: str, h: int, v: bytes, verb: str) -> None:
+        self._flood(c, who, h, self._handle_name(c, h), v, verb)
+
+    def _flood(self, c: Conn, who: str, key, where: str, v: bytes, verb: str) -> None:
+        """Text and short values (command replies) always show; longer binary values (audio, file
+        data) the first few times per `key`, then every 500th."""
         text = show(v)
-        if is_text(v):  # always shown
-            self.emit(who, f"{self._tag(c)} {verb} {self._handle_name(c, h)}: {text}")
+        if is_text(v) or len(v) <= SHORT_VALUE:
+            self.emit(who, f"{self._tag(c)} {verb} {where}: {text}")
             return
-        n = c.notifies[h] = c.notifies.get(h, 0) + 1
+        n = c.notifies[key] = c.notifies.get(key, 0) + 1
         if n <= NOTIFY_SHOWN:
-            self.emit(who, f"{self._tag(c)} {verb} {self._handle_name(c, h)}: {text}", v.hex())
+            self.emit(who, f"{self._tag(c)} {verb} {where}: {text}", v.hex())
         elif n % 500 == 0:
-            self.emit(who, f"{self._tag(c)} {n} binary {verb}s on {self._handle_name(c, h)} so far "
-                           f"(latest {len(v)} B)")
+            self.emit(who, f"{self._tag(c)} {n} binary {verb}s on {where} so far (latest {len(v)} B)")
+
+    def _io_caps(self, who: str, addr: str, b: bytes) -> None:
+        io, oob, auth = b[0], b[1], b[2]
+        self.emit(who, f"{self._who(addr)} pairing (classic SSP): "
+                       f"io={IO_CAPS[io] if io < len(IO_CAPS) else hex(io)}, "
+                       f"{AUTH_REQS[auth] if auth < len(AUTH_REQS) else hex(auth)}, OOB={'yes' if oob else 'no'}")
 
     # --- SMP (pairing)
 
-    def _smp(self, c: Conn, sent: bool, s: bytes) -> None:
+    def _smp(self, c: Conn, sent: bool, s: bytes, bredr: bool = False) -> None:
         who = "phone>" if sent else "device<"
         op = s[0]
         name = SMP_OPS.get(op, f"SMP 0x{op:02x}")
@@ -507,13 +678,27 @@ class HciDecoder:
             iocap = IO_CAPS[io] if io < len(IO_CAPS) else hex(io)
             self.emit(who, f"{self._tag(c)} {name}: io={iocap}, {'+'.join(flags) or 'no flags'}, "
                            f"OOB={'yes' if oob else 'no'}, key size {keysize}, "
-                           f"keys initiator 0x{ikeys:02x} responder 0x{rkeys:02x}")
+                           f"keys from phone: {smp_keys(ikeys)}, from device: {smp_keys(rkeys)}"
+                           f"{', over the classic link' if bredr else ''}")
         elif op == 0x05:
             self.emit(who, f"{self._tag(c)} {name}: {SMP_FAILURES.get(s[1], hex(s[1]))}")
         elif op == 0x0B:
             self.emit(who, f"{self._tag(c)} {name} (auth 0x{s[1]:02x})")
+        elif op == 0x09 and len(s) >= 8:  # identity address: what a random address resolves to
+            ident = bdaddr(s[2:8])
+            if c.addr in self.recorders:
+                self.recorders.add(ident)
+            if c.addr in self.names:
+                self.names.setdefault(ident, self.names[c.addr])
+            self.emit(who, f"{self._tag(c)} identity address {ident} "
+                           f"({'public' if s[1] == 0 else 'random static'}); a classic link to the "
+                           "same address is the same device")
         else:
             self.emit(who, f"{self._tag(c)} {name}", s[1:].hex(), quiet=op in (0x03, 0x04, 0x0C, 0x0D))
+
+
+def smp_keys(bits: int) -> str:
+    return "+".join(n for bit, n in SMP_KEYS if bits & bit) or "none"
 
 
 def read_btsnoop(f: BinaryIO) -> Iterator[tuple[int, int, bytes, int]]:
@@ -533,7 +718,8 @@ def read_btsnoop(f: BinaryIO) -> Iterator[tuple[int, int, bytes, int]]:
         yield flags, ts - BTSNOOP_UNIX_OFFSET_US, pkt, datalink
 
 
-def decode_file(path: Path, out, everything: bool = False) -> int:
+def decode_file(path: Path, out, everything: bool = False, name_re: str | None = RECORDER_NAME,
+                addrs: tuple[str, ...] = (RECORDER_BT_ADDR,)) -> int:
     """Writes the decoded events of a btsnoop file to `out`; returns the packet count."""
     t0 = None
 
@@ -543,7 +729,7 @@ def decode_file(path: Path, out, everything: bool = False) -> int:
         rel = dec.ts - t0
         out.write(f"[{rel:9.3f}] {kind:<8} {text}\n" + (f"{'':20} {detail}\n" if detail and everything else ""))
 
-    dec = HciDecoder(emit)
+    dec = HciDecoder(emit, name_re, addrs)
     with open(path, "rb") as f:
         for flags, ts, pkt, datalink in read_btsnoop(f):
             if t0 is None:
@@ -655,22 +841,38 @@ class SnoopStream(threading.Thread):
 
 # --- App log -------------------------------------------------------------------------------
 
-class Logcat(threading.Thread):
-    """Saves all of adb logcat, and prints the matching lines from the app's own process."""
+BT_PROCESSES = ("com.android.bluetooth", "com.google.android.bluetooth")  # the latter: mainline
+BT_STACK_LOG = re.compile(r"bond|pair|\bssp\b|passkey|pin ?code|link ?key|authenticat|"
+                          r"encrypt|rfcomm|\bsdp\b|\bpsm\b", re.I)
 
-    def __init__(self, path: Path, interesting: re.Pattern | None):
+
+class Logcat(threading.Thread):
+    """Saves all of adb logcat, and prints the matching lines from the app's own process.
+
+    `stack` also prints the phone's Bluetooth stack lines about pairing, bonding and channels.
+    """
+
+    def __init__(self, path: Path, package: str, interesting: re.Pattern | None, stack: bool = False):
         super().__init__(daemon=True)
-        self.path, self.interesting = path, interesting
+        self.path, self.package, self.interesting, self.stack = path, package, interesting, stack
         self.proc: subprocess.Popen | None = None
         self.pids: set[str] = set()
+        self.stack_pids: set[str] = set()
         self.stop = threading.Event()
+
+    def _find_pids(self) -> None:
+        self.pids = set(adb("shell", "pidof", self.package, check=False).split())
+        if self.stack:
+            self.stack_pids = set(adb("shell", "pidof", *BT_PROCESSES, check=False).split())
 
     def _follow_pid(self) -> None:
         while not self.stop.wait(3):  # the app may restart; keep up with its pid
-            self.pids = set(adb("shell", "pidof", APP_PACKAGE, check=False).split())
+            self._find_pids()
 
     def run(self) -> None:
-        self.pids = set(adb("shell", "pidof", APP_PACKAGE, check=False).split())
+        self._find_pids()
+        say("app", f"{self.package} is " + (f"running (pid {', '.join(sorted(self.pids))})" if self.pids
+                                             else "not running yet; its lines show once it starts"))
         threading.Thread(target=self._follow_pid, daemon=True).start()
         self.proc = subprocess.Popen(["adb", "logcat", "-v", "threadtime", "-T", "1"],
                                      stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
@@ -679,9 +881,13 @@ class Logcat(threading.Thread):
             for line in self.proc.stdout:
                 out.write(line)
                 fields = line.split(None, 6)  # date time pid tid level tag message
-                if (len(fields) > 2 and fields[2] in self.pids and "PostHog" not in line
+                if len(fields) < 3:
+                    continue
+                if (fields[2] in self.pids and "PostHog" not in line
                         and (self.interesting is None or self.interesting.search(line))):
                     say("app", line.rstrip()[:200], line.rstrip() if len(line) > 201 else None)
+                elif fields[2] in self.stack_pids and BT_STACK_LOG.search(line):
+                    say("bt-stack", line.rstrip()[:200], line.rstrip() if len(line) > 201 else None)
 
     def close(self) -> None:
         self.stop.set()
@@ -951,7 +1157,8 @@ def pull_bugreport(outdir: Path) -> None:
         say("bt", "the bug report has no btsnoop_hci.log (is the snoop log enabled?)")
 
 
-def decode_saved(outdir: Path) -> None:
+def decode_saved(outdir: Path, name_re: str | None = RECORDER_NAME,
+                 addrs: tuple[str, ...] = (RECORDER_BT_ADDR,)) -> None:
     """Writes <log>.decoded.txt next to every btsnoop log in outdir, with every detail."""
     for f in sorted(outdir.iterdir()):
         if not f.is_file() or f.suffix == ".txt":
@@ -962,7 +1169,7 @@ def decode_saved(outdir: Path) -> None:
         target = f.with_name(f.name + ".decoded.txt")
         with open(target, "w") as out:
             try:
-                n = decode_file(f, out, everything=True)
+                n = decode_file(f, out, everything=True, name_re=name_re, addrs=addrs)
             except ValueError as e:
                 say("bt", f"couldn't decode {f.name}: {e}")
                 continue
@@ -977,6 +1184,7 @@ class Scenario:
     ready: str
     now: str
     log_filter: re.Pattern | None  # app log lines to show; None shows all of them
+    pocket: bool = True  # Pocket defaults (app, names, addresses, WiFi); else all from options
 
 
 SCENARIOS = {
@@ -1018,6 +1226,28 @@ SCENARIOS = {
             "    Note anything the app shows (errors, firmware-update prompts).",
         log_filter=re.compile(r"wi-?fi|transfer|switch|frame|socket|prewarm|handoff|APP&|MCU&|8475", re.I),
     ),
+    "vendor-app": Scenario(
+        help="another recorder's app pairing and using its recorder",
+        ready="Get ready, but DON'T pair yet:\n"
+              "    - The recorder charged, near the phone, in the state before pairing (new, reset, or\n"
+              "      removed from the app).\n"
+              "    - To capture the Bluetooth pairing, remove the recorder from the phone's Bluetooth\n"
+              "      settings (Forget) if it's listed there, and from the app if it's paired there.\n"
+              "    - Nothing else connected to the recorder (other phones, desktop apps).\n"
+              "    - Phone: no VPN, location and nearby-devices permission on, the app open.",
+        now="NOW, in the recorder's app:\n"
+            "    1. Pair the recorder and follow every step until the app says it's connected.\n"
+            "    2. Then use it the way you normally would: sync/download a recording, start and stop\n"
+            "       a recording from the app, change a setting, rename or delete a file, check the\n"
+            "       battery/storage screen, a firmware check. One thing at a time, a few seconds apart.\n"
+            "    3. Before and after each action, type a short note here ('tapped Pair', 'download\n"
+            "       rec 3 started', 'download finished'). It lands in the timeline next to the packets.\n"
+            "    4. 'phone>'/'device<' lines are Bluetooth traffic, 'pair' the pairing, 'gatt' the\n"
+            "       device's services, 'l2cap'/'rfcomm' classic channels, 'app' the app's log,\n"
+            "       'bt-stack' the phone's Bluetooth stack.",
+        log_filter=None,
+        pocket=False,
+    ),
 }
 
 
@@ -1034,8 +1264,11 @@ def preflight(args) -> str | None:
     model = adb("shell", "getprop", "ro.product.model").strip()
     release = adb("shell", "getprop", "ro.build.version.release").strip()
     say("phone", f"{model}, Android {release}")
-    if not adb("shell", "pm", "path", APP_PACKAGE, check=False).strip():
-        sys.exit(f"The Pocket app ({APP_PACKAGE}) isn't installed on this phone.")
+    app = getattr(args, "app", None)
+    if app and not adb("shell", "pm", "path", app, check=False).strip():
+        sys.exit(f"The app {app} isn't installed on this phone. To find its package name:\n"
+                 "  adb shell pm list packages -3       (all installed apps), or open the app and run\n"
+                 "  adb shell dumpsys activity activities | grep -m1 ResumedActivity")
     if args.no_wifi:
         return None
     iface = args.iface or next(
@@ -1057,6 +1290,8 @@ def keep_sudo(stop: threading.Event) -> None:
 def capture(args) -> int:
     global _timeline
     scenario = SCENARIOS[args.scenario]
+    if not args.no_wifi and not (args.bssid or args.oui):
+        sys.exit("--wifi needs the recorder's WiFi MAC (--bssid) or its prefix (--oui) to find it.")
     outdir = Path(f"capture-{args.scenario}-{datetime.now():%Y%m%d-%H%M%S}")
     step("Checking the laptop and the phone")
     iface = preflight(args)
@@ -1081,14 +1316,14 @@ def capture(args) -> int:
             snoop = SnoopStream(outdir / "phone-live.btsnoop", sock, header, decoder)
             snoop.start()
             if not snoop.first.wait(15):
-                say("bt", "the header came, but no Bluetooth packets within 15 s. Open the Pocket app "
+                say("bt", "the header came, but no Bluetooth packets within 15 s. Open the app "
                           "so the phone talks Bluetooth; if nothing shows up, the bug report at the "
                           "end still has the log.")
         else:
             say("bt", "no live Bluetooth log; the bug report at the end has it")
 
         step("App log")
-        logcat = Logcat(outdir / "logcat.txt", scenario.log_filter)
+        logcat = Logcat(outdir / "logcat.txt", args.app, scenario.log_filter, stack=not scenario.pocket)
         logcat.start()
         say("app", "recording adb logcat")
 
@@ -1121,13 +1356,13 @@ def capture(args) -> int:
         pull_bugreport(outdir)
     if snoop:
         snoop.join(3)
-    decode_saved(outdir)
+    decode_saved(outdir, args.device_name, tuple(args.device_addr))
 
     step("Summary")
     if snoop:
         say("bt", f"live snoop: {decoder.packets} packets, {snoop.bytes} bytes")
     if decoder.seen:
-        say("bt", "recorders seen: " + ", ".join(decoder._who(a) for a in sorted(decoder.seen)))
+        say("bt", "devices seen or connected: " + ", ".join(decoder._who(a) for a in sorted(decoder.seen)))
     if monitor:
         say("wifi", f"recorder {'on ' + str(monitor.locked) + ' MHz' if monitor.locked else 'never seen'}, "
                     f"{monitor.frames} frames, {monitor.eapol} handshake frames, "
@@ -1136,11 +1371,13 @@ def capture(args) -> int:
             say("wifi", f"network: {who} -> '{ssid or '<hidden>'}'")
     for f in sorted(outdir.iterdir()):
         say("file", f"{f} ({f.stat().st_size} bytes)")
-    print("\nTo decrypt wifi-monitor.pcap in Wireshark: IEEE 802.11 decryption key, wpa-pwd "
-          "<password>:<SSID>. On the recorder's AP the password is the first 8 characters of the "
-          "session key, and the SSID is in the MCU&WIFI& reply (see timeline.log).")
-    print(f"\nTell Claude: capture is in {outdir}/ (plus what the app showed). The files contain the "
-          "session key and WiFi passwords, so keep them private.")
+    if monitor:
+        print("\nTo decrypt wifi-monitor.pcap in Wireshark: IEEE 802.11 decryption key, wpa-pwd "
+              "<password>:<SSID>." + (" On the recorder's AP the password is the first 8 characters of "
+              "the session key, and the SSID is in the MCU&WIFI& reply (see timeline.log)."
+              if scenario.pocket else ""))
+    print(f"\nTell Claude: capture is in {outdir}/ (plus what the app showed). The files contain "
+          "pairing keys, session keys and WiFi passwords, so keep them private.")
     timeline, _timeline = _timeline, None
     timeline.close()
     return 0
@@ -1168,7 +1405,7 @@ def snoop_check(args) -> int:
                   "Wireshark/androiddump, and check 'adb forward --list' for other forwards to 8872.")
             return 1
         say("bt", f"header OK (datalink {struct.unpack('>I', header[12:16])[0]}); showing packets for "
-                  f"{args.seconds:g} s. Open the Pocket app or toggle something Bluetooth on the phone.")
+                  f"{args.seconds:g} s. Open the app or toggle something Bluetooth on the phone.")
         decoder = HciDecoder(say)
         with tempfile.TemporaryDirectory() as tmp:
             stream = SnoopStream(Path(tmp) / "check.btsnoop", sock, header, decoder)
@@ -1178,7 +1415,7 @@ def snoop_check(args) -> int:
             stream.join(3)
         if not decoder.packets:
             say("bt", "the header came, but no packets: the socket works, but there was no Bluetooth "
-                      "traffic (or the log is 'Filtered'). Try again with the Pocket app open.")
+                      "traffic (or the log is 'Filtered'). Try again with the app open.")
             return 1
         say("bt", f"OK: {decoder.packets} packets in {args.seconds:g} s through the forward")
         return 0
@@ -1189,7 +1426,8 @@ def snoop_check(args) -> int:
 def decode(args) -> int:
     for path in args.file:
         try:
-            decode_file(Path(path), sys.stdout, everything=args.all)
+            decode_file(Path(path), sys.stdout, everything=args.all, name_re=args.device_name or None,
+                        addrs=tuple(args.device_addr))
         except (OSError, ValueError) as e:
             print(f"{path}: {e}", file=sys.stderr)
             return 1
@@ -1199,21 +1437,33 @@ def decode(args) -> int:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = p.add_subparsers(dest="scenario", required=True,
-                           metavar="{activation,quick-transfer,snoop-check,decode}")
+                           metavar="{activation,quick-transfer,vendor-app,snoop-check,decode}")
     for name, sc in SCENARIOS.items():
         s = sub.add_parser(name, help=f"capture {sc.help}")
+        if sc.pocket:
+            s.add_argument("--app", default=APP_PACKAGE, help=f"the app's package (default {APP_PACKAGE})")
+        else:
+            s.add_argument("--app", required=True,
+                           help="the app's package, e.g. com.vendor.recorder (adb shell pm list packages -3)")
         s.add_argument("--iface", help="WiFi interface to put in monitor mode (default: the first one)")
-        s.add_argument("--bssid", default=RECORDER_BSSID,
-                       help=f"the recorder AP's MAC, if known (default {RECORDER_BSSID}); '' for none")
-        s.add_argument("--oui", action="append", default=[RECORDER_WIFI_OUI],
-                       help=f"WiFi MAC prefix that marks a recorder (default {RECORDER_WIFI_OUI}; repeatable)")
+        bssid, oui = (RECORDER_BSSID, [RECORDER_WIFI_OUI]) if sc.pocket else ("", [])
+        s.add_argument("--bssid", default=bssid,
+                       help=f"the recorder AP's MAC, if known (default {bssid or 'none'}); '' for none")
+        s.add_argument("--oui", action="append", default=oui,
+                       help=f"WiFi MAC prefix that marks a recorder (default {oui[0] if oui else 'none'}; repeatable)")
         s.add_argument("--freq", type=int, help="the recorder's WiFi frequency in MHz, if known (default: "
                                                 "from the system log of earlier joins, else scan 2.4 GHz)")
-        s.add_argument("--device-name", default=RECORDER_NAME,
-                       help=f"regex for the recorder's Bluetooth name (default {RECORDER_NAME!r})")
-        s.add_argument("--device-addr", action="append", default=[RECORDER_BT_ADDR],
-                       help=f"Bluetooth address of a recorder (default {RECORDER_BT_ADDR}; repeatable)")
-        s.add_argument("--no-wifi", action="store_true", help="only capture Bluetooth and the app log")
+        name_re, addrs = (RECORDER_NAME, [RECORDER_BT_ADDR]) if sc.pocket else (None, [])
+        s.add_argument("--device-name", default=name_re,
+                       help=f"regex for the recorder's Bluetooth name, to show its advertising "
+                            f"(default {name_re!r}; any device the phone connects to is shown anyway)")
+        s.add_argument("--device-addr", action="append", default=addrs,
+                       help=f"Bluetooth address of a recorder (default {addrs[0] if addrs else 'none'}; repeatable)")
+        if sc.pocket:
+            s.add_argument("--no-wifi", action="store_true", help="only capture Bluetooth and the app log")
+        else:
+            s.add_argument("--wifi", dest="no_wifi", action="store_false",
+                           help="also capture WiFi in monitor mode (needs --bssid or --oui, and sudo)")
         s.add_argument("--no-bugreport", action="store_true", help="skip the bug report at the end")
         s.add_argument("--snoop-port", type=int, default=0,
                        help="laptop port for the adb forward to the snoop socket (default: a free one)")
@@ -1226,6 +1476,10 @@ def main() -> int:
     c.set_defaults(func=snoop_check)
     d = sub.add_parser("decode", help="decode a saved btsnoop file (no phone needed)")
     d.add_argument("file", nargs="+")
+    d.add_argument("--device-name", default=RECORDER_NAME,
+                   help=f"regex for the recorder's Bluetooth name (default {RECORDER_NAME!r}; '' for none)")
+    d.add_argument("--device-addr", action="append", default=[RECORDER_BT_ADDR],
+                   help=f"Bluetooth address of a recorder (default {RECORDER_BT_ADDR}; repeatable)")
     d.add_argument("--all", action="store_true",
                    help="also show discovery details, scanning, every advertising change and full values")
     d.set_defaults(func=decode)

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { TFunction } from 'i18next';
 import { Trans, useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
@@ -36,25 +36,20 @@ function storeMethod(method: Method) {
 
 type Call = (request: PocketBluetoothRequest) => Promise<PocketBluetoothResult>;
 
-// PocketUsbSyncDialog copies new recordings from the Pocket, by USB or over the Pocket's WiFi
-// (the Android app: over its WiFi only). The app does the copying (desktop/src/pocket.js,
-// desktop/src/pocket-wifi-sync.js; mobile/android/…/pocket/WifiSync.java); the dialog starts it
-// and shows how it goes. Closing the dialog ejects a plugged-in Pocket
-// (once a copy that still runs is done); a WiFi copy keeps running and reports by a
-// notification when it's done.
-export function PocketUsbSyncDialog({ onClose }: { onClose: () => void }) {
+// PocketSyncPane copies new recordings from the Pocket, by USB or over the Pocket's WiFi (the
+// Android app: over its WiFi only). The app does the copying (desktop/src/pocket.js,
+// desktop/src/pocket-wifi-sync.js; mobile/android/…/pocket/WifiSync.java); the pane starts it and
+// shows how it goes. It lives in the Recorder Sync dialog's Pocket tab
+// (frontend/src/components/RecorderSync.tsx). Leaving the tab (or closing the dialog) ejects a
+// plugged-in Pocket; a WiFi copy keeps running and reports by a notification when it's done.
+export function PocketSyncPane({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const [call] = useState(() => pocketBluetooth()!);
   const [state, setState] = useState<PocketBluetoothResult | null>(null);
-  // picked is the method chosen in this dialog; until then, what is going on decides.
+  // picked is the method chosen in this pane; until then, what is going on decides.
   const [picked, setPicked] = useState<Method | null>(null);
   const connected = useRef(false);
   connected.current = !!state?.connected;
-
-  const close = useCallback(() => {
-    if (connected.current) void call({ action: 'eject' }).catch(() => undefined);
-    onClose();
-  }, [call, onClose]);
 
   useEffect(() => {
     let stopped = false;
@@ -68,14 +63,10 @@ export function PocketUsbSyncDialog({ onClose }: { onClose: () => void }) {
     return () => {
       stopped = true;
       clearInterval(timer);
+      // Eject a plugged-in Pocket when the tab goes away, so it can be unplugged.
+      if (connected.current) void call({ action: 'eject' }).catch(() => undefined);
     };
   }, [call]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && close();
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [close]);
 
   // Older desktop apps can't copy over WiFi: they don't report wifiSupported at all. The
   // Android app copies over WiFi only.
@@ -91,51 +82,35 @@ export function PocketUsbSyncDialog({ onClose }: { onClose: () => void }) {
     storeMethod(m);
   };
 
-  const heading = t('pocketUsbSync.title', { context: appContext() });
   const ready = !!state && (state.configured || state.connected);
-  let body;
-  if (!state) {
-    body = <p className="muted">{t('common.loading')}</p>;
-  } else if (!ready) {
-    body = (
+  if (!state) return <p className="muted">{t('common.loading')}</p>;
+  if (!ready) {
+    return (
       <p>
         <Trans i18nKey="pocketUsbSync.notConfigured" components={{ 1: <Link to="/settings?tab=devices#pocket" onClick={onClose} /> }} />
       </p>
     );
-  } else if (method === 'wifi') {
-    body = <WifiPane state={state} call={call} />;
-  } else {
-    body = <UsbPane state={state} call={call} />;
   }
-
   return (
-    <div className="new-item-backdrop" onMouseDown={(e) => e.target === e.currentTarget && close()}>
-      <div className="new-item-dialog pocket-sync-dialog" role="dialog" aria-modal="true" aria-label={heading}>
-        <h2>{heading}</h2>
-        {ready && wifiKnown && usbSupported && (
-          <div className="segmented" role="tablist" aria-label={t('pocketUsbSync.method')}>
-            {methods.map((m) => (
-              <button
-                key={m}
-                type="button"
-                role="tab"
-                aria-selected={method === m}
-                className={method === m ? 'active' : undefined}
-                onClick={() => pick(m)}
-              >
-                {m === 'usb' ? t('pocketUsbSync.usb') : t('pocketWifiSync.tab')}
-              </button>
-            ))}
-          </div>
-        )}
-        {body}
-        <div className="new-item-actions">
-          <button type="button" className="secondary-button" onClick={close}>
-            {state?.connected ? t('pocketUsbSync.closeEject') : t('pocketUsbSync.close')}
-          </button>
+    <>
+      {wifiKnown && usbSupported && (
+        <div className="segmented" role="tablist" aria-label={t('pocketUsbSync.method')}>
+          {methods.map((m) => (
+            <button
+              key={m}
+              type="button"
+              role="tab"
+              aria-selected={method === m}
+              className={method === m ? 'active' : undefined}
+              onClick={() => pick(m)}
+            >
+              {m === 'usb' ? t('pocketUsbSync.usb') : t('pocketWifiSync.tab')}
+            </button>
+          ))}
         </div>
-      </div>
-    </div>
+      )}
+      {method === 'wifi' ? <WifiPane state={state} call={call} /> : <UsbPane state={state} call={call} />}
+    </>
   );
 }
 
