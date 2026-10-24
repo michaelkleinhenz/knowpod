@@ -41,6 +41,9 @@ final class FakeRecorder implements PocketSession.Link {
     long bluetoothStopAt = -1;
     // whether the phone can join the access point
     boolean joinable = true;
+    // whether the recorder is a USB drive, and whether USB&1 makes it one
+    boolean usb;
+    boolean usbSwitches = true;
 
     final MessageLog log = new MessageLog();
     final List<String> sent = Collections.synchronizedList(new ArrayList<>());
@@ -168,6 +171,11 @@ final class FakeRecorder implements PocketSession.Link {
         if (name.startsWith("SK&")) say("MCU&SK&OK");
         else if (name.equals("FW")) say("MCU&FW&1.8");
         else if (name.equals("BAT")) say("MCU&BAT&58");
+        else if (name.equals("GET&USB")) say("MCU&USB&" + (usb ? 1 : 0));
+        else if (name.equals("USB&1")) {
+            if (usbSwitches) usb = true;
+            say("MCU&USB&" + (usb ? 1 : 0));
+        }
         else if (name.equals("LIST_DIRS")) {
             List<String> days = new ArrayList<>();
             for (String ts : files.keySet()) {

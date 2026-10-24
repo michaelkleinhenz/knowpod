@@ -5,8 +5,9 @@ import WebKit
 // PocketController answers the web app's Pocket calls (window.knowpodIOS.pocketBluetooth, see
 // frontend/src/lib/desktop.ts), the same requests the desktop and Android apps answer
 // (mobile/android/…/pocket/PocketController.java): {action: 'settings' | 'save' | 'check' |
-// 'activate' | 'key' | 'state' | 'wifi-sync' | 'wifi-cancel', address?, sessionKey?}. The iPhone copies over
-// Bluetooth and the Pocket's WiFi (WifiSync); there is no USB drive to switch on.
+// 'usb-on' | 'activate' | 'key' | 'state' | 'wifi-sync' | 'wifi-cancel', address?, sessionKey?}. The
+// iPhone copies over Bluetooth and the Pocket's WiFi (WifiSync); 'usb-on' switches the Pocket's
+// USB drive on, for copying from it on a computer it is plugged into.
 final class PocketController: WifiSyncEnv {
     static let shared = PocketController()
 
@@ -60,7 +61,18 @@ final class PocketController: WifiSyncEnv {
                 }
             }
         case "check":
-            check(reply)
+            withSession(reply, name: "pocket-check") { session in
+                var result = try session.check()
+                result["ok"] = true
+                return result
+            }
+        case "usb-on":
+            withSession(reply, name: "pocket-usb-on") { session in
+                try session.usbOn()
+                var result = Self.ok()
+                result["usb"] = true
+                return result
+            }
         case "activate":
             activate(request["address"] as? String ?? "", reply)
         case "state":
@@ -70,8 +82,6 @@ final class PocketController: WifiSyncEnv {
         case "wifi-cancel":
             sync.cancel()
             reply(Self.ok())
-        case "usb-on":
-            reply(Self.failure("unsupported", "No USB drive on the phone"))
         case "sync", "eject":
             reply(Self.ok()) // nothing is plugged in
         default:
@@ -97,7 +107,8 @@ final class PocketController: WifiSyncEnv {
         result["sessionKeySet"] = !settings.sessionKey.isEmpty
         result["keySupported"] = true
         result["busy"] = busy
-        result["usbSupported"] = false
+        // The Pocket's USB drive can be switched on here, for the computer it's plugged into.
+        result["usbSupported"] = true
         // The recorder can be activated here; iOS hides Bluetooth addresses, so its address has
         // to be given.
         result["activateSupported"] = true
@@ -119,7 +130,10 @@ final class PocketController: WifiSyncEnv {
         return result
     }
 
-    private func check(_ reply: @escaping ([String: Any]) -> Void) {
+    // withSession connects to the recorder, unlocks the connection and answers what call
+    // returns ("check" and "usb-on").
+    private func withSession(_ reply: @escaping ([String: Any]) -> Void, name: String,
+                             _ call: @escaping (PocketSession) throws -> [String: Any]) {
         if !settings.configured {
             reply(Self.failure("not-configured"))
             return
@@ -143,15 +157,13 @@ final class PocketController: WifiSyncEnv {
             do {
                 let opened = try openSession()
                 session = opened
-                var result = try opened.check()
-                result["ok"] = true
-                reply(result)
+                reply(try call(opened))
             } catch {
                 reply(Self.failure(PocketError.codeOf(error, fallback: "failed"), PocketError.messageOf(error)))
             }
             session?.close()
         }
-        thread.name = "pocket-check"
+        thread.name = name
         thread.start()
     }
 

@@ -40,7 +40,8 @@ interface DesktopBridge {
 // which switches its USB drive on so the app can copy from it, and drives the copy over the
 // Pocket's WiFi (desktop/src/pocket-wifi-sync.js). The Android and iOS apps answer the same
 // calls (mobile/android/…/pocket/PocketController.java, mobile/ios/App/App/Pocket/
-// PocketController.swift), copying over Bluetooth and the WiFi, not by USB. Its settings
+// PocketController.swift), copying over Bluetooth and the WiFi, not by USB (they switch the USB
+// drive on all the same, for a computer the Pocket is plugged into). Its settings
 // stay in the app; the session key is never handed back.
 export type PocketBluetoothRequest =
   | { action: 'settings' | 'check' | 'usb-on' | 'state' | 'sync' | 'eject' | 'wifi-sync' | 'wifi-cancel' }
@@ -120,7 +121,8 @@ export interface PocketBluetoothResult {
   storage?: { usedKB: number; totalKB: number } | null;
   // check and usb-on
   usb?: boolean | null;
-  // settings and state: false where there is no copying by USB (the mobile apps)
+  // settings: false where the USB drive can't be switched on (older mobile apps); state: false
+  // where there is no copying by USB (the mobile apps)
   usbSupported?: boolean;
   // state: whether the Bluetooth connection is set up (configured) or in use (busy), and the
   // USB copying (desktop/src/pocket.js): turned on (enabled), a recorder mounted

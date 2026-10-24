@@ -32,7 +32,8 @@ export function bluetoothErrorText(r: PocketBluetoothResult, t: TFunction): stri
 // PocketBluetooth sets up the app's Bluetooth connection to a Pocket recorder: the recorder is
 // a USB drive only until it's unplugged once, so the desktop app switches the drive on again
 // over Bluetooth before copying from it; over Bluetooth, the desktop and Android apps also
-// raise the Pocket's WiFi to copy over it. Only in the apps; the address and session key stay
+// raise the Pocket's WiFi to copy over it, and the mobile apps switch the USB drive on for a
+// computer the Pocket is plugged into. Only in the apps; the address and session key stay
 // there. A factory-reset Pocket can be activated here with a new key, as the Pocket app does;
 // Remove forgets it (the Pocket keeps its key until it's reset again). Show key fetches the key
 // from the app, so it can be backed up: without it, a lost app means resetting the Pocket.
@@ -81,7 +82,7 @@ export function PocketBluetooth() {
       } else if (action === 'check') {
         setInfo(r);
       } else {
-        setNotice(t('pocketBluetooth.usbOn'));
+        setNotice(t('pocketBluetooth.usbOn', { context: appContext() }));
       }
     } catch (err) {
       setError(t('pocketBluetooth.errors.failed', { detail: err instanceof Error ? err.message : String(err) }));

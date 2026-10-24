@@ -24,8 +24,9 @@ import org.json.JSONObject;
 // PocketController answers the web app's Pocket calls (window.knowpodAndroid.pocketBluetooth,
 // see frontend/src/lib/desktop.ts), the same requests the desktop app answers
 // (desktop/src/main.js: knowpod:pocket-bluetooth): {action: 'settings' | 'save' | 'check' |
-// 'activate' | 'key' | 'state' | 'wifi-sync' | 'wifi-cancel', address?, sessionKey?}. The phone copies over
-// Bluetooth and the Pocket's WiFi (WifiSync); there is no USB drive to switch on.
+// 'usb-on' | 'activate' | 'key' | 'state' | 'wifi-sync' | 'wifi-cancel', address?, sessionKey?}. The
+// phone copies over Bluetooth and the Pocket's WiFi (WifiSync); 'usb-on' switches the Pocket's
+// USB drive on, for copying from it on a computer it is plugged into.
 public final class PocketController {
     private static final String TAG = "knowpod";
     private static PocketController instance;
@@ -76,7 +77,13 @@ public final class PocketController {
                 break;
             }
             case "check":
-                check(activity, reply);
+                withSession(activity, reply, session -> put(new JSONObject(session.check()), "ok", true));
+                break;
+            case "usb-on":
+                withSession(activity, reply, session -> {
+                    session.usbOn();
+                    return put(ok(), "usb", true);
+                });
                 break;
             case "activate":
                 activate(activity, request.optString("address", ""), reply);
@@ -90,9 +97,6 @@ public final class PocketController {
             case "wifi-cancel":
                 sync.cancel();
                 reply.send(ok());
-                break;
-            case "usb-on":
-                reply.send(failure("unsupported", "No USB drive on the phone"));
                 break;
             case "sync":
             case "eject":
@@ -131,7 +135,8 @@ public final class PocketController {
         put(r, "sessionKeySet", !settings.sessionKey().isEmpty());
         put(r, "keySupported", true);
         put(r, "busy", busy());
-        put(r, "usbSupported", false);
+        // The Pocket's USB drive can be switched on here, for the computer it's plugged into.
+        put(r, "usbSupported", true);
         // The recorder can be activated here, and found by name without an address.
         put(r, "activateSupported", true);
         put(r, "activateFindsAddress", true);
@@ -180,7 +185,14 @@ public final class PocketController {
         });
     }
 
-    private void check(MainActivity activity, Reply reply) {
+    // SessionCall is what withSession does on an unlocked connection.
+    private interface SessionCall {
+        JSONObject run(PocketSession session) throws PocketException, InterruptedException;
+    }
+
+    // withSession connects to the recorder, unlocks the connection and answers what call
+    // returns ('check' and 'usb-on').
+    private void withSession(MainActivity activity, Reply reply, SessionCall call) {
         if (!settings.configured()) {
             reply.send(failure("not-configured", null));
             return;
@@ -198,9 +210,7 @@ public final class PocketController {
             PocketSession session = null;
             try {
                 session = openSession();
-                JSONObject r = new JSONObject(session.check());
-                put(r, "ok", true);
-                reply.send(r);
+                reply.send(call.run(session));
             } catch (PocketException e) {
                 reply.send(failure(e.code, e.getMessage()));
             } catch (Exception e) {
