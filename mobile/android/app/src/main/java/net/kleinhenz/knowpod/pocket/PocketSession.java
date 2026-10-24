@@ -25,6 +25,7 @@ import java.util.function.Predicate;
 //   FW          → MCU&FW&1.8              firmware version
 //   SPACE       → MCU&SPA&060846&061032   storage free and total, MB
 //   GET&USB     → MCU&USB&1               whether the recorder is a USB drive when plugged in
+//   USB&1       → MCU&USB&1               be one (the recorder switches it off when unplugged)
 //   LIST_DIRS   → MCU&DIRS&<date>… MCU&DIRS_SUM&<n>                 days with recordings
 //   LIST&<date> → MCU&F&<date>&<timestamp>&<seconds>… MCU&LIST&<n>   a day's recordings
 //   U&<date>&<timestamp> → MCU&U&<size>, then the file over Bluetooth (BluetoothTransfer) … MCU&OFF
@@ -228,6 +229,16 @@ public class PocketSession {
         info.put("storage", storage);
         info.put("usb", "1".equals(usb) ? Boolean.TRUE : "0".equals(usb) ? Boolean.FALSE : null);
         return info;
+    }
+
+    // usbOn makes the recorder a USB drive again (it switches the drive off once it was
+    // unplugged), as desktop/src/bluetooth.js does for 'usb-on'; throws 'usb-refused' when it
+    // stays off.
+    public void usbOn() throws PocketException, InterruptedException {
+        optional("USB&1", "USB");
+        if (!"1".equals(command("GET&USB", "USB").trim())) {
+            throw new PocketException("usb-refused", "The recorder did not switch its USB drive on");
+        }
     }
 
     static Integer parseInt(String text) {

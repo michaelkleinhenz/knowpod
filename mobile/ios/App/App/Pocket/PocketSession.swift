@@ -31,6 +31,7 @@ extension PocketLink {
 //   FW          → MCU&FW&1.8              firmware version
 //   SPACE       → MCU&SPA&060846&061032   storage free and total, MB
 //   GET&USB     → MCU&USB&1               whether the recorder is a USB drive when plugged in
+//   USB&1       → MCU&USB&1               be one (the recorder switches it off when unplugged)
 //   LIST_DIRS   → MCU&DIRS&<date>… MCU&DIRS_SUM&<n>                 days with recordings
 //   LIST&<date> → MCU&F&<date>&<timestamp>&<seconds>… MCU&LIST&<n>   a day's recordings
 //   U&<date>&<timestamp> → MCU&U&<size>, then the file over Bluetooth (BluetoothTransfer) … MCU&OFF
@@ -213,6 +214,16 @@ final class PocketSession {
         let usbOn: Bool? = usb == "1" ? true : (usb == "0" ? false : nil)
         info["usb"] = Self.orNull(usbOn)
         return info
+    }
+
+    // usbOn makes the recorder a USB drive again (it switches the drive off once it was
+    // unplugged), as desktop/src/bluetooth.js does for 'usb-on'; throws "usb-refused" when it
+    // stays off.
+    func usbOn() throws {
+        _ = try optional("USB&1", "USB")
+        if try command("GET&USB", "USB").trimmingCharacters(in: .whitespacesAndNewlines) != "1" {
+            throw PocketError("usb-refused", "The recorder did not switch its USB drive on")
+        }
     }
 
     // orNull is value, or null in JSON.

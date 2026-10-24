@@ -32,6 +32,31 @@ public class PocketSessionTest {
     }
 
     @Test
+    public void switchesTheUsbDriveOn() throws Exception {
+        FakeRecorder recorder = new FakeRecorder();
+        PocketSession session = recorder.session();
+        session.unlock("0123456789abcdef");
+        assertEquals(Boolean.FALSE, session.check().get("usb"));
+        session.usbOn();
+        assertTrue(recorder.sent.contains("USB&1"));
+        assertEquals(Boolean.TRUE, session.check().get("usb"));
+    }
+
+    @Test
+    public void aUsbDriveThatStaysOffIsRefused() throws Exception {
+        FakeRecorder recorder = new FakeRecorder();
+        recorder.usbSwitches = false;
+        PocketSession session = recorder.session();
+        session.unlock("0123456789abcdef");
+        try {
+            session.usbOn();
+            fail("refused");
+        } catch (PocketException e) {
+            assertEquals("usb-refused", e.code);
+        }
+    }
+
+    @Test
     public void aRefusedKeyIsAuth() throws Exception {
         MessageLog log = new MessageLog();
         PocketSession session = new PocketSession(new PocketSession.Link() {
