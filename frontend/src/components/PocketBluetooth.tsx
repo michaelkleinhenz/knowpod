@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { appContext, pocketBluetooth, PocketBluetoothResult } from '../lib/desktop';
+import { CopyButton } from './CopyButton';
 
 // errorKeys are the explained failures of the app's Pocket Bluetooth call.
 const errorKeys = [
@@ -33,7 +34,8 @@ export function bluetoothErrorText(r: PocketBluetoothResult, t: TFunction): stri
 // over Bluetooth before copying from it; over Bluetooth, the desktop and Android apps also
 // raise the Pocket's WiFi to copy over it. Only in the apps; the address and session key stay
 // there. A factory-reset Pocket can be activated here with a new key, as the Pocket app does;
-// Remove forgets it (the Pocket keeps its key until it's reset again).
+// Remove forgets it (the Pocket keeps its key until it's reset again). Show key fetches the key
+// from the app, so it can be backed up: without it, a lost app means resetting the Pocket.
 export function PocketBluetooth() {
   const { t } = useTranslation();
   // Looked up once: the effect below must not run again on every render.
@@ -46,6 +48,8 @@ export function PocketBluetooth() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [info, setInfo] = useState<PocketBluetoothResult | null>(null);
+  // The session key while it's shown; fetched only when asked for, and hidden again on any change.
+  const [shownKey, setShownKey] = useState<string | null>(null);
 
   useEffect(() => {
     call?.({ action: 'settings' }).then((s) => {
@@ -60,6 +64,7 @@ export function PocketBluetooth() {
   async function run(action: 'save' | 'check' | 'usb-on', update?: { address?: string; sessionKey?: string }) {
     setBusy(action);
     setError(null);
+    if (action === 'save') setShownKey(null);
     setNotice(null);
     if (action === 'check') setInfo(null);
     try {
@@ -85,10 +90,26 @@ export function PocketBluetooth() {
     }
   }
 
+  async function showKey() {
+    setError(null);
+    setNotice(null);
+    try {
+      const r = await call!({ action: 'key' });
+      if (!r.ok || !r.sessionKey) {
+        setError(bluetoothErrorText(r, t));
+        return;
+      }
+      setShownKey(r.sessionKey);
+    } catch (err) {
+      setError(t('pocketBluetooth.errors.failed', { detail: err instanceof Error ? err.message : String(err) }));
+    }
+  }
+
   async function activate() {
     if (!window.confirm(t('pocketBluetooth.activateConfirm', { context: appContext() }))) return;
     setBusy('activate');
     setError(null);
+    setShownKey(null);
     setNotice(null);
     setInfo(null);
     try {
@@ -183,6 +204,25 @@ export function PocketBluetooth() {
             onChange={(e) => setSessionKey(e.target.value)}
           />
         </label>
+        {settings.sessionKeySet && settings.keySupported && (
+          <div>
+            {shownKey ? (
+              <>
+                <p>
+                  <code>{shownKey}</code> <CopyButton text={shownKey} />{' '}
+                  <button type="button" className="small-button" onClick={() => setShownKey(null)}>
+                    {t('pocketBluetooth.hideKey')}
+                  </button>
+                </p>
+                <p className="muted">{t('pocketBluetooth.keyBackupHint')}</p>
+              </>
+            ) : (
+              <button type="button" className="small-button" disabled={!!busy} onClick={() => void showKey()}>
+                {t('pocketBluetooth.showKey')}
+              </button>
+            )}
+          </div>
+        )}
         <p className="muted">{t('pocketBluetooth.hint', { context })}</p>
         {error && <p className="error">{error}</p>}
         {notice && <p className="success">{notice}</p>}
