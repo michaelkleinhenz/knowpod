@@ -42,6 +42,8 @@ type Call = (request: PocketBluetoothRequest) => Promise<PocketBluetoothResult>;
 // shows how it goes. It lives in the Recorder Sync dialog's Pocket tab
 // (frontend/src/components/RecorderSync.tsx). Leaving the tab (or closing the dialog) ejects a
 // plugged-in Pocket; a WiFi copy keeps running and reports by a notification when it's done.
+// Copying by USB needs no Bluetooth connection: the app finds a Pocket whose drive is mounted
+// by itself, wherever the drive was switched on (the phone app, the Pocket app).
 export function PocketSyncPane({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const [call] = useState(() => pocketBluetooth()!);
@@ -76,21 +78,17 @@ export function PocketSyncPane({ onClose }: { onClose: () => void }) {
     ? 'usb'
     : !usbSupported
       ? 'wifi'
-      : (picked ?? (state?.wifi?.running ? 'wifi' : state?.connected ? 'usb' : (storedMethod() ?? 'usb')));
+      : (picked ??
+        (state?.wifi?.running ? 'wifi' : state?.connected || !state?.configured ? 'usb' : (storedMethod() ?? 'usb')));
   const pick = (m: Method) => {
     setPicked(m);
     storeMethod(m);
   };
 
-  const ready = !!state && (state.configured || state.connected);
   if (!state) return <p className="muted">{t('common.loading')}</p>;
-  if (!ready) {
-    return (
-      <p>
-        <Trans i18nKey="pocketUsbSync.notConfigured" components={{ 1: <Link to="/settings?tab=devices#pocket" onClick={onClose} /> }} />
-      </p>
-    );
-  }
+  // Without the Bluetooth connection, only a Pocket whose drive is on already can be copied
+  // from, by USB (the desktop app's).
+  if (!state.configured && !state.connected && !usbSupported) return <NotConfigured onClose={onClose} />;
   return (
     <>
       {wifiKnown && usbSupported && (
@@ -109,15 +107,31 @@ export function PocketSyncPane({ onClose }: { onClose: () => void }) {
           ))}
         </div>
       )}
-      {method === 'wifi' ? <WifiPane state={state} call={call} /> : <UsbPane state={state} call={call} />}
+      {method === 'usb' ? (
+        <UsbPane state={state} call={call} onClose={onClose} />
+      ) : state.configured ? (
+        <WifiPane state={state} call={call} />
+      ) : (
+        <NotConfigured onClose={onClose} />
+      )}
     </>
+  );
+}
+
+function NotConfigured({ onClose }: { onClose: () => void }) {
+  return (
+    <p>
+      <Trans i18nKey="pocketUsbSync.notConfigured" components={{ 1: <Link to="/settings?tab=devices#pocket" onClick={onClose} /> }} />
+    </p>
   );
 }
 
 // UsbPane walks through copying by USB. The order matters: the Pocket starts as a USB drive
 // only when its drive was switched on over Bluetooth *before* the cable was plugged in, so the
-// steps have it unplugged, switched on, then plugged in.
-function UsbPane({ state, call }: { state: PocketBluetoothResult; call: Call }) {
+// steps have it unplugged, switched on, then plugged in. Where the drive is on already
+// (switched on from the phone app or the Pocket app), or this app has no Bluetooth connection
+// to the Pocket, it just waits for the drive: the app looks for it every few seconds.
+function UsbPane({ state, call, onClose }: { state: PocketBluetoothResult; call: Call; onClose: () => void }) {
   const { t } = useTranslation();
   const [turningOn, setTurningOn] = useState(false);
   const [usbOn, setUsbOn] = useState(false);
@@ -152,6 +166,17 @@ function UsbPane({ state, call }: { state: PocketBluetoothResult; call: Call }) 
       </>
     );
   }
+  if (!state.configured) {
+    return (
+      <>
+        <p>{t('pocketUsbSync.unpaired')}</p>
+        <p className="muted">{t('pocketUsbSync.waiting')}</p>
+        <p className="muted">
+          <Trans i18nKey="pocketUsbSync.unpairedSetup" components={{ 1: <Link to="/settings?tab=devices#pocket" onClick={onClose} /> }} />
+        </p>
+      </>
+    );
+  }
   return (
     <>
       <p className="pocket-usb-order">{t('pocketUsbSync.order')}</p>
@@ -163,9 +188,14 @@ function UsbPane({ state, call }: { state: PocketBluetoothResult; call: Call }) 
             {usbOn ? (
               <span className="success">✓ {t('pocketUsbSync.usbIsOn')}</span>
             ) : (
-              <button type="button" className="primary-button" disabled={turningOn || state.busy} onClick={() => void turnOn()}>
-                {turningOn ? t('pocketBluetooth.turningOn') : t('pocketBluetooth.turnOn')}
-              </button>
+              <>
+                <button type="button" className="primary-button" disabled={turningOn || state.busy} onClick={() => void turnOn()}>
+                  {turningOn ? t('pocketBluetooth.turningOn') : t('pocketBluetooth.turnOn')}
+                </button>{' '}
+                <button type="button" className="link-button" disabled={turningOn} onClick={() => setUsbOn(true)}>
+                  {t('pocketUsbSync.alreadyOn')}
+                </button>
+              </>
             )}
           </div>
           {error && <p className="error">{error}</p>}
