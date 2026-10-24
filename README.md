@@ -479,7 +479,10 @@ Chrome extension's `manifest.json` and the iOS project in step. It is used by:
 
 To release the desktop and mobile apps, bump `VERSION`, commit, and push a tag `desktop-v<version>`
 (e.g. `git tag desktop-v1.2.0 && git push origin desktop-v1.2.0`). The workflow refuses a
-tag that doesn't match `VERSION`.
+tag that doesn't match `VERSION`. To build them without a release, run
+`make app-build` (needs the GitHub CLI): it starts the workflow on the current branch, which
+must be pushed (`REF=<branch>` for another, `SERVER_URL=…` to preset the server), and the builds
+land as artifacts of the run.
 
 ## Local development
 

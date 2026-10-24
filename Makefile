@@ -1,7 +1,7 @@
 # knowpod-service build. The frontend is built separately and embedded into the backend binary so a
 # single artifact serves both the web UI and the API.
 
-.PHONY: build frontend backend test clean version set-version desktop-deps desktop-run desktop desktop-linux desktop-windows desktop-mac desktop-all android-deps android android-test ios-deps ios
+.PHONY: build frontend backend test clean version set-version desktop-deps desktop-run desktop desktop-linux desktop-windows desktop-mac desktop-all android-deps android android-test ios-deps ios app-build
 
 # Server the desktop and mobile apps connect to on their first start, e.g.
 # `make desktop SERVER_URL=https://knowpod.example.com`. Without it the app asks for one.
@@ -106,6 +106,15 @@ ios: ios-deps
 	rm -rf mobile/dist/Payload && mkdir -p mobile/dist/Payload
 	cp -R mobile/ios/App/build/Build/Products/Release-iphoneos/App.app mobile/dist/Payload/
 	cd mobile/dist && rm -f knowpod-$(VERSION)-ios-unsigned.ipa && zip -qr knowpod-$(VERSION)-ios-unsigned.ipa Payload && rm -rf Payload
+
+# Build the desktop installers, the APK, the IPA and the ESP32 firmware on GitHub Actions (the
+# Build and release workflow, .github/workflows/desktop.yml) from the current branch, which must
+# be pushed; REF=<branch or tag> builds another one. SERVER_URL presets the apps' server as
+# above. Needs the GitHub CLI, logged in (`gh auth login`); the builds land as artifacts of the run.
+REF ?= $(shell git rev-parse --abbrev-ref HEAD)
+app-build:
+	gh workflow run desktop.yml --ref "$(REF)" $(if $(SERVER_URL),-f server_url=$(SERVER_URL))
+	@echo 'Started; follow it with `gh run watch` or under Actions → Build and release.'
 
 test:
 	cd backend && go test ./...
