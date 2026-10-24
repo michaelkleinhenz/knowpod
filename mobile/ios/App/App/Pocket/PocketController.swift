@@ -5,7 +5,7 @@ import WebKit
 // PocketController answers the web app's Pocket calls (window.knowpodIOS.pocketBluetooth, see
 // frontend/src/lib/desktop.ts), the same requests the desktop and Android apps answer
 // (mobile/android/…/pocket/PocketController.java): {action: 'settings' | 'save' | 'check' |
-// 'activate' | 'state' | 'wifi-sync' | 'wifi-cancel', address?, sessionKey?}. The iPhone copies over
+// 'activate' | 'key' | 'state' | 'wifi-sync' | 'wifi-cancel', address?, sessionKey?}. The iPhone copies over
 // Bluetooth and the Pocket's WiFi (WifiSync); there is no USB drive to switch on.
 final class PocketController: WifiSyncEnv {
     static let shared = PocketController()
@@ -46,6 +46,19 @@ final class PocketController: WifiSyncEnv {
                     reply(settingsResult())
                 }
             }
+        case "key":
+            // The session key, for the settings page to show when asked (to back it up). The
+            // keychain may take a moment: not on the main thread.
+            worker.async { [self] in
+                let key = settings.sessionKey
+                if key.isEmpty {
+                    reply(Self.failure("not-configured"))
+                } else {
+                    var result = Self.ok()
+                    result["sessionKey"] = key
+                    reply(result)
+                }
+            }
         case "check":
             check(reply)
         case "activate":
@@ -76,11 +89,13 @@ final class PocketController: WifiSyncEnv {
         return result
     }
 
-    // settingsResult is what the settings page shows: never the key itself.
+    // settingsResult is what the settings page shows: never the key itself ("key" hands it over
+    // when asked).
     private func settingsResult() -> [String: Any] {
         var result = Self.ok()
         result["address"] = settings.address
         result["sessionKeySet"] = !settings.sessionKey.isEmpty
+        result["keySupported"] = true
         result["busy"] = busy
         result["usbSupported"] = false
         // The recorder can be activated here; iOS hides Bluetooth addresses, so its address has

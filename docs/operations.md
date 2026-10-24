@@ -237,7 +237,9 @@ which is then archived as FLAC and transcribed like any WAV. OPS files can be at
   needs the address. Afterwards the Pocket app can't connect until the Pocket is reset again,
   so the webhook integration above gets no new recordings. **Remove** forgets address and key in
   the app; the Pocket keeps its key, so adding it again takes that key or a reset and a new
-  activation. **Check connection** reads the
+  activation. **Show key** (once a key is set) shows the session key with a copy button, so it
+  can be backed up, e.g. in a password manager, and entered in another app or after a
+  reinstall without resetting the Pocket. **Check connection** reads the
   battery, firmware, storage and USB state; **Turn on USB drive** (also in the tray menu as
   **Turn On Pocket USB Drive** while no recorder is plugged in) switches the drive on
   (`APP&USB&1`), after which the plugged-in recorder mounts and is copied as above.

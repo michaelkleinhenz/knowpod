@@ -45,6 +45,8 @@ interface DesktopBridge {
 export type PocketBluetoothRequest =
   | { action: 'settings' | 'check' | 'usb-on' | 'state' | 'sync' | 'eject' | 'wifi-sync' | 'wifi-cancel' }
   | { action: 'save'; address?: string; sessionKey?: string }
+  // key answers the session key, to show it for a backup; missing in older apps (keySupported).
+  | { action: 'key' }
   // activate activates a factory-reset Pocket with a new session key (address: '' finds the
   // one nearby where activateFindsAddress); missing in older apps (activateSupported).
   | { action: 'activate'; address?: string };
@@ -103,6 +105,10 @@ export interface PocketBluetoothResult {
   // settings, save and activate
   address?: string;
   sessionKeySet?: boolean;
+  // settings: whether the app shows the session key when asked ('key')
+  keySupported?: boolean;
+  // key
+  sessionKey?: string;
   // settings: whether a Pocket can be activated, and found without its address
   activateSupported?: boolean;
   activateFindsAddress?: boolean;

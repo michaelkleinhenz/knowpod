@@ -454,7 +454,8 @@ ipcMain.on('knowpod:notify', (event, message) => {
 });
 
 // The settings page of the server sets up the recorder's Bluetooth connection (see
-// frontend/src/components/PocketBluetooth.tsx). It never gets the session key back.
+// frontend/src/components/PocketBluetooth.tsx). It gets the session key back only when it asks
+// for it ('key', to show it for a backup).
 const fromApp = (event) => !!event.senderFrame && isAppUrl(event.senderFrame.url);
 
 ipcMain.handle('knowpod:pocket-bluetooth', (event, request) => {
@@ -468,6 +469,10 @@ ipcMain.handle('knowpod:pocket-bluetooth', (event, request) => {
       if (typeof request.sessionKey === 'string') update.sessionKey = request.sessionKey;
       const result = pocketBluetooth.save(update);
       return result.ok ? { ok: true, ...pocketBluetooth.settings() } : result;
+    }
+    case 'key': {
+      const key = pocketBluetooth.key();
+      return key ? { ok: true, sessionKey: key } : { ok: false, error: 'not-configured' };
     }
     case 'check':
       return pocketBluetooth.check();

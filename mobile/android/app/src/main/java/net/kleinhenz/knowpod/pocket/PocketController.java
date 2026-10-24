@@ -24,7 +24,7 @@ import org.json.JSONObject;
 // PocketController answers the web app's Pocket calls (window.knowpodAndroid.pocketBluetooth,
 // see frontend/src/lib/desktop.ts), the same requests the desktop app answers
 // (desktop/src/main.js: knowpod:pocket-bluetooth): {action: 'settings' | 'save' | 'check' |
-// 'activate' | 'state' | 'wifi-sync' | 'wifi-cancel', address?, sessionKey?}. The phone copies over
+// 'activate' | 'key' | 'state' | 'wifi-sync' | 'wifi-cancel', address?, sessionKey?}. The phone copies over
 // Bluetooth and the Pocket's WiFi (WifiSync); there is no USB drive to switch on.
 public final class PocketController {
     private static final String TAG = "knowpod";
@@ -67,6 +67,12 @@ public final class PocketController {
                 String key = request.has("sessionKey") ? request.optString("sessionKey") : null;
                 String error = settings.save(address, key);
                 reply.send(error == null ? settingsResult() : failure(error, null));
+                break;
+            }
+            case "key": {
+                // The session key, for the settings page to show when asked (to back it up).
+                String key = settings.sessionKey();
+                reply.send(key.isEmpty() ? failure("not-configured", null) : put(ok(), "sessionKey", key));
                 break;
             }
             case "check":
@@ -117,11 +123,13 @@ public final class PocketController {
         return o;
     }
 
-    // settingsResult is what the settings page shows: never the key itself.
+    // settingsResult is what the settings page shows: never the key itself ('key' hands it over
+    // when asked).
     private JSONObject settingsResult() {
         JSONObject r = ok();
         put(r, "address", settings.address());
         put(r, "sessionKeySet", !settings.sessionKey().isEmpty());
+        put(r, "keySupported", true);
         put(r, "busy", busy());
         put(r, "usbSupported", false);
         // The recorder can be activated here, and found by name without an address.

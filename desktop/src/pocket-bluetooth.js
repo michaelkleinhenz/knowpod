@@ -239,11 +239,13 @@ function createPocketBluetooth({ readConfig, writeConfig, onChange }) {
 
   const configured = () => !!stored().address && !!sessionKey();
 
-  // settings is what the settings page shows: never the key itself. The recorder can be
-  // activated here; without an address given, it's found by name, except on macOS.
+  // settings is what the settings page shows: never the key itself (key() hands it over when
+  // asked, for a backup). The recorder can be activated here; without an address given, it's
+  // found by name, except on macOS.
   const settings = () => ({
     address: stored().address || '',
     sessionKeySet: !!sessionKey(),
+    keySupported: true,
     busy,
     activateSupported: true,
     activateFindsAddress: process.platform !== 'darwin',
@@ -343,6 +345,9 @@ function createPocketBluetooth({ readConfig, writeConfig, onChange }) {
       return { ok: true };
     },
     configured,
+    // key is the session key, for the settings page to show when asked (to back it up); '' when
+    // none is set.
+    key: () => sessionKey(),
     busy: () => busy,
     // check reads the battery, firmware, storage and USB state.
     check: () => call('check'),
