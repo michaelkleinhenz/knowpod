@@ -218,7 +218,11 @@ paths:
     post:
       tags: ["Web UI sign-in"]
       summary: Sign in to the web UI
-      description: Sets the `knowpod_session` cookie. Limited to 10 requests per minute per client IP.
+      description: |
+        Sets the `knowpod_session` cookie. Limited to 10 requests per minute per client IP.
+        A `persistent` session (the desktop and mobile apps ask for one) never expires: it
+        ends only on sign-out, `POST /auth/logout-all` or a password change, and its cookie
+        is renewed by `GET /auth/me`. Other sessions expire after `SESSION_TTL`.
       requestBody:
         required: true
         content:
@@ -229,6 +233,7 @@ paths:
               properties:
                 email: { type: string, format: email }
                 password: { type: string, format: password }
+                persistent: { type: boolean, description: "Start a session that never expires" }
       responses:
         "200":
           description: Signed in
@@ -248,10 +253,23 @@ paths:
       responses:
         "204": { description: Signed out }
 
+  /auth/logout-all:
+    post:
+      tags: ["Web UI sign-in"]
+      summary: Sign out on all devices
+      description: |
+        Ends every session of the account, in all browsers and in the desktop and mobile
+        apps, this one included, and clears the cookie.
+      security: [{ sessionCookie: [] }]
+      responses:
+        "204": { description: Signed out everywhere }
+        "401": { $ref: "#/components/responses/Error" }
+
   /auth/me:
     get:
       tags: ["Web UI sign-in"]
       summary: The signed-in account
+      description: Renews the cookie of a persistent session.
       security: [{ sessionCookie: [] }]
       responses:
         "200":

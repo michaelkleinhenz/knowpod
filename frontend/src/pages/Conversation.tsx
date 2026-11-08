@@ -231,7 +231,7 @@ function NoteBody({ rec, aiReady, aiWriting, tab, setTab, setRec, reload, create
     void el.play().catch(() => undefined); // autoplay may be refused; the position is set anyway
     setSeek(null);
   }, [seek, tab]);
-  const autosave = useAutosave(rec.id, summary?.title ?? titleOf(rec), rec.revision, setRec);
+  const autosave = useAutosave(rec.id, summary?.title ?? titleOf(rec), rec.revision, setRec, summary?.markdown ?? '', editable && !textReadOnly && !rec.deletedAt);
   // Someone else changed the text: show their version, unless there are unsaved changes
   // here; then the user decides which one stays. A save under way may be what changed it.
   const { known, dirty, settled, conflict } = autosave;
@@ -795,7 +795,7 @@ function NoteBody({ rec, aiReady, aiWriting, tab, setTab, setRec, reload, create
                 <Suspense
                   fallback={
                     <div className="prose editor-content">
-                      <Markdown text={summary.markdown ?? ''} noteLinks />
+                      <Markdown text={autosave.restored?.markdown ?? summary.markdown ?? ''} noteLinks />
                     </div>
                   }
                 >
@@ -803,7 +803,7 @@ function NoteBody({ rec, aiReady, aiWriting, tab, setTab, setRec, reload, create
                     notes={notes.recordings}
                     noteId={rec.id}
                     onOpenNote={(n) => navigate(noteRefPath(n))}
-                    markdown={summary.markdown ?? ''}
+                    markdown={autosave.restored?.markdown ?? summary.markdown ?? ''}
                     onReady={autosave.editorReady}
                     onChange={autosave.changed}
                     onSaveShortcut={() => void autosave.save()}

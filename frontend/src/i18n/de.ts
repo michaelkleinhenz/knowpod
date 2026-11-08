@@ -91,6 +91,9 @@ export const de: Translation = {
     password: 'Passwort',
     submit: 'Anmelden',
     submitting: 'Anmeldung läuft …',
+    again: 'Erneut anmelden',
+    againHint: 'Du wurdest abgemeldet (auf allen Geräten, oder das Passwort wurde geändert). Gib das Passwort von {{email}} ein, um weiterzumachen; deine ungespeicherten Änderungen bleiben erhalten und werden nach der Anmeldung gespeichert.',
+    switch: 'Anderes Konto verwenden',
   },
   state: {
     remote: 'Audio wird abgerufen …',
@@ -1200,8 +1203,12 @@ export const de: Translation = {
     new: 'Neues Passwort',
     repeat: 'Neues Passwort wiederholen',
     mismatch: 'Die neuen Passwörter stimmen nicht überein.',
-    changed: 'Passwort geändert. Andere angemeldete Browser wurden abgemeldet.',
+    changed: 'Passwort geändert. Andere angemeldete Browser und Apps wurden abgemeldet.',
     change: 'Passwort ändern',
+    signOutAllTitle: 'Angemeldete Geräte',
+    signOutAllHint: 'Die Desktop- und Mobil-Apps bleiben angemeldet, bis du dich abmeldest. „Auf allen Geräten abmelden“ beendet jede Sitzung: in allen Browsern, den Desktop-Apps und den Mobil-Apps, auch hier. Jedes Gerät muss sich danach neu anmelden.',
+    signOutAll: 'Auf allen Geräten abmelden',
+    signOutAllConfirm: 'Auf allen Geräten abmelden, auch auf diesem?',
     remarkableTitle: 'reMarkable',
   },
   remarkable: {

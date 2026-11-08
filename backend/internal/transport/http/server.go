@@ -213,6 +213,7 @@ func (s *Server) Router() http.Handler {
 			u.Use(s.requireUser)
 			u.Get("/auth/me", s.handleMe)
 			u.Put("/auth/password", s.handleChangePassword)
+			u.Post("/auth/logout-all", s.handleLogoutAll)
 			u.Get("/me/pocket", s.handleGetPocketSettings)
 			u.Put("/me/pocket", s.handleUpdatePocketSettings)
 			u.Post("/me/pocket/device/check", s.handleNewPocketDeviceFiles)

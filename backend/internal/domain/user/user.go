@@ -265,10 +265,16 @@ type Pocket struct {
 	FolderID string `bson:"folderId,omitempty"`
 }
 
-// Session is a signed-in browser. Only the SHA-256 of the session token is stored.
+// Session is a signed-in browser or app. Only the SHA-256 of the session token is stored.
+// A session without ExpiresAt (one the desktop or mobile app started) never expires: it
+// ends only when the user signs out of it, signs out on all devices, changes the password
+// or is deleted.
 type Session struct {
-	TokenHash string    `bson:"_id"`
-	UserID    string    `bson:"userId"`
-	CreatedAt time.Time `bson:"createdAt"`
-	ExpiresAt time.Time `bson:"expiresAt"`
+	TokenHash string     `bson:"_id"`
+	UserID    string     `bson:"userId"`
+	CreatedAt time.Time  `bson:"createdAt"`
+	ExpiresAt *time.Time `bson:"expiresAt,omitempty"`
 }
+
+// Persistent reports whether the session never expires.
+func (s *Session) Persistent() bool { return s.ExpiresAt == nil }

@@ -143,7 +143,7 @@ func TestUserAndSessionRepo(t *testing.T) {
 
 	exp := time.Now().Add(time.Hour).UTC()
 	for _, h := range []string{"s1", "s2", "s3"} {
-		if err := sessions.Create(ctx, &user.Session{TokenHash: h, UserID: u.ID, ExpiresAt: exp}); err != nil {
+		if err := sessions.Create(ctx, &user.Session{TokenHash: h, UserID: u.ID, ExpiresAt: &exp}); err != nil {
 			t.Fatal(err)
 		}
 	}

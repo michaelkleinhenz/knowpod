@@ -124,7 +124,7 @@ var indexes = map[string][]mongo.IndexModel{
 		{Keys: bson.D{{Key: "userId", Value: 1}}},
 	},
 	CollSessions: {
-		// MongoDB deletes sessions once they expire.
+		// MongoDB deletes sessions once they expire; the apps' sessions have no expiresAt and stay.
 		{Keys: bson.D{{Key: "expiresAt", Value: 1}}, Options: options.Index().SetExpireAfterSeconds(0)},
 		{Keys: bson.D{{Key: "userId", Value: 1}}},
 	},

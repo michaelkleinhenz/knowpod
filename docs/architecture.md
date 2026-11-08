@@ -131,6 +131,12 @@ session cookie decides.
   `SameSite=Strict` cookie; MongoDB stores only its SHA-256 with the user ID and expiry.
   `Authenticate` loads the user on every request, so role changes and deletions apply at
   once; a TTL index removes expired sessions. `SameSite=Strict` is the CSRF protection.
+- **App sessions never expire.** The desktop and mobile apps sign in with `persistent: true`:
+  the session is stored without `expiresAt` (so the TTL index leaves it), and its cookie gets
+  the longest lifetime Chromium accepts (400 days), renewed by every `GET /auth/me`, which the
+  app asks at each start. It ends only on sign-out, a password change, the user's deletion,
+  or **Sign out on all devices** (`POST /auth/logout-all`, Settings → Account), which deletes
+  every session of the user. Browser sessions still last `SESSION_TTL`.
 - **Password changes** (own, with the current password; or by an admin) end the user's other
   sessions.
 - **User management** keeps at least one admin, forbids deleting yourself, and deletes a
@@ -141,6 +147,13 @@ session cookie decides.
 The frontend asks `GET /api/v1/auth/me` on load (the cookie can't be read by scripts);
 `RequireLogin` in `App.tsx` sends signed-out visitors to `/login` and non-admins away from
 admin pages.
+
+When a request is refused with `401` while the app is open (the session was ended
+elsewhere), the page stays as it is and `AuthProvider` shows a dialog asking for the password;
+once signed in again, pending saves are retried. Unsaved edits of a note are also kept in
+`localStorage` as a draft (`lib/drafts.ts`, per user and note) until the server has them, and
+`useAutosave` restores and saves a draft when the note is opened again, on the revision it was
+made on (a newer revision on the server becomes the usual conflict).
 
 ## Recording lifecycle
 

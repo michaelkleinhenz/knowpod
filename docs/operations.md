@@ -130,7 +130,9 @@ everywhere), or delete a user. Deleting removes the user **with all their device
 notes, audio and themes**. Admins can't delete themselves, and the last admin can't be
 removed or demoted.
 
-**Sessions** are stored in MongoDB and last `SESSION_TTL` (7 days by default). The user is
+**Sessions** are stored in MongoDB and last `SESSION_TTL` (7 days by default) in browsers;
+the desktop and mobile apps' sessions never expire and end only on sign-out, a password
+change or **Sign out on all devices** (Settings → Account). The user is
 looked up on every request, so role changes and deletions take effect immediately. The
 cookie is `HttpOnly` and `SameSite=Strict`, and `Secure` when the request came in over HTTPS
 (directly, or with `X-Forwarded-Proto: https` from the proxy). Login attempts are limited to

@@ -51,7 +51,14 @@ type Account struct {
 	// FontSize is the web UI text size (user.FontSizes); empty is the default size.
 	FontSize string `json:"fontSize,omitempty"`
 	All      bool   `json:"-"`
+	// persistentSession is set when the request came with a session that never expires (one
+	// the desktop or mobile app started).
+	persistentSession bool
 }
+
+// PersistentSession reports whether the account was signed in with a session that never
+// expires, whose cookie is renewed as it is used.
+func (a *Account) PersistentSession() bool { return a.persistentSession }
 
 // IsAdmin reports whether the account may manage users and global settings.
 func (a *Account) IsAdmin() bool { return a.Role == user.RoleAdmin }
@@ -122,8 +129,10 @@ func (s *AuthService) EnsureBuiltInAdmin(ctx context.Context) (*user.User, error
 }
 
 // Login checks the credentials and starts a session. It returns the session token for the
-// cookie and its expiry.
-func (s *AuthService) Login(ctx context.Context, email, password string) (acc *Account, token string, expires time.Time, err error) {
+// cookie and its expiry. A persistent session (the desktop and mobile apps ask for one) never
+// expires, and the expiry returned is zero: it lasts until the user signs out of it, signs out
+// on all devices or changes the password.
+func (s *AuthService) Login(ctx context.Context, email, password string, persistent bool) (acc *Account, token string, expires time.Time, err error) {
 	u, err := s.users.GetByEmail(ctx, normalizeEmail(email))
 	if errors.Is(err, ErrNotFound) {
 		_ = bcrypt.CompareHashAndPassword(dummyPasswordHash, []byte(password)) // equal timing
@@ -138,11 +147,17 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (acc *A
 
 	token = newToken()
 	now := s.clock().UTC()
-	sess := &user.Session{TokenHash: hashToken(token), UserID: u.ID, CreatedAt: now, ExpiresAt: now.Add(s.sessionTTL)}
+	sess := &user.Session{TokenHash: hashToken(token), UserID: u.ID, CreatedAt: now}
+	if !persistent {
+		exp := now.Add(s.sessionTTL)
+		sess.ExpiresAt, expires = &exp, exp
+	}
 	if err := s.sessions.Create(ctx, sess); err != nil {
 		return nil, "", time.Time{}, err
 	}
-	return account(u), token, sess.ExpiresAt, nil
+	acc = account(u)
+	acc.persistentSession = persistent
+	return acc, token, expires, nil
 }
 
 // passwordMatches checks a password against the stored hash, or, for the built-in admin
@@ -169,7 +184,7 @@ func (s *AuthService) Authenticate(ctx context.Context, token string) (*Account,
 	if err != nil {
 		return nil, err
 	}
-	if !s.clock().Before(sess.ExpiresAt) || sess.UserID == "" {
+	if (sess.ExpiresAt != nil && !s.clock().Before(*sess.ExpiresAt)) || sess.UserID == "" {
 		_ = s.sessions.Delete(ctx, sess.TokenHash)
 		return nil, ErrNotSignedIn
 	}
@@ -181,7 +196,9 @@ func (s *AuthService) Authenticate(ctx context.Context, token string) (*Account,
 	if err != nil {
 		return nil, err
 	}
-	return account(u), nil
+	acc := account(u)
+	acc.persistentSession = sess.Persistent()
+	return acc, nil
 }
 
 // ScriptAccount is the account for requests authenticated with ADMIN_TOKEN: it acts as the
@@ -203,6 +220,15 @@ func (s *AuthService) Logout(ctx context.Context, token string) error {
 		return nil
 	}
 	return err
+}
+
+// LogoutEverywhere ends all of the user's sessions: in every browser and in the desktop and
+// mobile apps, the current one included. Each has to sign in again.
+func (s *AuthService) LogoutEverywhere(ctx context.Context, acc *Account) error {
+	if acc == nil || acc.ID == "" {
+		return ErrNotSignedIn
+	}
+	return s.sessions.DeleteByUser(ctx, acc.ID, "")
 }
 
 // ChangePassword sets a new password for the signed-in user after checking the current one.

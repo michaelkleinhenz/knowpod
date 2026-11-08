@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../auth';
 import { BriefingSetup } from '../components/BriefingSetup';
@@ -80,6 +80,39 @@ function ChangePassword() {
   );
 }
 
+// SignOutAll ends every session of the account: all browsers and the desktop and mobile
+// apps, which otherwise stay signed in.
+function SignOutAll() {
+  const { t } = useTranslation();
+  const { logoutAll } = useAuth();
+  const navigate = useNavigate();
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function signOut() {
+    if (!window.confirm(t('account.signOutAllConfirm'))) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await logoutAll();
+      navigate('/login');
+    } catch (err) {
+      setError(errorText(err, t));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <p className="muted">{t('account.signOutAllHint')}</p>
+      {error && <p className="error">{error}</p>}
+      <button type="button" className="pill-button danger" disabled={busy} onClick={() => void signOut()}>
+        {t('account.signOutAll')}
+      </button>
+    </>
+  );
+}
+
 export function Account() {
   const { t } = useTranslation();
   const { account } = useAuth();
@@ -98,6 +131,10 @@ export function Account() {
         </p>
         <h2 className="card-title">{t('account.changePassword')}</h2>
         <ChangePassword />
+      </section>
+      <section className="card" id="sessions">
+        <h2 className="card-title">{t('account.signOutAllTitle')}</h2>
+        <SignOutAll />
       </section>
       <section className="card" id="notifications">
         <h2 className="card-title">{t('notifications.title')}</h2>

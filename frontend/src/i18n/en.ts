@@ -89,6 +89,9 @@ export const en = {
     password: 'Password',
     submit: 'Sign in',
     submitting: 'Signing in…',
+    again: 'Sign in again',
+    againHint: 'You were signed out (on all devices, or the password was changed). Enter the password of {{email}} to go on; your unsaved changes are kept and saved once you are signed in.',
+    switch: 'Use another account',
   },
   state: {
     remote: 'Fetching audio…',
@@ -1198,8 +1201,12 @@ export const en = {
     new: 'New password',
     repeat: 'Repeat new password',
     mismatch: 'The new passwords do not match.',
-    changed: 'Password changed. Other signed-in browsers were signed out.',
+    changed: 'Password changed. Other signed-in browsers and apps were signed out.',
     change: 'Change password',
+    signOutAllTitle: 'Signed-in devices',
+    signOutAllHint: 'The desktop and mobile apps stay signed in until you sign out. Signing out on all devices ends every session: in all browsers, the desktop apps and the mobile apps, this one included. Each has to sign in again.',
+    signOutAll: 'Sign out on all devices',
+    signOutAllConfirm: 'Sign out on all devices, this one included?',
     remarkableTitle: 'reMarkable',
   },
   remarkable: {
