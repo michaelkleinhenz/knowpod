@@ -38,7 +38,7 @@ func TestUserManagement(t *testing.T) {
 	if _, err := s.Create(ctx, UserInput{Email: ptr("bob@example.com"), Password: ptr("bob-password")}); !errors.Is(err, ErrEmailTaken) {
 		t.Fatalf("duplicate: %v", err)
 	}
-	if _, _, _, err := auth.Login(ctx, "bob@example.com", "bob-password"); err != nil {
+	if _, _, _, err := auth.Login(ctx, "bob@example.com", "bob-password", false); err != nil {
 		t.Fatalf("bob can't sign in: %v", err)
 	}
 
@@ -63,14 +63,14 @@ func TestUserManagement(t *testing.T) {
 	}
 
 	// Password reset ends the user's sessions.
-	_, bobToken, _, _ := auth.Login(ctx, "robert@example.com", "bob-password")
+	_, bobToken, _, _ := auth.Login(ctx, "robert@example.com", "bob-password", false)
 	if err := s.SetPassword(ctx, bob.ID, "new-bob-password", ""); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := auth.Authenticate(ctx, bobToken); !errors.Is(err, ErrNotSignedIn) {
 		t.Fatalf("session survived password reset: %v", err)
 	}
-	if _, _, _, err := auth.Login(ctx, "robert@example.com", "new-bob-password"); err != nil {
+	if _, _, _, err := auth.Login(ctx, "robert@example.com", "new-bob-password", false); err != nil {
 		t.Fatalf("new password: %v", err)
 	}
 

@@ -25,7 +25,7 @@ func TestBuiltInAdminLogin(t *testing.T) {
 	ctx := context.Background()
 	s, _, _, admin := newAuth(t)
 
-	acc, token, expires, err := s.Login(ctx, "ADMIN@example.com", "env-secret")
+	acc, token, expires, err := s.Login(ctx, "ADMIN@example.com", "env-secret", false)
 	if err != nil || acc.ID != admin.ID || acc.Role != user.RoleAdmin || token == "" || expires.IsZero() {
 		t.Fatalf("login: %+v %q %v %v", acc, token, expires, err)
 	}
@@ -37,7 +37,7 @@ func TestBuiltInAdminLogin(t *testing.T) {
 		{"someone@example.com", "env-secret"},
 		{"", ""},
 	} {
-		if _, _, _, err := s.Login(ctx, tc.email, tc.pw); !errors.Is(err, ErrInvalidLogin) {
+		if _, _, _, err := s.Login(ctx, tc.email, tc.pw, false); !errors.Is(err, ErrInvalidLogin) {
 			t.Errorf("login(%q, %q) = %v", tc.email, tc.pw, err)
 		}
 	}
@@ -60,7 +60,7 @@ func TestPreferences(t *testing.T) {
 	if err != nil || got.Language != "de" {
 		t.Fatalf("update: %+v, %v", got, err)
 	}
-	_, token, _, _ := s.Login(ctx, "admin@example.com", "env-secret")
+	_, token, _, _ := s.Login(ctx, "admin@example.com", "env-secret", false)
 	if a, _ := s.Authenticate(ctx, token); a.Language != "de" {
 		t.Fatalf("language not on account: %+v", a)
 	}
@@ -106,8 +106,8 @@ func TestNoBuiltInAdminWithoutEnv(t *testing.T) {
 func TestChangePasswordOverridesEnv(t *testing.T) {
 	ctx := context.Background()
 	s, users, sessions, admin := newAuth(t)
-	acc, token, _, _ := s.Login(ctx, "admin@example.com", "env-secret")
-	_, other, _, _ := s.Login(ctx, "admin@example.com", "env-secret")
+	acc, token, _, _ := s.Login(ctx, "admin@example.com", "env-secret", false)
+	_, other, _, _ := s.Login(ctx, "admin@example.com", "env-secret", false)
 
 	if err := s.ChangePassword(ctx, acc, token, "wrong", "new-password"); !errors.Is(err, ErrWrongPassword) {
 		t.Fatalf("wrong current: %v", err)
@@ -122,10 +122,10 @@ func TestChangePasswordOverridesEnv(t *testing.T) {
 	if u.PasswordHash == "" || u.PasswordChangedAt == nil {
 		t.Fatalf("stored user: %+v", u)
 	}
-	if _, _, _, err := s.Login(ctx, "admin@example.com", "env-secret"); !errors.Is(err, ErrInvalidLogin) {
+	if _, _, _, err := s.Login(ctx, "admin@example.com", "env-secret", false); !errors.Is(err, ErrInvalidLogin) {
 		t.Fatalf("env password still works: %v", err)
 	}
-	if _, _, _, err := s.Login(ctx, "admin@example.com", "new-password"); err != nil {
+	if _, _, _, err := s.Login(ctx, "admin@example.com", "new-password", false); err != nil {
 		t.Fatalf("new password: %v", err)
 	}
 	if _, err := s.Authenticate(ctx, token); err != nil {
@@ -146,7 +146,7 @@ func TestSessionEndsWhenUserIsDeletedOrExpires(t *testing.T) {
 	_ = s.setPasswordValue(u, "bob-password")
 	_ = users.Create(ctx, u)
 
-	_, token, _, err := s.Login(ctx, "bob@example.com", "bob-password")
+	_, token, _, err := s.Login(ctx, "bob@example.com", "bob-password", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,16 +157,55 @@ func TestSessionEndsWhenUserIsDeletedOrExpires(t *testing.T) {
 		t.Fatalf("after logout: %v", err)
 	}
 
-	_, token, _, _ = s.Login(ctx, "bob@example.com", "bob-password")
+	_, token, _, _ = s.Login(ctx, "bob@example.com", "bob-password", false)
 	_ = users.Delete(ctx, "u1")
 	if _, err := s.Authenticate(ctx, token); !errors.Is(err, ErrNotSignedIn) {
 		t.Fatalf("deleted user still signed in: %v", err)
 	}
 
 	_ = users.Create(ctx, u)
-	_, token, _, _ = s.Login(ctx, "bob@example.com", "bob-password")
+	_, token, _, _ = s.Login(ctx, "bob@example.com", "bob-password", false)
 	s.clock = func() time.Time { return time.Now().Add(2 * time.Hour) }
 	if _, err := s.Authenticate(ctx, token); !errors.Is(err, ErrNotSignedIn) {
 		t.Fatalf("expired session: %v", err)
+	}
+}
+
+func TestPersistentSessionNeverExpires(t *testing.T) {
+	ctx := context.Background()
+	s, _, _, _ := newAuth(t)
+	now := time.Now()
+	s.clock = func() time.Time { return now }
+
+	acc, app, expires, err := s.Login(ctx, "admin@example.com", "env-secret", true)
+	if err != nil || !expires.IsZero() || !acc.PersistentSession() {
+		t.Fatalf("persistent login: %+v %v %v", acc, expires, err)
+	}
+	_, web, _, _ := s.Login(ctx, "admin@example.com", "env-secret", false)
+
+	now = now.Add(10 * 365 * 24 * time.Hour) // far beyond the one-hour TTL
+	if a, err := s.Authenticate(ctx, app); err != nil || !a.PersistentSession() {
+		t.Fatalf("app session after ten years: %+v %v", a, err)
+	}
+	if _, err := s.Authenticate(ctx, web); !errors.Is(err, ErrNotSignedIn) {
+		t.Fatalf("web session didn't expire: %v", err)
+	}
+}
+
+func TestLogoutEverywhere(t *testing.T) {
+	ctx := context.Background()
+	s, _, sessions, _ := newAuth(t)
+	acc, app, _, _ := s.Login(ctx, "admin@example.com", "env-secret", true)
+	_, web, _, _ := s.Login(ctx, "admin@example.com", "env-secret", false)
+	if err := s.LogoutEverywhere(ctx, acc); err != nil {
+		t.Fatal(err)
+	}
+	for _, tok := range []string{app, web} {
+		if _, err := s.Authenticate(ctx, tok); !errors.Is(err, ErrNotSignedIn) {
+			t.Fatalf("session survived: %v", err)
+		}
+	}
+	if sessions.Count() != 0 {
+		t.Fatalf("sessions = %d", sessions.Count())
 	}
 }

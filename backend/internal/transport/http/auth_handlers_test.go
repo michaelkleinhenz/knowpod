@@ -3,6 +3,7 @@ package http
 import (
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/michaelkleinhenz/knowpod-service/backend/internal/service"
 )
@@ -14,10 +15,10 @@ func TestWebLoginFlow(t *testing.T) {
 	if res := b.do("GET", "/api/v1/auth/me", nil, nil, nil); res.StatusCode != 401 {
 		t.Fatalf("me before login: %d", res.StatusCode)
 	}
-	if res := b.do("POST", "/api/v1/auth/login", loginRequest{adminEmail, "nope"}, nil, nil); res.StatusCode != 401 {
+	if res := b.do("POST", "/api/v1/auth/login", loginRequest{Email: adminEmail, Password: "nope"}, nil, nil); res.StatusCode != 401 {
 		t.Fatalf("bad login: %d", res.StatusCode)
 	}
-	res := b.do("POST", "/api/v1/auth/login", loginRequest{adminEmail, adminPassword}, nil, nil)
+	res := b.do("POST", "/api/v1/auth/login", loginRequest{Email: adminEmail, Password: adminPassword}, nil, nil)
 	if res.StatusCode != 200 {
 		t.Fatalf("login: %d", res.StatusCode)
 	}
@@ -50,7 +51,7 @@ func TestWebLoginFlow(t *testing.T) {
 	if res := b.do("GET", "/api/v1/auth/me", nil, nil, nil); res.StatusCode != 401 {
 		t.Fatalf("me after logout: %d", res.StatusCode)
 	}
-	if res := b.do("POST", "/api/v1/auth/login", loginRequest{adminEmail, adminPassword}, nil, nil); res.StatusCode != 401 {
+	if res := b.do("POST", "/api/v1/auth/login", loginRequest{Email: adminEmail, Password: adminPassword}, nil, nil); res.StatusCode != 401 {
 		t.Fatalf("env password after change: %d", res.StatusCode)
 	}
 	f.signedIn(adminEmail, "new-password")
@@ -60,7 +61,7 @@ func TestLoginIsRateLimited(t *testing.T) {
 	b := newAPIFixture(t).browser()
 	var last int
 	for i := 0; i < 11; i++ {
-		last = b.do("POST", "/api/v1/auth/login", loginRequest{adminEmail, "nope"}, nil, nil).StatusCode
+		last = b.do("POST", "/api/v1/auth/login", loginRequest{Email: adminEmail, Password: "nope"}, nil, nil).StatusCode
 	}
 	if last != http.StatusTooManyRequests {
 		t.Fatalf("11th attempt = %d, want 429", last)
@@ -96,6 +97,43 @@ func TestAccessControl(t *testing.T) {
 	} {
 		if res := tc.c.do(tc.method, tc.path, nil, nil, nil); res.StatusCode != tc.want {
 			t.Errorf("%s: %s %s = %d, want %d", tc.name, tc.method, tc.path, res.StatusCode, tc.want)
+		}
+	}
+}
+
+func TestPersistentLoginAndLogoutAll(t *testing.T) {
+	f := newAPIFixture(t)
+	app := f.browser()
+	res := app.do("POST", "/api/v1/auth/login", loginRequest{Email: adminEmail, Password: adminPassword, Persistent: true}, nil, nil)
+	if res.StatusCode != 200 {
+		t.Fatalf("login: %d", res.StatusCode)
+	}
+	cookieOf := func(res *http.Response) *http.Cookie {
+		for _, c := range res.Cookies() {
+			if c.Name == sessionCookie {
+				return c
+			}
+		}
+		return nil
+	}
+	if c := cookieOf(res); c == nil || time.Until(c.Expires) < 300*24*time.Hour {
+		t.Fatalf("persistent cookie = %+v", c)
+	}
+	// Asking who is signed in renews the app's cookie.
+	if c := cookieOf(app.do("GET", "/api/v1/auth/me", nil, nil, nil)); c == nil || time.Until(c.Expires) < 300*24*time.Hour {
+		t.Fatalf("renewed cookie = %+v", c)
+	}
+	web := f.signedIn(adminEmail, adminPassword)
+	if c := cookieOf(web.do("GET", "/api/v1/auth/me", nil, nil, nil)); c != nil {
+		t.Fatalf("web session's cookie renewed: %+v", c)
+	}
+
+	if res := web.do("POST", "/api/v1/auth/logout-all", nil, nil, nil); res.StatusCode != 204 {
+		t.Fatalf("logout-all: %d", res.StatusCode)
+	}
+	for name, c := range map[string]*client{"app": app, "web": web} {
+		if res := c.do("GET", "/api/v1/auth/me", nil, nil, nil); res.StatusCode != 401 {
+			t.Fatalf("%s after logout-all: %d", name, res.StatusCode)
 		}
 	}
 }

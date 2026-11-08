@@ -926,6 +926,9 @@ if (!app.requestSingleInstanceLock()) {
   app.on('before-quit', (event) => {
     quitting = true;
     systemAudio.stopAll();
+    // The session cookie never expires (the app stays signed in): write it to disk now, so a
+    // renewed cookie isn't lost when the machine shuts down right after.
+    void session.defaultSession.cookies.flushStore().catch(() => undefined);
     if (!pocketWifi?.state().running || quitWhenStopped) return;
     event.preventDefault();
     quitWhenStopped = true;

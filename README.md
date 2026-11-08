@@ -507,7 +507,7 @@ Environment variables only.
 | `FRONTEND_URL` | `http://localhost:5173` | Allowed CORS origin |
 | `ADMIN_EMAIL` | _(empty)_ | Email of the built-in admin (created at startup) |
 | `ADMIN_PASSWORD` | _(empty)_ | The built-in admin's password until one is set in the UI |
-| `SESSION_TTL` | `168h` | How long a web UI sign-in lasts |
+| `SESSION_TTL` | `168h` | How long a web UI sign-in in a browser lasts (the desktop and mobile apps stay signed in until signed out) |
 | `ADMIN_TOKEN` | _(empty: disabled)_ | Bearer token for scripts: the whole API (except the device upload API) as the built-in admin, seeing all users' data |
 | `POCKET_API_URL` | `https://public.heypocketai.com/api/v1` | Pocket API base URL |
 | `REMARKABLE_PULL_INTERVAL` | `15m` | How often paired reMarkable accounts are checked for new and changed documents; `0` turns the automatic import off (the **Import now** button still works) |

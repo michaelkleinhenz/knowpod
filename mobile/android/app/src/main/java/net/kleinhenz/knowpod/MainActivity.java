@@ -97,6 +97,9 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onPause() {
         RecorderController.get(this).pause();
+        // The session cookie never expires (the app stays signed in): write it to disk while
+        // the app goes to the background, where Android may end it without notice.
+        CookieManager.getInstance().flush();
         super.onPause();
     }
 

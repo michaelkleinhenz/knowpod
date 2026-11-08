@@ -74,7 +74,7 @@ func TestThemesAndPreferencesAPI(t *testing.T) {
 func TestErrorCodes(t *testing.T) {
 	f := newAPIFixture(t)
 	var e errResponse
-	if res := f.browser().do("POST", "/api/v1/auth/login", loginRequest{adminEmail, "nope"}, nil, &e); res.StatusCode != 401 || e.Code != "invalid_login" {
+	if res := f.browser().do("POST", "/api/v1/auth/login", loginRequest{Email: adminEmail, Password: "nope"}, nil, &e); res.StatusCode != 401 || e.Code != "invalid_login" {
 		t.Fatalf("login: %d %+v", res.StatusCode, e)
 	}
 	admin := f.signedIn(adminEmail, adminPassword)

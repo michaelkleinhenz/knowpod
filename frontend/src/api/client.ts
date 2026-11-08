@@ -16,6 +16,13 @@ export class ApiError extends Error {
   }
 }
 
+// UNAUTHORIZED_EVENT is dispatched on window when a request is refused because the session
+// ended (signed out on all devices, password changed). The app then asks for the password in
+// place, keeping the page and its unsaved edits, and retries them once signed in again.
+export const UNAUTHORIZED_EVENT = 'knowpod:unauthorized';
+// SIGNED_IN_EVENT is dispatched on window after signing in again; pending saves retry.
+export const SIGNED_IN_EVENT = 'knowpod:signed-in';
+
 // unreachable says whether a status means the server itself couldn't be reached (a proxy
 // answering for it).
 const unreachable = (status: number) => status === 502 || status === 503 || status === 504;
@@ -57,6 +64,7 @@ async function request<T>(method: string, path: string, body?: unknown, fallback
     const err = new ApiError(res.status, body?.error || `Error ${res.status}`, body?.code);
     if (unreachable(res.status) && !body?.code) return fromCache(err);
     setOffline(false);
+    if (res.status === 401 && !path.startsWith('/auth/login')) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
     throw err;
   }
   setOffline(false);
@@ -728,6 +736,7 @@ async function uploadNoteImage(noteId: string, file: Blob): Promise<{ id: string
   } catch {
     // fall through
   }
+  if (res.status === 401) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
   if (!res.ok || !data?.url) throw new ApiError(res.status, data?.error || `Error ${res.status}`, data?.code);
   return { id: data.id ?? '', url: data.url };
 }
@@ -998,8 +1007,11 @@ export const api = {
   rotateDeviceToken: (id: string) => request<DeviceWithToken>('POST', `/devices/${encodeURIComponent(id)}/token`),
   removeDevice: (id: string) => request<void>('DELETE', `/devices/${encodeURIComponent(id)}`),
   me: () => request<Account>('GET', '/auth/me'),
-  login: (email: string, password: string) => request<Account>('POST', '/auth/login', { email, password }),
+  // persistent asks for a session that never expires (the desktop and mobile apps).
+  login: (email: string, password: string, persistent = false) => request<Account>('POST', '/auth/login', { email, password, persistent }),
   logout: () => request<void>('POST', '/auth/logout'),
+  // logoutAll ends every session of the account, on all devices, this one included.
+  logoutAll: () => request<void>('POST', '/auth/logout-all'),
   changePassword: (currentPassword: string, newPassword: string) =>
     request<void>('PUT', '/auth/password', { currentPassword, newPassword }),
 };

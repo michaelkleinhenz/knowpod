@@ -286,6 +286,10 @@ const bridge = (): DesktopBridge | undefined =>
     ? ((window as AppWindow).knowpodDesktop ?? (window as AppWindow).knowpodAndroid ?? (window as AppWindow).knowpodIOS)
     : undefined;
 
+// isApp says whether this is the desktop app or a mobile app. They stay signed in until the
+// user signs out (a session that never expires), unlike a browser.
+export const isApp = () => !!bridge();
+
 // isAndroidApp says whether this is the knowpod Android app (see mobile/android/).
 export const isAndroidApp = () => typeof window !== 'undefined' && !!(window as AppWindow).knowpodAndroid;
 
