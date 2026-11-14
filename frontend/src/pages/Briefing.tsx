@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { api, DailyBriefing } from '../api/client';
+import { api, DailyBriefing, Recording } from '../api/client';
 import { BackIcon, HomeIcon, RefreshIcon, SlidersIcon } from '../components/Icons';
 import { Markdown } from '../components/Markdown';
+import { useNotes } from '../context/NotesContext';
 import { errorText } from '../lib/errors';
 import { formatTime } from '../lib/recordings';
 
@@ -15,6 +16,12 @@ export function Briefing() {
   const [briefing, setBriefing] = useState<DailyBriefing | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // The briefing is a snapshot; it is made again, shortly after the tasks changed (one
+  // checked off, its due date or assignee changed, one added or removed), to show them as they are.
+  const { recordings } = useNotes();
+  const taskState = useMemo(() => (recordings ? tasksSignature(recordings) : null), [recordings]);
+  const lastTaskState = useRef<string | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -38,6 +45,17 @@ export function Briefing() {
       setBusy(false);
     }
   }
+
+  const remakeRef = useRef(remake);
+  remakeRef.current = remake;
+  const shown = !!briefing && !briefing.off;
+  useEffect(() => {
+    const previous = lastTaskState.current;
+    lastTaskState.current = taskState;
+    if (!shown || previous === null || taskState === null || previous === taskState) return;
+    const timer = setTimeout(() => void remakeRef.current(), 1000);
+    return () => clearTimeout(timer);
+  }, [taskState, shown]);
 
   return (
     <div className="briefing-page">
@@ -78,4 +96,13 @@ export function Briefing() {
       )}
     </div>
   );
+}
+
+// tasksSignature changes when what the briefing shows of the tasks changes.
+function tasksSignature(list: Recording[]): string {
+  return list
+    .filter((r) => r.done !== undefined || r.due)
+    .map((r) => `${r.id}:${r.done ? 1 : 0}:${JSON.stringify(r.due ?? '')}:${r.assigneeId ?? ''}`)
+    .sort()
+    .join('|');
 }
